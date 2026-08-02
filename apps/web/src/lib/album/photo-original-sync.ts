@@ -26,6 +26,35 @@ export type PhotoOriginalSyncDeps = {
   ) => Promise<{ uploaded: number; missing: number }>;
 };
 
+const PROBE_BATCH_SIZE = 300; // /photo-originals/urls 端点单次最多接受 300 个 photoId。
+
+// 探测服务端已确认上传的 photoId 集合 —— 断点续传能生效的前提。/photo-originals/urls
+// 只对 status='uploaded' 的 id 返回 URL,响应里出现的 key 集合就是 serverUploaded;
+// 不探测的话每次触发都会把整批候选(哪怕早就传过)重新走一遍 sign→put→confirm。
+// fetchUrls 独立注入(不是 PhotoOriginalSyncDeps 的一部分,因为它服务于「算出
+// serverUploaded 传给 runPhotoOriginalSync」这一步,发生在 runPhotoOriginalSync
+// 之前,不是它内部的上传流程)。任何一批探测失败都吞掉、退化为「这批当作没查到、
+// 照常进候选重试」——安全但更费流量,绝不因为探测失败而跳过整次补传或抛出。
+export async function probeServerUploaded(
+  albumId: string,
+  photoIds: string[],
+  fetchUrls: (albumId: string, photoIds: string[]) => Promise<Record<string, string>>,
+): Promise<ReadonlySet<string>> {
+  const unique = [...new Set(photoIds.filter(Boolean))];
+  const uploaded = new Set<string>();
+  for (let i = 0; i < unique.length; i += PROBE_BATCH_SIZE) {
+    const chunk = unique.slice(i, i + PROBE_BATCH_SIZE);
+    try {
+      const urls = await fetchUrls(albumId, chunk);
+      for (const photoId of Object.keys(urls)) uploaded.add(photoId);
+    } catch {
+      // 这一批探测失败:不计入 serverUploaded(下面照常当候选重试),不影响其余
+      // 批次已经探测到的结果,也不让探测阶段的失败中止整次补传。
+    }
+  }
+  return uploaded;
+}
+
 // 差集,保序去重:排除服务端已确认上传的;服务端记为 missing 的(不在
 // serverUploaded 里)不排除 —— 本机这次可能重新拿到了原图,值得再试一次。
 export function planPhotoOriginalSync(

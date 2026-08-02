@@ -15,7 +15,7 @@ import {
   putPhotoOriginalBlob,
   signPhotoOriginalUpload,
 } from '@/lib/album/photo-original-client';
-import { runPhotoOriginalSync } from '@/lib/album/photo-original-sync';
+import { probeServerUploaded, runPhotoOriginalSync } from '@/lib/album/photo-original-sync';
 import { photoStore } from '@/lib/photo/store';
 
 export function usePhotoOriginalSync({
@@ -63,19 +63,24 @@ export function usePhotoOriginalSync({
     const signature = `${albumId}::${[...uniquePhotoIds].sort().join(',')}`;
     if (ranSignatureRef.current === signature) return;
     ranSignatureRef.current = signature;
-    void runPhotoOriginalSync({
-      albumId,
-      photoIds,
-      // 客户端只拿得到聚合计数(uploaded/missing 的数量),拿不到具体已上传的
-      // photoId 集合 —— 这里传空集,让 planPhotoOriginalSync 把本轮全部 photoIds
-      // 当作候选;photoId 幂等,已经上传过的重新过一遍 sign→put→confirm 也无害。
-      serverUploaded: new Set(),
-      deps: {
-        getCanonicalUploadBlob: (photoId) => photoStore.getCanonicalUploadBlob(photoId),
-        sign: (id, entries) => signPhotoOriginalUpload(id, entries),
-        put: (putUrl, blob) => putPhotoOriginalBlob(putUrl, blob),
-        confirm: (id, confirmInput) => confirmPhotoOriginals(id, confirmInput),
-      },
-    });
+    void (async () => {
+      // 断点续传的关键:先探测服务端已确认上传的集合,只把真正缺的那些送进
+      // sign→put→confirm,否则每次触发都会把整本书重新传一遍(300 张全传成
+      // 290 张,新增 1 张,也会把那 290 张再传一遍)。probeServerUploaded 内部
+      // 已经把探测失败吞掉、退化为「当批候选照常重试」,这里不需要再兜一层
+      // try/catch —— 它的契约就是绝不抛出。
+      const serverUploaded = await probeServerUploaded(albumId, uniquePhotoIds, fetchPhotoOriginalUrls);
+      await runPhotoOriginalSync({
+        albumId,
+        photoIds,
+        serverUploaded,
+        deps: {
+          getCanonicalUploadBlob: (photoId) => photoStore.getCanonicalUploadBlob(photoId),
+          sign: (id, entries) => signPhotoOriginalUpload(id, entries),
+          put: (putUrl, blob) => putPhotoOriginalBlob(putUrl, blob),
+          confirm: (id, confirmInput) => confirmPhotoOriginals(id, confirmInput),
+        },
+      });
+    })();
   }, [albumId, photoIds, photoOriginals?.uploaded, photoOriginals?.missing, enabled]);
 }
