@@ -48,6 +48,7 @@ import { MoreSheet, NoticeModal } from './modals/MoreSheet';
 import { useExport } from './use-export';
 import { useShareLink } from './use-share-link';
 import { usePhotoBackup } from './use-photo-backup';
+import { usePhotoOriginalSync } from '@/lib/hooks/use-photo-original-sync';
 import { useDesignChat } from './use-design-chat';
 import { resolveBackTarget } from './back-nav';
 import { ElementSheet } from './modals/ElementSheet';
@@ -574,6 +575,14 @@ export function MobileEditorRoot({
     photoFilter,
     detail.album.photoSnapshotRenderVersions ?? {},
   );
+  // Task 8(照片真相迁 R2 Phase 0):对账补传 + 远端原图 fetcher,复用上面已算好
+  // 的 photoIds(与展示/导出同一份去重来源)。
+  usePhotoOriginalSync({
+    albumId: detail.album.id,
+    photoIds,
+    photoOriginals: detail.album.photoOriginals,
+    enabled: true,
+  });
   const share = useShareLink(detail.album.id, locale, zh);
   // AI 对话:瘦客户端直连 design-chat(桌面那套 ChatPanel 依赖协调器上下文,移动端没有)。
   const chat = useDesignChat(detail.album.id, zh);

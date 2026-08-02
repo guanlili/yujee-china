@@ -40,6 +40,7 @@ import {
   confirmPhotoSnapshot,
   putSnapshotBlob,
 } from '@/lib/album/photo-snapshot-client';
+import { usePhotoOriginalSync } from '@/lib/hooks/use-photo-original-sync';
 import { UserAvatar } from '@/components/app/UserAvatar';
 import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
@@ -1409,6 +1410,18 @@ function EditorBook({
   lutSupported: boolean;
   openPhotoFilter: (scope: 'photo', photoId: string) => void;
 }) {
+  // Task 8(照片真相迁 R2 Phase 0):对账补传 + 远端原图 fetcher。photoIds 与下面
+  // 挂载 effect 里的 bookPhotoIds()(见 refreshBackupStatus 附近)同一份来源
+  // (initialPages 的 imagesJson 去重);必须放在那个 useEffect 之外单独调用 ——
+  // usePhotoOriginalSync 本身是个 Hook,不能挂在另一个 Hook 的回调里调用。
+  usePhotoOriginalSync({
+    albumId: detail.album.id,
+    photoIds: collectPhotoIds(
+      initialPages.map((page) => ({ templateId: page.templateId, images: page.imagesJson, texts: page.textsJson })),
+    ),
+    photoOriginals: detail.album.photoOriginals,
+    enabled: true,
+  });
   useEffect(() => {
     // The canvas effect scopes to the SHARED outer root (created by the stable shell)
     // so it can reach the topbar + modals it wires (setLang walks the whole tree). Its
