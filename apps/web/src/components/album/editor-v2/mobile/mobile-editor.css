@@ -629,28 +629,27 @@
   transform: scale(1.1);
 }
 
-/* ── 整页交换:「调整页序」模式(2026-08-01)────────────────────────────────
-   常态下 face 是 pointer-events:none(点击落在格子按钮上走跳页);模式开着时
-   face 带 data-pswap 三态,必须放开 pointer-events 才收得到点击(onPick 里会
-   stopPropagation,不会串到跳页)。压暗的格子仍可点(JS 里不响应),不关
-   pointer-events —— 关了点击会穿到格子按钮,变成一次莫名的跳页。 */
-.mobile-editor .mstrip-face[data-pswap] {
-  pointer-events: auto;
-  cursor: pointer;
+/* ── 页序弹窗(2026-08-02):壳/网格样式命中桌面 preorder-* 规则(ModalHost 的
+   .editor-port 宿主),这里只做移动端尺寸微调;幽灵不挂 body(子树不碰
+   document),挂网格内 fixed 等效(fixed 相对 viewport,与挂载点无关)。 */
+.mobile-modal-host .preorder-card {
+  width: min(560px, 94vw);
+  max-height: 82dvh;
 }
-.mobile-editor .mstrip-face[data-pswap='sel'] {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 28%, transparent);
+.mobile-modal-host .preorder-grid {
+  gap: 10px;
+  padding: 12px 14px;
 }
-.mobile-editor .mstrip-face[data-pswap='dim'] {
-  opacity: 0.35;
-}
-/* 模式开关浮钮的按下态:与取色/备份沿用同一 accent 语汇。 */
-.mobile-editor .mfab[data-active='1'] {
-  border-color: var(--accent);
-  color: var(--accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 25%, transparent);
+.mobile-modal-host .preorder-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  pointer-events: none;
+  opacity: 0.85;
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.3);
 }
 
 /* ── 编辑态一级栏:背景 · 图片 · 文字 · 删除 ─────────────────────────────── */

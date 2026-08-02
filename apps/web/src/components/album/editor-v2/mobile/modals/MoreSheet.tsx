@@ -27,6 +27,7 @@ export function MoreSheet({
   backupProgress,
   lutSupported,
   onClose,
+  onReorderPages,
   onBackupPhotos,
   onRebackupPhotos,
   onPhotoFilter,
@@ -37,6 +38,8 @@ export function MoreSheet({
   backupProgress: { done: number; total: number } | null;
   lutSupported: boolean;
   onClose: () => void;
+  /** 页序弹窗入口(2026-08-02):打开 ReorderSheet 拖拽调整页面顺序。 */
+  onReorderPages: () => void;
   onBackupPhotos: () => void;
   /** 整本重传一遍。上传档从 1600 提到 3400 之后,存量备份不会自动升级 ——
    *  档位不进 renderVersion(进了会把存量分享全打成 409),升档只能靠用户点这一条。 */
@@ -74,6 +77,15 @@ export function MoreSheet({
         </p>
       </div>
       <div className="px-5 py-4 flex flex-col gap-2.5">
+        <button className="export-opt" onClick={onReorderPages} data-testid="more-reorder">
+          <svg {...stroke}>
+            <polyline points="17 1 21 5 17 9" />
+            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+            <polyline points="7 23 3 19 7 15" />
+            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+          </svg>
+          <span>{zh ? '调整页面顺序' : 'Reorder pages'}</span>
+        </button>
         {lutSupported && (
           <button
             className="export-opt"
