@@ -2551,6 +2551,9 @@ function EditorBook({
       if (!bodyEl.classList.contains('overview-on')) return;
       if (pageSwapOn) return; // 页序模式内,照片级手势整体让路
       if (e.pointerType === 'mouse' && e.button !== 0) return;
+      // 新的主指针按下时旧拖动还挂着 = pointerup 丢了的僵尸拖动(2026-08-02 真机
+      // 撞到:幽灵一直跟着鼠标,后续单击的松手还会误提交一次交换)。作废,不续命。
+      if (swapDrag && e.isPrimary) endSwapDrag(false);
       cancelSwapPending();
       const pick = swapPickAt(e.target);
       if (!pick) return;
@@ -2572,6 +2575,15 @@ function EditorBook({
       };
     };
     const onSwapPointerMove = (e: PointerEvent) => {
+      // 自愈:鼠标移动但没有任何键按着 → up 已经丢了(被原生拖拽/系统手势吞掉),
+      // 候选与拖动一律作废。有这条在,泄漏的幽灵活不过下一次鼠标移动。
+      if (e.pointerType === 'mouse' && e.buttons === 0) {
+        cancelSwapPending();
+        if (swapDrag) {
+          endSwapDrag(false);
+          return;
+        }
+      }
       if (swapPending && swapPending.pointerId === e.pointerId) {
         const pending = swapPending;
         const moved = exceedsLongPressSlop(e.clientX - pending.x, e.clientY - pending.y);
@@ -3389,6 +3401,11 @@ function EditorBook({
     //   · 捕获阶段先于任何冒泡处理器跑,所以「抖过 slop 就取消候选」一定发生在
     //     onOvPointerMove 判 swapPending 之前,平移能在同一帧无缝接上。
     ovGridEl?.addEventListener('pointerdown', onSwapPointerDown);
+    // 浏览器对 <img> 的原生拖拽会接管指针流 —— pointerup 从此不再派发,长按拾起的
+    // 幽灵就成了跟着鼠标走的僵尸(2026-08-02 真机撞到)。编辑器里的拖动语义全部
+    // 自管(长按交换/画布平移/预览调位),原生 dragstart 在编辑器根上一律掐掉。
+    const onNativeDragStart = (e: Event) => e.preventDefault();
+    bodyEl.addEventListener('dragstart', onNativeDragStart, true);
     window.addEventListener('pointermove', onSwapPointerMove, { capture: true, passive: false });
     window.addEventListener('pointerup', onSwapPointerUp, true);
     window.addEventListener('pointercancel', onSwapPointerCancel, true);
@@ -5705,6 +5722,7 @@ function EditorBook({
       cancelSwapPending();
       endSwapDrag(false);
       disarmClickSwallow();
+      bodyEl.removeEventListener('dragstart', onNativeDragStart, true);
       window.removeEventListener('pointermove', onSwapPointerMove, true);
       window.removeEventListener('pointerup', onSwapPointerUp, true);
       window.removeEventListener('pointercancel', onSwapPointerCancel, true);

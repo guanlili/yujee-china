@@ -186,6 +186,16 @@ test('移动端:落地整份替换 pages,每张动过的页各发一次单页 PA
    endSwapDrag 的情况下被覆盖/丢掉,那个节点就再也没人删得掉。而「收不到 pointerup」
    不是理论情形:鼠标拖出窗口才松手、切走标签页、pointercancel 没派发,都会走到那儿。 */
 
+test('桌面:僵尸拖动三层防线 —— 原生拖拽掐掉、无键移动自愈、新按下作废旧拖动', () => {
+  // 真机撞到(2026-08-02):浏览器对 <img> 的原生拖拽接管指针流后 pointerup 不再
+  // 派发,幽灵成了跟着鼠标走的僵尸;更糟的是僵尸挂着时的下一次单击,松手会误提交
+  // 一次交换。三层各自独立成立,谁都不许被"优化"掉:
+  assert.match(editor, /bodyEl\.addEventListener\('dragstart', onNativeDragStart, true\)/, '① 源头:编辑器根上掐掉原生拖拽');
+  assert.match(editor, /bodyEl\.removeEventListener\('dragstart', onNativeDragStart, true\)/, '卸载也要摘');
+  assert.match(editor, /e\.pointerType === 'mouse' && e\.buttons === 0/, '② 自愈:无键移动 = up 丢了,拖动作废');
+  assert.match(editor, /if \(swapDrag && e\.isPrimary\) endSwapDrag\(false\)/, '③ 兜底:新主指针按下作废僵尸,不许让松手误提交');
+});
+
 test('桌面:开新拖动前先收掉上一个 —— 直接覆盖 swapDrag 等于永久漏一个幽灵', () => {
   const start = editor.indexOf('function beginSwapDrag(');
   assert.ok(start > 0);
