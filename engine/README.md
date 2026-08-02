@@ -192,5 +192,5 @@ CLIP embedding worker 是另一个 app(`engine/fly.clip.toml` → `yujee-agent-c
 
 <!-- doc-scope
 paths: engine/src/**, engine/fly*.toml, engine/pyproject.toml
-checked-at: ec301c2a
+checked-at: d6ec5bbb
 -->
