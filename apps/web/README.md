@@ -88,11 +88,18 @@ story 环节:用户逐章讲故事 -> chapter.chapterContext
 `POST /api/v3/albums/[uuid]/compose-append` → `albumService.composeAppend` 只为新章建
 `kind='compose'` job、转发一份**空 `coverSlots`/`endingSlots`、只含新章**的 `/v3/compose`
 请求(Agent 侧全局批次因此跳过,不写封面不动字体)。回调 `handleV3ComposeCompleted` 按
-`agent_jobs.meta.composeAppend` 走缩小版分支:只把 `pagesTexts` 合进目标页并重烘那几页
-`html`,`stage`/封面/字体/其余页一律不动。`GET /api/v3/albums/[uuid]/design` 新增
-`lastComposeStatus` 字段供前端轮询这单追加成稿的完成状态。书未设计(没有封面/封尾
-carrier)时 `composeAppend` 直接返回 `composed:false`,不建 job、不调 Agent —— 新页文案
-维持等选封面时随全书成稿一起写的现状。
+`agent_jobs.meta.composeAppend` 走缩小版分支:合并前先按**当前** draft 核对每个
+`pageIndex` 的照片归属(章归属守卫,`filterAppendComposePagesTexts`)——compose 在 Agent
+侧跑的这几分钟里页序可能被 `reorderPages` / 设计 Agent 的 `move_pages` 重排,与派发范围
+无交集的页跳过不写,防止把新章文案写进一个此刻其实是老页的位置;真正合并的页数回填进
+`agent_jobs.meta.composeAppend.writtenPages`,`stage`/封面/字体/其余页一律不动。
+`GET /api/v3/albums/[uuid]/design` 新增 `lastComposeStatus`(job 状态)与
+`lastComposeWrote`(是否真写出了页,`writtenPages>0`;非追加单/未完成 → `null`)供前端
+轮询区分「COMPLETED 但整章掉队」与「真写好了」。`composeAppend` 撞在途唯一索引时只有
+在途单确实是同 scope(或范围更宽)的追加成稿才当幂等重入,否则 `VALIDATION_FAILED`
+(不会把撞上全书成稿/别的追加范围的本批章无声吞掉)。书未设计(没有封面/封尾 carrier)
+时 `composeAppend` 直接返回 `composed:false`,不建 job、不调 Agent —— 新页文案维持等选
+封面时随全书成稿一起写的现状。
 
 Key files:
 
@@ -250,5 +257,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 718123ff
+checked-at: ef5eac6e
 -->
