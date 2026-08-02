@@ -185,6 +185,10 @@ async def _run_compose(job: _Job) -> None:
             return result
 
     async def global_task():
+        # 追加范围成稿(只写新章):没有封面/封尾槽就没有全局批次的活 ——
+        # 不调 Gemini、不回封面/字体(Web 追加合并侧只消费 pagesTexts)。
+        if not req.coverSlots and not req.endingSlots:
+            return compose_agent.ComposeGlobalResult()
         try:
             return await _global_task_inner()
         except Exception as exc:  # noqa: BLE001 — 全局批次也不许阻断交付
