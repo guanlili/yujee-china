@@ -156,9 +156,7 @@ const movePagesSchema = Type.Object({
 	),
 });
 
-interface MovePagesInput {
-	operations: PageMoveOperation[];
-}
+type MovePagesInput = Static<typeof movePagesSchema>;
 
 const listTemplatesSchema = Type.Object({
 	category: Type.Optional(Type.String({ description: "按类目过滤：cover / toc / interior / ending。" })),
@@ -823,7 +821,7 @@ function createMovePagesTool(options: AlbumToolsOptions): AgentTool<typeof moveP
 				}
 				return {
 					type: "move",
-					page: resolveRefToInternal(options, op.pageNo),
+					pageNo: resolveRefToInternal(options, op.pageNo),
 					before: op.before === undefined ? undefined : resolveRefToInternal(options, op.before),
 					after: op.after === undefined ? undefined : resolveRefToInternal(options, op.after),
 				};
@@ -832,9 +830,19 @@ function createMovePagesTool(options: AlbumToolsOptions): AgentTool<typeof moveP
 		},
 		async execute(_toolCallId: string, params: MovePagesInput): Promise<AgentToolResult<AlbumWriteDetails>> {
 			const state = options.getBookState();
-			// 未解析成功的引用(-1)统一在这里报可用页码清单。
-			for (const op of params.operations) {
-				const refs = op.type === "swap" ? [op.a, op.b] : [op.page, op.before, op.after];
+			// prepareArguments 已把引用解析成内部位次(数字);此处收窄类型并把未解析(-1)统一报错。
+			const resolvedOps: PageMoveOperation[] = params.operations.map((op) =>
+				op.type === "swap"
+					? { type: "swap", a: Number(op.a), b: Number(op.b) }
+					: {
+							type: "move",
+							pageNo: Number(op.pageNo),
+							before: op.before === undefined ? undefined : Number(op.before),
+							after: op.after === undefined ? undefined : Number(op.after),
+						},
+			);
+			for (const op of resolvedOps) {
+				const refs = op.type === "swap" ? [op.a, op.b] : [op.pageNo, op.before, op.after];
 				if (refs.some((no) => no === -1))
 					throw new Error(`页码引用无法解析。本书可用页码:${pageRefRangeText(options, state)}`);
 			}
@@ -845,18 +853,18 @@ function createMovePagesTool(options: AlbumToolsOptions): AgentTool<typeof moveP
 			};
 			const nextState = cloneAlbumBookState(state);
 			const beforePages = nextState.pages;
-			nextState.pages = applyPageMoves(beforePages, isInterior, params.operations, (no) =>
+			nextState.pages = applyPageMoves(beforePages, isInterior, resolvedOps, (no) =>
 				pageLabelOf(options, state, no),
 			);
 
 			// 结果反馈:每步用户口径描述 + 源页新旧页码映射(模型同轮回话不说错页码)。
 			const oldRefs = pageUserRefs(state, categoryOf);
 			const newRefs = pageUserRefs(nextState, categoryOf);
-			const sourceNos = params.operations.flatMap((op) => (op.type === "swap" ? [op.a, op.b] : [op.page]));
-			const operations = params.operations.map((op) =>
+			const sourceNos = resolvedOps.flatMap((op) => (op.type === "swap" ? [op.a, op.b] : [op.pageNo]));
+			const operations = resolvedOps.map((op) =>
 				op.type === "swap"
 					? `swap:${formatPageUserRef(oldRefs[op.a - 1])}<->${formatPageUserRef(oldRefs[op.b - 1])}`
-					: `move:${formatPageUserRef(oldRefs[op.page - 1])}->${op.after !== undefined ? `${formatPageUserRef(oldRefs[op.after - 1])}后` : `${formatPageUserRef(oldRefs[op.before! - 1])}前`}`,
+					: `move:${formatPageUserRef(oldRefs[op.pageNo - 1])}->${op.after !== undefined ? `${formatPageUserRef(oldRefs[op.after - 1])}后` : `${formatPageUserRef(oldRefs[op.before! - 1])}前`}`,
 			);
 			const notes = [...new Set(sourceNos)].map((no) => {
 				const page = beforePages[no - 1];
