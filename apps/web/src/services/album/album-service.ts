@@ -1128,12 +1128,15 @@ export const albumService = {
       : [];
     const rawPages = Array.isArray(root?.pages) ? (root!.pages as Page[]) : [];
     const designed = rawPages.some((page) => templateCategory(page.templateId) === 'cover');
+    const latestCompose = await agentJobRepo.findLatestComposeByAlbum(albumId);
     return {
       sets: buildCoverSets(albumId, chapters.map((c) => ({ photos: c.photos ?? [] }))),
       designed,
       hasPages: rawPages.length > 0,
       // 成稿在跑(异步 compose job 未回调):前端别再弹选择卡,直接进轮询等这一单。
-      composing: !!(await agentJobRepo.findActiveComposeByAlbum(albumId)),
+      composing: latestCompose?.status === 'QUEUED' || latestCompose?.status === 'RUNNING',
+      // 追加范围成稿的完成信号:前端轮询它从 RUNNING 走到 COMPLETED/FAILED。
+      lastComposeStatus: latestCompose?.status ?? null,
     };
   },
 

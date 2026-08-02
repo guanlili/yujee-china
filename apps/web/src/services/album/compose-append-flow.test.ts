@@ -9,7 +9,7 @@ import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '../../db/repos/
 import { agentClient } from '../../lib/agent/agent-client';
 import { albumService } from './album-service';
 import { sweepCarriers } from './design-apply';
-import { readComposeAppendMeta } from '../job/job-service';
+import { jobService, readComposeAppendMeta } from '../job/job-service';
 
 // 追加范围成稿(composeAppend)四条硬约束:
 //   ① 已设计的书:建 kind='compose' job(meta.composeAppend),只转发新章的空槽请求
@@ -120,6 +120,27 @@ test('composeAppend', async (t) => {
         albumService.composeAppend(user.id, album.id, { language: 'zh', chapterIds: ['addx-c1'] }),
         (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
       );
+    });
+
+    await t.test('listCoverSets: 最近一单 compose 的状态透出为 lastComposeStatus', async () => {
+      const album = await makeAlbum(user.id);
+      await albumRepo.update(db, album.id, { status: 'EDITING', draftJson: designedDraft() });
+      const requestId = crypto.randomUUID();
+      await db.transaction(async (tx) => {
+        const job = await jobService.createGenerationJob(tx, {
+          userId: user.id, albumId: album.id, requestId, kind: 'compose',
+          meta: { composeAppend: { language: 'zh', chapterIds: ['addx-c1'] } },
+        });
+        await jobService.markRunning(tx, job.id);
+      });
+      let state = await albumService.listCoverSets(user.id, album.id);
+      assert.equal(state.composing, true);
+      assert.equal(state.lastComposeStatus, 'RUNNING');
+
+      await jobService.handleV3ComposeCompleted(requestId, { pagesTexts: {} }, null);
+      state = await albumService.listCoverSets(user.id, album.id);
+      assert.equal(state.composing, false);
+      assert.equal(state.lastComposeStatus, 'COMPLETED');
     });
   } finally {
     await cleanupUser(user.id);
