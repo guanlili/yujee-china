@@ -6,6 +6,7 @@ import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
+import { albumPhotoRepo } from '@/db/repos/album-photo-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { jobService } from '@/services/job/job-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
@@ -1278,12 +1279,15 @@ export const albumService = {
     return { requestId, accepted: true as const };
   },
 
-  // Hard delete. FK ON DELETE CASCADE drops pages / messages / jobs / holds in
-  // the same statement; credit_ledger.related_album_id is set null so the audit
-  // trail survives. A still-HOLDING hold never debited the balance, so removing
-  // it strands no credit.
+  // Hard delete. FK ON DELETE CASCADE drops pages / messages / jobs / holds /
+  // photos in the same statement; credit_ledger.related_album_id is set null so
+  // the audit trail survives. A still-HOLDING hold never debited the balance, so
+  // removing it strands no credit. album_photos is still deleted explicitly
+  // (belt-and-suspenders alongside the FK cascade, same as the rest of this
+  // method relying on cascade for album_pages etc).
   async delete(userId: string, albumId: string): Promise<void> {
     await this.findOwned(userId, albumId);
+    await albumPhotoRepo.deleteByAlbum(db, albumId);
     await albumRepo.delete(db, albumId);
   },
 

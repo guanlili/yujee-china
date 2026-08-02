@@ -8,6 +8,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -60,6 +61,12 @@ export const creditHoldStatusEnum = pgEnum('credit_hold_status', [
 ]);
 
 export const messageRoleEnum = pgEnum('message_role', ['user', 'assistant']);
+
+// 照片真相迁 R2 (Phase 0): server-side registry of each album's canonical photo
+// originals. 'uploaded' = original bytes confirmed in R2; 'missing' = known slot
+// with no confirmed upload yet. Task 4/5's service upserts this under an album
+// row lock; a 'missing' upsert must never downgrade an existing 'uploaded' row.
+export const albumPhotoStatusEnum = pgEnum('album_photo_status', ['uploaded', 'missing']);
 
 // Keep the legacy `stripe` enum value for existing production rows and Drizzle
 // migration compatibility. New application code writes `creem` only.
@@ -286,6 +293,27 @@ export const albumPages = pgTable(
   (t) => ({
     albumIndex: uniqueIndex('uq_album_pages_album_index').on(t.albumId, t.pageIndex),
     album: index('idx_album_pages_album').on(t.albumId),
+  }),
+);
+
+// 照片原图登记表(照片真相迁 R2 Phase 0):album 级别的原图台账,记录每张照片的
+// 上传状态与像素/字节元信息。Task 4/5 的 service 在 album 行锁内 upsert 这张表。
+export const albumPhotos = pgTable(
+  'album_photos',
+  {
+    albumId: text('album_id')
+      .notNull()
+      .references(() => albums.id, { onDelete: 'cascade' }),
+    photoId: text('photo_id').notNull(),
+    status: albumPhotoStatusEnum('status').notNull().default('uploaded'),
+    width: integer('width'),
+    height: integer('height'),
+    bytes: integer('bytes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.albumId, t.photoId] }),
   }),
 );
 
@@ -549,6 +577,8 @@ export type Album = typeof albums.$inferSelect;
 export type NewAlbum = typeof albums.$inferInsert;
 export type AlbumPage = typeof albumPages.$inferSelect;
 export type NewAlbumPage = typeof albumPages.$inferInsert;
+export type AlbumPhoto = typeof albumPhotos.$inferSelect;
+export type NewAlbumPhoto = typeof albumPhotos.$inferInsert;
 export type AlbumShare = typeof albumShares.$inferSelect;
 export type NewAlbumShare = typeof albumShares.$inferInsert;
 export type AlbumMessage = typeof albumMessages.$inferSelect;

@@ -6,6 +6,7 @@ import {
   agentJobs,
   albumMessages,
   albumPages,
+  albumPhotos,
   albums,
   creditHolds,
   creditLedger,
@@ -54,6 +55,9 @@ export async function cleanupUser(userId: string) {
   await db.delete(agentJobs).where(sql`${agentJobs.userId} = ${userId}`);
   await db.delete(albumPages).where(
     sql`${albumPages.albumId} in (select id from ${albums} where user_id = ${userId})`,
+  );
+  await db.delete(albumPhotos).where(
+    sql`${albumPhotos.albumId} in (select id from ${albums} where user_id = ${userId})`,
   );
   await db.delete(creditHolds).where(sql`${creditHolds.userId} = ${userId}`);
   await db.delete(albums).where(sql`${albums.userId} = ${userId}`);
