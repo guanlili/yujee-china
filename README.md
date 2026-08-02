@@ -67,6 +67,10 @@ memoir-agent-rebuild/
 `/api/v3/albums/[uuid]/design-chat` 转给 Design Agent(`POST /api/book` + `POST /api/chat`),
 与上面七步无关。别把它和生成链路混为一谈。
 
+已设计的书之后再加照片:增量排版一旦落地,Web 会自动为新章单独发一单范围收窄的
+`POST /v3/compose`(空封面/封尾槽、只送新章,Agent 侧全局批次因此跳过,只补新页文案,
+老页与手改文案不动);未设计的书维持现状,新页文案等选封面时随全书成稿一起写。
+
 ## 设计边界
 
 - Web 是 album 和 job 状态的真相源;Agent 不推进 Web 的 `stage`。
@@ -175,5 +179,5 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 3b53781c
+checked-at: 718123ff
 -->

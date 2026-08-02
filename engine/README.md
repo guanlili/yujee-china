@@ -92,6 +92,12 @@ Agent -> callback completed: pagesTexts + coverTexts/endingTexts + fonts
 的章照常成稿;外层只留一个按「章数 ÷ 并发」摊开的兜底(封顶 11 分钟,压在 Web 侧 compose
 僵尸超时 12 分钟之内)。
 
+**`coverSlots`/`endingSlots` 两个数组全空时,全局批次直接跳过**(`compose.py` 的
+`global_task` 开头短路):不调 Gemini,回调的 `coverTexts`/`endingTexts`/`fonts` 全空;
+章节批次照常并发写文案。这是给 Web 侧「追加范围成稿」用的窄口径请求 —— 已设计的书加
+照片、增量排版落地后,只为新章再发一次这样的空槽 `/v3/compose`,只补新页文案,不动
+封面/字体。
+
 ## Source Of Truth
 
 - Project overview: [`../README.md`](../README.md)
@@ -192,5 +198,5 @@ CLIP embedding worker 是另一个 app(`engine/fly.clip.toml` → `yujee-agent-c
 
 <!-- doc-scope
 paths: engine/src/**, engine/fly*.toml, engine/pyproject.toml
-checked-at: d6ec5bbb
+checked-at: 718123ff
 -->
