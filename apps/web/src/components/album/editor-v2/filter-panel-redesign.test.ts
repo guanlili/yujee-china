@@ -114,11 +114,13 @@ test('预览生成不依赖 strength —— 拖滑块不能重跑 27 个 LUT(性
   );
 });
 
-test('卡片是横滑一排,不是吃满屏的多行网格', () => {
+test('卡片是三排横滑(2026-08-02),不是吃满屏的多行平铺', () => {
   const css = read('editor-port.css');
   const strip = /\.editor-port \.filter-grid\{[^}]*\}/.exec(css)?.[0] ?? '';
   assert.ok(strip.length > 0, '应该有 .filter-grid 规则');
   assert.match(strip, /overflow-x:\s*auto/, '横向滚动是这次收敛的核心');
+  assert.match(strip, /grid-template-rows:repeat\(3, auto\)/, '一个版面三行(用户拍板)');
+  assert.match(strip, /grid-auto-flow:column/, '按列填,横滑 = 下一批滤镜');
   assert.doesNotMatch(strip, /grid-template-columns:repeat\(4/, '4 列平铺是旧形态');
 });
 

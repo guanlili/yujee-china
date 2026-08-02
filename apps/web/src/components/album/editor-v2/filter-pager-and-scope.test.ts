@@ -101,7 +101,7 @@ test('箭头绝对定位,出现/消失不推动卡片', () => {
 
 /* ── 3. 移动端三排 ─────────────────────────────────────────────────────────── */
 
-test('移动端卡片排三排、横向滚动(桌面仍是一排)', () => {
+test('移动端卡片排三排、横向滚动(2026-08-02 起桌面共享规则同为三排)', () => {
   const mobile = read('mobile', 'mobile-editor.css');
   const rule =
     /\.editor-port \.mobile-filter-sheet \.filter-grid \{([\s\S]*?)\}/.exec(mobile)?.[1] ?? '';

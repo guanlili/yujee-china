@@ -2618,7 +2618,7 @@
    不会推动卡片(button 参与 flex 排版的话,滚到头箭头一消失整排卡就会横跳一下)。 */
 .editor-port .filter-strip{ position:relative; }
 .editor-port .filter-page{
-  position:absolute; z-index:2; top:calc(50% - 10px); transform:translateY(-50%);
+  position:absolute; z-index:2; top:50%; transform:translateY(-50%);
   display:flex; align-items:center; justify-content:center;
   width:28px; height:44px; padding:0;
   border:1px solid var(--border); border-radius:var(--radius-pill);
@@ -2628,9 +2628,13 @@
 .editor-port .filter-page:hover{ background:var(--bg); }
 .editor-port .filter-page-prev{ left:-6px; }
 .editor-port .filter-page-next{ right:6px; }
-/* 横滑一排。滤镜是「滑着试」的东西,不是一面墙 —— 面板高度因此从吃满屏降到一条。 */
+/* 三排横滑(2026-08-02 用户拍板,与移动端同一形态)。grid-auto-flow:column + 三行 =
+   先填满一列的三格再开下一列,横向滚动的方向就是「下一批滤镜」(按行填会变成上下找,
+   横滑就没意义了)。一个版面露 ~21 张,27 个滤镜滑一下就扫完。 */
 .editor-port .filter-grid{
-  display:flex; gap:9px; margin:12px 0 0; padding:2px 16px 8px 0;
+  display:grid; grid-auto-flow:column; grid-template-rows:repeat(3, auto);
+  grid-auto-columns:84px; align-content:start;
+  gap:9px; margin:12px 0 0; padding:2px 16px 8px 0;
   overflow-x:auto; overflow-y:hidden;
   scroll-snap-type:x proximity; scrollbar-width:thin;
   overscroll-behavior-x:contain;

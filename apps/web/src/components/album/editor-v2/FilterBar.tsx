@@ -2,7 +2,7 @@
 
 /* 风格(滤镜)面板。桌面与移动共用这一个组件 —— 桌面是钉在画布底部的短浮层,移动是
    bottom-sheet(见 mobile/modals/FilterSheet),骨架同一套:范围二选一 → 横滑卡片列表
-   (桌面一排、移动三排,两端各挂一枚翻页箭头)→ 强度(按需)。
+   (两端都是三排,2026-08-02 起桌面对齐移动端;两端各挂一枚翻页箭头)→ 强度(按需)。
 
    ── 这次收敛掉了什么 ──
    改之前有三个控件在回答同一个问题「这个风格作用于谁」:标题右边的 scope 标签、scope
@@ -77,7 +77,7 @@ export function FilterBar({
   const [previews, setPreviews] = useState<Record<string, string>>({});
   const [previewState, setPreviewState] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [previewRetry, setPreviewRetry] = useState(0);
-  /* 卡片横滑一排(移动端是三排)。手指能滑,鼠标不好滑 —— 而且「右边还有没有卡」横滑条
+  /* 卡片三排横滑(两端同形态)。手指能滑,鼠标不好滑 —— 而且「右边还有没有卡」横滑条
      自己不会说。所以两端各挂一枚翻页箭头,点一下滚一屏。
      箭头按**那个方向还能不能滚**决定出不出,不灰着占位:一个永远点不动的控件比没有更
      让人困惑(与强度滑块按需挂载同一条口径)。
