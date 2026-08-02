@@ -31,16 +31,9 @@ export type MobileStripProps = {
   /** 缩略档的渲染上下文(照片走 thumb tier)。引用必须稳定,否则每帧重渲整条。 */
   thumbCtxOf: (pageIndex: number) => PageFaceCtx;
   onJump: (pageIndex: number) => void;
-  /** 整页交换(「调整页序」模式,2026-08-01):非 null 时每一页的小面变成可点的
-   *  「选中 → 点目标」交互面,三态由容器层按共享 page-swap 算好(这里零逻辑)。
-   *  点面必须 stopPropagation —— 外层格子按钮的 onJump 不该同时触发。 */
-  swap?: {
-    faceState: (pageIndex: number) => 'sel' | 'ok' | 'dim';
-    onPick: (pageIndex: number) => void;
-  } | null;
 };
 
-export function MobileStrip({ pages, units, zh, currentPage, thumbCtxOf, onJump, swap }: MobileStripProps) {
+export function MobileStrip({ pages, units, zh, currentPage, thumbCtxOf, onJump }: MobileStripProps) {
   // 按页缓存(不按格):切密度只是重新分组,不该让每一页的 HTML 重渲一遍。
   const faces = useMemo(
     () => pages.map((p, i) => pageFaceHTML(p, STRIP_CELL_W, STRIP_CELL_H, thumbCtxOf(i))),
@@ -77,15 +70,6 @@ export function MobileStrip({ pages, units, zh, currentPage, thumbCtxOf, onJump,
                   key={pi}
                   className="mstrip-face"
                   data-slot={pageSlot(pages[pi]!)}
-                  data-pswap={swap ? swap.faceState(pi) : undefined}
-                  onClick={
-                    swap
-                      ? (e) => {
-                          e.stopPropagation(); // 别让外层格子的 onJump 抢走这一点
-                          swap.onPick(pi);
-                        }
-                      : undefined
-                  }
                   dangerouslySetInnerHTML={{ __html: faces[pi]! }}
                 />
               ))}

@@ -25,6 +25,7 @@ import {
 import { MoreSheet, NoticeModal } from './MoreSheet';
 import { AiChatSheet } from './AiChatSheet';
 import { FilterSheet } from './FilterSheet';
+import { ReorderSheet } from './ReorderSheet';
 
 /* ════════════════════════════════════════════════════════════════════════════
    移动端弹窗的完整性守卫。
@@ -158,6 +159,21 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
     closeHint: /知道了/,
   },
   {
+    name: 'ReorderSheet 调整页面顺序',
+    render: (open) =>
+      renderToStaticMarkup(
+        createElement(ReorderSheet, {
+          open,
+          zh: true,
+          pages: [],
+          resolve: () => undefined,
+          onClose: noop,
+          onCommit: noop,
+        }),
+      ),
+    closeHint: /m-reorder-cancel/,
+  },
+  {
     name: 'MoreSheet 更多',
     render: (open) =>
       renderToStaticMarkup(
@@ -168,6 +184,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
           backupProgress: null,
           lutSupported: true,
           onClose: noop,
+          onReorderPages: noop,
           onBackupPhotos: noop,
           onRebackupPhotos: noop,
           onPhotoFilter: noop,

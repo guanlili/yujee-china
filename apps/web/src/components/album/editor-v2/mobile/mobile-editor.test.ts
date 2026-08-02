@@ -44,7 +44,6 @@ function render(pages = BOOK, zh = true) {
       onSelectText: noop, onSelectImage: noop, onClearSelection: noop,
       imagePos: null,
       onImagePos: noop, onImagePosCommit: noop, onSwapImage: noop,
-      pageSwap: null, onPageSwapToggle: noop,
       onSave: noop, backupState: 'idle' as const, backupProgress: null,
       onReplaceImage: noop, onClearImage: noop, onResetImagePos: noop,
       onPhotoFilter: noop,

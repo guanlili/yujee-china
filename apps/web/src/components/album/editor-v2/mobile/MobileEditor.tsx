@@ -86,13 +86,6 @@ export type MobileEditorProps = {
   onImagePosCommit: () => void;
   /** 长按拾起一张图拖到另一个图槽 → 两个槽对调(可跨页)。 */
   onSwapImage: (from: SwapSlotRef, to: SwapSlotRef) => void;
-  /** 整页交换(「调整页序」模式,2026-08-01):null = 模式关。开着时预览栏的每一格
-   *  变成「选中 → 点目标」的可点面,三态(sel/ok/dim)由容器层按共享 page-swap 算好。 */
-  pageSwap: {
-    faceState: (pageIndex: number) => 'sel' | 'ok' | 'dim';
-    onPick: (pageIndex: number) => void;
-  } | null;
-  onPageSwapToggle: () => void;
   /** 图片工具栏三件(透传给 EditView)。 */
   onReplaceImage: () => void;
   onClearImage: () => void;
@@ -150,8 +143,6 @@ export function MobileEditor({
   onImagePos,
   onImagePosCommit,
   onSwapImage,
-  pageSwap,
-  onPageSwapToggle,
   onReplaceImage,
   onClearImage,
   onResetImagePos,
@@ -597,18 +588,6 @@ export function MobileEditor({
           >
             <IconBoardBg className="mfab-ic" />
           </button>
-          {/* 整页交换入口:开关「调整页序」模式,交互发生在底部预览栏(选中→点目标)。 */}
-          <button
-            type="button"
-            className="mfab"
-            data-active={pageSwap ? '1' : undefined}
-            data-testid="m-page-swap"
-            aria-label={zh ? '调整页序' : 'Reorder pages'}
-            aria-pressed={pageSwap ? true : false}
-            onClick={onPageSwapToggle}
-          >
-            <svg className="mfab-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg>
-          </button>
         </div>
 
         {/* AI 浮标:紧凑的圆形图标按钮,小水母稳定浮在左上层。 */}
@@ -644,7 +623,6 @@ export function MobileEditor({
         thumbCtxOf={thumbCtxOf}
         // 格子起点已经是屏起点,不必再过 screenStartOfPage 吸附一次。
         onJump={setStartPage}
-        swap={pageSwap}
       />
     </div>
   );
