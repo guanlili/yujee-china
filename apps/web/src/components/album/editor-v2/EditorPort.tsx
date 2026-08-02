@@ -77,18 +77,20 @@ import {
 } from './image-edit-util';
 import {
   SWAP_LONG_PRESS_MS,
+  SWAP_LONG_PRESS_SLOP,
   exceedsLongPressSlop,
   sameSwapSlot,
   swapImageSlots,
   type SwapSlotRef,
 } from './image-swap';
 import {
-  buildSwapPermutation,
-  canSwapUnits,
-  pairUnitOfPage,
-  swapUnitOfPage,
-  type PageSwapUnit,
-} from './page-swap';
+  applyMove,
+  buildInsertPermutation,
+  gapFromPointer,
+  isAnchoredTemplate,
+  legalGaps,
+  type CellRect,
+} from './page-reorder';
 import {
   editAnchorId,
   editAnchorSelector,
@@ -1120,6 +1122,25 @@ function EditorModals({ locale }: { locale: Locale }) {
           </div>
         </div>
       </div>
+
+      {/* 页序弹窗:网格拖拽插入重排(2026-08-02 设计)。命令式开合,同 boardBgModal 一族;
+          网格内容/拖拽全在效应闭包里(renderPreorderGrid + preorder pointer 三兄弟)。 */}
+      <div className="modal-overlay" id="pageReorderModal" data-overlay-close>
+        <div className="modal-card preorder-card" role="dialog" aria-modal="true" aria-labelledby="preorderTitle" data-testid="page-reorder-modal">
+          <div className="preorder-head">
+            <h3 id="preorderTitle" className="font-display text-[17px] font-bold">{zh ? '调整页面顺序' : 'Reorder pages'}</h3>
+            <p className="preorder-hint">{zh ? '拖动页面到新位置。封面、目录与封尾固定不动。' : 'Drag pages to a new spot. Cover, contents and ending stay fixed.'}</p>
+            <button className="board-bg-close" data-action="closePageReorder" aria-label="close">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            </button>
+          </div>
+          <div className="preorder-grid" id="preorderGrid" />
+          <div className="preorder-foot">
+            <button className="preorder-btn" data-action="closePageReorder" data-testid="preorder-cancel">{zh ? '取消' : 'Cancel'}</button>
+            <button className="preorder-btn preorder-btn-primary" data-action="confirmPageReorder" data-testid="preorder-done">{zh ? '完成' : 'Done'}</button>
+          </div>
+        </div>
+      </div>
     </>
   );
 }
@@ -1415,6 +1436,7 @@ function EditorBook({
       add(byId('collageModal'));
       add(byId('nineGridModal'));
       add(byId('boardBgModal'));
+      add(byId('pageReorderModal'));
       return out;
     };
     const $$scoped = (sel: string): Element[] => {
@@ -2653,7 +2675,6 @@ function EditorBook({
     }
     const onSwapPointerDown = (e: PointerEvent) => {
       if (!bodyEl.classList.contains('overview-on')) return;
-      if (pageSwapOn) return; // 页序模式内,照片级手势整体让路
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       // 新的主指针按下时旧拖动还挂着 = pointerup 丢了的僵尸拖动(2026-08-02 真机
       // 撞到:幽灵一直跟着鼠标,后续单击的松手还会误提交一次交换)。作废,不续命。
@@ -2755,91 +2776,88 @@ function EditorBook({
         endSwapDrag(false);
         return;
       }
-      if (pageSwapOn) {
+      if (byId('pageReorderModal')?.classList.contains('open')) {
         e.stopPropagation();
-        setPageSwapMode(false);
+        closePageReorder();
       }
     };
 
-    // ── 整页交换:「调整页序」模式(2026-08-01 设计)──────────────────────────
-    // 交互是「选中 → 点目标」,不占用拖拽手势 —— 画布的平移/缩放照旧。合法性与
-    // 置换全部来自 page-swap.ts(与移动端同一份);落库走原子 reorder 端点,失败
-    // 按逆置换回滚本地,不留半交换态。模式内照片级手势(选图/pan/图片交换)让路。
-    let pageSwapOn = false;
-    let pageSwapSel: PageSwapUnit | null = null;
-    /** 选中态下,点这一页对应哪个合法落点单元。单页选中 → 单页;大页选中 →
-     *  大页或**完整**对页(设计表:选中单页时大页置灰,想换整对先选大页)。 */
-    function pageSwapTargetUnit(i: number): PageSwapUnit | null {
-      if (!pageSwapSel) return null;
-      const single = swapUnitOfPage(pagesState, i);
-      if (!single) return null;
-      if (canSwapUnits(pageSwapSel, single)) return single;
-      if (pageSwapSel.kind === 'full') {
-        const pair = pairUnitOfPage(pagesState, i);
-        if (pair && canSwapUnits(pageSwapSel, pair)) return pair;
-      }
-      return null;
+    // ── 页序弹窗:网格拖拽插入重排(2026-08-02 设计)──────────────────────────
+    // 弹窗内只动工作序(order[pos]=原始下标);「完成」合成一个置换发一次原子
+    // reorder,乐观重排 + 失败回滚,与旧整页交换同口径。合法缝隙/置换/指针几何
+    // 全部来自共享 page-reorder.ts,这里只做 DOM:渲格子、量 rect、画插入条。
+    let preorder: number[] | null = null; // null = 弹窗关
+    let preorderDrag: {
+      from: number;
+      startX: number;
+      startY: number;
+      lifted: boolean;
+      gap: number | null;
+    } | null = null;
+    const PREORDER_CELL_H = 150;
+
+    function preorderCells(): HTMLElement[] {
+      return [...(byId('preorderGrid')?.querySelectorAll<HTMLElement>('.preorder-cell') ?? [])];
     }
-    /** 把选中/置灰状态刷到画布格子上。renderOverview 整体重建 innerHTML,
-     *  所以状态不存在 DOM 里 —— 每次重建后重刷一遍(幂等)。 */
-    function applyPageSwapMarks() {
-      const grid = byId('ovGrid');
-      if (!grid) return;
-      grid.querySelectorAll<HTMLElement>('.ov-page[data-page-index]').forEach((el) => {
-        el.classList.remove('pswap-sel', 'pswap-dim');
-        if (!pageSwapOn || el.dataset.pageIndex === '') return;
-        const i = Number(el.dataset.pageIndex);
-        if (pageSwapSel) {
-          if (pageSwapSel.indices.includes(i)) el.classList.add('pswap-sel');
-          else if (!pageSwapTargetUnit(i)) el.classList.add('pswap-dim');
-        } else if (!swapUnitOfPage(pagesState, i)) {
-          el.classList.add('pswap-dim');
-        }
-      });
+    function renderPreorderGrid() {
+      const grid = byId('preorderGrid');
+      if (!grid || !preorder) return;
+      const ids = preorder.map((orig) => pagesState[orig]!.templateId);
+      const folios = pageFolioInfos(ids);
+      grid.innerHTML = preorder
+        .map((orig, pos) => {
+          const page = pagesState[orig]!;
+          const anchored = isAnchoredTemplate(page.templateId);
+          const box = pageBox(page.templateId);
+          const w = Math.round((PREORDER_CELL_H * box.width) / box.height);
+          const f = folios[pos]!;
+          const face = pageFaceHTML(page, w, PREORDER_CELL_H, faceCtx(page, resolveImage));
+          // 角标贴边即语义:左页贴左下、右页贴右下;双宽页两角都贴;锚定页锁标。
+          const badges = anchored
+            ? '<span class="preorder-lock" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>'
+            : f.folio === null
+              ? ''
+              : typeof f.folio === 'number'
+                ? `<span class="preorder-no preorder-no-${f.side}">${f.folio}</span>`
+                : `<span class="preorder-no preorder-no-left">${f.folio.left}</span><span class="preorder-no preorder-no-right">${f.folio.right}</span>`;
+          return (
+            `<div class="preorder-cell${anchored ? ' preorder-locked' : ''}" data-pos="${pos}"` +
+            ` style="width:${w}px;height:${PREORDER_CELL_H}px">${face}${badges}</div>`
+          );
+        })
+        .join('');
     }
-    function setPageSwapMode(on: boolean) {
-      if (pageSwapOn === on) return;
-      pageSwapOn = on;
-      pageSwapSel = null;
-      if (on) {
-        // 进入前清掉照片/文字编辑残留;半途的图片交换候选/拖动一并作废。
-        selectedPageIndex = null;
-        clearImageSelection();
-        hideElementToolbar();
-        updateSelectionHighlight();
-        cancelSwapPending();
-        if (swapDrag) endSwapDrag(false);
-      }
-      bodyEl.classList.toggle('page-swap-on', on);
-      byId('pageSwapBtn')?.classList.toggle('active', on);
-      applyPageSwapMarks();
+    function openPageReorder() {
+      // 进入前清掉画布上的编辑残留;半途的图片交换候选/拖动一并作废。
+      cancelSwapPending();
+      if (swapDrag) endSwapDrag(false);
+      clearImageSelection();
+      hideElementToolbar();
+      preorder = pagesState.map((_, i) => i);
+      renderPreorderGrid();
+      byId('pageReorderModal')?.classList.add('open');
     }
-    function onPageSwapClick(i: number) {
-      if (!pageSwapSel) {
-        const unit = swapUnitOfPage(pagesState, i);
-        if (!unit) return; // 锚定页/越界:不可选
-        pageSwapSel = unit;
-        applyPageSwapMarks();
+    function closePageReorder() {
+      preorder = null;
+      preorderDrag = null;
+      byId('preorderGrid')?.replaceChildren();
+      byId('preorderGhost')?.remove();
+      byId('preorderBar')?.remove();
+      byId('pageReorderModal')?.classList.remove('open');
+    }
+    async function confirmPageReorder() {
+      if (!preorder) return;
+      // 弹窗开着的时候书被外部改了(设计对话等):这次调整作废,不硬提交。
+      if (preorder.length !== pagesState.length) {
+        closePageReorder();
+        alert(t('pageReorderChanged'));
         return;
       }
-      if (pageSwapSel.indices.includes(i)) {
-        // 再点选中单元 = 取消选择,留在模式内
-        pageSwapSel = null;
-        applyPageSwapMarks();
-        return;
-      }
-      const target = pageSwapTargetUnit(i);
-      if (!target) return; // 非法落点:置灰的格子点了也不响应
-      void commitPageSwap(pageSwapSel, target);
-    }
-    /** 乐观落地:本地按置换重排 + 整本重绘,后台发原子 reorder;失败回滚。
-     *  与图片交换同理不走脏页快路 —— 这是一次明确的低频操作,整本重绘代价可接受。 */
-    async function commitPageSwap(a: PageSwapUnit, b: PageSwapUnit) {
-      const perm = buildSwapPermutation(pagesState.length, a, b);
-      if (!perm) return;
+      const perm = buildInsertPermutation(preorder);
+      closePageReorder();
+      if (!perm) return; // 恒等:零请求
       const prev = pagesState;
       pagesState = perm.map((oldIdx, newIdx) => ({ ...prev[oldIdx]!, pageIndex: newIdx }));
-      pageSwapSel = null; // 保持在模式内,可连续交换
       rebuildSpreads();
       repaintBook();
       try {
@@ -2850,13 +2868,91 @@ function EditorBook({
         });
         if (!res.ok) throw new Error(`reorder ${res.status}`);
       } catch {
-        // 服务端没存上,本地不能装作换成了 —— 回滚到旧引用(pageIndex 原样)重绘。
+        // 服务端没存上,本地不能装作排成了 —— 回滚到旧引用(pageIndex 原样)重绘。
         pagesState = prev;
         rebuildSpreads();
         repaintBook();
-        alert(t('pageSwapFailed'));
+        alert(t('pageReorderFailed'));
       }
     }
+    function preorderInsertBar(): HTMLElement {
+      let bar = byId('preorderBar');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'preorderBar';
+        bar.className = 'preorder-bar';
+        byId('preorderGrid')?.appendChild(bar);
+      }
+      return bar;
+    }
+    const onPreorderDown = (e: PointerEvent) => {
+      if (!preorder || e.button !== 0) return;
+      const cell = (e.target as HTMLElement).closest<HTMLElement>('.preorder-cell');
+      if (!cell || cell.classList.contains('preorder-locked')) return;
+      e.preventDefault();
+      preorderDrag = { from: Number(cell.dataset.pos), startX: e.clientX, startY: e.clientY, lifted: false, gap: null };
+      byId('preorderGrid')?.setPointerCapture(e.pointerId);
+    };
+    const onPreorderMove = (e: PointerEvent) => {
+      const grid = byId('preorderGrid');
+      const d = preorderDrag;
+      if (!grid || !preorder || !d) return;
+      if (!d.lifted) {
+        // 桌面手感:按住一拖立即拾起(超 slop),无长按仲裁 —— 弹窗内没有 pan 竞争。
+        if (Math.hypot(e.clientX - d.startX, e.clientY - d.startY) <= SWAP_LONG_PRESS_SLOP) return;
+        d.lifted = true;
+        const src = preorderCells()[d.from];
+        src?.classList.add('preorder-dragging');
+        const ghost = document.createElement('div');
+        ghost.id = 'preorderGhost';
+        ghost.className = 'preorder-ghost';
+        ghost.innerHTML = src?.innerHTML ?? '';
+        ghost.style.width = `${src?.offsetWidth ?? 0}px`;
+        ghost.style.height = `${src?.offsetHeight ?? 0}px`;
+        document.body.appendChild(ghost);
+      }
+      const ghost = byId('preorderGhost');
+      if (ghost) {
+        ghost.style.left = `${e.clientX + 10}px`;
+        ghost.style.top = `${e.clientY + 10}px`;
+      }
+      // 贴近网格上下缘自动滚动(一次一步,move 事件天然节流)。
+      const gr = grid.getBoundingClientRect();
+      if (e.clientY < gr.top + 40) grid.scrollTop -= 14;
+      else if (e.clientY > gr.bottom - 40) grid.scrollTop += 14;
+      const ids = preorder.map((orig) => pagesState[orig]!.templateId);
+      const rects: CellRect[] = preorderCells().map((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, width: r.width, height: r.height };
+      });
+      d.gap = gapFromPointer(rects, legalGaps(ids, preorder, d.from), e.clientX, e.clientY);
+      const bar = preorderInsertBar();
+      if (d.gap === null) {
+        bar.classList.remove('on');
+      } else {
+        // 插入条画在缝隙锚点:g<n 用第 g 格左缘,g=n 用末格右缘;viewport → grid 内容坐标。
+        const at = rects[d.gap] ?? null;
+        const prevCell = rects[d.gap - 1] ?? null;
+        const edge = at ?? prevCell!;
+        const xEdge = at ? at.left : prevCell!.left + prevCell!.width;
+        bar.classList.add('on');
+        bar.style.left = `${xEdge - gr.left + grid.scrollLeft - 2}px`;
+        bar.style.top = `${edge.top - gr.top + grid.scrollTop}px`;
+        bar.style.height = `${edge.height}px`;
+      }
+    };
+    const onPreorderUp = () => {
+      const d = preorderDrag;
+      preorderDrag = null;
+      byId('preorderGhost')?.remove();
+      byId('preorderBar')?.remove();
+      preorderCells().forEach((el) => el.classList.remove('preorder-dragging'));
+      if (!preorder || !d || !d.lifted) return;
+      if (d.gap !== null) {
+        preorder = applyMove(preorder, d.from, d.gap);
+        renderPreorderGrid();
+      }
+    };
 
     // A click anywhere on a selected page: if it's on an editable image, enter
     // image-edit mode for that slot; otherwise fall through to page select/deselect.
@@ -3306,8 +3402,6 @@ function EditorBook({
       // 点击不再「跳回书籍视图」:画板就是工作面,选中/编辑全部就地发生
       // (委托绑定在 #ovGrid 上,见下方 canvas editing 段)。双击跨页仍可进书籍
       // 视图翻页 —— 那是逃生门,不是主路径。
-      // innerHTML 整体重建把页序模式的选中/置灰类冲掉了,按模式态重刷(幂等)。
-      applyPageSwapMarks();
       // 模板里烘的 ov-page-selected 不知道「图层选中时页框让位」—— 重刷一遍对齐。
       updateSelectionHighlight();
     }
@@ -3324,8 +3418,6 @@ function EditorBook({
       applyOvTransform();
     }
     function exitOverview() {
-      // 页序模式是画布专属:切回预览前先退出,别把置灰/选中态带进书籍视图。
-      setPageSwapMode(false);
       bodyEl.classList.remove('overview-on');
       // 默认进画板后 #book 一直是 display:none —— 里面的页从未按真实尺寸画过(paintEl 在
       // offsetParent===null / 0×0 时会跳过),直接切预览会是空白。现在它变可见了,先 force
@@ -3511,17 +3603,6 @@ function EditorBook({
       const host = (e.target as HTMLElement).closest<HTMLElement>(
         '.ov-page[data-page-index]:not(.ov-empty)',
       );
-      // 页序模式:点击是「选中 → 点目标」的状态机,不进入普通选页/编辑链路。
-      // 点空白不退出模式(退出走 Esc / 再点按钮),只清掉半途的选中。
-      if (pageSwapOn) {
-        if (host && host.dataset.pageIndex !== '') {
-          onPageSwapClick(Number(host.dataset.pageIndex));
-        } else if (pageSwapSel) {
-          pageSwapSel = null;
-          applyPageSwapMarks();
-        }
-        return;
-      }
       if (host && host.dataset.pageIndex !== '') {
         surfaceClick(host, e);
         return;
@@ -3551,6 +3632,12 @@ function EditorBook({
     window.addEventListener('keydown', onSwapKeydown, true);
     window.addEventListener('blur', abortSwapDrag);
     document.addEventListener('visibilitychange', abortSwapDrag);
+    // 页序弹窗网格:拖拽三兄弟(down 拾起判定 / move 幽灵+插入条 / up 落定)。
+    const preorderGridEl = byId('preorderGrid');
+    preorderGridEl?.addEventListener('pointerdown', onPreorderDown as EventListener);
+    preorderGridEl?.addEventListener('pointermove', onPreorderMove as EventListener);
+    preorderGridEl?.addEventListener('pointerup', onPreorderUp as EventListener);
+    preorderGridEl?.addEventListener('pointercancel', onPreorderUp as EventListener);
     // 取消「双击跨页 → 跳回书籍预览」的逃生门:用户在画布(编辑)模式双击想放大/聚焦
     // 跨页,却被弹回预览,体验割裂。要回预览走底部的「预览模式」切换按钮即可,画布模式
     // 内不再因双击而切视图。
@@ -5549,7 +5636,9 @@ function EditorBook({
       exportSinglePages: () => void exportSinglePages(),
       openBoardBg: openBoardBgModal,
       closeBoardBg: closeBoardBgModal,
-      togglePageSwap: () => setPageSwapMode(!pageSwapOn),
+      openPageReorder,
+      closePageReorder,
+      confirmPageReorder: () => void confirmPageReorder(),
       uploadStub: () => alert(t('alertUploadStub')),
       confirmNewChapter,
     };
@@ -5581,7 +5670,7 @@ function EditorBook({
       actionHandlers.push({ el: exportFailOverlay, fn });
     }
     // 导出菜单/拼图弹窗/垫底背景:点背景关闭(进度浮层不给关,渲染中)。
-    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['nineGridModal', closeNineGridModal], ['boardBgModal', closeBoardBgModal], ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')], ['photoSwapModal', closePhotoSwap]].forEach(([id, close]) => {
+    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['nineGridModal', closeNineGridModal], ['boardBgModal', closeBoardBgModal], ['pageReorderModal', closePageReorder], ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')], ['photoSwapModal', closePhotoSwap]].forEach(([id, close]) => {
       const ov = byId(id as string);
       if (!ov) return;
       const fn = (e: Event) => { if (e.target === ov) (close as () => void)(); };
@@ -5876,6 +5965,11 @@ function EditorBook({
       window.removeEventListener('keydown', onSwapKeydown, true);
       window.removeEventListener('blur', abortSwapDrag);
       document.removeEventListener('visibilitychange', abortSwapDrag);
+      preorderGridEl?.removeEventListener('pointerdown', onPreorderDown as EventListener);
+      preorderGridEl?.removeEventListener('pointermove', onPreorderMove as EventListener);
+      preorderGridEl?.removeEventListener('pointerup', onPreorderUp as EventListener);
+      preorderGridEl?.removeEventListener('pointercancel', onPreorderUp as EventListener);
+      byId('preorderGhost')?.remove();
       sweepSwapArtifacts();
       imgEditOverlay?.remove();
       // On remount the coordinator will be repopulated; clear it so a torn-down canvas
@@ -5967,13 +6061,13 @@ function EditorBook({
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></svg>
             </button>
-            {/* 整页交换:进入「调整页序」模式(选中一页/大页 → 点合法目标对调)。
-                只在画布模式有意义(exitOverview 会强制退出)。左右换位箭头符号。 */}
+            {/* 页序弹窗入口(2026-08-02 设计):打开「调整页面顺序」弹窗拖拽插入重排。
+                左右换位箭头符号。 */}
             <button
               className="zoom-btn view-btn"
-              id="pageSwapBtn"
-              data-action="togglePageSwap"
-              data-testid="page-swap-btn"
+              id="pageReorderBtn"
+              data-action="openPageReorder"
+              data-testid="page-reorder-btn"
               data-tip={locale === 'zh' ? '调整页序' : 'Reorder pages'}
               data-i18n-tip="pageSwap"
               aria-label={locale === 'zh' ? '调整页序' : 'Reorder pages'}
