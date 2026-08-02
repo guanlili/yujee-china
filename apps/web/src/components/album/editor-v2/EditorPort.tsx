@@ -3304,6 +3304,14 @@ function EditorBook({
         };
         ovPanning = false;
       } else if (ovPointers.size === 1 && (e.pointerType !== 'mouse' || e.button === 0)) {
+        // 照片上的按下不启动画布平移(2026-08-02 复测拍板):拖照片曾是调位/交换的
+        // 入口,肌肉记忆按住照片一拖却把整个画布拖走,看起来就像手势还在打架 ——
+        // 而且它和长按 1s 的拾起候选同时进行,更添乱。画布平移从空白/文字处拖;
+        // 照片上只剩两个语义:单击(弹编辑卡)、长按 1s(收卡拾起交换)。
+        // 空图槽没有别的手势认领,仍可拖动平移。指针照常入 ovPointers:它还要
+        // 给双指捏合当第二根手指。
+        const pick = swapPickAt(e.target);
+        if (pick && pageByIndex(pick.ref.pageIndex)?.imagesJson[pick.ref.slotId]) return;
         ovPanning = true;
         ovPanMoved = false;
         ovPanOrigin = { x: e.clientX, y: e.clientY, panX: ovPanX, panY: ovPanY };

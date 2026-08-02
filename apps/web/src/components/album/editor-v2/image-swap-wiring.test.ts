@@ -109,6 +109,16 @@ test('桌面:画布平移与长按拾起不打架', () => {
   assert.match(editor, /if \(swapDrag\) return;/);
   // 拾起的一刻把已经起步的画布平移按下
   assert.match(editor, /ovPanning = false;/);
+  // 照片上的按下根本不启动画布平移(2026-08-02 复测):照片上只有单击(弹编辑卡)
+  // 与长按 1s(收卡拾起交换)两个语义,拖照片把画布拖走看起来就像手势还在打架。
+  const down = editor.slice(
+    editor.indexOf('const onOvPointerDown ='),
+    editor.indexOf('const onOvPointerMove ='),
+  );
+  const guard = down.indexOf('const pick = swapPickAt(e.target)');
+  const panStart = down.indexOf('ovPanning = true');
+  assert.ok(guard > 0, '按下要先问「这是不是一张照片」');
+  assert.ok(panStart > guard, '照片判定必须发生在启动平移之前');
 });
 
 test('桌面:移动/松手挂 window 捕获阶段 —— 拖出格子、拖到另一页都要跟手', () => {
