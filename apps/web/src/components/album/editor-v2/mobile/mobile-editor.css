@@ -580,6 +580,7 @@
 }
 
 .mobile-editor .mstrip-track {
+  position: relative; /* 长按拖拽的插入条挂在 track 内容坐标系上 */
   display: flex;
   align-items: center;
   gap: 6px;
@@ -610,13 +611,43 @@
 }
 
 /* 真实版面塞进格子:内容由 page-face 渲成缩略档,这里只负责裁切。
-   一格里并排几页就有几个 face,各占 40px —— 不用百分比,免得开页和独页宽窄不一。 */
+   一格里并排几页就有几个 face,各占 40px —— 不用百分比,免得开页和独页宽窄不一。
+   pointer-events 放开(2026-08-02 长按拖拽换序要在 face 上收 pointerdown);
+   点击照旧冒泡到外层格子按钮走跳页,拖完的那一次 click 由组件吞掉。 */
 .mobile-editor .mstrip-face {
   display: block;
   flex: none;
+  position: relative;
   width: 40px;
   height: 100%;
+  pointer-events: auto;
+}
+
+/* 拾起中的源页:压暗提示「这页正被拖」。 */
+.mobile-editor .mstrip-face[data-lifted='1'] {
+  opacity: 0.35;
+}
+
+/* 长按拖拽的插入条:吸在最近合法缝隙(几何由组件按 face rect 算,挂 track 内容坐标)。 */
+.mobile-editor .mstrip-bar {
+  position: absolute;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--accent);
   pointer-events: none;
+}
+
+/* 拖拽幽灵:一张缩略跟着手指(fixed 相对 viewport,与挂载点无关,不碰 document)。 */
+.mobile-editor .mstrip-ghost {
+  position: fixed;
+  z-index: 1000;
+  width: 28px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: 3px;
+  opacity: 0.9;
+  pointer-events: none;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
 
 /* 开页内两页之间一条细缝,读作书脊;没有它两页会糊成一张宽图。 */

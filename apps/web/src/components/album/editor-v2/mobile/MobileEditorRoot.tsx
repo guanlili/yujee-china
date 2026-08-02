@@ -731,6 +731,7 @@ export function MobileEditorRoot({
       onImagePos={onImagePosLive}
       onImagePosCommit={onImagePosCommit}
       onSwapImage={onSwapImage}
+      onReorder={commitReorder}
       onReplaceImage={onReplaceImage}
       onClearImage={onClearImage}
       onResetImagePos={onResetImagePos}

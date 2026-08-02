@@ -86,6 +86,8 @@ export type MobileEditorProps = {
   onImagePosCommit: () => void;
   /** 长按拾起一张图拖到另一个图槽 → 两个槽对调(可跨页)。 */
   onSwapImage: (from: SwapSlotRef, to: SwapSlotRef) => void;
+  /** 预览栏长按拖拽换序(2026-08-02):非恒等置换即拖即存,落库在容器层。 */
+  onReorder: (permutation: number[]) => void;
   /** 图片工具栏三件(透传给 EditView)。 */
   onReplaceImage: () => void;
   onClearImage: () => void;
@@ -143,6 +145,7 @@ export function MobileEditor({
   onImagePos,
   onImagePosCommit,
   onSwapImage,
+  onReorder,
   onReplaceImage,
   onClearImage,
   onResetImagePos,
@@ -623,6 +626,7 @@ export function MobileEditor({
         thumbCtxOf={thumbCtxOf}
         // 格子起点已经是屏起点,不必再过 screenStartOfPage 吸附一次。
         onJump={setStartPage}
+        onReorder={onReorder}
       />
     </div>
   );

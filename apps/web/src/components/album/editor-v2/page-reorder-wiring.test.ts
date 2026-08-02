@@ -23,10 +23,11 @@ const mobileCss = read('mobile', 'mobile-editor.css');
 const moreSheet = read('mobile', 'modals', 'MoreSheet.tsx');
 const reorderSheet = read('mobile', 'modals', 'ReorderSheet.tsx');
 
-test('两端合法缝隙/置换都来自共享 page-reorder', () => {
+test('三处消费端的合法缝隙/置换都来自共享 page-reorder', () => {
   assert.match(editor, /from '\.\/page-reorder'/);
   assert.match(reorderSheet, /from '\.\.\/\.\.\/page-reorder'/);
-  for (const src of [editor, reorderSheet]) {
+  assert.match(mobileStrip, /from '\.\.\/page-reorder'/);
+  for (const src of [editor, reorderSheet, mobileStrip]) {
     assert.match(src, /legalGaps\(/);
     assert.match(src, /applyMove\(/);
     assert.match(src, /buildInsertPermutation\(/);
@@ -34,13 +35,23 @@ test('两端合法缝隙/置换都来自共享 page-reorder', () => {
   }
 });
 
-test('桌面:入口按钮开弹窗,完成才发一次 reorder,恒等短路', () => {
-  assert.match(editor, /data-action="openPageReorder"/);
-  assert.match(editor, /openPageReorder,/);
+test('桌面:入口在选中页气泡(elBar page 组),完成才发一次 reorder,恒等短路', () => {
+  assert.match(editor, /data-edit-action="reorder-open"/);
+  assert.match(editor, /if \(action === 'reorder-open'\)/);
+  assert.doesNotMatch(editor, /id="pageReorderBtn"/, '工具栏常驻按钮已退场(2026-08-02 迭代)');
   assert.match(editor, /confirmPageReorder: \(\) => void confirmPageReorder\(\)/);
   const fetches = editor.match(/pages\/reorder/g) ?? [];
   assert.equal(fetches.length, 1, '桌面只允许 confirmPageReorder 一个发射点');
   assert.match(editor, /if \(!perm\) return; \/\/ 恒等:零请求/);
+});
+
+test('移动端预览栏:长按直接拖拽换序,滚动共存,拖完吞 click', () => {
+  assert.match(mobileStrip, /SWAP_LONG_PRESS_MS/);
+  assert.match(mobileStrip, /SWAP_LONG_PRESS_SLOP/);
+  assert.match(mobileStrip, /passive: false/, '拾起后靠非 passive touchmove 拦浏览器平移');
+  assert.match(mobileStrip, /suppressClickRef/, '拖完的冒泡 click 不该变成跳页');
+  assert.match(mobileStrip, /isAnchoredTemplate\(/, '锚定页拾不起来');
+  assert.match(mobileRoot, /onReorder=\{commitReorder\}/, '落库复用容器层同一条乐观+回滚通道');
 });
 
 test('移动端:主菜单入口 → ReorderSheet,完成才发一次 reorder', () => {
