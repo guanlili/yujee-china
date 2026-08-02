@@ -40,4 +40,7 @@
   --radius-md: 12px;
   --radius-lg: 16px;
   --chat-user-bubble: radial-gradient(58% 78% at 0% 0%, rgba(19,184,166,.11), transparent 60%),radial-gradient(58% 78% at 100% 100%, rgba(140,94,244,.10), transparent 60%),var(--bg);
+  /* 书口纸叠(页缘)的两支纸色:受光纸边 / 纸间阴影(与 editor-port.css 逐字一致)。 */
+  --paper-sheet-lit: #fcfbf8;
+  --paper-sheet-shade: #d9d4ca;
 }

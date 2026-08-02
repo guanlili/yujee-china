@@ -111,3 +111,51 @@ test('mobile moving leaf stays above the fold and carries two-sided lighting', (
   assert.match(mobile, /\.mobile-editor \.mleaf-face::after\{[^}]*pointer-events:\s*none/s);
   assert.match(mobile, /\.mobile-editor \.mleaf-back::after/s);
 });
+
+// ── 书口纸张堆叠(页缘)+ 书体投影 ─────────────────────────────────────────
+// 摊开的书(双页 pair / 双宽 full)在书体两侧叠出错位纸边:x 偏移 + 负 spread 的
+// box-shadow,越深的纸越短。与分享页 FlipBook 的 PaperEdges 同一意图,三个渲染面
+// (桌面编辑器 / 移动编辑器 / 分享页)必须是同一本书。
+
+test('desktop open book (pair + double-wide) carries the stacked paper edges over the depth shadows', () => {
+  const rule =
+    /\.editor-port \.book\.book-full,\s*\n\.editor-port \.book:not\(\.book-solo\):not\(\.book-full\):not\(:has\(\.page-empty\)\)\{([^}]*)\}/s.exec(
+      desktop,
+    );
+  assert.ok(rule, 'missing the paper-edge stack rule for open desktop books');
+  const body = rule![1]!;
+  // 两侧纸线(负 x 与正 x 各一组)+ 越深越短(负 spread 递增)。纸色走 token
+  // (--paper-sheet-*),移动端的「不自造颜色」护栏对两棵树都成立。
+  assert.match(body, /-2px 0 0 -1px var\(--paper-sheet-lit\)/);
+  assert.match(body, /(?<!-)2px 0 0 -1px var\(--paper-sheet-lit\)/);
+  assert.match(body, /-8px 0 0 -3px/);
+  // box-shadow 整组覆盖 —— 三层书体投影必须在这条规则里重复,否则纸叠会吃掉投影。
+  assert.match(body, /0 1px 2px rgba\(20,24,23,\.16\)/);
+  assert.match(body, /0 28px 58px rgba\(20,24,23,\.10\)/);
+});
+
+test('desktop solo (closed cover/ending) keeps the plain depth shadow — no double-sided paper stack', () => {
+  // solo 不在纸叠选择器里:哪一侧开口取决于封面还是封尾,CSS 辨不出。
+  assert.doesNotMatch(
+    desktop,
+    /\.editor-port \.book\.book-solo[^{]*\{[^}]*--paper-sheet/s,
+    'a solo book must not opt into the paper stack',
+  );
+  assert.match(ruleBody(desktop, '.editor-port .book'), /0 28px 58px rgba\(20,24,23,\.10\)/);
+});
+
+test('mobile open book (pair + double-wide) carries paper edges + deepened shadows, off during edge motion', () => {
+  const rule =
+    /\.mobile-editor \.mspread\[data-paper-spine='1'\]:not\(\[data-edge-motion='1'\]\),\s*\n\.mobile-editor \.mspread\[data-kind='full'\]:not\(\[data-edge-motion='1'\]\):not\(\[data-resting-solo='1'\]\)\{([^}]*)\}/s.exec(
+      mobile,
+    );
+  assert.ok(rule, 'missing the mobile paper-edge stack rule (pair via paper-spine, double-wide via data-kind)');
+  const body = rule![1]!;
+  assert.match(body, /-8px 0 0 -3px var\(--paper-sheet-lit\)/);
+  assert.match(body, /0 34px 70px rgba\(20,24,23,\.16\)/, 'the open book must deepen its shadow over photo board backgrounds');
+});
+
+test('mobile spread renders data-kind so CSS can key the double-wide book body', () => {
+  const component = readFileSync(join(here, 'mobile/MobileEditor.tsx'), 'utf8');
+  assert.match(component, /data-kind=\{kind\}/);
+});

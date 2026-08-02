@@ -21,6 +21,9 @@
   /* 用户气泡底:青紫双径向渐变叠在 --bg 上。两棵 UI 树共用(见 editor-tokens.css)——
      移动端曾把它写成纯黑底白字,而黑色在这套设计里只属于对话收起时那枚浮标。 */
   --chat-user-bubble: radial-gradient(58% 78% at 0% 0%, rgba(19,184,166,.11), transparent 60%),radial-gradient(58% 78% at 100% 100%, rgba(140,94,244,.10), transparent 60%),var(--bg);
+  /* 书口纸叠(页缘)的两支纸色:受光纸边 / 纸间阴影。三个渲染面(桌面书籍模式、
+     移动浏览态、分享页 FlipBook)画的是同一本书的纸芯。 */
+  --paper-sheet-lit:#fcfbf8; --paper-sheet-shade:#d9d4ca;
 
   font-family: var(--font-body);
   background: var(--bg);
@@ -148,6 +151,24 @@
   pointer-events:none;
   background:rgba(16,20,19,.28);
   box-shadow:-1px 0 rgba(255,255,255,.12),1px 0 rgba(0,0,0,.08);
+}
+/* 书口纸张堆叠(页缘):带 x 偏移 + 负 spread 的 box-shadow 叠出错位纸边,越深的
+   纸越短,像真书纸芯(与分享页 FlipBook 的 PaperEdges、移动端 .mspread 同一意图)。
+   摊开的双页与双宽(#303)都有;solo(合上的封面/封尾)不加 —— 开口侧取决于封面
+   还是封尾,CSS 辨不出,宁缺毋滥;带空白半页的散尾跨页也不加(纸叠不能悬在
+   透明半页的边上)。box-shadow 整组覆盖,书体三层投影必须在此重复。 */
+.editor-port .book.book-full,
+.editor-port .book:not(.book-solo):not(.book-full):not(:has(.page-empty)){
+  box-shadow:
+    -2px 0 0 -1px var(--paper-sheet-lit), -3.5px 0 0 -1.5px var(--paper-sheet-shade),
+    -5px 0 0 -2px var(--paper-sheet-lit), -6.5px 0 0 -2.5px var(--paper-sheet-shade),
+    -8px 0 0 -3px var(--paper-sheet-lit),
+    2px 0 0 -1px var(--paper-sheet-lit), 3.5px 0 0 -1.5px var(--paper-sheet-shade),
+    5px 0 0 -2px var(--paper-sheet-lit), 6.5px 0 0 -2.5px var(--paper-sheet-shade),
+    8px 0 0 -3px var(--paper-sheet-lit),
+    0 1px 2px rgba(20,24,23,.16),
+    0 10px 24px rgba(20,24,23,.13),
+    0 28px 58px rgba(20,24,23,.10);
 }
 .editor-port .page{
   /* #155: NO padding. paintEl injects the full 794×1123 scaled page sized to

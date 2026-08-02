@@ -128,6 +128,27 @@
   transform-style: preserve-3d;
 }
 
+/* ── 高仿真书体:摊开的书(双页 pair / 双宽 full)带书口纸叠 + 加深的书体投影 ──
+   带 x 偏移 + 负 spread 的 box-shadow 叠出错位纸边:偏移造侧向突出,负 spread 让
+   越深的纸越短,像真书的纸芯(与分享页 FlipBook 的 PaperEdges 同一意图)。
+   浏览态的书浮在照片垫底背景上,原三层软投影会被吃掉 —— 这里同时加深投影。
+   不套的状态:封面/封底独页(resting-solo,封皮自己投影)、开合动画期间
+   (edge-motion,投影由 medge-shadow-* 关键帧接管)。
+   双宽(#303)照样有纸叠和投影 —— 它没有的只是中缝(画面连续),书还是那本书。 */
+.mobile-editor .mspread[data-paper-spine='1']:not([data-edge-motion='1']),
+.mobile-editor .mspread[data-kind='full']:not([data-edge-motion='1']):not([data-resting-solo='1']){
+  box-shadow:
+    -2px 0 0 -1px var(--paper-sheet-lit), -3.5px 0 0 -1.5px var(--paper-sheet-shade),
+    -5px 0 0 -2px var(--paper-sheet-lit), -6.5px 0 0 -2.5px var(--paper-sheet-shade),
+    -8px 0 0 -3px var(--paper-sheet-lit),
+    2px 0 0 -1px var(--paper-sheet-lit), 3.5px 0 0 -1.5px var(--paper-sheet-shade),
+    5px 0 0 -2px var(--paper-sheet-lit), 6.5px 0 0 -2.5px var(--paper-sheet-shade),
+    8px 0 0 -3px var(--paper-sheet-lit),
+    0 2px 4px rgba(20,24,23,.20),
+    0 14px 30px rgba(20,24,23,.18),
+    0 34px 70px rgba(20,24,23,.16);
+}
+
 /* ── 翻动中的那张纸 ────────────────────────────────────────────────────────
    结构与 FlipBook 的 turning leaf 一一对应:两张背对背的面绕书脊那条边 rotateY,
    正面朝外时看到翻走的页、转过 90° 后看到翻进来的页(背面),底下垫着目标屏。
