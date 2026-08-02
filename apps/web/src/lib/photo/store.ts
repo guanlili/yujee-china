@@ -9,6 +9,7 @@ import {
   type PhotoFilterState,
 } from './filter-state';
 import { lutEngine } from './lut/engine';
+import { isValidPhotoId } from '../../services/album/photo-snapshot-util';
 
 // Original photos live only in the browser (architecture invariant 1). They are
 // kept in IndexedDB keyed by a globally-unique photoId so the editor and PDF
@@ -327,15 +328,29 @@ async function decodeBlob(blob: Blob): Promise<DecodedImage> {
   }
 }
 
-// 原图 → 降采样 JPEG blob(屏显派生用)。HEIC 先转可解码格式,再 canvas 缩放。
-async function downscaleToJpeg(blob: Blob, maxEdge: number, quality: number): Promise<Blob> {
+interface DownscaledJpeg {
+  blob: Blob;
+  width: number;
+  height: number;
+}
+
+// 原图 → 降采样 JPEG blob(屏显派生 + 规范上传档共用)。HEIC 先转可解码格式,
+// 再 canvas 缩放。连同解码出的实际像素尺寸一并返回(getCanonicalUploadBlob 要报
+// 给调用方,重新解码一遍产出的 blob 反而更贵也更脆)。
+async function downscaleToJpeg(
+  blob: Blob,
+  maxEdge: number,
+  quality: number,
+): Promise<DownscaledJpeg> {
   const decodable = await prepareImageBlobForBrowserDecode(blob);
   const img = await decodeBlob(decodable);
   let canvas: HTMLCanvasElement | null = null;
   try {
     const { w, h } = fitWithinMaxEdge(img.width, img.height, maxEdge);
     // 已经不比目标大:直接用可解码 blob,省一次重编码画质损失。
-    if (w >= img.width && h >= img.height) return decodable;
+    if (w >= img.width && h >= img.height) {
+      return { blob: decodable, width: img.width, height: img.height };
+    }
     canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
@@ -348,7 +363,7 @@ async function downscaleToJpeg(blob: Blob, maxEdge: number, quality: number): Pr
       canvas!.toBlob(resolve, 'image/jpeg', quality),
     );
     if (!out) throw new Error('derived image toBlob failed');
-    return out;
+    return { blob: out, width: w, height: h };
   } finally {
     if (canvas) {
       canvas.width = 0;
@@ -451,7 +466,7 @@ async function getBaseTierBlob(
   if (!derived) {
     const original = await owner.getBlob(photoId);
     if (!original) return undefined;
-    derived = await downscaleToJpeg(original, TIER_MAX_EDGE[tier], TIER_QUALITY[tier]);
+    derived = (await downscaleToJpeg(original, TIER_MAX_EDGE[tier], TIER_QUALITY[tier])).blob;
     // 持久化失败不致命(隐私无新增面:派生图和原图同库同生命周期)。
     // 上传档(backup)不落盘:见 UNCACHED_TIERS。
     if (!UNCACHED_TIERS.has(tier)) {
@@ -545,6 +560,67 @@ async function fetchBackupBlob(url: string | undefined, photoId: string): Promis
   }
 }
 
+// R2 迁移(照片真相迁 R2 Phase 0):originals 表从「原图唯一持有者」降级为「R2 之上
+// 的缓存」。本地未命中时,若 Task 8 注入了 fetcher,就把它当远端源回退一次,取到就
+// 记忆内存化(toMemoryBackedBlob,Safari 坑同 put/putMany)写回本地,下次直接命中缓存。
+export type RemoteOriginalFetcher = (photoId: string) => Promise<Blob | undefined>;
+
+let remoteFetcher: RemoteOriginalFetcher | null = null;
+// 同一 photoId 的并发 getBlob miss 必须合并成一次下载 —— 一进编辑器同时触发
+// getObjectUrl/getTierUrl(s)/getPdfDataUrls 对同一张缺图各问一次是常态。
+const inflightRemoteFetches = new Map<string, Promise<Blob | undefined>>();
+
+// originals 表是 boardbg-*(画板背景,见 MobileEditorRoot.tsx)和照片原图共用的同一个
+// object store。远端回退只认照片:排除 boardbg- 前缀,且 key 必须是
+// isValidPhotoId 认可的形状(photo-snapshot-util.ts 同一条口径,不给路径穿越/跨
+// 命名空间的字符串一丝可乘之机),否则永不触发 fetcher。
+const BOARD_BACKGROUND_KEY_PREFIX = 'boardbg-';
+
+function isRemoteFetchablePhotoId(photoId: string): boolean {
+  if (photoId.startsWith(BOARD_BACKGROUND_KEY_PREFIX)) return false;
+  return isValidPhotoId(photoId);
+}
+
+async function readLocalOriginalBlob(photoId: string): Promise<Blob | undefined> {
+  const store = await tx('readonly');
+  const result = await asPromise(store.get(photoId));
+  return (result as Blob | undefined) ?? undefined;
+}
+
+// 未命中本地时的唯一远端回退入口:去重 + 落盘缓存都在这一处完成,getBlob 本身
+// 只负责判断「要不要走这条路」。失败(fetcher 抛错/返回 undefined)一律吞掉,让
+// 调用方看到的还是既有的 undefined 兜底 —— 绝不让远端问题冒泡穿透 getBlob。
+function fetchRemoteOriginal(photoId: string): Promise<Blob | undefined> {
+  const fetcher = remoteFetcher;
+  if (!fetcher) return Promise.resolve(undefined);
+
+  const existing = inflightRemoteFetches.get(photoId);
+  if (existing) return existing;
+
+  const promise = (async (): Promise<Blob | undefined> => {
+    try {
+      const remote = await fetcher(photoId);
+      if (!remote) return undefined;
+      const cached = await toMemoryBackedBlob(remote);
+      try {
+        const store = await tx('readwrite');
+        await asPromise(store.put(cached, photoId));
+      } catch (error) {
+        // 写回失败不致命:这次调用仍能拿到取回的字节,只是下次又要再下载一遍。
+        console.warn('[photo] failed to cache remote original locally', { photoId }, error);
+      }
+      return cached;
+    } catch (error) {
+      console.warn('[photo] remote original fetch threw', { photoId }, error);
+      return undefined;
+    }
+  })();
+
+  inflightRemoteFetches.set(photoId, promise);
+  void promise.finally(() => inflightRemoteFetches.delete(photoId));
+  return promise;
+}
+
 export const photoStore = {
   async put(photoId: string, blob: Blob): Promise<void> {
     const copy = await toMemoryBackedBlob(blob);
@@ -558,10 +634,32 @@ export const photoStore = {
     await Promise.all(copies.map((copy, i) => asPromise(store.put(copy, items[i].photoId))));
   },
 
+  // 原图读取的唯一咽喉点:getObjectUrl / getTierBlob(Status) / getPdfDataUrls
+  // 内部全部经过这里,R2 回退只挂在这一处,其余调用点自动痊愈。本地命中直接返回;
+  // 本地未命中且 photoId 通过 isRemoteFetchablePhotoId 才会尝试远端 fetcher —— 没
+  // 设 fetcher、id 不合法、fetcher 失败,统统落回 undefined,与本次改动之前完全一致。
   async getBlob(photoId: string): Promise<Blob | undefined> {
-    const store = await tx('readonly');
-    const result = await asPromise(store.get(photoId));
-    return (result as Blob | undefined) ?? undefined;
+    const local = await readLocalOriginalBlob(photoId);
+    if (local) return local;
+    if (!remoteFetcher || !isRemoteFetchablePhotoId(photoId)) return undefined;
+    return fetchRemoteOriginal(photoId);
+  },
+
+  // Task 8 在编辑器挂载时注入一次真实 fetcher,卸载时传 null 收回。
+  setRemoteOriginalFetcher(fetcher: RemoteOriginalFetcher | null): void {
+    remoteFetcher = fetcher;
+  },
+
+  // 规范上传档:手动备份/对账补传要传的就是这一份 —— 无滤镜、无用户偏好,只是把
+  // 本地原图(HEIC 先转)按 backup 档位(3400/0.82)降采样成 JPEG。绝不读远端:
+  // 本地原本就没有原图时上传等于把刚从 R2 下载的字节又传回 R2,纯粹浪费带宽,
+  // 这种情况直接留给下一轮对账处理本机重新拿到原图之后再补。
+  async getCanonicalUploadBlob(
+    photoId: string,
+  ): Promise<{ blob: Blob; width: number; height: number } | undefined> {
+    const original = await readLocalOriginalBlob(photoId);
+    if (!original) return undefined;
+    return downscaleToJpeg(original, TIER_MAX_EDGE.backup, TIER_QUALITY.backup);
   },
 
   // Cached blob: URL of the ORIGINAL — only for surfaces that truly need full
