@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '@/lib/env';
 import { ERRORS } from '@/lib/api/error-codes';
@@ -49,6 +49,15 @@ export const r2 = {
         ContentType: contentType,
       });
       return await getSignedUrl(client(), cmd, { expiresIn: expiresInSeconds });
+    } catch {
+      throw ERRORS.R2_SIGN_FAILED();
+    }
+  },
+
+  async signGetUrl(key: string, expiresInSeconds = 300): Promise<string> {
+    try {
+      const command = new GetObjectCommand({ Bucket: env.R2_BUCKET, Key: key });
+      return await getSignedUrl(client(), command, { expiresIn: expiresInSeconds });
     } catch {
       throw ERRORS.R2_SIGN_FAILED();
     }
