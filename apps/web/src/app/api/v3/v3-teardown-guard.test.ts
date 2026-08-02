@@ -77,6 +77,9 @@ test('web keeps the v1 infrastructure route whitelist used by V3', () => {
     'apps/web/src/app/api/v1/albums/[uuid]/pages/[idx]/route.ts',
     // 整页交换的原子重排(2026-08-01,docs/specs/2026-08-01-swap-gesture-and-page-swap-design.md)
     'apps/web/src/app/api/v1/albums/[uuid]/pages/reorder/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/photo-originals/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/photo-originals/upload-url/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/photo-originals/urls/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/photo-snapshot-upload-url/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/photo-snapshot/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/pdf-upload-url/route.ts',
