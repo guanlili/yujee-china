@@ -49,7 +49,8 @@ test('移动端预览栏:长按直接拖拽换序,滚动共存,拖完吞 click',
   assert.match(mobileStrip, /SWAP_LONG_PRESS_MS/);
   assert.match(mobileStrip, /SWAP_LONG_PRESS_SLOP/);
   assert.match(mobileStrip, /passive: false/, '拾起后靠非 passive touchmove 拦浏览器平移');
-  assert.match(mobileStrip, /suppressClickRef/, '拖完的冒泡 click 不该变成跳页');
+  assert.match(mobileStrip, /suppressUntilRef/, '拖完的 click 走时间窗抑制(真拖不一定补发 click,布尔标记会吞掉下一次无辜点按)');
+  assert.match(mobileStrip, /d\.lifted && d\.moved/, '只有真拖过才吞 click/算落点 —— 原地松手回落普通点击,不留死区(2026-08-03 真机回归)');
   assert.match(mobileStrip, /isAnchoredTemplate\(/, '锚定页拾不起来');
   assert.match(mobileRoot, /onReorder=\{commitReorder\}/, '落库复用容器层同一条乐观+回滚通道');
 });
