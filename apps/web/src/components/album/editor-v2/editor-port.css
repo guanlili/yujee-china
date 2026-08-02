@@ -1415,17 +1415,28 @@
   box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent);
 }
 
-/* ── 整页交换:「调整页序」模式(2026-08-01)──────────────────────────────────
-   选中单元描边(与图片交换落点同一套色),非法目标压暗但仍可 hover(点击在 JS 里
-   不响应 —— pointer-events 不关,否则点非法格会穿透到画布空白、把选中清掉)。 */
-.editor-port .ov-page.pswap-sel{
-  outline:3px solid var(--accent); outline-offset:-3px;
-  box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent);
-}
-.editor-port .ov-page.pswap-dim{ opacity:.35; }
-.editor-port.page-swap-on .ov-page:not(.pswap-dim):not(.ov-empty):hover{
-  outline:2px dashed var(--accent); outline-offset:-2px;
-}
+/* ── 页序弹窗(2026-08-02):网格拖拽插入重排 ───────────────────────────────
+   壳走 .modal-overlay/.modal-card 一族;网格纵向滚动、行内换行;锚定页(封面/
+   目录/封尾)压暗带锁标、不可拖;插入条吸在最近合法缝隙;幽灵跟指针(挂 body,
+   移动端 ReorderSheet 经 ModalHost 命中同一套规则,幽灵挂网格内 fixed 等效)。 */
+.editor-port .preorder-card{ width:min(920px,92vw); max-height:86vh; display:flex; flex-direction:column; }
+.editor-port .preorder-head{ position:relative; padding:20px 24px 10px; }
+.editor-port .preorder-hint{ margin-top:4px; font-size:12.5px; color:var(--muted); }
+.editor-port .preorder-grid{ position:relative; flex:1; overflow-y:auto; display:flex; flex-wrap:wrap; align-content:flex-start; gap:14px; padding:14px 24px; }
+.editor-port .preorder-cell{ position:relative; flex:0 0 auto; border-radius:6px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.14); cursor:grab; touch-action:none; }
+.editor-port .preorder-cell.preorder-locked{ opacity:.45; cursor:default; }
+.editor-port .preorder-cell.preorder-dragging{ opacity:.35; }
+.editor-port .preorder-no{ position:absolute; bottom:4px; min-width:18px; padding:0 5px; border-radius:9px; background:rgba(0,0,0,.55); color:#fff; font-size:11px; line-height:18px; text-align:center; pointer-events:none; }
+.editor-port .preorder-no-left{ left:4px; }
+.editor-port .preorder-no-right{ right:4px; }
+.editor-port .preorder-lock{ position:absolute; right:4px; bottom:4px; width:18px; height:18px; color:#fff; background:rgba(0,0,0,.55); border-radius:9px; padding:3px; pointer-events:none; }
+.editor-port .preorder-lock svg{ display:block; width:100%; height:100%; }
+.editor-port .preorder-bar{ position:absolute; width:4px; border-radius:2px; background:var(--accent); opacity:0; pointer-events:none; transition:opacity .1s; }
+.editor-port .preorder-bar.on{ opacity:1; }
+.editor-port .preorder-foot{ display:flex; justify-content:flex-end; gap:10px; padding:12px 24px 20px; }
+.editor-port .preorder-btn{ padding:9px 22px; border-radius:999px; font-size:13px; border:1px solid var(--bd,#ddd6c8); color:var(--fg-2); }
+.editor-port .preorder-btn-primary{ background:var(--fg); color:#fff; border-color:transparent; }
+.editor-port .preorder-ghost{ position:fixed; left:0; top:0; z-index:1000; pointer-events:none; opacity:.85; border-radius:6px; overflow:hidden; box-shadow:0 8px 28px rgba(0,0,0,.3); }
 
 /* ─── ③ palette-card (主题/配色选择,对话流内,缺口#20 / Stage4) ───
    Stage4: one row per book theme option; applying a row expands that option into
