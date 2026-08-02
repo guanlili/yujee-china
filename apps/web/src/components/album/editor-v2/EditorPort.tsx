@@ -2752,9 +2752,15 @@ function EditorBook({
       const target = e.target as HTMLElement;
       const img = target.closest('img[data-image-slot]') as HTMLImageElement | null;
       const editableText = target.closest<HTMLElement>('[data-editable]:not(img)');
-      // Image click is only meaningful once the page is selected (two-step: select
-      // the page, then pick a photo) — keeps single clicks as page selection.
-      if (img && pi !== undefined && Number(pi) === selectedPageIndex) {
+      // 直选图层(2026-08-02 用户拍板):点到图/文字就直接选中它,不再要求「先点页
+      // 再点图层」的两段式 —— 那不符合直觉。页选中态跟着对齐到所点的页(高亮与页级
+      // 语境仍成立),但不走 onPageSelect 的 toggle:点同一页的另一图层不该把页选中
+      // 态关掉。点书页空白仍是选页/取消选页。
+      if ((img || editableText) && pi !== undefined && Number(pi) !== selectedPageIndex) {
+        selectedPageIndex = Number(pi);
+        updateSelectionHighlight();
+      }
+      if (img && pi !== undefined) {
         const slotId = img.getAttribute('data-image-slot');
         if (slotId) {
           e.stopPropagation();
@@ -2767,7 +2773,7 @@ function EditorBook({
           return;
         }
       }
-      if (editableText && pi !== undefined && Number(pi) === selectedPageIndex) {
+      if (editableText && pi !== undefined) {
         e.stopPropagation();
         clearImageSelection();
         showElementToolbar(editableText, 'text');
