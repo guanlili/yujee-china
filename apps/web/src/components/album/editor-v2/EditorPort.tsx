@@ -2451,9 +2451,15 @@ function EditorBook({
       pointerId: number;
       from: SwapSlotRef;
       sourceFrame: HTMLElement;
-      ghost: HTMLElement;
+      /** 幽灵懒创建(2026-08-02 用户拍板):拾起那一刻不弹任何东西,真的拖起来
+       *  (首次 move)才出现 —— 静止长按时凭空弹缩略图看起来像 bug,连报两次。 */
+      ghost: HTMLElement | null;
+      ghostSrc: string | null;
       target: SwapPick | null;
     } | null = null;
+    /** 主指针(左键/第一根手指)当前是否按着。长按计时器到点先核验它 —— 计时器绝不
+     *  允许在没有键按着的情况下拾起(悬停走火的最后一道门)。 */
+    let primarySwapPointerDown = false;
     function cancelSwapPending() {
       if (!swapPending) return;
       clearTimeout(swapPending.timer);
@@ -2466,10 +2472,22 @@ function EditorBook({
       next?.frame.classList.add('img-swap-target');
       swapDrag.target = next;
     }
+    /** 幽灵按需创建:拖动的第一帧才挂上画布(拾起时不弹,见 swapDrag.ghost 注释)。 */
+    function ensureSwapGhost(): HTMLElement | null {
+      if (!swapDrag) return null;
+      if (swapDrag.ghost) return swapDrag.ghost;
+      const ghost = document.createElement('div');
+      ghost.className = 'img-swap-ghost';
+      if (swapDrag.ghostSrc) ghost.style.backgroundImage = `url("${swapDrag.ghostSrc}")`;
+      (bookEl.parentElement ?? bookEl).appendChild(ghost);
+      swapDrag.ghost = ghost;
+      return ghost;
+    }
     function moveSwapGhost(x: number, y: number) {
-      if (!swapDrag) return;
+      const ghost = ensureSwapGhost();
+      if (!ghost) return;
       // 幽灵是 pointer-events:none 的,所以 elementFromPoint 看得见它底下的图槽。
-      setFixedPos(swapDrag.ghost, x - swapDrag.ghost.offsetWidth / 2, y - swapDrag.ghost.offsetHeight / 2);
+      setFixedPos(ghost, x - ghost.offsetWidth / 2, y - ghost.offsetHeight / 2);
     }
     /** 扫掉任何游离的幽灵/残留态。
      *
@@ -2493,17 +2511,20 @@ function EditorBook({
       sweepSwapArtifacts();
       // 拾起的这一刻画布不该再跟着手指跑(用户按下时可能已经越过 ov 平移阈值)。
       ovPanning = false;
-      const ghost = document.createElement('div');
-      ghost.className = 'img-swap-ghost';
-      const src = pick.img?.currentSrc || pick.img?.src;
-      if (src) ghost.style.backgroundImage = `url("${src}")`;
-      (bookEl.parentElement ?? bookEl).appendChild(ghost);
+      // 拾起零弹出(2026-08-02 用户拍板「不需要展示可以交换的效果」):此刻只有
+      // 光标变 grabbing + 源图变淡,幽灵等真的拖起来(moveSwapGhost 首帧)才出现。
       // 拖动期间整个编辑器禁选文字 + 抓手光标:鼠标长按后拖会顺手框选页面上的文案,
       // 拖完满屏蓝底。这条只在拖动期间挂着,松手即摘。
       bodyEl.classList.add('swap-dragging');
       pick.frame.classList.add('img-swap-source');
-      swapDrag = { pointerId, from: pick.ref, sourceFrame: pick.frame, ghost, target: null };
-      moveSwapGhost(x, y);
+      swapDrag = {
+        pointerId,
+        from: pick.ref,
+        sourceFrame: pick.frame,
+        ghost: null,
+        ghostSrc: pick.img?.currentSrc || pick.img?.src || null,
+        target: null,
+      };
       // 拖动期间不要同时挂着编辑态,否则松手会既交换又提交一次位移。选中图上还可能
       // 有没落库的 live 位移(滚轮缩放 320ms 防抖提交,预览拖动 commit 在松手)——
       // 拾起走的是交换,不该顺手带走一笔没提交的位移:先按已提交的 imagePosJson 把
@@ -2543,7 +2564,7 @@ function EditorBook({
       bodyEl.classList.remove('swap-dragging');
       drag.sourceFrame.classList.remove('img-swap-source');
       drag.target?.frame.classList.remove('img-swap-target');
-      drag.ghost.remove();
+      drag.ghost?.remove(); // 拾起后没动过就松手 → 幽灵从未创建
       // 引用路径删完再按类名扫一遍:前面漏下的、或者并发出来的第二个,一并收干净。
       sweepSwapArtifacts();
       if (commit && drag.target) applySlotSwap(drag.from, drag.target.ref);
@@ -2590,13 +2611,22 @@ function EditorBook({
       // 都失败 —— 根因是同一块画布同时住着两个拖拽语义。现在位置调整整体搬进浮层
       // 预览(.img-edit-preview),照片上只剩「单击弹卡」和「长按交换」两个语义,
       // 选中与否都可以长按拾起,不需要任何让路 guard。悬停不给 grab —— 那会误导成
-      // 「按住就能拖」;抓手光标只在拾起之后出现(.swap-dragging)。
+      // 「按住就能拾」;抓手光标只在拾起之后出现(.swap-dragging)。
+      primarySwapPointerDown = true;
       swapPending = {
         pointerId,
         x,
         y,
         pick,
-        timer: window.setTimeout(() => beginSwapDrag(pick, x, y, pointerId), SWAP_LONG_PRESS_DESKTOP_MS),
+        // 到点先核验「主键此刻真的还按着」再拾起:计时器一旦因任何事件缺口活过
+        // 松手(真机撞到:悬停 1s 凭空弹出拖动样式),这道门保证它空转而不是走火。
+        timer: window.setTimeout(() => {
+          if (!primarySwapPointerDown) {
+            swapPending = null;
+            return;
+          }
+          beginSwapDrag(pick, x, y, pointerId);
+        }, SWAP_LONG_PRESS_DESKTOP_MS),
       };
     };
     const onSwapPointerMove = (e: PointerEvent) => {
@@ -2631,14 +2661,19 @@ function EditorBook({
       highlightSwapTarget(pick && !sameSwapSlot(pick.ref, swapDrag.from) ? pick : null);
     };
     const onSwapPointerUp = (e: PointerEvent) => {
-      if (swapPending?.pointerId === e.pointerId) cancelSwapPending();
+      if (e.isPrimary) primarySwapPointerDown = false;
+      // 松手就是松手:候选**无条件**取消,不做 pointerId 判等。曾经只在 id 对上时
+      // 取消 —— 任何一次 id 对不上的 up(指针流重定向/设备 id 漂移/合成事件)都会
+      // 让 1s 计时器活过松手,之后用户只是悬停,到点却凭空弹出拖动样式(真机撞到)。
+      cancelSwapPending();
       if (swapDrag?.pointerId === e.pointerId) {
         armClickSwallow();
         endSwapDrag(true);
       }
     };
     const onSwapPointerCancel = (e: PointerEvent) => {
-      if (swapPending?.pointerId === e.pointerId) cancelSwapPending();
+      if (e.isPrimary) primarySwapPointerDown = false;
+      cancelSwapPending(); // 同 up:取消候选不看 pointerId
       if (swapDrag?.pointerId === e.pointerId) endSwapDrag(false);
     };
     /** 「这一拖再也不会有 pointerup 了」的兜底出口。

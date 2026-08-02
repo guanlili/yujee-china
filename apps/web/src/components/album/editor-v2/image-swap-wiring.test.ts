@@ -44,8 +44,8 @@ test('长按拾起:桌面 1s / 移动 350ms,快拖一律回落普通手势', () 
   // 移动端保持 350ms,要抢在 iOS 长按菜单(~500ms)之前。
   assert.doesNotMatch(editor, /immediate = e\.pointerType/, '鼠标立即拾起的快路不许回来');
   assert.doesNotMatch(editor, /pending\.immediate/, 'pending 不再有 immediate 分支');
-  assert.match(editor, /timer: window\.setTimeout\(\(\) => beginSwapDrag\([^)]*\),\s*SWAP_LONG_PRESS_DESKTOP_MS\)/);
-  assert.doesNotMatch(editor, /beginSwapDrag\([^)]*\),\s*SWAP_LONG_PRESS_MS\)/, '桌面不许用移动端的 350ms');
+  assert.match(editor, /timer: window\.setTimeout\(\(\) => \{[\s\S]{0,400}?beginSwapDrag\([^)]*\);\s*\n\s*\}, SWAP_LONG_PRESS_DESKTOP_MS\)/);
+  assert.doesNotMatch(editor, /SWAP_LONG_PRESS_MS\)/, '桌面不许用移动端的 350ms');
   // 越过 slop 一律放弃拾起
   assert.match(editor, /if \(!moved\) return;\n\s*\/\/[^\n]*\n\s*cancelSwapPending\(\);/);
 });
@@ -218,6 +218,25 @@ test('移动端:落地整份替换 pages,每张动过的页各发一次单页 PA
    幽灵是命令式 append 的裸 DOM,**只有 swapDrag 这一个引用**。swapDrag 一旦在没走
    endSwapDrag 的情况下被覆盖/丢掉,那个节点就再也没人删得掉。而「收不到 pointerup」
    不是理论情形:鼠标拖出窗口才松手、切走标签页、pointercancel 没派发,都会走到那儿。 */
+
+test('桌面:拾起零弹出 —— 幽灵懒创建,静止长按不凭空弹缩略图;松手无条件毙候选', () => {
+  // 真机连报两次「悬停/长按 1s 凭空弹出可拖动样式」:一半是拾起瞬间弹幽灵的
+  // 视觉(按住没动它也弹),一半是候选取消只认 pointerId 判等 —— id 对不上的 up
+  // 会让计时器活过松手。两个都封死:
+  const begin = editor.slice(
+    editor.indexOf('function beginSwapDrag('),
+    editor.indexOf('let swallowClick'),
+  );
+  assert.doesNotMatch(begin, /createElement\('div'\)/, '拾起那一刻不许创建幽灵');
+  assert.match(editor, /function ensureSwapGhost\(/, '幽灵在首次移动时才出现');
+  assert.match(editor, /primarySwapPointerDown/, '计时器到点先核验主键还按着');
+  const up = editor.slice(
+    editor.indexOf('const onSwapPointerUp ='),
+    editor.indexOf('const onSwapPointerCancel ='),
+  );
+  assert.doesNotMatch(up, /swapPending\?\.pointerId === e\.pointerId\) cancelSwapPending/, '取消候选不许再看 pointerId');
+  assert.match(up, /cancelSwapPending\(\);/, '松手就是松手,无条件取消');
+});
 
 test('桌面:僵尸拖动三层防线 —— 原生拖拽掐掉、无键移动自愈、新按下作废旧拖动', () => {
   // 真机撞到(2026-08-02):浏览器对 <img> 的原生拖拽接管指针流后 pointerup 不再
