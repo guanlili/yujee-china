@@ -545,6 +545,51 @@ export const jobService = {
       logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 compose completed');
       return;
     }
+
+    // 追加范围成稿(meta.composeAppend):只合并目标页文案 + 重烘,其余一概不动。
+    const appendMeta = readComposeAppendMeta(job.meta);
+    if (appendMeta) {
+      let merged: ReturnType<typeof mergeAppendComposeTexts>;
+      try {
+        merged = mergeAppendComposeTexts(album.draftJson, payload.pagesTexts);
+      } catch (e) {
+        logger.error(
+          { err: String(e), requestId, albumId: job.albumId },
+          'append compose completed but merge failed',
+        );
+        await this.handleV3Failed(requestId, {
+          code: 'AGENT_INVALID_OUTPUT',
+          message: 'append compose result could not be applied to the draft',
+        });
+        return;
+      }
+      await db.transaction(async (tx) => {
+        const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
+          progress: 100,
+          stage: 'wrap',
+          usage: (usage as Record<string, unknown> | null) ?? null,
+          completedAt: new Date(),
+        });
+        if (!won) return;
+        await albumRepo.update(tx, job.albumId, { draftJson: merged.draftJson });
+        // 回执只在真处理后写;文案没写出来也要诚实说(设计对话可补写,不留假成功)。
+        await albumMessageRepo.create(tx, {
+          albumId: job.albumId,
+          userId: job.userId,
+          role: 'assistant',
+          content:
+            merged.writtenPageIndexes.length > 0
+              ? (appendMeta.language === 'zh'
+                  ? '新照片的文案写好了,和全书一个声音。不合口味随时在对话里改。'
+                  : 'The new pages now have their copy, in the same voice as the rest of the book. Ask me here to tweak anything.')
+              : (appendMeta.language === 'zh'
+                  ? '新照片排进书里了,但这次文案没写出来。在对话里跟我说「给新页写文案」,我来补。'
+                  : "The new photos are in, but their copy didn't come through this time. Tell me here to write it and I'll fill them in."),
+        });
+      });
+      return;
+    }
+
     const meta = readComposeMeta(job.meta);
     if (!meta) {
       logger.warn({ requestId, albumId: job.albumId }, 'compose job has no cover-set meta');

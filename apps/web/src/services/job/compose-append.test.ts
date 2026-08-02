@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { TEMPLATES } from '@yujee/contracts';
 import type { Page } from '@yujee/contracts';
-import { mergeAppendComposeTexts, readComposeAppendMeta } from './job-service';
+import { db } from '../../db/client';
+import { agentJobRepo } from '../../db/repos/agent-job-repo';
+import { albumMessageRepo } from '../../db/repos/album-message-repo';
+import { albumRepo } from '../../db/repos/album-repo';
+import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '../../db/repos/__test__/setup';
+import { jobService, mergeAppendComposeTexts, readComposeAppendMeta } from './job-service';
 
 type TemplateInfo = { id: string; category?: string; texts?: Array<{ id: string; role: string }> };
 const interior = (Object.values(TEMPLATES) as TemplateInfo[]).find(
@@ -79,4 +84,78 @@ test('mergeAppendComposeTexts: pagesTexts 空 → 页面原样,writtenPageIndexe
 
 test('mergeAppendComposeTexts: 无页草稿直接抛(时序错了要诚实失败)', () => {
   assert.throws(() => mergeAppendComposeTexts({ version: 'v3-story', tree: { chapters: [chapterNode('c1')] }, pages: [], progress: { currentChapterId: null, doneChapterIds: [] } }, {}));
+});
+
+// ── handleV3ComposeCompleted: composeAppend 分支(DB 集成) ──────────────────
+// 已设计的书(stage='ready')追加了 addx-c1 章、页已增量排版落地:pageIndex 0 是老页,
+// 1 是追加页。回调只应合并 pagesTexts 指到的槽,stage/老页原样,回执诚实。
+function designedDraft() {
+  return {
+    ...pagedDraft(PAGES),
+    tree: { chapters: [chapterNode('c1'), chapterNode('addx-c1')] },
+    progress: { currentChapterId: null, doneChapterIds: ['c1', 'addx-c1'] },
+  };
+}
+
+test('handleV3ComposeCompleted: composeAppend 分支', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL not reachable');
+    return;
+  }
+  const user = await makeUser('append-compose-cb');
+  try {
+    await t.test('只写目标页,stage 与老页不动,assistant 回执落一条', async () => {
+      const album = await makeAlbum(user.id);
+      await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'ready', draftJson: designedDraft() });
+      const requestId = crypto.randomUUID();
+      await db.transaction(async (tx) => {
+        const job = await jobService.createGenerationJob(tx, {
+          userId: user.id,
+          albumId: album.id,
+          requestId,
+          kind: 'compose',
+          meta: { composeAppend: { language: 'zh', chapterIds: ['addx-c1'] } },
+        });
+        await jobService.markRunning(tx, job.id);
+      });
+
+      await jobService.handleV3ComposeCompleted(
+        requestId,
+        { pagesTexts: { '1': { [titleSlot]: '追加页新标题' } } },
+        null,
+      );
+
+      const after = await albumRepo.findById(album.id);
+      const pages = (after!.draftJson as { pages: Page[] }).pages;
+      assert.equal(pages[1]!.texts[titleSlot], '追加页新标题');
+      assert.ok(pages[1]!.html?.includes('追加页新标题'));
+      assert.deepEqual(pages[0]!.texts, PAGES[0]!.texts); // 老页文案原样不动
+      assert.equal(after!.stage, 'ready'); // 不动
+      assert.equal((await agentJobRepo.findByRequestId(requestId))!.status, 'COMPLETED');
+      const messages = await albumMessageRepo.findByAlbum(album.id);
+      assert.ok(messages.some((m) => m.role === 'assistant' && m.content.includes('新照片的文案写好了')));
+    });
+
+    await t.test('pagesTexts 全空(章全掉队):job 照常 COMPLETED,回执诚实', async () => {
+      const album = await makeAlbum(user.id);
+      await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'ready', draftJson: designedDraft() });
+      const requestId = crypto.randomUUID();
+      await db.transaction(async (tx) => {
+        const job = await jobService.createGenerationJob(tx, {
+          userId: user.id,
+          albumId: album.id,
+          requestId,
+          kind: 'compose',
+          meta: { composeAppend: { language: 'zh', chapterIds: ['addx-c1'] } },
+        });
+        await jobService.markRunning(tx, job.id);
+      });
+      await jobService.handleV3ComposeCompleted(requestId, { pagesTexts: {} }, null);
+      assert.equal((await agentJobRepo.findByRequestId(requestId))!.status, 'COMPLETED');
+      const messages = await albumMessageRepo.findByAlbum(album.id);
+      assert.ok(messages.some((m) => m.role === 'assistant' && m.content.includes('没写出来')));
+    });
+  } finally {
+    await cleanupUser(user.id);
+  }
 });
