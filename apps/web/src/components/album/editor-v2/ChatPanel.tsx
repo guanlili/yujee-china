@@ -764,6 +764,7 @@ export function ChatPanel({
       fonts: ['字体', 'Fonts'],
       colors: ['颜色', 'Colors'],
       pages: ['页面', 'Pages'],
+      order: ['页序', 'Order'],
     };
     function designChangeLabel(cat: DesignChangeCategory): string {
       const label = DESIGN_CHANGE_LABEL[cat];

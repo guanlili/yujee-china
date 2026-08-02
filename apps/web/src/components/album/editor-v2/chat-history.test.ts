@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildChatHistory, mergeChatHistory } from './chat-history';
+import {
+  buildChatHistory,
+  designChangeCategoryOf,
+  designOpCategories,
+  mergeChatHistory,
+} from './chat-history';
 
 /* 历史回放的口径必须只有一份。桌面 ChatPanel.loadHistory 与移动 useDesignChat.loadHistory
    过去各写各的,移动那份把所有行原样当纯文本铺出来 —— 于是同一段对话在两棵壳里长得不一样。
@@ -35,6 +40,11 @@ test('assistant 行带出 designOps 类别(去重 + 固定顺序 字体→颜色
     ['fonts', 'pages'],
     '两个 pages 类工具要去重成一个,且顺序固定为 字体→颜色→页面',
   );
+});
+
+test('move_pages 归入 order 类别,与其余写工具类别并存', () => {
+  assert.equal(designChangeCategoryOf('move_pages'), 'order');
+  assert.deepEqual(designOpCategories(['move_pages', 'set_text_fonts']), ['fonts', 'order']);
 });
 
 test('历史到达不抹掉本地还没落库的消息(回归:setMessages(rows) 整体覆盖)', () => {
