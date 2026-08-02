@@ -354,9 +354,11 @@ export async function composeAppendV3(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(input),
   });
-  if (res.status === 401) throw new UnauthorizedError();
   const json = await res.json();
-  if (!json.ok) throw new Error(json.error?.message ?? 'append compose failed');
+  if (!json.ok) {
+    if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
+    throw new Error(json.error?.message ?? 'append compose failed');
+  }
   return json.data;
 }
 
@@ -365,8 +367,10 @@ export async function fetchDesignState(
   albumId: string,
 ): Promise<{ composing: boolean; lastComposeStatus: string | null }> {
   const res = await fetch(`/api/v3/albums/${albumId}/design`);
-  if (res.status === 401) throw new UnauthorizedError();
   const json = await res.json();
-  if (!json.ok) throw new Error(json.error?.message ?? 'design state failed');
+  if (!json.ok) {
+    if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
+    throw new Error(json.error?.message ?? 'design state failed');
+  }
   return { composing: !!json.data.composing, lastComposeStatus: json.data.lastComposeStatus ?? null };
 }
