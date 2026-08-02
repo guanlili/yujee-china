@@ -2438,6 +2438,13 @@ function EditorBook({
       // 空框拾不起来(拖一个空框出去没有任何意义);空框作为**落点**是允许的 ——
       // 那就是「把这张挪过去」,原槽变空(见 image-swap.ts)。
       if (!pageByIndex(pick.ref.pageIndex)?.imagesJson[pick.ref.slotId]) return;
+      // 按在**当前选中**的照片上:拖动的一切归 pan,计时器根本不起表(2026-08-02
+      // 真机复测拍板)。第一版统一长按只堵了「快拖 >8px 取消计时」—— 而 pan 的本职
+      // 是慢速小幅微调(位移阈值才 2px),350ms 内常常不足 8px,按住停顿更是天然
+      // 动作,计时器一到手势就被抢走。8px/350ms 区分不了「微调中的停顿」和「长按
+      // 拾起」,唯一干净的切分是空间:选中那张归 pan,要交换它,点空白取消选中再
+      // 长按。guard 按槽比对,不一刀切 —— 长按**别的**照片仍然可以交换。
+      if (imgEdit && imgEdit.pageIndex === pick.ref.pageIndex && imgEdit.slotId === pick.ref.slotId) return;
       const { clientX: x, clientY: y, pointerId } = e;
       // 鼠标也要「按住」这道门(2026-08-01 拍板)。bf899f76 曾给鼠标开过「一动就拾起」
       // 的快路(拖图=挪图更顺手),代价当时没看见:拾起时 beginSwapDrag 清选中态,

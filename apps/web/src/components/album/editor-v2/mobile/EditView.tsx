@@ -396,6 +396,10 @@ export function EditView({
     moved.current = false;
     // 长按候选:手指按在一个**有照片**的图槽上就起表。空框拾不起来(拖个空框出去没意义);
     // 空框作为落点是允许的,那是「把这张挪过去」。
+    // 编辑态(选中了照片)一律不起表(2026-08-02 复测拍板):选中期间**整板**都是
+    // pan 的地盘(平移不要求按在图上,理由见 L310 附近),而 pan 是慢速小幅微调,
+    // 350ms 内常常不足 8px slop,停顿更是天然动作 —— 计时器一到手势就被抢走。
+    // 要交换,先点空白取消选中再长按(与桌面同一心智:选中 = 调这张,未选中 = 可交换)。
     cancelSwapPress();
     const pressed = imageSlotAtPoint(
       e.clientX,
@@ -404,7 +408,7 @@ export function EditView({
     );
     const pressedSlot = pressed?.getAttribute('data-image-slot') ?? null;
     const pressedPhoto = pressedSlot && page ? page.imagesJson[pressedSlot] : undefined;
-    if (pressedSlot && pressedPhoto && page) {
+    if (!imageEditing && pressedSlot && pressedPhoto && page) {
       const from: SwapSlotRef = { pageIndex: page.pageIndex, slotId: pressedSlot };
       const { clientX: px, clientY: py, pointerId } = e;
       swapPress.current = {

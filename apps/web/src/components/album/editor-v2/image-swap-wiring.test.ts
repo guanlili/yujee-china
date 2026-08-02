@@ -51,6 +51,26 @@ test('两端统一长按拾起:快拖回落 pan/平移,按住不动才是交换(
   assert.match(editor, /if \(!moved\) return;\n\s*\/\/[^\n]*\n\s*cancelSwapPending\(\);/);
 });
 
+test('选中照片上按下,交换计时器根本不起表 —— pan 的地盘里没有长按(2026-08-02 复测拍板)', () => {
+  // 第一版统一长按只堵了「快拖 >8px 取消计时」:pan 的本职是慢速小幅微调
+  // (它的位移阈值才 2px),350ms 内移动常常不足 8px;按住停顿更是天然动作。
+  // 计时器一到 beginSwapDrag 就抢手势 —— 8px/350ms 区分不了「微调中的停顿」和
+  // 「长按拾起」。唯一干净的切分是空间而不是时间:按在**当前选中**的照片上,
+  // 拖动的一切归 pan;要交换这张,先点空白取消选中再长按。
+  const start = editor.indexOf('const onSwapPointerDown =');
+  assert.ok(start > 0);
+  const body = editor.slice(start, editor.indexOf('const onSwapPointerMove =', start));
+  assert.match(
+    body,
+    /if \(imgEdit && imgEdit\.pageIndex === pick\.ref\.pageIndex && imgEdit\.slotId === pick\.ref\.slotId\) return;/,
+    '按在选中照片上不武装计时器',
+  );
+  // 桌面只对选中那张让路:长按**别的**照片仍然可以交换(guard 按槽比对,不是一刀切)
+  assert.doesNotMatch(body, /if \(imgEdit\) return/, '不许把「有选中就全禁」当成修法');
+  // 移动端:选中期间整板都是 pan 的地盘(平移不要求按在图上),编辑态一律不武装
+  assert.match(editView, /if \(!imageEditing && pressedSlot && pressedPhoto && page\)/);
+});
+
 test('桌面:拾起交换时,把 pan 没提交的 live 位移放回已提交位置', () => {
   // 长按目标可能正是当前选中图:pan 的位移阈值只有 2px、commit 在松手,350ms 内
   // ≤slop 的微动已经画到 <img> 上了。拾起走的是交换,不该顺手留下一笔没提交的位移。
