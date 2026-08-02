@@ -148,6 +148,22 @@ export function readComposeMeta(meta: unknown): ComposeJobMeta | null {
   };
 }
 
+// 追加范围成稿 job 的派发快照(agent_jobs.meta.composeAppend):只写这些章的内页文案,
+// 不碰封面/封尾/字体/stage。与全书成稿共用 kind='compose'(活跃唯一索引天然互斥)。
+export type ComposeAppendJobMeta = { language: 'zh' | 'en'; chapterIds: string[] };
+
+export function readComposeAppendMeta(meta: unknown): ComposeAppendJobMeta | null {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  const raw = (meta as { composeAppend?: unknown }).composeAppend;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  const ids = Array.isArray(value.chapterIds)
+    ? (value.chapterIds as unknown[]).filter((x): x is string => typeof x === 'string')
+    : [];
+  if (ids.length === 0) return null;
+  return { language: value.language === 'zh' ? 'zh' : 'en', chapterIds: ids };
+}
+
 /** compose 回调载荷里 Web 真正消费的四块(其余如 usage 走 job 行)。 */
 export type ComposeCompletedPayload = {
   pagesTexts?: Record<string, Record<string, string>>;
@@ -212,6 +228,28 @@ export function mergeComposeIntoDraft(
       progress: { currentChapterId: null, doneChapterIds },
     },
     pages,
+  };
+}
+
+// 追加范围成稿落回 draft(纯函数):pagesTexts 逐槽合进对应页 + 只重烘这些页的 html。
+// 设计三件套/封面封尾/progress/stage 一概不动 —— mergeComposeIntoDraft 的缩小版。
+export function mergeAppendComposeTexts(
+  draftJson: unknown,
+  pagesTexts: ComposeCompletedPayload['pagesTexts'],
+): { draftJson: Record<string, unknown>; writtenPageIndexes: number[] } {
+  const parsed = V3StoryDraft.safeParse(draftJson);
+  if (!parsed.success || !parsed.data.pages || parsed.data.pages.length === 0) {
+    throw ERRORS.VALIDATION_FAILED('append compose completion requires an existing paged draft');
+  }
+  const written = new Set(Object.keys(pagesTexts ?? {}).map(Number));
+  const merged = applyComposePagesTexts(parsed.data.pages, pagesTexts);
+  const touched = merged.filter((page) => written.has(page.pageIndex));
+  const baked = bakePagesHtml(touched.map((page) => ({ ...page, html: undefined }))) as Page[];
+  const bakedByIndex = new Map(baked.map((page) => [page.pageIndex, page]));
+  const pages = merged.map((page) => bakedByIndex.get(page.pageIndex) ?? page);
+  return {
+    draftJson: { ...parsed.data, pages },
+    writtenPageIndexes: touched.map((page) => page.pageIndex).sort((a, b) => a - b),
   };
 }
 
