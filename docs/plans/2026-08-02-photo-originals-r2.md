@@ -600,3 +600,21 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - **规格覆盖**:design Phase 0 章逐条 → 存储 key/格式(T3/T7)、album_photos(T2)、presign 三段式(T4/T6)、IndexedDB 降级缓存(T7)、存量对账补传+missing(T8)、getDetail 透出迁移状态(T5,spec 的 `photos_migrated` 以派生计数实现,避免陈旧标志)、文档与隐私边界(T9)。分享快照链路零改动(全计划无一处碰 photo-snapshot-*)。隐私对外文案、存储回收、Phase 1 门槛判定属 spec 开放问题/Phase 1,不在本计划。
 - **类型一致**:`PhotoOriginalEntry`(T3)= client 侧 `PhotoOriginalUploadEntry`(T6)字段一致;`AlbumPhotoUpsert`(T2)只在服务端内部;`getCanonicalUploadBlob` 返回形状在 T7/T8 逐字一致;`RemoteOriginalFetcher` 只在 T7 定义、T8 经 photoStore 使用。
 - **已知妥协(实施时留意)**:① presigned GET 按需批量签,未做 URL 缓存——量大时每次对账/回退多几次签名调用,可接受;② hook 与路由无独立单测,逻辑压进纯模块;③ `missing` 状态可被后续成功上传翻转,但不会反向降级(T2 的 CASE 保护 + T4 行锁内过滤双保险);④ MobileEditorRoot/README/CLAUDE.md 是用户在途脏文件,两个任务里都写了警戒规程。
+
+## 实施后遗留事项(2026-08-03 终审收尾记录)
+
+全部 9 个任务已完成并通过终审(含一轮终审修复波:覆盖判定改探针、missing confirm 分块、
+规范原图强制重编码剥 EXIF、非法 id 预过滤)。以下为分诊后确认可延后的事项:
+
+- **album_photos 行无 GC**:照片移出书后登记行残留,getDetail 计数略胀。Phase 1 做行回收。
+- **桌面 photoIds 是挂载快照**(EditorPort 接线):中途换图靠下次挂载的探针补传(终审确认
+  C1 修复后此自愈成立);Phase 1 draft_pages 拆表会重写该区域。
+- **onProgress 未接 UI**:spec 的「带进度」延后到 Phase 1。
+- **远端回退无负缓存**:服务端确实缺的照片每次 cache miss 都重发 /urls POST,量大时偏吵。
+- **桌面画板背景 key 是裸 UUID**(无 boardbg- 前缀,先于本工程),远端回退会为其白发一次
+  探针 POST;移动端约定有前缀不受影响。
+- **albumService.delete 重写为行锁事务后仍零测试覆盖**,值得补 smoke test。
+- **SERVER_BATCH_CAP=300 与 PHOTO_ORIGINAL_MAX_COUNT 手工镜像**(客户端模块刻意不依赖
+  服务端模块),改上限时两处都要动。
+- **本地 dev 库 __drizzle_migrations hash 自 0001 起漂移**(先于本工程),`db:migrate`
+  本地跑不动,0022 已手工应用;Vercel 生产迁移不受影响,但 dev 账本需要 owner 修复。
