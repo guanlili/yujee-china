@@ -37,17 +37,16 @@ test('两端共用同一份交换语义,不各写一套', () => {
   assert.match(editView, /exceedsLongPressSlop\(/);
 });
 
-test('长按拾起:桌面 1s / 移动 350ms,快拖一律回落普通手势', () => {
-  // bf899f76 曾给鼠标开过「一动就拾起」的快路,拾起时清选中态把编辑手势整个劫走 ——
-  // 立即拾起不许回来。阈值两端分开(2026-08-02 拍板):桌面单击已经承担「弹编辑卡」,
-  // 350ms 会把慢一点的点击误判成拾起,放宽到 1s(桌面没有系统长按手势要避);
-  // 移动端保持 350ms,要抢在 iOS 长按菜单(~500ms)之前。
-  assert.doesNotMatch(editor, /immediate = e\.pointerType/, '鼠标立即拾起的快路不许回来');
-  assert.doesNotMatch(editor, /pending\.immediate/, 'pending 不再有 immediate 分支');
-  assert.match(editor, /timer: window\.setTimeout\(\(\) => \{[\s\S]{0,400}?beginSwapDrag\([^)]*\);\s*\n\s*\}, SWAP_LONG_PRESS_DESKTOP_MS\)/);
-  assert.doesNotMatch(editor, /SWAP_LONG_PRESS_MS\)/, '桌面不许用移动端的 350ms');
-  // 越过 slop 一律放弃拾起
-  assert.match(editor, /if \(!moved\) return;\n\s*\/\/[^\n]*\n\s*cancelSwapPending\(\);/);
+test('桌面鼠标:按住图一拖(>8px)立即拾起,线上手感;触屏长按 350ms', () => {
+  // 手势史(全程真机验证):bf899f76 线上版 = 鼠标立即拾起。2026-08-01 因为它与
+  // 「画布上拖照片调位(pan)」抢同一个手势,改成长按仲裁 —— 350ms/1s 两版都在
+  // 真机上翻车(时间门区分不了停顿与长按)。2026-08-02 调位置整体搬进编辑卡预览,
+  // 画布上的照片拖动没有第二个主人,立即拾起回归(用户拍板「学习线上的交换」)。
+  // 单击(位移 <8px)= 弹编辑卡;触屏保持 350ms 长按(直接拖已被平移/翻页占用)。
+  assert.match(editor, /const immediate = e\.pointerType === 'mouse'/);
+  assert.match(editor, /if \(pending\.immediate\) beginSwapDrag\(/, '鼠标越过阈值就开拖');
+  assert.match(editor, /else cancelSwapPending\(\)/, '触屏越过阈值仍是放弃拾起');
+  assert.match(editor, /\}, SWAP_LONG_PRESS_MS\)/, '触屏计时来自共享常量');
 });
 
 test('桌面:编辑卡绝不压在照片上 —— 下/上/右/左依次找空位(2026-08-02 用户复测)', () => {

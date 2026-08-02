@@ -73,7 +73,7 @@ import {
   type ImagePosValue,
 } from './image-edit-util';
 import {
-  SWAP_LONG_PRESS_DESKTOP_MS,
+  SWAP_LONG_PRESS_MS,
   exceedsLongPressSlop,
   sameSwapSlot,
   swapImageSlots,
@@ -2443,9 +2443,10 @@ function EditorBook({
       const frame = slotEl.tagName === 'IMG' ? (slotEl.parentElement ?? slotEl) : slotEl;
       return { ref: { pageIndex: Number(pi), slotId }, frame, img };
     }
-    /** 按下之后、真正拾起之前的候选态。鼠标与触屏同一条长按计时路径(2026-08-01)。 */
+    /** 按下之后、真正拾起之前的候选态。
+     *  immediate = 鼠标:一动(>8px)就拾起,与线上版同手感;触屏才走长按计时。 */
     let swapPending:
-      | { pointerId: number; x: number; y: number; timer: number; pick: SwapPick }
+      | { pointerId: number; x: number; y: number; timer: number; pick: SwapPick; immediate: boolean }
       | null = null;
     let swapDrag: {
       pointerId: number;
@@ -2606,27 +2607,29 @@ function EditorBook({
       // 那就是「把这张挪过去」,原槽变空(见 image-swap.ts)。
       if (!pageByIndex(pick.ref.pageIndex)?.imagesJson[pick.ref.slotId]) return;
       const { clientX: x, clientY: y, pointerId } = e;
-      // 长按 1s 拾起(2026-08-02 定稿)。此前 pan 还住在画布上时,这里试过两版分流
-      // (鼠标立即拾起 → pan 被劫走;时间门 8px/350ms → 微调中的停顿被误判为长按),
-      // 都失败 —— 根因是同一块画布同时住着两个拖拽语义。现在位置调整整体搬进浮层
-      // 预览(.img-edit-preview),照片上只剩「单击弹卡」和「长按交换」两个语义,
-      // 选中与否都可以长按拾起,不需要任何让路 guard。悬停不给 grab —— 那会误导成
-      // 「按住就能拾」;抓手光标只在拾起之后出现(.swap-dragging)。
+      // 桌面鼠标:按住一拖(>8px)立即拾起 —— 线上版(bf899f76)同手感,2026-08-02
+      // 用户拍板回归。当年鼠标改长按,是因为画布上「拖照片调位(pan)」和交换抢同一
+      // 个手势;调位置整体搬进编辑卡预览(.img-edit-preview)之后,画布上的照片拖动
+      // 没有第二个主人,立即拾起不再抢任何人的路。单击(位移 <8px)仍是弹编辑卡。
+      // 触屏保持长按 350ms(直接拖已被画布平移/翻页占用);计时器到点核验主键仍
+      // 按着才拾起 —— 候选一旦因事件缺口活过松手,这道门保证它空转而不是走火。
       primarySwapPointerDown = true;
+      const immediate = e.pointerType === 'mouse';
       swapPending = {
         pointerId,
         x,
         y,
         pick,
-        // 到点先核验「主键此刻真的还按着」再拾起:计时器一旦因任何事件缺口活过
-        // 松手(真机撞到:悬停 1s 凭空弹出拖动样式),这道门保证它空转而不是走火。
-        timer: window.setTimeout(() => {
-          if (!primarySwapPointerDown) {
-            swapPending = null;
-            return;
-          }
-          beginSwapDrag(pick, x, y, pointerId);
-        }, SWAP_LONG_PRESS_DESKTOP_MS),
+        immediate,
+        timer: immediate
+          ? 0
+          : window.setTimeout(() => {
+              if (!primarySwapPointerDown) {
+                swapPending = null;
+                return;
+              }
+              beginSwapDrag(pick, x, y, pointerId);
+            }, SWAP_LONG_PRESS_MS),
       };
     };
     const onSwapPointerMove = (e: PointerEvent) => {
@@ -2643,8 +2646,9 @@ function EditorBook({
         const pending = swapPending;
         const moved = exceedsLongPressSlop(e.clientX - pending.x, e.clientY - pending.y);
         if (!moved) return;
-        // 350ms 内越过阈值 = 用户想 pan/平移,不是想拾起 —— 放弃这次长按。
-        cancelSwapPending();
+        // 鼠标:越过阈值就是「开拖」(线上手感);触屏:越过阈值 = 想平移/翻页,放弃拾起。
+        if (pending.immediate) beginSwapDrag(pending.pick, e.clientX, e.clientY, pending.pointerId);
+        else cancelSwapPending();
         return;
       }
       if (!swapDrag || swapDrag.pointerId !== e.pointerId) return;
@@ -3374,10 +3378,9 @@ function EditorBook({
       } else if (ovPointers.size === 1 && (e.pointerType !== 'mouse' || e.button === 0)) {
         // 画布平移只在「什么都没选中」时武装(2026-08-02 用户定稿):选中了页/图/
         // 文字之后,拖动一律不再移动画板 —— 选中态下的拖动语义属于该选中对象
-        // (长按交换、弹窗预览调位),画板跟着动只会把交换拖动搅黄。想平移:先点
-        // 空白取消选中。没选中时照旧:快拖平移(照片上也一样,Figma 同款),
-        // 按住不动 1s 拾起交换 —— 协调在 move 侧(候选期 ≤8px 画布不动,抖过
-        // slop 取消候选无缝接上,拾起时 ovPanning 被按下)。
+        // (拖照片=交换、弹窗预览=调位),画板跟着动只会把交换拖动搅黄。想平移:
+        // 先点空白取消选中。没选中时:空白/文字上拖 = 平移;照片上拖 = 立即拾起
+        // 交换(候选 ≤8px 内画布不动,鼠标一过 slop 拾起并按下 ovPanning)。
         const nothingSelected =
           selectedPageIndex == null && imgEdit == null && editBarAnchor == null;
         if (!nothingSelected) return;
@@ -3405,10 +3408,10 @@ function EditorBook({
         return;
       }
       if (!ovPanning) return;
-      // 长按拾起还在候选中(手指按在某张图上、位移没超过 slop):先别平移画布。
-      // 这段最长只有 SWAP_LONG_PRESS_DESKTOP_MS,而且一旦抖过 slop,onSwapPointerMove
-      // (绑在更内层的 #ovGrid 上,先于本处理器跑)当场取消候选,平移立刻接上 ——
-      // ovPanOrigin 记的是 pointerdown 那一刻,所以接上时不会跳。
+      // 拾起还在候选中(按在某张图上、位移没超过 slop):先别平移画布。这段最长
+      // 8px(鼠标,一过 slop 立即拾起)或 SWAP_LONG_PRESS_MS(触屏);触屏抖过
+      // slop 时 onSwapPointerMove(window 捕获,先于本处理器跑)当场取消候选,
+      // 平移立刻接上 —— ovPanOrigin 记的是 pointerdown 那一刻,所以接上时不会跳。
       if (swapPending) return;
       if (!ovPanMoved && (Math.abs(e.clientX - ovPanOrigin.x) > 3 || Math.abs(e.clientY - ovPanOrigin.y) > 3)) {
         // 真的开始拖了:此刻才抓指针 + 上 panning 态(子级 pointer-events:none),
