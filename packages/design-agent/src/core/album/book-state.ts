@@ -159,7 +159,7 @@ export function findAlbumPageByNo(state: AlbumBookState, pageNo: number): AlbumP
 
 export type PageUserRef = number | "cover" | "toc" | "ending";
 
-const NON_NUMBERED_PAGE_CATEGORIES = new Set(["cover", "toc", "ending"]);
+export const NON_NUMBERED_PAGE_CATEGORIES = new Set(["cover", "toc", "ending"]);
 
 /** 每页(按数组序)的用户口径页码:内页 1..M;封面/目录/封尾返回类别名。 */
 export function pageUserRefs(

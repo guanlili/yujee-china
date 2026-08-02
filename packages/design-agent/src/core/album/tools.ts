@@ -8,12 +8,14 @@ import {
 	findAlbumPageByNo,
 	findAlbumPhoto,
 	formatPageUserRef,
+	NON_NUMBERED_PAGE_CATEGORIES,
 	type PageUserRef,
 	pageUserRefs,
 	resolvePageUserRef,
 	validateImagesMap,
 	validateTextsPatch,
 } from "./book-state.ts";
+import { applyPageMoves, type PageMoveOperation } from "./page-move.ts";
 import { createDefaultAlbumSkills } from "./skills.ts";
 import { type FontRole, fontAllowsRole, fontsForRole, getFontEntry } from "./font-registry.ts";
 import { derivePageTexts, patchHtmlText, validatePageHtml } from "./html-guard.ts";
@@ -131,6 +133,33 @@ const setTextFontsSchema = Type.Object({
 	),
 });
 
+const movePagesSchema = Type.Object({
+	operations: Type.Array(
+		Type.Union([
+			Type.Object({
+				type: Type.Literal("move"),
+				pageNo: PageRefSchema,
+				before: Type.Optional(PageRefSchema),
+				after: Type.Optional(PageRefSchema),
+			}),
+			Type.Object({
+				type: Type.Literal("swap"),
+				a: PageRefSchema,
+				b: PageRefSchema,
+			}),
+		]),
+		{
+			minItems: 1,
+			description:
+				'按序应用的页序操作。move = 把 pageNo 摘出、插到锚点页前(before)/后(after),二者恰好给一个,锚点可用 "cover"/"toc"/"ending";swap = 两内页对调。所有页码引用都按本次调用之前的页序解析,多步操作不用自己推算挪动后的新序号。',
+		},
+	),
+});
+
+interface MovePagesInput {
+	operations: PageMoveOperation[];
+}
+
 const listTemplatesSchema = Type.Object({
 	category: Type.Optional(Type.String({ description: "按类目过滤：cover / toc / interior / ending。" })),
 	imageSlotCount: Type.Optional(Type.Number({ description: "按图槽数量过滤。" })),
@@ -164,6 +193,7 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 		createUpdatePageImagesTool(options),
 		createSetTextColorsTool(options),
 		createSetTextFontsTool(options),
+		createMovePagesTool(options),
 		createReadSkillTool(options),
 	];
 }
@@ -775,6 +805,68 @@ function collectThemeableSlots(page: AlbumPage, template: TemplateCatalogEntry):
 		slots.add(key);
 	}
 	return [...slots];
+}
+
+function createMovePagesTool(options: AlbumToolsOptions): AgentTool<typeof movePagesSchema, AlbumWriteDetails> {
+	return {
+		name: "move_pages",
+		label: "挪动页面",
+		description:
+			"调整页面顺序(纯挪位置,页面内容一字不改):operations 数组按序应用,move 插入 / swap 对调。只能挪内页,封面/目录/封尾钉死。一次调用必须表达用户要的完整重排 —— 写入后本轮即结束,不能分多次挪。",
+		parameters: movePagesSchema,
+		prepareArguments(args: unknown): MovePagesInput {
+			if (!isRecord(args) || !Array.isArray(args.operations)) return { operations: [] };
+			const operations = args.operations.map((raw): PageMoveOperation => {
+				const op = isRecord(raw) ? raw : {};
+				if (op.type === "swap") {
+					return { type: "swap", a: resolveRefToInternal(options, op.a), b: resolveRefToInternal(options, op.b) };
+				}
+				return {
+					type: "move",
+					page: resolveRefToInternal(options, op.pageNo),
+					before: op.before === undefined ? undefined : resolveRefToInternal(options, op.before),
+					after: op.after === undefined ? undefined : resolveRefToInternal(options, op.after),
+				};
+			});
+			return { operations };
+		},
+		async execute(_toolCallId: string, params: MovePagesInput): Promise<AgentToolResult<AlbumWriteDetails>> {
+			const state = options.getBookState();
+			// 未解析成功的引用(-1)统一在这里报可用页码清单。
+			for (const op of params.operations) {
+				const refs = op.type === "swap" ? [op.a, op.b] : [op.page, op.before, op.after];
+				if (refs.some((no) => no === -1))
+					throw new Error(`页码引用无法解析。本书可用页码:${pageRefRangeText(options, state)}`);
+			}
+			const categoryOf = catalogCategoryOf(options.catalog);
+			const isInterior = (page: AlbumPage) => {
+				const category = categoryOf(page.templateId);
+				return category === undefined || !NON_NUMBERED_PAGE_CATEGORIES.has(category);
+			};
+			const nextState = cloneAlbumBookState(state);
+			const beforePages = nextState.pages;
+			nextState.pages = applyPageMoves(beforePages, isInterior, params.operations, (no) =>
+				pageLabelOf(options, state, no),
+			);
+
+			// 结果反馈:每步用户口径描述 + 源页新旧页码映射(模型同轮回话不说错页码)。
+			const oldRefs = pageUserRefs(state, categoryOf);
+			const newRefs = pageUserRefs(nextState, categoryOf);
+			const sourceNos = params.operations.flatMap((op) => (op.type === "swap" ? [op.a, op.b] : [op.page]));
+			const operations = params.operations.map((op) =>
+				op.type === "swap"
+					? `swap:${formatPageUserRef(oldRefs[op.a - 1])}<->${formatPageUserRef(oldRefs[op.b - 1])}`
+					: `move:${formatPageUserRef(oldRefs[op.page - 1])}->${op.after !== undefined ? `${formatPageUserRef(oldRefs[op.after - 1])}后` : `${formatPageUserRef(oldRefs[op.before! - 1])}前`}`,
+			);
+			const notes = [...new Set(sourceNos)].map((no) => {
+				const page = beforePages[no - 1];
+				const newIndex = nextState.pages.indexOf(page);
+				return `原${formatPageUserRef(oldRefs[no - 1])} → 现${formatPageUserRef(newRefs[newIndex])}`;
+			});
+			notes.push("其余内页页码相应顺延;页面内容全部原样未动");
+			return commitWrite(options, nextState, { pageNo: sourceNos[0] ?? -1, operations, notes });
+		},
+	};
 }
 
 function createReadSkillTool(options: AlbumToolsOptions): AgentTool<typeof readSkillSchema, { name: string }> {
