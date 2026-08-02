@@ -15,6 +15,7 @@ import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
 import { transientPagePhotoRefs } from './page-photo-refs';
+import { extractDesignFromPages } from './append-photos';
 import { buildCoverSets, pickHeroPhotos, slotSpecs, templateCategory } from './design-apply';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/log/logger';
@@ -1276,6 +1277,91 @@ export const albumService = {
     });
 
     return { requestId, accepted: true as const };
+  },
+
+  // 追加范围成稿:加图增量排版落地后,只为这些章的内页写文案(engine /v3/compose,
+  // 空 coverSlots/endingSlots → engine 跳过全局批次:不写封面、不回字体)。已设计的书
+  // 专用 —— 未设计的书返回 composed:false,新页等用户选封面时随全书成稿一起写。
+  // 幂等:与全书成稿共用 (album,'compose') 活跃唯一索引,在途成稿只有一单。
+  async composeAppend(
+    userId: string,
+    albumId: string,
+    input: { language: 'zh' | 'en'; chapterIds: string[]; refs?: Record<string, string> },
+  ): Promise<{ accepted: true; composed: boolean; requestId?: string }> {
+    const album = await this.findOwned(userId, albumId);
+    if (album.status !== 'EDITING' || album.layoutJson != null) throw ERRORS.ALBUM_NOT_EDITABLE();
+
+    const root = album.draftJson as { tree?: { chapters?: unknown }; pages?: unknown } | null;
+    const rawPages = Array.isArray(root?.pages) ? (root!.pages as Page[]) : [];
+    if (rawPages.length === 0) throw ERRORS.VALIDATION_FAILED('append compose requires laid-out pages');
+    // 设计三键提取不到 = 书没设计过:不派发,新页文案等全书成稿(选封面)一起写。
+    if (!extractDesignFromPages(rawPages)) return { accepted: true, composed: false };
+
+    const chapters = Array.isArray((root?.tree as { chapters?: unknown })?.chapters)
+      ? ((root!.tree as { chapters: unknown[] }).chapters as Array<{
+          chapterId?: string;
+          title?: string;
+          chapterContext?: string;
+          place?: string;
+          photos?: Array<{ photoId: string; takenAt?: string | null }>;
+        }>)
+      : [];
+    const scope = new Set(input.chapterIds);
+    const scoped = chapters.filter((c) => c.chapterId && scope.has(c.chapterId));
+    if (scoped.length !== scope.size) {
+      throw ERRORS.VALIDATION_FAILED('unknown chapterId in append compose scope');
+    }
+
+    const interiorPages = rawPages.filter((page) => templateCategory(page.templateId) === 'interior');
+    const requestId = crypto.randomUUID();
+    const payload = buildComposeRequest({
+      requestId,
+      callbackUrl: `${env.WEB_BASE_URL}/api/v3/internal/job-progress`,
+      language: input.language,
+      albumTitle: (album.title ?? '').slice(0, 120),
+      coverTemplateId: '',
+      endingTemplateId: '',
+      chapters: scoped,
+      interiorPages,
+      refs: input.refs ?? {},
+    });
+    // 范围里的章必须真有页可写(增量排版已合并);全空 = 调用时序错了,诚实拒绝。
+    if (payload.chapters.every((c) => c.pages.length === 0)) {
+      throw ERRORS.VALIDATION_FAILED('append compose scope has no laid-out pages');
+    }
+
+    try {
+      await db.transaction(async (tx) => {
+        const created = await jobService.createGenerationJob(tx, {
+          userId,
+          albumId,
+          requestId,
+          kind: 'compose',
+          meta: { composeAppend: { language: input.language, chapterIds: input.chapterIds } },
+        });
+        await jobService.markRunning(tx, created.id);
+      });
+    } catch (e) {
+      // 唯一索引冲突 = 已有在途成稿(全书或追加):幂等接受,不起第二单。
+      if (!isUniqueViolation(e)) {
+        logger.error({ err: String(e), requestId, albumId }, 'create append compose job failed');
+        throw e;
+      }
+      return { accepted: true, composed: true };
+    }
+
+    try {
+      await agentClient.submitComposeV3(payload);
+    } catch (e) {
+      logger.error({ err: String(e), requestId, albumId }, 'agent v3 append compose submit failed');
+      await jobService.handleV3Failed(requestId, {
+        code: 'AGENT_INTERNAL_ERROR',
+        message: 'Failed to submit append compose to agent',
+      });
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+
+    return { accepted: true, composed: true, requestId };
   },
 
   // Hard delete. FK ON DELETE CASCADE drops pages / messages / jobs / holds in
