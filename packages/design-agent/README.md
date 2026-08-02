@@ -23,10 +23,13 @@ Web 侧客户端:`apps/web/src/lib/agent/design-agent-client.ts`。
 | `POST /api/chat` | 一轮对话;`?stream=1` 走 NDJSON 事件流 |
 | `GET /api/albums` · `/api/traces` · `/api/state` | 调试/观测 |
 
-## 六个写工具
+## 七个写工具
 
 `update_page_texts` · `write_page_html` · `swap_page_template` · `update_page_images` ·
-`set_text_colors` · `set_text_fonts`
+`set_text_colors` · `set_text_fonts` · `move_pages`
+
+`move_pages` 挪动页面:批量 move(插入)/swap(对调)重排页序,只动内页
+(封面/目录/封尾钉死),单纯挪位置不改任何页内容(纯逻辑在 `page-move.ts`)。
 
 新增写工具时,**必须同步** `design-chat/route.ts` 里的 `DESIGN_WRITE_TOOLS` 集合,
 否则该工具的改动不会进 `layout_patch.designOps`,历史回放里会丢更新、彩色条少报。
