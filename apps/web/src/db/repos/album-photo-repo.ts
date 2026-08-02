@@ -14,10 +14,14 @@ export const albumPhotoRepo = {
   findByAlbum: async (albumId: string): Promise<AlbumPhoto[]> =>
     db.select().from(albumPhotos).where(eq(albumPhotos.albumId, albumId)),
 
-  // Upsert on the (albumId, photoId) composite PK. A 'missing' row must never
-  // downgrade an already-'uploaded' row (nor clobber its width/height/bytes) —
-  // the CASE keeps the existing uploaded row's values whenever the incoming
-  // status is 'missing'.
+  // Upsert on the (albumId, photoId) composite PK. A 'missing' upsert must
+  // never downgrade an already-'uploaded' row (nor clobber its
+  // width/height/bytes): the gate is on the INCOMING (excluded) status, not
+  // the existing row's status. When excluded.status = 'missing', keep the
+  // existing row's status/width/height/bytes untouched. Otherwise (incoming
+  // is 'uploaded' — including a legitimate re-upload that overwrote the R2
+  // object with new dimensions/bytes) take the incoming values, so metadata
+  // never goes stale once a row is uploaded.
   upsertMany: async (tx: DbOrTx, albumId: string, rows: AlbumPhotoUpsert[]): Promise<void> => {
     if (rows.length === 0) return;
     await tx
@@ -35,10 +39,10 @@ export const albumPhotoRepo = {
       .onConflictDoUpdate({
         target: [albumPhotos.albumId, albumPhotos.photoId],
         set: {
-          status: sql`CASE WHEN ${albumPhotos.status} = 'uploaded' THEN ${albumPhotos.status} ELSE excluded.status END`,
-          width: sql`CASE WHEN ${albumPhotos.status} = 'uploaded' THEN ${albumPhotos.width} ELSE excluded.width END`,
-          height: sql`CASE WHEN ${albumPhotos.status} = 'uploaded' THEN ${albumPhotos.height} ELSE excluded.height END`,
-          bytes: sql`CASE WHEN ${albumPhotos.status} = 'uploaded' THEN ${albumPhotos.bytes} ELSE excluded.bytes END`,
+          status: sql`CASE WHEN excluded.status = 'missing' THEN ${albumPhotos.status} ELSE excluded.status END`,
+          width: sql`CASE WHEN excluded.status = 'missing' THEN ${albumPhotos.width} ELSE excluded.width END`,
+          height: sql`CASE WHEN excluded.status = 'missing' THEN ${albumPhotos.height} ELSE excluded.height END`,
+          bytes: sql`CASE WHEN excluded.status = 'missing' THEN ${albumPhotos.bytes} ELSE excluded.bytes END`,
           updatedAt: new Date(),
         },
       });
