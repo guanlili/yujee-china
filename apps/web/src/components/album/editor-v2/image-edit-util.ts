@@ -92,3 +92,60 @@ export function dragToImagePos(
 export function zoomImagePos(current: ImagePosValue, deltaScale: number): ImagePosValue {
   return clampImagePos({ ...current, scale: current.scale + deltaScale });
 }
+
+// ── 弹窗预览几何(2026-08-02 设计,docs/specs/2026-08-02-image-edit-popup-
+// preview-design.md):编辑弹窗里整图 contain 展示,当前可见裁切窗口亮框标出,
+// 在预览内拖动图片调 object-position。画布上的照片拖拽调位交互已删除 ——
+// 时间维度(8px/350ms)切分不了「微调中的停顿」和「长按拾起」,位置调整整体
+// 搬进弹窗,画布长按专职交换。
+
+/** 可见裁切窗口,**原图归一化坐标**(0..1)。 */
+export type CropFraction = { left: number; top: number; width: number; height: number };
+
+/**
+ * cover-fit + object-position + scale 下,图框实际显示了原图的哪一块。
+ * k0 = max(frameW/natW, frameH/natH),k = k0*scale;可见比例 fx = frameW/(natW*k);
+ * object-position 的 x% 语义是「图的 x% 点对齐框的 x% 点」→ left = x/100*(1-fx)。
+ * 任一尺寸非法(0/负/NaN)→ null,绝不产出 NaN 几何。
+ */
+export function coverCropFraction(
+  natW: number,
+  natH: number,
+  frameW: number,
+  frameH: number,
+  pos: ImagePosValue,
+): CropFraction | null {
+  if (!(natW > 0) || !(natH > 0) || !(frameW > 0) || !(frameH > 0)) return null;
+  const k = Math.max(frameW / natW, frameH / natH) * Math.max(pos.scale, SCALE_MIN);
+  const fx = Math.min(1, frameW / (natW * k));
+  const fy = Math.min(1, frameH / (natH * k));
+  return {
+    left: (pos.x / 100) * (1 - fx),
+    top: (pos.y / 100) * (1 - fy),
+    width: fx,
+    height: fy,
+  };
+}
+
+/**
+ * 预览内拖动 → 新 ImagePos。方向语义与画布时代的 dragToImagePos 一致:把图往右
+ * 拖(dx>0)= 露出图的左侧 = x 减小。预览里整图宽 previewW px,水平可滑余量 =
+ * previewW*(1-crop.width) px,拖满余量恰好扫完 0..100。满幅轴(可见比例=1,
+ * 无余量)忽略该轴的拖动 —— 除法分母为 0 的情形在语义上就是「没得滑」。
+ */
+export function previewDragToImagePos(
+  start: ImagePosValue,
+  dxPx: number,
+  dyPx: number,
+  previewW: number,
+  previewH: number,
+  crop: CropFraction,
+): ImagePosValue {
+  const slackX = previewW * (1 - crop.width);
+  const slackY = previewH * (1 - crop.height);
+  return clampImagePos({
+    x: slackX > 0 ? start.x - (dxPx / slackX) * 100 : start.x,
+    y: slackY > 0 ? start.y - (dyPx / slackY) * 100 : start.y,
+    scale: start.scale,
+  });
+}

@@ -63,11 +63,13 @@ import { MobileEditorRoot } from './mobile/MobileEditorRoot';
 import { runPhotoBackup } from './mobile/use-photo-backup';
 import {
   clampImagePos,
-  dragToImagePos,
+  coverCropFraction,
+  previewDragToImagePos,
   zoomImagePos,
   DEFAULT_IMAGE_POS,
   SCALE_MIN,
   SCALE_MAX,
+  type CropFraction,
   type ImagePosValue,
 } from './image-edit-util';
 import {
@@ -1720,13 +1722,14 @@ function EditorBook({
         fresh.classList.add('img-editing');
         // When not mid-drag, re-sync the working pos from the page's committed
         // value (an external AI patch may have changed/reset this slot); during a
-        // drag, keep the live working pos so the gesture isn't interrupted.
-        if (!dragging) {
+        // preview drag, keep the live working pos so the gesture isn't interrupted.
+        if (!imgEditDragActive) {
           const page = pageByIndex(imgEdit.pageIndex);
           if (page) imgEdit.pos = currentImagePos(page, imgEdit.slotId);
           if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
         }
         applyLiveImagePos(fresh, imgEdit.pos);
+        renderImgEditPreview();
         positionImgEditOverlay();
       } else {
         clearImageSelection();
@@ -1968,7 +1971,13 @@ function EditorBook({
     // tracks the spread). Hidden until an image is selected.
     let imgEditOverlay: HTMLElement | null = null;
     let imgEditSlider: HTMLInputElement | null = null;
-    let dragging = false;
+    // Figma 式预览(2026-08-02 设计):整图 contain + 裁切亮框,预览内拖动调位。
+    let imgEditPreview: HTMLElement | null = null;
+    let imgEditPreviewImg: HTMLImageElement | null = null;
+    let imgEditCrop: HTMLElement | null = null;
+    // 预览拖动进行中:reattachImgEdit 据此决定要不要从已提交值回同步工作位
+    // (拖到一半被外部重绘打断时,不能把手里的 live 位移吞掉)。
+    let imgEditDragActive = false;
 
     function currentImagePos(page: EditorPage, slotId: string): ImagePosValue {
       const p = page.imagePosJson?.[slotId];
@@ -2001,6 +2010,7 @@ function EditorBook({
         if (!imgEdit) return;
         imgEdit.pos = clampImagePos({ ...imgEdit.pos, scale: parseFloat(slider.value) });
         applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
+        renderImgEditPreview(); // 缩放改变可见裁切窗,亮框同步
       });
       // Commit on release (松手即存) for both mouse and touch.
       slider.addEventListener('change', () => commitImagePos());
@@ -2014,6 +2024,7 @@ function EditorBook({
         imgEdit.pos = { ...DEFAULT_IMAGE_POS };
         applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
         if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
+        renderImgEditPreview();
         commitImagePos();
       });
       // 换图 / 删除(#304 起移动端已有,桌面补齐)。两件都**只动数据层**:存库 html 的
@@ -2048,15 +2059,103 @@ function EditorBook({
         e.stopPropagation();
         clearImageSlot();
       });
-      const hint = document.createElement('span');
-      hint.className = 'img-edit-hint';
-      hint.textContent = aT('拖动平移', 'Drag to pan');
-      ov.appendChild(hint);
-      ov.appendChild(slider);
-      ov.appendChild(swap);
-      if (lutSupported) ov.appendChild(style);
-      ov.appendChild(reset);
-      ov.appendChild(del);
+      // ── Figma 式交互预览(2026-08-02):整图 contain 展示 + 当前裁切亮框,在预览
+      // 内拖动图片调 object-position(即时映到画布,松手 commitImagePos 落库)。
+      // 画布上的照片拖拽调位已删除 —— 8px/350ms 区分不了「微调中的停顿」和「长按
+      // 拾起」,位置调整整体搬进弹窗,画布长按专职交换(spec: 2026-08-02-image-
+      // edit-popup-preview-design.md)。
+      const preview = document.createElement('div');
+      preview.className = 'img-edit-preview';
+      const previewImg = document.createElement('img');
+      previewImg.className = 'img-edit-preview-img';
+      previewImg.alt = '';
+      previewImg.draggable = false;
+      // 预览图与画布图同 src;若还没解码完(naturalWidth=0),到货后重渲一次。
+      previewImg.addEventListener('load', () => renderImgEditPreview());
+      const cropBox = document.createElement('div');
+      cropBox.className = 'img-edit-crop';
+      preview.appendChild(previewImg);
+      preview.appendChild(cropBox);
+      let previewDrag:
+        | { pointerId: number; x: number; y: number; start: ImagePosValue; crop: CropFraction; pw: number; ph: number }
+        | null = null;
+      preview.addEventListener('pointerdown', (e) => {
+        if (!imgEdit) return;
+        const frameEl = imgEdit.imgEl.parentElement ?? imgEdit.imgEl;
+        const fr = frameEl.getBoundingClientRect();
+        const crop = coverCropFraction(
+          imgEdit.imgEl.naturalWidth,
+          imgEdit.imgEl.naturalHeight,
+          fr.width,
+          fr.height,
+          imgEdit.pos,
+        );
+        if (!crop) return;
+        e.preventDefault();
+        e.stopPropagation();
+        // crop 的可见比例只随 scale 变,拖动期间不变 —— 起点抓一次即可。
+        previewDrag = {
+          pointerId: e.pointerId,
+          x: e.clientX,
+          y: e.clientY,
+          start: { ...imgEdit.pos },
+          crop,
+          pw: preview.clientWidth,
+          ph: preview.clientHeight,
+        };
+        preview.setPointerCapture?.(e.pointerId);
+        imgEditDragActive = true;
+      });
+      preview.addEventListener('pointermove', (e) => {
+        if (!previewDrag || previewDrag.pointerId !== e.pointerId || !imgEdit) return;
+        imgEdit.pos = previewDragToImagePos(
+          previewDrag.start,
+          e.clientX - previewDrag.x,
+          e.clientY - previewDrag.y,
+          previewDrag.pw,
+          previewDrag.ph,
+          previewDrag.crop,
+        );
+        applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
+        renderImgEditPreview();
+      });
+      preview.addEventListener('pointerup', (e) => {
+        if (!previewDrag || previewDrag.pointerId !== e.pointerId) return;
+        previewDrag = null;
+        imgEditDragActive = false;
+        preview.releasePointerCapture?.(e.pointerId);
+        commitImagePos(); // 松手即存,与滑块/滚轮同一条链路
+      });
+      preview.addEventListener('pointercancel', (e) => {
+        if (previewDrag?.pointerId !== e.pointerId) return;
+        previewDrag = null;
+        imgEditDragActive = false;
+        // 这一拖作废:把 live 样式放回已提交位置,不留没落库的位移。
+        if (imgEdit) {
+          const page = pageByIndex(imgEdit.pageIndex);
+          if (page) {
+            imgEdit.pos = currentImagePos(page, imgEdit.slotId);
+            applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
+            renderImgEditPreview();
+          }
+        }
+      });
+
+      const zoomRow = document.createElement('div');
+      zoomRow.className = 'img-edit-zoom-row';
+      zoomRow.appendChild(slider);
+      const actions = document.createElement('div');
+      actions.className = 'img-edit-actions';
+      actions.appendChild(swap);
+      if (lutSupported) actions.appendChild(style);
+      actions.appendChild(reset);
+      actions.appendChild(del);
+      ov.appendChild(preview);
+      ov.appendChild(zoomRow);
+      ov.appendChild(actions);
+      imgEditPreview = preview;
+      imgEditPreviewImg = previewImg;
+      imgEditCrop = cropBox;
       // Clicks on the controls must not bubble to the page (which would deselect).
       ov.addEventListener('click', (e) => e.stopPropagation());
       ov.addEventListener('mousedown', (e) => e.stopPropagation());
@@ -2073,6 +2172,39 @@ function EditorBook({
     // block like #elBar). Works in canvas mode where #book is hidden and the live
     // image is an #ovGrid thumbnail — getBoundingClientRect gives the on-screen rect
     // regardless of which view is active, so no per-view zoom math is needed.
+    /** 预览盒上限:比 Figma 的 fill 预览略小,贴在照片下方不至于挡住半页。 */
+    const IMG_PREVIEW_MAX_W = 196;
+    const IMG_PREVIEW_MAX_H = 148;
+    /** 把预览(整图尺寸 + 裁切亮框)按 imgEdit 当前状态重渲。几何全部来自
+     *  coverCropFraction(纯函数,单测在 image-edit-util.test.ts);图没解码完
+     *  (naturalWidth=0)→ 预览暂隐,previewImg 的 load 事件会再叫回来。 */
+    function renderImgEditPreview() {
+      if (!imgEdit || !imgEditPreview || !imgEditPreviewImg || !imgEditCrop) return;
+      const natW = imgEdit.imgEl.naturalWidth;
+      const natH = imgEdit.imgEl.naturalHeight;
+      const frameEl = imgEdit.imgEl.parentElement ?? imgEdit.imgEl;
+      const fr = frameEl.getBoundingClientRect();
+      const src = imgEdit.imgEl.currentSrc || imgEdit.imgEl.src;
+      if (imgEditPreviewImg.getAttribute('src') !== src) imgEditPreviewImg.src = src;
+      const crop = coverCropFraction(natW, natH, fr.width, fr.height, imgEdit.pos);
+      if (!crop) {
+        imgEditPreview.style.display = 'none';
+        return;
+      }
+      const wasHidden = imgEditPreview.style.display === 'none';
+      imgEditPreview.style.display = '';
+      const s = Math.min(IMG_PREVIEW_MAX_W / natW, IMG_PREVIEW_MAX_H / natH);
+      const pw = Math.max(1, Math.round(natW * s));
+      const ph = Math.max(1, Math.round(natH * s));
+      imgEditPreview.style.width = `${pw}px`;
+      imgEditPreview.style.height = `${ph}px`;
+      imgEditCrop.style.left = `${crop.left * pw}px`;
+      imgEditCrop.style.top = `${crop.top * ph}px`;
+      imgEditCrop.style.width = `${crop.width * pw}px`;
+      imgEditCrop.style.height = `${crop.height * ph}px`;
+      // 预览首次出现/尺寸变化会改变浮层高度,重贴一次(position 不回调 render,无环)。
+      if (wasHidden) positionImgEditOverlay();
+    }
     function positionImgEditOverlay() {
       if (!imgEdit || !imgEditOverlay) return;
       const ov = imgEditOverlay;
@@ -2107,15 +2239,16 @@ function EditorBook({
       const ov = buildImgEditOverlay();
       if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
       ov.style.display = '';
+      renderImgEditPreview();
       positionImgEditOverlay();
-      // 图片调整 = 拖动平移(前后左右)+ 滑块/滚轮缩放(尺寸)+ 复位,全在浮层里;
+      // 图片调整 = 预览内拖动(位置)+ 滑块/滚轮缩放(尺寸)+ 复位,全在浮层里;
       // 不再弹 el-bar 照片工具条(换照片/黑白已按用户拍板去掉)。先收掉可能开着的文字工具条。
       hideElementToolbar();
     }
     function clearImageSelection() {
       if (imgEdit) imgEdit.imgEl.classList.remove('img-editing');
       imgEdit = null;
-      dragging = false;
+      imgEditDragActive = false;
       if (imgEditOverlay) imgEditOverlay.style.display = 'none';
     }
     // Commit the working position into imagePosJson + persist (松手即存). Repaints
@@ -2231,45 +2364,9 @@ function EditorBook({
       persistPagePatch(page);
     }
 
-    // Pointer drag → pan. Bound on each host; only acts when an image on that
-    // host is the active selection.
-    let dragStart = { x: 0, y: 0 };
-    let dragStartPos: ImagePosValue = { ...DEFAULT_IMAGE_POS };
-    let dragMoved = false; // a real drag happened → swallow the trailing click
-    const onImgPointerDown = (e: PointerEvent) => {
-      if (!imgEdit) return;
-      const target = e.target as HTMLElement;
-      // Only start a drag when the press lands on the actively-edited image.
-      if (target !== imgEdit.imgEl) return;
-      e.preventDefault();
-      e.stopPropagation();
-      dragging = true;
-      dragMoved = false;
-      dragStart = { x: e.clientX, y: e.clientY };
-      dragStartPos = { ...imgEdit.pos };
-      imgEdit.imgEl.setPointerCapture?.(e.pointerId);
-    };
-    const onImgPointerMove = (e: PointerEvent) => {
-      if (!dragging || !imgEdit) return;
-      if (Math.abs(e.clientX - dragStart.x) > 2 || Math.abs(e.clientY - dragStart.y) > 2) {
-        dragMoved = true;
-      }
-      const rect = imgEdit.imgEl.getBoundingClientRect();
-      imgEdit.pos = dragToImagePos(
-        dragStartPos,
-        e.clientX - dragStart.x,
-        e.clientY - dragStart.y,
-        rect.width,
-        rect.height,
-      );
-      applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
-    };
-    const onImgPointerUp = (e: PointerEvent) => {
-      if (!dragging || !imgEdit) return;
-      dragging = false;
-      imgEdit.imgEl.releasePointerCapture?.(e.pointerId);
-      if (dragMoved) commitImagePos();
-    };
+    // 画布上的照片拖拽调位已删除(2026-08-02 设计):8px/350ms 的时间门区分不了
+    // 「pan 微调中的停顿」和「长按拾起交换」,位置调整整体搬进浮层预览(见
+    // buildImgEditOverlay 的 .img-edit-preview),画布长按专职交换。滚轮缩放保留。
     // Wheel over the selected image → zoom (scale). Debounced commit on idle.
     let wheelCommitTimer: ReturnType<typeof setTimeout> | null = null;
     const onImgWheel = (e: WheelEvent) => {
@@ -2281,6 +2378,7 @@ function EditorBook({
       imgEdit.pos = zoomImagePos(imgEdit.pos, e.deltaY < 0 ? 0.05 : -0.05);
       applyLiveImagePos(imgEdit.imgEl, imgEdit.pos);
       if (imgEditSlider) imgEditSlider.value = String(imgEdit.pos.scale);
+      renderImgEditPreview();
       if (wheelCommitTimer) clearTimeout(wheelCommitTimer);
       wheelCommitTimer = setTimeout(() => commitImagePos(), 320);
     };
@@ -2364,10 +2462,10 @@ function EditorBook({
       pick.frame.classList.add('img-swap-source');
       swapDrag = { pointerId, from: pick.ref, sourceFrame: pick.frame, ghost, target: null };
       moveSwapGhost(x, y);
-      // 拖动期间不要同时进入「平移这张图」的编辑态,否则松手会既交换又提交一次位移。
-      // 长按目标可能正是当前选中图:pan 的位移阈值只有 2px、commit 在松手,350ms 内
-      // ≤slop 的微动已经画到 <img> 上了。拾起走的是交换,不该顺手留下一笔没提交的
-      // 位移 —— 先按已提交的 imagePosJson 把 live 样式放回去,再清选中态。
+      // 拖动期间不要同时挂着编辑态,否则松手会既交换又提交一次位移。选中图上还可能
+      // 有没落库的 live 位移(滚轮缩放 320ms 防抖提交,预览拖动 commit 在松手)——
+      // 拾起走的是交换,不该顺手带走一笔没提交的位移:先按已提交的 imagePosJson 把
+      // live 样式放回去,再清选中态。
       if (imgEdit) {
         const imgPage = pageByIndex(imgEdit.pageIndex);
         if (imgPage) applyLiveImagePos(imgEdit.imgEl, currentImagePos(imgPage, imgEdit.slotId));
@@ -2438,20 +2536,12 @@ function EditorBook({
       // 空框拾不起来(拖一个空框出去没有任何意义);空框作为**落点**是允许的 ——
       // 那就是「把这张挪过去」,原槽变空(见 image-swap.ts)。
       if (!pageByIndex(pick.ref.pageIndex)?.imagesJson[pick.ref.slotId]) return;
-      // 按在**当前选中**的照片上:拖动的一切归 pan,计时器根本不起表(2026-08-02
-      // 真机复测拍板)。第一版统一长按只堵了「快拖 >8px 取消计时」—— 而 pan 的本职
-      // 是慢速小幅微调(位移阈值才 2px),350ms 内常常不足 8px,按住停顿更是天然
-      // 动作,计时器一到手势就被抢走。8px/350ms 区分不了「微调中的停顿」和「长按
-      // 拾起」,唯一干净的切分是空间:选中那张归 pan,要交换它,点空白取消选中再
-      // 长按。guard 按槽比对,不一刀切 —— 长按**别的**照片仍然可以交换。
-      if (imgEdit && imgEdit.pageIndex === pick.ref.pageIndex && imgEdit.slotId === pick.ref.slotId) return;
       const { clientX: x, clientY: y, pointerId } = e;
-      // 鼠标也要「按住」这道门(2026-08-01 拍板)。bf899f76 曾给鼠标开过「一动就拾起」
-      // 的快路(拖图=挪图更顺手),代价当时没看见:拾起时 beginSwapDrag 清选中态,
-      // pan 的 `!imgEdit` 守卫当场失效 —— 选中照片后的拖动调位被整个劫走,桌面鼠标
-      // pan 等于死了。pan 是构图微调的唯一入口,优先级高于交换的顺手程度;两端统一
-      // 长按计时,快拖回落普通手势(选中 → pan,未选中 → 画布平移)。桌面的发现性靠
-      // 光标补:悬停可拾起的图是 grab,拾起后全局 grabbing(editor-port.css #168 段)。
+      // 长按 350ms 拾起,快拖(>8px)回落画布平移(2026-08-02 定稿)。此前 pan 还
+      // 住在画布上时,这里试过两版分流(鼠标立即拾起 → pan 被劫走;时间门 8px/350ms
+      // → 微调中的停顿被误判为长按),都失败 —— 根因是同一块画布同时住着两个拖拽
+      // 语义。现在位置调整整体搬进浮层预览(.img-edit-preview),画布上按下只剩
+      // 「平移画布」和「长按交换」,选中与否都可以长按拾起,不再需要任何让路 guard。
       swapPending = {
         pointerId,
         x,
@@ -2620,14 +2710,9 @@ function EditorBook({
       // 文字都不选中、不弹工具条。#book 与 #ovGrid 各自只在自己的模式可见,但书籍视图
       // 的 pageLeft/pageRight 也走这条链路,这里统一挡在预览态之外。
       if (!bodyEl.classList.contains('overview-on')) return;
-      // A pan gesture ends with a synthetic click — swallow it so a drag doesn't
-      // also toggle the image/page selection.
-      if (dragMoved) {
-        dragMoved = false;
-        e.stopPropagation();
-        return;
-      }
-      // 真实点选(非平移收尾)= 新的选取意图 → 复位工具条「已手动移动」,让它重新贴到新图层上方。
+      // (照片 pan 的「拖完吞 click」判据已随画布 pan 一起退场,2026-08-02;
+      //  画布平移收尾的合成 click 由 ovPanMoved 在 #ovGrid 委托里吞。)
+      // 真实点选 = 新的选取意图 → 复位工具条「已手动移动」,让它重新贴到新图层上方。
       editBarMoved = false;
       const pi = hostEl.dataset.pageIndex;
       const target = e.target as HTMLElement;
@@ -2660,9 +2745,6 @@ function EditorBook({
     const onHostClick = (hostEl: HTMLElement) => (e: MouseEvent) => surfaceClick(hostEl, e);
     for (const hostEl of [pageLeft, pageRight]) {
       hostEl.addEventListener('click', onHostClick(hostEl));
-      hostEl.addEventListener('pointerdown', onImgPointerDown);
-      hostEl.addEventListener('pointermove', onImgPointerMove);
-      hostEl.addEventListener('pointerup', onImgPointerUp);
       hostEl.addEventListener('wheel', onImgWheel, { passive: false });
       hostEl.addEventListener('pointerdown', onSwapPointerDown);
     }
@@ -3163,8 +3245,8 @@ function EditorBook({
     };
     ovStageEl?.addEventListener('wheel', onOvWheel, { passive: false });
 
-    // 单指(左键)拖空白 → 平移;双指(触屏)→ 捏合缩放。编辑中的图片按下不抢
-    //(onImgPointerDown 先于本处理器在 #ovGrid 上运行并置 dragging)。
+    // 单指(左键)拖空白 → 平移;双指(触屏)→ 捏合缩放。照片位置调整已搬进浮层
+    // 预览(2026-08-02),画布按下只剩「平移画布」与「长按交换」两种归宿。
     const ovPointers = new Map<number, { x: number; y: number }>();
     let ovPanning = false;
     let ovPanMoved = false;
@@ -3176,7 +3258,7 @@ function EditorBook({
       );
     const onOvPointerDown = (e: PointerEvent) => {
       if (!bodyEl.classList.contains('overview-on')) return;
-      if (dragging || swapDrag) return; // 图片拖动 / 长按交换进行中,画布不动
+      if (swapDrag) return; // 长按交换进行中,画布不动
       if (ovInteractive(e.target as HTMLElement | null)) return;
       ovPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (ovPointers.size === 2) {
@@ -3279,9 +3361,6 @@ function EditorBook({
       hideElementToolbar();
       updateSelectionHighlight();
     });
-    ovGridEl?.addEventListener('pointerdown', onImgPointerDown);
-    ovGridEl?.addEventListener('pointermove', onImgPointerMove);
-    ovGridEl?.addEventListener('pointerup', onImgPointerUp);
     ovGridEl?.addEventListener('wheel', onImgWheel, { passive: false });
     // 长按交换的**按下**挂在画板上(要拿到落点是哪个图槽);移动/松手挂 window 的
     // **捕获**阶段 —— 两个理由:
@@ -5598,9 +5677,6 @@ function EditorBook({
       // #168 manual image editor teardown.
       if (wheelCommitTimer) clearTimeout(wheelCommitTimer);
       for (const hostEl of [pageLeft, pageRight]) {
-        hostEl.removeEventListener('pointerdown', onImgPointerDown);
-        hostEl.removeEventListener('pointermove', onImgPointerMove);
-        hostEl.removeEventListener('pointerup', onImgPointerUp);
         hostEl.removeEventListener('wheel', onImgWheel);
         hostEl.removeEventListener('pointerdown', onSwapPointerDown);
       }

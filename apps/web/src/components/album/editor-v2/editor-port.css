@@ -1310,19 +1310,41 @@
    px (the JS divides screen px by `zoom`). */
 .editor-port .page.page-selected img[data-image-slot]{ cursor:grab; }
 .editor-port img.img-editing{
-  cursor:grab; outline:2px solid var(--accent); outline-offset:-2px;
+  outline:2px solid var(--accent); outline-offset:-2px;
 }
+/* 2026-08-02 改版:胶囊 → 竖排卡片(Figma 式)。预览在上、缩放滑块居中、按钮行在下。
+   位置调整在预览里拖,画布上的照片拖拽调位已删除(spec: 2026-08-02-image-edit-
+   popup-preview-design.md)。 */
 .editor-port .img-edit-overlay{
   position:fixed; z-index:110;
-  display:flex; align-items:center; gap:10px;
-  padding:6px 10px; border-radius:9999px;
+  display:flex; flex-direction:column; align-items:stretch; gap:8px;
+  padding:10px; border-radius:14px;
   background:var(--surface); border:1px solid var(--border-soft);
-  box-shadow:0 2px 10px rgba(0,0,0,0.14);
+  box-shadow:0 4px 18px rgba(0,0,0,0.16);
   font-size:12px; color:var(--fg-2); white-space:nowrap;
   user-select:none;
 }
-.editor-port .img-edit-hint{ color:var(--muted); }
-.editor-port .img-edit-zoom{ width:96px; accent-color:var(--accent); cursor:pointer; }
+/* 预览:整图 contain(尺寸由 JS 按原图比例定),棋盘格垫底读作「图外区域」,
+   裁切亮框外用大 box-shadow 压暗(被 overflow:hidden 裁在预览盒内)。 */
+.editor-port .img-edit-preview{
+  position:relative; overflow:hidden; margin:0 auto;
+  border-radius:8px; cursor:grab; touch-action:none;
+  background-color:var(--bg);
+  background-image:conic-gradient(var(--border-soft) 0 25%, transparent 0 50%, var(--border-soft) 0 75%, transparent 0);
+  background-size:14px 14px;
+}
+.editor-port .img-edit-preview:active{ cursor:grabbing; }
+.editor-port .img-edit-preview-img{
+  display:block; width:100%; height:100%; pointer-events:none; user-select:none;
+}
+.editor-port .img-edit-crop{
+  position:absolute; pointer-events:none; border-radius:2px;
+  outline:2px solid var(--accent); outline-offset:-1px;
+  box-shadow:0 0 0 9999px rgba(0,0,0,0.42);
+}
+.editor-port .img-edit-zoom-row{ display:flex; align-items:center; gap:8px; }
+.editor-port .img-edit-zoom{ flex:1; width:auto; accent-color:var(--accent); cursor:pointer; }
+.editor-port .img-edit-actions{ display:flex; gap:6px; justify-content:center; flex-wrap:wrap; }
 /* 浮层里的三枚按钮(换图 / 复位 / 删除)共用一套胶囊样式;删除单独走危险色,
    免得和「复位」看着一样、点错就把图清了。 */
 .editor-port .img-edit-reset,

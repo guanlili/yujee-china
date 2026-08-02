@@ -51,24 +51,32 @@ test('两端统一长按拾起:快拖回落 pan/平移,按住不动才是交换(
   assert.match(editor, /if \(!moved\) return;\n\s*\/\/[^\n]*\n\s*cancelSwapPending\(\);/);
 });
 
-test('选中照片上按下,交换计时器根本不起表 —— pan 的地盘里没有长按(2026-08-02 复测拍板)', () => {
-  // 第一版统一长按只堵了「快拖 >8px 取消计时」:pan 的本职是慢速小幅微调
-  // (它的位移阈值才 2px),350ms 内移动常常不足 8px;按住停顿更是天然动作。
-  // 计时器一到 beginSwapDrag 就抢手势 —— 8px/350ms 区分不了「微调中的停顿」和
-  // 「长按拾起」。唯一干净的切分是空间而不是时间:按在**当前选中**的照片上,
-  // 拖动的一切归 pan;要交换这张,先点空白取消选中再长按。
-  const start = editor.indexOf('const onSwapPointerDown =');
-  assert.ok(start > 0);
-  const body = editor.slice(start, editor.indexOf('const onSwapPointerMove =', start));
-  assert.match(
-    body,
-    /if \(imgEdit && imgEdit\.pageIndex === pick\.ref\.pageIndex && imgEdit\.slotId === pick\.ref\.slotId\) return;/,
-    '按在选中照片上不武装计时器',
+test('桌面:画布上不再有照片拖拽调位 —— 位置调整住进浮层预览(2026-08-02 定稿)', () => {
+  // pan 与长按交换在同一块画布上试过两版分流(鼠标立即拾起 → pan 被劫走;
+  // 时间门 8px/350ms → 微调中的停顿被误判为长按),都失败:根因是同一块画布
+  // 同时住着两个拖拽语义。定稿是空间切分 —— 位置调整整体搬进浮层的 Figma 式
+  // 预览(.img-edit-preview 内拖动),画布按下只剩「平移画布」和「长按交换」。
+  assert.doesNotMatch(editor, /onImgPointerDown|onImgPointerMove|onImgPointerUp/, '画布 pan 监听不许回来');
+  assert.doesNotMatch(editor, /dragToImagePos\(/, '画布拖拽换算已随 pan 一起退场(预览走 previewDragToImagePos)');
+  // 长按对选中照片同样有效:让路 guard 已随冲突源头一起撤销
+  const down = editor.slice(
+    editor.indexOf('const onSwapPointerDown ='),
+    editor.indexOf('const onSwapPointerMove ='),
   );
-  // 桌面只对选中那张让路:长按**别的**照片仍然可以交换(guard 按槽比对,不是一刀切)
-  assert.doesNotMatch(body, /if \(imgEdit\) return/, '不许把「有选中就全禁」当成修法');
-  // 移动端:选中期间整板都是 pan 的地盘(平移不要求按在图上),编辑态一律不武装
+  assert.doesNotMatch(down, /imgEdit[^\n]*return/, '不许再给选中照片开让路 guard');
+  // 移动端不在本次改版范围:编辑态不武装长按的口径保持
   assert.match(editView, /if \(!imageEditing && pressedSlot && pressedPhoto && page\)/);
+});
+
+test('桌面:浮层预览承接位置调整 —— 亮框几何走纯函数,松手走 commitImagePos', () => {
+  assert.match(editor, /className = 'img-edit-preview'/);
+  assert.match(editor, /className = 'img-edit-crop'/);
+  assert.match(editor, /coverCropFraction\(/, '裁切几何来自 image-edit-util 纯函数(单测覆盖)');
+  assert.match(editor, /previewDragToImagePos\(/);
+  // 预览拖动松手必须走既有的 commitImagePos(所见即所存链路不变)
+  const up = editor.indexOf("preview.addEventListener('pointerup'");
+  assert.ok(up > 0);
+  assert.match(editor.slice(up, up + 400), /commitImagePos\(\)/);
 });
 
 test('桌面:拾起交换时,把 pan 没提交的 live 位移放回已提交位置', () => {
@@ -87,8 +95,8 @@ test('桌面:拾起交换时,把 pan 没提交的 live 位移放回已提交位�
 test('桌面:画布平移与长按拾起不打架', () => {
   // 拾起候选期间不平移画布(否则一次按住既拾起又把画布拖走)
   assert.match(editor, /if \(swapPending\) return;/);
-  // 拖动进行中画布不动
-  assert.match(editor, /if \(dragging \|\| swapDrag\) return;/);
+  // 交换拖动进行中画布不动
+  assert.match(editor, /if \(swapDrag\) return;/);
   // 拾起的一刻把已经起步的画布平移按下
   assert.match(editor, /ovPanning = false;/);
 });

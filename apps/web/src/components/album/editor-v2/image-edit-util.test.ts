@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   clampImagePos,
+  coverCropFraction,
   dragToImagePos,
+  previewDragToImagePos,
   zoomImagePos,
   DEFAULT_IMAGE_POS,
   SCALE_MIN,
@@ -95,4 +97,58 @@ test('zoomImagePos clamps at both ends', () => {
 
 test('DEFAULT_IMAGE_POS is the white-edge-free center default', () => {
   assert.deepEqual(DEFAULT_IMAGE_POS, { x: 50, y: 50, scale: 1 });
+});
+
+// ── coverCropFraction / previewDragToImagePos:弹窗预览几何(2026-08-02 设计)──
+// 推导见 image-edit-util.ts 抬头 + docs/specs/2026-08-02-image-edit-popup-preview-design.md:
+// k0 = max(frameW/natW, frameH/natH),k = k0*scale;fx = frameW/(natW*k);
+// left = x/100*(1-fx)。
+
+test('coverCropFraction: 宽图塞方框,scale=1 → 高度满幅,水平有余量', () => {
+  // 原图 200×100,框 100×100:k0 = max(0.5, 1) = 1 → fx = 100/200 = 0.5, fy = 1。
+  const crop = coverCropFraction(200, 100, 100, 100, { x: 50, y: 50, scale: 1 });
+  assert.ok(crop);
+  assert.equal(crop!.width, 0.5);
+  assert.equal(crop!.height, 1);
+  assert.equal(crop!.left, 0.25); // 居中:50% 的 (1-0.5)
+  assert.equal(crop!.top, 0); // 满幅轴没有余量
+  // x=0 → 贴左;x=100 → 贴右
+  assert.equal(coverCropFraction(200, 100, 100, 100, { x: 0, y: 50, scale: 1 })!.left, 0);
+  assert.equal(coverCropFraction(200, 100, 100, 100, { x: 100, y: 50, scale: 1 })!.left, 0.5);
+});
+
+test('coverCropFraction: scale=2 → 可见窗口两轴同时减半', () => {
+  const crop = coverCropFraction(200, 100, 100, 100, { x: 50, y: 50, scale: 2 });
+  assert.ok(crop);
+  assert.equal(crop!.width, 0.25);
+  assert.equal(crop!.height, 0.5);
+  assert.equal(crop!.left, 0.375); // (1-0.25)/2
+  assert.equal(crop!.top, 0.25); // (1-0.5)/2
+});
+
+test('coverCropFraction: 尺寸非法(0/负/NaN)→ null,绝不产出 NaN 几何', () => {
+  assert.equal(coverCropFraction(0, 100, 100, 100, DEFAULT_IMAGE_POS), null);
+  assert.equal(coverCropFraction(200, 100, 0, 100, DEFAULT_IMAGE_POS), null);
+  assert.equal(coverCropFraction(200, -1, 100, 100, DEFAULT_IMAGE_POS), null);
+  assert.equal(coverCropFraction(NaN, 100, 100, 100, DEFAULT_IMAGE_POS), null);
+});
+
+test('previewDragToImagePos: 把图往右拖 = 露出左侧 = x 减小(与画布 dragToImagePos 同向)', () => {
+  // 预览整图 200px 宽,fx=0.5 → 水平可滑余量 = 200*(1-0.5) = 100px。
+  const crop = coverCropFraction(200, 100, 100, 100, { x: 50, y: 50, scale: 1 })!;
+  const out = previewDragToImagePos({ x: 50, y: 50, scale: 1 }, 25, 0, 200, 100, crop);
+  assert.equal(out.x, 25); // 25px / 100px 余量 = 25 个百分点
+  assert.equal(out.y, 50);
+});
+
+test('previewDragToImagePos: 满幅轴(无余量)忽略拖动,不产出 NaN', () => {
+  const crop = coverCropFraction(200, 100, 100, 100, { x: 50, y: 50, scale: 1 })!;
+  const out = previewDragToImagePos({ x: 50, y: 50, scale: 1 }, 0, 30, 200, 100, crop);
+  assert.equal(out.y, 50, 'fy=1 的轴不动');
+});
+
+test('previewDragToImagePos: 越界拖动被 clamp 在 0..100', () => {
+  const crop = coverCropFraction(200, 100, 100, 100, { x: 50, y: 50, scale: 1 })!;
+  assert.equal(previewDragToImagePos({ x: 50, y: 50, scale: 1 }, 999, 0, 200, 100, crop).x, 0);
+  assert.equal(previewDragToImagePos({ x: 50, y: 50, scale: 1 }, -999, 0, 200, 100, crop).x, 100);
 });

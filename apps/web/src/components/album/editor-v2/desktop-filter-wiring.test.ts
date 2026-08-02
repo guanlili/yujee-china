@@ -33,7 +33,8 @@ test('desktop filter panel and cards use the shared editor radius tokens', () =>
 
 test('desktop controls are support-gated and selected-image action resolves the actual slot photo', () => {
   assert.match(editor, /lutEngine\.isSupported\(\)/);
-  assert.match(editor, /if \(lutSupported\) ov\.appendChild\(style\)/);
+  // 2026-08-02 弹窗改版:按钮进了 .img-edit-actions 行,support 门控本身不变。
+  assert.match(editor, /if \(lutSupported\) actions\.appendChild\(style\)/);
   assert.match(editor, /page\.imagesJson\[slotId\]/);
   assert.match(editor, /openPhotoFilter\('photo'/);
 });
