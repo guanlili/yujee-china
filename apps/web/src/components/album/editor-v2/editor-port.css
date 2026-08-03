@@ -1373,8 +1373,10 @@
 .editor-port .img-edit-zoom-row{ display:flex; align-items:center; gap:8px; }
 .editor-port .img-edit-zoom{ flex:1; width:auto; accent-color:var(--accent); cursor:pointer; }
 .editor-port .img-edit-actions{ display:flex; gap:6px; justify-content:center; flex-wrap:wrap; }
-/* 浮层里的三枚按钮(换图 / 复位 / 删除)共用一套胶囊样式;删除单独走危险色,
-   免得和「复位」看着一样、点错就把图清了。 */
+/* 全项目统一的文字胶囊按钮族:图片浮层一排(旋转/换图/风格/复位/删除)+
+   选中页气泡的「调整页序」(.eb-pill)。删除单独走危险色,免得和「复位」
+   看着一样、点错就把图清了。 */
+.editor-port .eb-pill,
 .editor-port .img-edit-reset,
 .editor-port .img-edit-rotate,
 .editor-port .img-edit-swap,
@@ -1385,6 +1387,7 @@
   font-size:12px; cursor:pointer;
   transition:background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
 }
+.editor-port .eb-pill:hover,
 .editor-port .img-edit-reset:hover,
 .editor-port .img-edit-rotate:hover,
 .editor-port .img-edit-swap:hover,
