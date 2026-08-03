@@ -5,10 +5,12 @@ import { readFileSync } from 'node:fs';
 const CSS = readFileSync(new URL('./editor-port.css', import.meta.url), 'utf8');
 const PORT = readFileSync(new URL('./EditorPort.tsx', import.meta.url), 'utf8');
 
-// 双宽页占满整个跨页:右 cell 退场(左 cell flex:1 自动撑满)、中缝线隐藏。
-test('book-full collapses the empty half and the spine', () => {
+// 双宽页占满整个跨页:右 cell 退场(左 cell flex:1 自动撑满)。
+// 中缝 2026-08-02 起**保留**:双宽页是装订的两半,书沟与四端一致(反转旧决定)。
+test('book-full collapses the empty half but keeps the spine', () => {
   assert.match(CSS, /\.book\.book-full\s*\.page\.page-empty\s*\{[^}]*display:\s*none/);
-  assert.match(CSS, /\.book\.book-full::before\s*\{[^}]*display:\s*none/);
+  assert.doesNotMatch(CSS, /\.book\.book-full::before\s*\{[^}]*display:\s*none/, '双宽页的书脊沟槽不许再隐藏');
+  assert.doesNotMatch(CSS, /\.book\.book-full::after\s*\{[^}]*display:\s*none/, '双宽页的 1px 接缝不许再隐藏');
 });
 
 test('paintSpread toggles book-full from Spread.full', () => {

@@ -111,6 +111,16 @@
   /* 四周留白由 JS 的 INSET 单点控制(fitBox 前扣掉),这里不叠加 padding。 */
   /* 翻纸动效要的 3D 景深,值同 FlipBook 的 stage(perspective:2400)。 */
   perspective: 2400px;
+  /* 手势契约:画布手势归画布。鼠标横扫时若命中页面大图,原生图片/选区拖拽会把
+     指针流打成 pointercancel,swipe 永远等不到 pointerup —— 桌面响应式窗口里
+     书完全翻不动(触屏无此路径,但不能指望输入设备)。 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mobile-editor .mboard img{
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 .mobile-editor .mspread{

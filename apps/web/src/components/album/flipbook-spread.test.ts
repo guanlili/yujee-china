@@ -25,20 +25,25 @@ test('FlipBook resolves a full (double-wide) spread from the shared spreads help
   assert.match(tsx, /const fullIndexOf = useCallback\(\s*\n\s*\(s: number\) => spreadFullPage\(spreads\[s\]\) \?\? -1/);
 });
 
-test('a full spread renders ONE face at the FULL book width, no spine, no leaf', () => {
-  const branch = /\{book\.w > 0 && !soloHere && fullHere &&([\s\S]*?)\)\}\n\n\s*\{book\.w > 0 && !soloHere && !fullHere/.exec(tsx);
-  assert.ok(branch, 'expected a dedicated fullHere render branch before the pair branch');
-  const body = branch![1]!;
-  // 整幅宽(book.w),不是半页宽(halfW)——双宽画布本来就是两页宽。
-  assert.match(body, /width: book\.w/, '双宽页容器必须是整个跨页宽');
-  assert.match(body, /<Half page=\{fullPage\}[^>]*width=\{book\.w\}/, '必须只画一张面,并撑满整幅');
-  assert.doesNotMatch(body, /center spine shadow|linear-gradient\(90deg, rgba\(0,0,0,0\)/, '双宽页画面连续,不得画中缝');
-  assert.doesNotMatch(body, /turning leaf|leafFront/, '双宽页不参与叶子翻页');
+test('a full spread renders as TWO bound half-crops of the SAME page (spine + leaf like a pair)', () => {
+  // 2026-08-02 反转「整幅无中缝」的旧决定:双宽页按装订的两半渲染(拆渲染不拆数据)。
+  // #303 的核心不变式仍在:两半都必须取自那**一页**(pages[sp.page]),不许出现空白面。
+  const facesFn = /const facesOfSpread = useCallback\([^]*?\n  \);/.exec(tsx);
+  assert.ok(facesFn, 'expected facesOfSpread');
+  const body = facesFn![0];
+  assert.match(body, /if \(sp\.kind === 'full'\) \{/, '双宽页必须在 facesOfSpread 里显式处理');
+  assert.match(body, /const page = pages\[sp\.page\] \?\? null;/, '两半都来自真实的那一页,不许空白');
+  assert.match(body, /\{ page, index: sp\.page, half: 'left' \}/, '左半裁');
+  assert.match(body, /\{ page, index: sp\.page, half: 'right' \}/, '右半裁');
+  // 裁半只对双宽模板生效:PageFace 按 pageBox 判宽,整幅缩放 + 右半平移一个框宽。
+  assert.match(tsx, /const wide = half != null && box\.width > PAGE\.width;/);
+  assert.match(tsx, /translateX\(\$\{-width\}px\) /, '右半必须左移一个框宽来裁');
 });
 
-test('the pair branch is now gated on !fullHere so a full spread never falls into it', () => {
-  // 漏掉这个 gate 的话双宽页会同时命中两个分支,画出重叠的空白跨页。
-  assert.match(tsx, /\{book\.w > 0 && !soloHere && !fullHere && \(/);
+test('the pair branch now hosts full spreads too (single open-book path, spine included)', () => {
+  // 独立的 fullHere 分支退场:双宽页与 pair 走同一条摊开书路径,自动获得中缝/弧面/叶子。
+  assert.match(tsx, /\{book\.w > 0 && !soloHere && \(/);
+  assert.doesNotMatch(tsx, /fullHere &&/, '不许再出现独立的 fullHere 渲染分支');
 });
 
 test('selection sync resolves a full spread to its page (not -1)', () => {
@@ -51,16 +56,20 @@ test('selection sync resolves a full spread to its page (not -1)', () => {
   );
 });
 
-test('the thumbnail strip renders a full spread as one double-wide thumb', () => {
+test('the thumbnail strip renders a full spread as one double-wide thumb with a spine divider', () => {
   assert.match(tsx, /const fullIdx = fullIndexOf\(s\)/);
-  // 双宽缩略图仍是 52px 的跨页格(不是 26px 的单页格),内容是一整张面。
-  assert.match(tsx, /\) : fullIdx >= 0 \? \([\s\S]*?page=\{fullThumb\}[\s\S]*?width=\{52\}/);
+  // 双宽缩略图仍是 52px 的跨页格(不是 26px 的单页格),内容是一整张面;
+  // 但它也是装订的两半 —— 缩略图同样带中缝分隔线。
+  const fullThumb = /\) : fullIdx >= 0 \? \(([\s\S]*?)\) : \(/.exec(tsx);
+  assert.ok(fullThumb, 'expected the fullIdx thumbnail branch');
+  assert.match(fullThumb![1]!, /page=\{fullThumb\}[\s\S]*?width=\{52\}/);
+  assert.match(fullThumb![1]!, /var\(--border-soft\)/, '双宽缩略图必须带中缝分隔线');
 });
 
 test('no-spread baseline: the solo and pair branches keep their original geometry', () => {
-  // 不含双宽模板的相册里 fullHere 恒 false,渲染路径与 #303 之前逐像素相同。
+  // 不含双宽模板的相册里 facesOfSpread 对 pair 原样返回左右两页,渲染路径不变。
   assert.match(tsx, /\{book\.w > 0 && soloHere && \(/, 'solo 分支门闩不变');
   assert.match(tsx, /const soloHere = isSoloSpread\(spreads\[spread\], pages\)/, 'solo 判定仍按类别,不按空半页');
-  // Half 默认宽度仍是半页宽 —— 只有双宽页显式传 book.w。
-  assert.match(tsx, /width = halfW,/, 'Half 的默认宽度必须仍是半页宽');
+  // Half 恒为半页宽 —— 双宽页的「宽」由两个半面拼出来,不再有整幅宽的 Half。
+  assert.match(tsx, /style=\{\{ width: halfW, height: book\.h, background: 'var\(--surface\)' \}\}/);
 });

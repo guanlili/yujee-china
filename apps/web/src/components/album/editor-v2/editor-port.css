@@ -234,8 +234,9 @@
 .editor-port .book.book-solo{ background:transparent; }
 .editor-port .book.book-solo::before{display:none;}
 .editor-port .book.book-solo::after{display:none;}
-.editor-port .book.book-full::before{display:none;}
-.editor-port .book.book-full::after{display:none;}
+/* 双宽(#303)页**保留**书脊沟槽与接缝(::before/::after 不再隐藏):
+   它是装订在一起的左右两个半页,真书的跨页大图照样有书沟 ——
+   与 FlipBook/移动端/Live 视频三端的双宽中缝同一决定(2026-08-02 反转旧规则)。 */
 
 /* WP/#158-cover: a TRUE cover/ending solo (isSoloSpread, category-keyed in
    paintSpread/flipTo — NOT just "a null half", so interior odd-trailing pages are
@@ -255,7 +256,7 @@
 
 /* 跨页(#303):双宽模板占满整个跨页。paintSpread 把它画进左 cell 并让右 cell 变
    page-empty —— 这里让空的那半退场,左 cell 的 flex:1 自动撑满全宽(与 book-single
-   同一手法)。中缝线(.book::before)必须隐藏:版面本来就是连续的一张,中间不该有分隔。 */
+   同一手法)。中缝线由上方规则保留:双宽页是装订的两半,书沟不缺席。 */
 .editor-port .book.book-full .page.page-empty{ display:none; }
 
 /* ─── COLLECT BOARD (排版前收集态) ───

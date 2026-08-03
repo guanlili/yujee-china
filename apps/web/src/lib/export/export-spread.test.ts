@@ -58,17 +58,22 @@ test('collage renders every occupied page of a spread, including a full one', ()
   assert.match(collageSrc, /for \(const idx of spreadPageIndices\(s\)\) neededFaces\.add\(idx\)/);
 });
 
-test('live-video paints a full spread as one double-wide face and never flips it', () => {
+test('live-video paints a full spread as two bound half-crops of the SAME page (and flips it)', () => {
   // 视图分类走 spreads.ts 的 spreadRenderKind(唯一真相),不再在这里各写一份。
   assert.match(liveSrc, /switch \(spreadRenderKind\(s, asEditor\)\)/);
-  assert.match(liveSrc, /case 'full':[\s\S]*?full: true[\s\S]*?face\(spreadFullPage\(s\)\)/);
-  // 整幅铺满 BOOK_W(不是 HALF_W),且这一支不画中缝。
-  assert.match(liveSrc, /\} else if \(v\.full\) \{[\s\S]*?drawFace\(ctx, v\.page, BOOK_X, BOOK_W\);/);
-  const paint = /function paintViewBook\([^]*?\n\}/.exec(liveSrc);
-  assert.ok(paint, 'expected paintViewBook');
-  const fullBranch = /\} else if \(v\.full\) \{([\s\S]*?)\} else \{/.exec(paint![0]);
-  assert.ok(fullBranch, 'expected the full branch inside paintViewBook');
-  assert.doesNotMatch(fullBranch![1]!, /drawSpine/, '双宽页画面连续,不得画中缝');
-  // paintFlipBook 的几何写死了半页宽的叶子 → 双宽端点必须退化成淡入淡出。
-  assert.match(liveSrc, /const canFlip = !a\.solo && !b\.solo && !a\.full && !b\.full;/);
+  // #303 的核心不变式换了形态但仍在:双宽页的两半都必须取自那**一页**的真实 face,
+  // 不许出现「有模有样的空白跨页」。2026-08-02 起它按装订的两半渲染(有中缝、参与翻页)。
+  assert.match(
+    liveSrc,
+    /case 'full': \{[\s\S]*?spreadFullPage\(s\)![\s\S]*?faces: \[\{ idx: pi, half: 'left' \}, \{ idx: pi, half: 'right' \}\]/,
+  );
+  // 裁半在 faceOf 里做(源画布左/右半),缓存,不重复渲染。
+  assert.match(liveSrc, /ref\.half === 'left' \? 0 : base\.width \/ 2/);
+  // pair 与双宽同一条摊开书路径(paintOpenBook 自带中缝),独立 full 分支退场。
+  assert.match(liveSrc, /paintOpenBook\(ctx, chrome\.spread, faceOf\(v\.faces\[0\] \?\? null\), faceOf\(v\.faces\[1\] \?\? null\)\)/);
+  assert.doesNotMatch(liveSrc, /else if \(v\.full\)/, '不许再有独立的 full 渲染分支');
+  // 翻不翻由 flipTransition 决定(与移动端同一双眼睛),不许回到本地 canFlip。
+  assert.match(liveSrc, /flipTransition\(shapeOf\(views\[k\]!\), shapeOf\(views\[k \+ 1\]!\), 'next', false\)/);
+  assert.match(liveSrc, /full: v\.full/);
+  assert.doesNotMatch(liveSrc, /const canFlip =/, '不得回到本地 canFlip 第二真相');
 });

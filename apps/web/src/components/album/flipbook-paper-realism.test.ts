@@ -19,11 +19,12 @@ function branch(gate: RegExp): string {
   return match[1]!;
 }
 
+// 双宽(#303)页 2026-08-02 起与 pair 同一条渲染路径:facesOfSpread 把它裁成装订
+// 在一起的左右两半(有中缝、参与翻页,拆渲染不拆数据),独立的 fullHere 分支退场。
 const solo = branch(/\{book\.w > 0 && soloHere && \(/);
-const full = branch(/\{book\.w > 0 && !soloHere && fullHere && \(/);
-const pair = branch(/\{book\.w > 0 && !soloHere && !fullHere && \(/);
+const pair = branch(/\{book\.w > 0 && !soloHere && \(/);
 
-test('the pair spread carries the editor fold-band recipe: wide gutter gradient + 1px seam', () => {
+test('the open spread carries the editor fold-band recipe: wide gutter gradient + 1px seam', () => {
   // 沟槽是随书宽的折光带(spineW),不是过去那条 24px 的平面淡影。
   assert.match(pair, /width: spineW/, 'the fold band must size from spineW, not a hard-coded 24');
   assert.match(
@@ -36,20 +37,19 @@ test('the pair spread carries the editor fold-band recipe: wide gutter gradient 
   assert.match(pair, /-1px 0 rgba\(255,255,255,\.12\), 1px 0 rgba\(0,0,0,\.08\)/);
 });
 
-test('the pair spread shades both halves toward the spine (page curvature)', () => {
+test('the open spread shades both halves toward the spine (page curvature)', () => {
   assert.match(pair, /transparent 72%, rgba\(255,255,255,\.06\) 86%, rgba\(0,0,0,\.13\) 100%/);
   assert.match(pair, /rgba\(0,0,0,\.12\) 0%, rgba\(255,255,255,\.07\) 14%, transparent 28%/);
 });
 
 test('every resting book branch carries the shared book-body look (3-layer shadow + paper edges)', () => {
-  for (const [name, body] of [['solo', solo], ['full', full], ['pair', pair]] as const) {
+  for (const [name, body] of [['solo', solo], ['pair', pair]] as const) {
     assert.match(body, /boxShadow: BOOK_SHADOW/, `${name} branch must use the shared BOOK_SHADOW`);
     assert.match(body, /<PaperEdges /, `${name} branch must render the stacked paper edges`);
   }
   // solo 是合上的书:纸叠只在开口侧(封面朝右、封尾朝左),不能两侧都露纸芯。
   assert.match(solo, /sides=\{\[spread === 0 \? 'right' : 'left'\]\}/);
-  // 摊开的跨页(pair/full)两侧都露纸芯。
-  assert.match(full, /sides=\{\['left', 'right'\]\}/);
+  // 摊开的跨页(pair 与双宽同路)两侧都露纸芯。
   assert.match(pair, /sides=\{\['left', 'right'\]\}/);
 });
 

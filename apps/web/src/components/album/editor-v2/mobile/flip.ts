@@ -32,21 +32,24 @@ export type FlipTransition =
 export type ScreenShape = {
   /** 一屏摆了几个开页(密度 4 是两个)。 */
   rows: number;
-  /** 那个开页摆了几张面(pair=2,solo/full=1)。 */
+  /** 那个开页摆了几张面(pair=2,solo=1;full 报 1 或 2 均可,翻页语义一律按两半算)。 */
   faces: number;
   /** 封面/封尾单页的明确角色；特殊边缘翻页靠它决定方向。 */
   soloRole: SoloRole;
-  /** 双宽跨页(#303)—— 一整张连续面,没有可翻的半页。 */
+  /** 双宽跨页(#303)—— 一张连续面,翻页时裁成装订在一起的左右两半。 */
   full: boolean;
 };
+
+/** 翻页语义下一屏的半页数:双宽页是「装订在一起的两个半页」,恒为 2。 */
+const flipFaces = (s: ScreenShape): number => (s.full ? 2 : s.faces);
 
 /**
  * 这一步能不能做翻纸动效。
  *
- * 与桌面共用的那三条理由(减弱动效 / 任一端是单页 solo / 任一端是双宽 full)
- * **一律走 spreads.ts 的 shouldDirectSwitch**,不在这里重写 —— 那条判断在 #303 被
- * 专门抽成纯函数并单测过(原先写成一整条布尔表达式时 `&&` 钻进 `||` 链里漏判过),
- * 移动端再抄一遍就等于又造一个会漂移的第二真相。
+ * 与桌面共用的理由(减弱动效 / 任一端是单页 solo)**一律走 spreads.ts 的
+ * shouldDirectSwitch**,不在这里重写 —— 那条判断在 #303 被专门抽成纯函数并单测过
+ * (原先写成一整条布尔表达式时 `&&` 钻进 `||` 链里漏判过),移动端再抄一遍就等于
+ * 又造一个会漂移的第二真相。双宽 full 不再直切:它按两半参与翻页(见 flipFaces)。
  *
  * 这里只加移动端独有的两条:
  *   · 一屏摆了多个开页(密度 4)—— 没有单一的「那张纸」可翻
@@ -59,7 +62,7 @@ export function flipTransition(
   reducedMotion: boolean,
 ): FlipTransition | null {
   if (from.rows !== 1 || to.rows !== 1) return null;
-  if (shouldDirectSwitch(reducedMotion, false, false, from.full, to.full)) return null;
+  if (shouldDirectSwitch(reducedMotion, false, false)) return null;
 
   const fromRole = from.soloRole;
   const toRole = to.soloRole;
@@ -67,14 +70,14 @@ export function flipTransition(
   if (
     fromRole === 'cover' &&
     toRole === null &&
-    to.faces === 2 &&
+    flipFaces(to) === 2 &&
     dir === 'next'
   ) {
     return 'cover-open';
   }
   if (
     fromRole === null &&
-    from.faces === 2 &&
+    flipFaces(from) === 2 &&
     toRole === 'cover' &&
     dir === 'prev'
   ) {
@@ -82,7 +85,7 @@ export function flipTransition(
   }
   if (
     fromRole === null &&
-    from.faces === 2 &&
+    flipFaces(from) === 2 &&
     toRole === 'ending' &&
     dir === 'next'
   ) {
@@ -91,7 +94,7 @@ export function flipTransition(
   if (
     fromRole === 'ending' &&
     toRole === null &&
-    to.faces === 2 &&
+    flipFaces(to) === 2 &&
     dir === 'prev'
   ) {
     return 'ending-open';
@@ -99,9 +102,9 @@ export function flipTransition(
 
   const sourceSolo = fromRole !== null;
   const targetSolo = toRole !== null;
-  if (shouldDirectSwitch(false, sourceSolo, targetSolo, false, false)) return null;
-  if (from.faces !== to.faces) return null;
-  return from.faces === 1 || from.faces === 2 ? 'spread' : null;
+  if (shouldDirectSwitch(false, sourceSolo, targetSolo)) return null;
+  if (flipFaces(from) !== flipFaces(to)) return null;
+  return flipFaces(from) === 1 || flipFaces(from) === 2 ? 'spread' : null;
 }
 
 /** 纸片的几何:贴在哪半边、多宽、绕哪条边转、转到多少度。 */
@@ -189,14 +192,15 @@ export function edgeMotion(
   }
 }
 
-/** 翻纸过程中三层各画哪一页(页数组下标;null = 那半边空着)。 */
-export type LeafLayers = {
+/** 翻纸过程中三层各画哪一页(默认页数组下标;null = 那半边空着)。
+ *  泛型:图层函数只做洗牌、从不解读元素,调用方可以放任何面引用。 */
+export type LeafLayers<T = number> = {
   /** 垫在底下的那一屏(纸片转过 90° 后露出来的就是它)。 */
-  under: (number | null)[];
+  under: (T | null)[];
   /** 纸片正面 = 正在翻走的那页。 */
-  front: number | null;
+  front: T | null;
   /** 纸片背面 = 正在翻进来的那页。 */
-  back: number | null;
+  back: T | null;
 };
 
 /**
@@ -205,12 +209,12 @@ export type LeafLayers = {
  *   纸片正面 = 原右页(翻走),背面 = 目标左页(翻进来,落在左半边)
  * 翻上一页是镜像。单页(halves=1)只有一张纸:正面原页、背面目标页、底层目标页。
  */
-export function leafLayers(
+export function leafLayers<T>(
   dir: FlipDir,
   halves: number,
-  from: (number | null)[],
-  to: (number | null)[],
-): LeafLayers {
+  from: readonly (T | null)[],
+  to: readonly (T | null)[],
+): LeafLayers<T> {
   if (halves === 2) {
     return dir === 'next'
       ? { under: [from[0] ?? null, to[1] ?? null], front: from[1] ?? null, back: to[0] ?? null }
@@ -223,11 +227,11 @@ export function leafLayers(
  * 封皮开合始终把正文跨页垫在底下；封皮背面复用它最终覆盖的正文页，
  * 这样叶片在 ±180° 的起止帧与底层完全重合，不会闪出一张空白纸。
  */
-export function edgeLayers(
+export function edgeLayers<T>(
   transition: Exclude<FlipTransition, 'spread'>,
-  from: (number | null)[],
-  to: (number | null)[],
-): LeafLayers {
+  from: readonly (T | null)[],
+  to: readonly (T | null)[],
+): LeafLayers<T> {
   const opening = transition === 'cover-open' || transition === 'ending-open';
   const body = opening ? to : from;
   const solo = opening ? from[0] ?? null : to[0] ?? null;
@@ -235,7 +239,23 @@ export function edgeLayers(
     transition === 'cover-open' || transition === 'cover-close'
       ? body[0] ?? null
       : body[1] ?? null;
-  return { under: body, front: solo, back };
+  return { under: [...body], front: solo, back };
+}
+
+export type LeafHalf = 'left' | 'right';
+
+/**
+ * 纸片正/背面的内容各来自跨页的哪半边。半边只对**双宽页(#303)裁半**有意义:
+ * 普通页整页即内容,调用方对非双宽页忽略它。底层(under)按位置即半边(0 左 1 右)。
+ */
+export function leafHalves(dir: FlipDir): { front: LeafHalf; back: LeafHalf } {
+  return dir === 'next' ? { front: 'right', back: 'left' } : { front: 'left', back: 'right' };
+}
+
+/** 封皮开合时纸片背面的半边:cover 系背面是正文左页,ending 系是正文右页
+ *  (与 edgeLayers 取 body[0]/body[1] 一一对应,两处必须同步改)。 */
+export function edgeBackHalf(transition: Exclude<FlipTransition, 'spread'>): LeafHalf {
+  return transition === 'cover-open' || transition === 'cover-close' ? 'left' : 'right';
 }
 
 /** 纸片正面的翻页受光:靠书脊那侧压暗一点。取自 FlipBook 的 page-turn shading。 */

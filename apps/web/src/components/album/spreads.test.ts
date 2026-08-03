@@ -342,16 +342,19 @@ test('spreadRenderKind: a missing spread degrades to pair (no crash)', () => {
 // A real behavioral predicate, not a source-text regex — actual boolean inputs
 // drive it, so an operator-precedence slip (`&&` sneaking into an `||` chain)
 // cannot hide the way it could behind a substring-containment check. The plain
-// pair→pair case (all five reasons false) is the must-animate control: if any
+// pair→pair case (all reasons false) is the must-animate control: if any
 // implementation accidentally ORs in an extra always-true term, this is what
 // catches it.
+//
+// 双宽 full 曾经也是直切理由;现在它按「装订在一起的两个半页」参与叶片翻页
+// (裁半语义见 flip.ts 的 leafHalves/edgeBackHalf),故这里只剩三个理由。
 
 test('shouldDirectSwitch: plain pair→pair (no reason present) must still animate', () => {
-  assert.equal(shouldDirectSwitch(false, false, false, false, false), false);
+  assert.equal(shouldDirectSwitch(false, false, false), false);
 });
 
 test('shouldDirectSwitch: reduced motion alone forces a direct switch', () => {
-  assert.equal(shouldDirectSwitch(true, false, false, false, false), true);
+  assert.equal(shouldDirectSwitch(true, false, false), true);
 });
 
 test('shouldDirectSwitch: solo source alone forces a direct switch', () => {
@@ -360,22 +363,20 @@ test('shouldDirectSwitch: solo source alone forces a direct switch', () => {
   // soloTarget is false, so `soloSource && soloTarget` is false and the buggy
   // form would fall through to the leaf-flip animation (a half-width leaf flown
   // across a width change — tear/blank flash). The real OR must catch it.
-  assert.equal(shouldDirectSwitch(false, true, false, false, false), true);
+  assert.equal(shouldDirectSwitch(false, true, false), true);
 });
 
 test('shouldDirectSwitch: solo target alone forces a direct switch', () => {
   // Mirror of the above: target is solo, source is a plain paired spread.
-  assert.equal(shouldDirectSwitch(false, false, true, false, false), true);
+  assert.equal(shouldDirectSwitch(false, false, true), true);
 });
 
-test('shouldDirectSwitch: full (double-wide) source alone forces a direct switch', () => {
-  assert.equal(shouldDirectSwitch(false, false, false, true, false), true);
-});
-
-test('shouldDirectSwitch: full (double-wide) target alone forces a direct switch', () => {
-  assert.equal(shouldDirectSwitch(false, false, false, false, true), true);
+test('shouldDirectSwitch: a full (double-wide) endpoint no longer forces a direct switch', () => {
+  // 双宽页的翻页由 flipTransition 按两半正常给 'spread',不走直切 ——
+  // 这里锁的是「full 不再是理由」:参数表里根本没有 full 位。
+  assert.equal(shouldDirectSwitch.length, 3);
 });
 
 test('shouldDirectSwitch: multiple reasons at once still direct-switches', () => {
-  assert.equal(shouldDirectSwitch(true, true, false, true, false), true);
+  assert.equal(shouldDirectSwitch(true, true, false), true);
 });

@@ -113,13 +113,17 @@ export function spreadRenderKind(spread: Spread | undefined, pages: EditorPage[]
   return isSoloSpread(spread, pages) ? 'solo' : 'pair';
 }
 
-// goToSpread(FlipBook.tsx)是否跳过叶子翻页动画,直接切换到目标跨页。五个原因
+// goToSpread(FlipBook.tsx)是否跳过叶子翻页动画,直接切换到目标跨页。三个原因
 // 互相独立、OR 连接:偏好减少动效,或起点/终点任一端是单页 solo(封面/封尾 ——
-// 容器宽度跟普通跨页不同,半宽叶子飞过宽度变化的跨页会撕裂/错位),或起点/终点
-// 任一端是双宽 full(一整张连续面,没有可翻的半页)。
+// 容器宽度跟普通跨页不同,半宽叶子飞过宽度变化的跨页会撕裂/错位)。
+//
+// 双宽(#303)页**不再**是直切理由:它按「装订在一起的两个半页」处理 —— 一张双宽面
+// 裁成左右两半参与叶子翻页,静止时也画中缝(真书的跨页大图照样有书沟)。裁半的
+// 位置语义住在 flip.ts 的 leafHalves/edgeBackHalf,渲染面(FlipBook/移动端/Live)
+// 各自按它裁,不各写一份。
 //
 // review 加固(#303):这条判断原先是写在 FlipBook.tsx 里的一整条布尔表达式,靠
-// 源文本正则 pin 住 —— 正则只能确认五个词都出现,盯不住连接它们的运算符。`&&`
+// 源文本正则 pin 住 —— 正则只能确认每个词都出现,盯不住连接它们的运算符。`&&`
 // 会不声不响地钻进 `||` 链里(`&&` 比 `||` 优先级高),把"单页封面 → 普通跨页"
 // 这类组合悄悄漏判成要走叶子翻页。抽成纯函数后用真实布尔输入直接单测,运算符
 // 错了输入输出就对不上,不存在"正则照样通过"的空子(见 spreads.test.ts)。
@@ -127,8 +131,6 @@ export function shouldDirectSwitch(
   reducedMotion: boolean,
   soloSource: boolean,
   soloTarget: boolean,
-  fullSource: boolean,
-  fullTarget: boolean,
 ): boolean {
-  return reducedMotion || soloSource || soloTarget || fullSource || fullTarget;
+  return reducedMotion || soloSource || soloTarget;
 }

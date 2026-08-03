@@ -44,11 +44,12 @@ test('desktop empty pages suppress the base paper edge', () => {
   );
 });
 
-test('desktop fold is absent on solo and continuous double-wide states', () => {
+test('desktop fold is absent on solo but PRESENT on double-wide (bound halves)', () => {
   assert.match(desktop, /\.editor-port \.book\.book-solo::before[^}]*display:\s*none/s);
   assert.match(desktop, /\.editor-port \.book\.book-solo::after[^}]*display:\s*none/s);
-  assert.match(desktop, /\.editor-port \.book\.book-full::before[^}]*display:\s*none/s);
-  assert.match(desktop, /\.editor-port \.book\.book-full::after[^}]*display:\s*none/s);
+  // 双宽(#303)页 2026-08-02 起保留书脊沟槽与接缝:它是装订的两半,与四端一致。
+  assert.doesNotMatch(desktop, /\.editor-port \.book\.book-full::before[^}]*display:\s*none/s);
+  assert.doesNotMatch(desktop, /\.editor-port \.book\.book-full::after[^}]*display:\s*none/s);
 });
 
 test('desktop 3D book avoids isolation that flattens turning leaves', () => {

@@ -6,7 +6,7 @@ import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
 import { applyFolioOverlay, pageFolioInfos, preferredPageHtml, type FolioSide, type PageFolio } from './page-html-dom';
 import { FittedPageHtml } from './FittedPageHtml';
 import { buildSpreads, isSoloSpread, shouldDirectSwitch, spreadFullPage, spreadIndexOfPage, spreadPageIndices } from './spreads';
-import { pageBox } from './templates/constants';
+import { PAGE, pageBox } from './templates/constants';
 import type { EditorPage } from './types';
 import { useAlbumFonts } from '@/lib/font/album-font-loader';
 
@@ -61,6 +61,9 @@ interface Strings {
   pageIndicator: string;
 }
 
+/** 书体上的一个面:pair 的半页,或双宽页(#303)裁出来的一半(half 标注哪半)。 */
+type BookFace = { page: EditorPage | null; index: number; half?: 'left' | 'right' };
+
 interface Props {
   pages: EditorPage[];
   totalPages: number;
@@ -91,6 +94,7 @@ const PageFace = memo(function PageFace({
   folio = null,
   folioSide = 'right',
   fitText = true,
+  half,
 }: {
   page: EditorPage | null;
   totalPages: number;
@@ -102,6 +106,10 @@ const PageFace = memo(function PageFace({
   // 页签贴哪侧下角(左页 left / 右页 right),与物理半页一致。
   folioSide?: FolioSide;
   fitText?: boolean;
+  /** 双宽页(#303)裁半:框是半页宽,内容按整幅缩放,右半左移一个框宽。
+   *  「拆渲染不拆数据」—— 数据仍是一页,书上是装订在一起的两个半页。
+   *  只对双宽模板生效,普通页忽略。 */
+  half?: 'left' | 'right';
 }) {
   if (!page) {
     return <div style={{ width, height, background: 'var(--surface)' }} />;
@@ -118,12 +126,17 @@ const PageFace = memo(function PageFace({
         )
       : null;
   const box = pageBox(page.templateId);
-  const scale = Math.min(width / box.width, height / box.height);
+  const wide = half != null && box.width > PAGE.width;
+  const scale = wide
+    ? Math.min((width * 2) / box.width, height / box.height)
+    : Math.min(width / box.width, height / box.height);
+  // transform 列表右→左生效:先 scale 再平移,平移量因此是屏幕 px(正好一个框宽)。
+  const shift = wide && half === 'right' ? `translateX(${-width}px) ` : '';
   return (
     <div style={{ width, height, overflow: 'hidden', background: '#fff' }}>
       <div
         style={{
-          transform: `scale(${scale})`,
+          transform: `${shift}scale(${scale})`,
           transformOrigin: 'top left',
           width: box.width,
           height: box.height,
@@ -208,6 +221,27 @@ export function FlipBook({
     (s: number) => spreadFullPage(spreads[s]) ?? -1,
     [spreads],
   );
+  // 书体渲染用的「左右两个面」。pair = 左右两页;full(#303)= **同一页摆两次**,
+  // 左半裁/右半裁 —— 装订在一起的两个半页,有中缝、各带页码角、各自参与叶片翻页。
+  // 数据仍是一页(拆渲染不拆数据),点任一半编辑的都是那一页。
+  const facesOfSpread = useCallback(
+    (s: number): [BookFace, BookFace] => {
+      const sp = spreads[s];
+      if (!sp) return [{ page: null, index: -1 }, { page: null, index: -1 }];
+      if (sp.kind === 'full') {
+        const page = pages[sp.page] ?? null;
+        return [
+          { page, index: sp.page, half: 'left' },
+          { page, index: sp.page, half: 'right' },
+        ];
+      }
+      return [
+        { page: sp.left != null ? pages[sp.left] ?? null : null, index: sp.left ?? -1 },
+        { page: sp.right != null ? pages[sp.right] ?? null : null, index: sp.right ?? -1 },
+      ];
+    },
+    [pages, spreads],
+  );
   // Is spread `s` a true cover/ending solo page (render single-page, centered,
   // no blank facing half, no spine)? An interior odd-trailing { left:i, right:null }
   // is NOT solo — see isSoloSpread.
@@ -288,12 +322,12 @@ export function FlipBook({
       // double-page⇄double-page move; a solo page has a different (single-page)
       // width, so a cross-width leaf would tear/misplace. A direct switch is the
       // safe transition for solo edges (no residue, no blank flash).
-      // 双宽(#303)跨页同理:它是一整张连续的双宽面,没有「右半页」可以当叶子转,
-      // 也没有对面的半页可以垫在底下。任一端是双宽页就直接切换,不做叶子动画。
-      // 五个原因的 OR 逻辑住在 shouldDirectSwitch(spreads.ts,真单测覆盖),这里
+      // 双宽(#303)跨页**不再**直切:facesOfSpread 把它裁成装订在一起的左右两半,
+      // 叶片翻页照常(翻进它=背面是它的左半,翻出它=正面是它的右半)。
+      // 原因的 OR 逻辑住在 shouldDirectSwitch(spreads.ts,真单测覆盖),这里
       // 只负责把每个原因当独立的位置参数传进去 —— 不做任何 && / || 的现场拼接。
       if (
-        shouldDirectSwitch(reducedMotion, soloOf(spread), soloOf(to), fullIndexOf(spread) >= 0, fullIndexOf(to) >= 0)
+        shouldDirectSwitch(reducedMotion, soloOf(spread), soloOf(to))
       ) {
         setSpread(to);
         return;
@@ -329,36 +363,28 @@ export function FlipBook({
 
   const [curLeft, curRight] = pagesOfSpread(spread);
 
-  // Leaf faces depend on flip direction. Forward: the current right page is the
-  // leaf front; it turns to reveal the next spread's left page (leaf back), and
-  // the next right page is painted underneath. Backward is the mirror.
-  const target = anim ? pagesOfSpread(anim.to) : null;
-  let underLeft = curLeft;
-  let underRight = curRight;
-  let leafFront: EditorPage | null = null;
-  let leafBack: EditorPage | null = null;
+  // Leaf faces depend on flip direction. Forward: the current right face is the
+  // leaf front; it turns to reveal the next spread's left face (leaf back), and
+  // the next right face is painted underneath. Backward is the mirror.
+  // 面一律经 facesOfSpread 取 —— 双宽(#303)在这里已经是「左半/右半」两个面,
+  // 叶片与底层拿到的 half 随面走,翻进翻出双宽页与普通跨页同一条路径。
+  const [curFaceL, curFaceR] = facesOfSpread(spread);
+  const target = anim ? facesOfSpread(anim.to) : null;
+  let underLeft = curFaceL;
+  let underRight = curFaceR;
+  let leafFront: BookFace | null = null;
+  let leafBack: BookFace | null = null;
   if (anim && target) {
     if (anim.dir === 'next') {
-      underRight = target[1]; // new right page sits beneath the turning leaf
-      leafFront = curRight; // outgoing right page, on the right half
-      leafBack = target[0]; // incoming left page
+      underRight = target[1]; // new right face sits beneath the turning leaf
+      leafFront = curFaceR; // outgoing right face, on the right half
+      leafBack = target[0]; // incoming left face
     } else {
-      underLeft = target[0]; // new left page sits beneath the turning leaf
-      leafFront = curLeft; // outgoing left page, on the left half
-      leafBack = target[1]; // incoming right page
+      underLeft = target[0]; // new left face sits beneath the turning leaf
+      leafFront = curFaceL; // outgoing left face, on the left half
+      leafBack = target[1]; // incoming right face
     }
   }
-
-  const here = spreads[spread];
-  const onLeftHalf = here?.kind === 'pair' && selected === here.left;
-  const onRightHalf = here?.kind === 'pair' && selected === here.right;
-
-  // 双宽(#303)跨页:一整张双宽面铺满整个跨页宽,没有中缝、没有对面半页。
-  // goToSpread 对双宽端点直接切换,所以画到这里时 anim 恒为 null。
-  const fullArrayIndex = fullIndexOf(spread);
-  const fullHere = fullArrayIndex >= 0;
-  const fullPage = fullHere ? pages[fullArrayIndex] ?? null : null;
-  const fullActive = fullHere && selected === fullArrayIndex;
 
   // Solo cover/ending: render a single centered page (no blank facing half, no
   // spine). Animation is already suppressed for solo edges in goToSpread, so the
@@ -384,25 +410,25 @@ export function FlipBook({
 
   // A clickable half-page: selects + opens edit on its own page, shows the edit
   // affordance on hover (preserving the UI-1a "click page to edit" behaviour).
+  // 双宽(#303)的两个半面共用同一 pageArrayIndex:点任一半编辑的都是那一页。
   const Half = ({
     page,
     pageArrayIndex,
     side,
     active,
-    // 双宽(#303)页占满整个跨页宽,不是半页;其余情况都是半页宽。
-    width = halfW,
+    half,
   }: {
     page: EditorPage | null;
     pageArrayIndex: number;
     side: 'left' | 'right';
     active: boolean;
-    width?: number;
+    half?: 'left' | 'right';
   }) => (
     <div
       className="group/half relative"
-      style={{ width, height: book.h, background: 'var(--surface)' }}
+      style={{ width: halfW, height: book.h, background: 'var(--surface)' }}
     >
-      <PageFace page={page} totalPages={totalPages} resolveImage={resolveImage} width={width} height={book.h} folio={folioOf(page)} folioSide={folioSideOf(page)} />
+      <PageFace page={page} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(page)} folioSide={folioSideOf(page)} half={half} />
       {page && (
         <>
           <button
@@ -463,26 +489,9 @@ export function FlipBook({
         </div>
       )}
 
-      {book.w > 0 && !soloHere && fullHere && (
-        // 双宽(#303)页:一整张双宽面铺满跨页宽 —— 无中缝、无对面半页、无翻页叶。
-        // 高仿真只加书体外观(投影 + 两侧书口纸叠);画面连续,中间不加任何分隔。
-        <div className="relative" style={{ width: book.w, height: book.h }}>
-          <PaperEdges sides={['left', 'right']} width={edgeW} />
-          <div
-            className="relative flex h-full w-full"
-            style={{
-              borderRadius: 3,
-              background: 'var(--surface)',
-              boxShadow: BOOK_SHADOW,
-              overflow: 'hidden',
-            }}
-          >
-            <Half page={fullPage} pageArrayIndex={fullArrayIndex} side="left" active={fullActive} width={book.w} />
-          </div>
-        </div>
-      )}
-
-      {book.w > 0 && !soloHere && !fullHere && (
+      {book.w > 0 && !soloHere && (
+        // pair 与双宽(#303)同一条渲染路径:双宽页经 facesOfSpread 裁成装订在一起的
+        // 左右两半 —— 有中缝、有弧面明暗、参与叶片翻页(拆渲染不拆数据)。
         <div className="relative" style={{ width: book.w, height: book.h }}>
           {/* 书口纸张堆叠:摊开的书两侧都露纸芯 */}
           <PaperEdges sides={['left', 'right']} width={edgeW} />
@@ -496,9 +505,9 @@ export function FlipBook({
               overflow: 'hidden',
             }}
           >
-            {/* under layer: the resting spread (target pages slot in beneath the leaf during a flip) */}
-            <Half page={underLeft} pageArrayIndex={(here?.kind === 'pair' ? here.left : null) ?? -1} side="left" active={onLeftHalf} />
-            <Half page={underRight} pageArrayIndex={(here?.kind === 'pair' ? here.right : null) ?? -1} side="right" active={onRightHalf} />
+            {/* under layer: the resting spread (target faces slot in beneath the leaf during a flip) */}
+            <Half page={underLeft.page} pageArrayIndex={underLeft.index} side="left" active={underLeft.index >= 0 && selected === underLeft.index} half={underLeft.half} />
+            <Half page={underRight.page} pageArrayIndex={underRight.index} side="right" active={underRight.index >= 0 && selected === underRight.index} half={underRight.half} />
 
             {/* 左右半页向书脊的弧面明暗(与 editor-port .page-left/.page-right::before 同配方) */}
             <div
@@ -560,7 +569,7 @@ export function FlipBook({
                   className="absolute inset-0"
                   style={{ backfaceVisibility: 'hidden', background: 'var(--surface)' }}
                 >
-                  <PageFace page={leafFront} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafFront)} folioSide={folioSideOf(leafFront)} />
+                  <PageFace page={leafFront?.page ?? null} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafFront?.page ?? null)} folioSide={folioSideOf(leafFront?.page ?? null)} half={leafFront?.half} />
                   {/* page-turn shading on the leaf front */}
                   <div
                     className="absolute inset-0"
@@ -576,7 +585,7 @@ export function FlipBook({
                   className="absolute inset-0"
                   style={{ backfaceVisibility: 'hidden', background: 'var(--surface)', transform: 'rotateY(180deg)' }}
                 >
-                  <PageFace page={leafBack} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafBack)} folioSide={folioSideOf(leafBack)} />
+                  <PageFace page={leafBack?.page ?? null} totalPages={totalPages} resolveImage={resolveImage} width={halfW} height={book.h} folio={folioOf(leafBack?.page ?? null)} folioSide={folioSideOf(leafBack?.page ?? null)} half={leafBack?.half} />
                   {/* page-turn shading on the leaf back(落地后它是靠书脊的那半;
                       面已 rotateY(180°) 镜像,所以 div 的左即视觉上的右) */}
                   <div
@@ -672,9 +681,17 @@ export function FlipBook({
                       <PageFace page={soloThumb} totalPages={totalPages} resolveImage={thumbResolver} fitText={false} width={26} height={34} />
                     </div>
                   ) : fullIdx >= 0 ? (
-                    <div className="h-full w-full overflow-hidden">
-                      <PageFace page={fullThumb} totalPages={totalPages} resolveImage={thumbResolver} fitText={false} width={52} height={34} />
-                    </div>
+                    <>
+                      <div className="h-full w-full overflow-hidden">
+                        <PageFace page={fullThumb} totalPages={totalPages} resolveImage={thumbResolver} fitText={false} width={52} height={34} />
+                      </div>
+                      {/* 双宽页也是装订的两半 —— 缩略图同样带中缝 */}
+                      <div
+                        aria-hidden
+                        className="absolute inset-y-1 left-1/2 z-[1] w-px -translate-x-1/2"
+                        style={{ background: 'var(--border-soft)' }}
+                      />
+                    </>
                   ) : (
                     <>
                       <div className="h-full flex-1 overflow-hidden">
