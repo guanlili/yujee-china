@@ -104,28 +104,5 @@ test('page-turn into/out of a solo edge skips the cross-width leaf flip (direct 
   );
 });
 
-test('the thumbnail strip renders a solo spread as one page, no spine divider', () => {
-  const tsx = source('FlipBook.tsx');
-  // Each thumbnail computes solo = soloOf(s); the solo branch renders a single
-  // full-width PageFace and omits the spine divider.
-  assert.match(tsx, /const solo = soloOf\(s\)/, 'thumbnail must classify each spread via soloOf');
-  assert.match(
-    tsx,
-    /solo \? 'w-\[26px\]' : 'w-\[52px\]'/,
-    'a solo thumbnail must be single-page width (26px), not the full 52px spread',
-  );
-  // The spine divider (border-soft vertical line) must sit in the non-solo
-  // branches only(pair 与双宽都是装订的两半,都带分隔线;solo 是单页没有)。
-  const thumbBlock = /\{solo \? \([\s\S]*?\) : fullIdx >= 0 \? \(([\s\S]*?)\) : \(([\s\S]*?)\)\}\n\s*<\/div>\n\s*<\/button>/.exec(tsx);
-  assert.ok(thumbBlock, 'expected the thumbnail solo/full/pair ternary');
-  assert.match(
-    thumbBlock![2]!,
-    /background:\s*'var\(--border-soft\)'/,
-    'the spine divider must live in the pair thumbnail branch',
-  );
-  assert.doesNotMatch(
-    /\{solo \? \(([\s\S]*?)\) : fullIdx/.exec(tsx)![1]!,
-    /var\(--border-soft\)/,
-    'the solo thumbnail branch must not draw a spine divider',
-  );
-});
+// (缩略图条 2026-08-03 已从分享页退场 —— 它的 solo 缩略断言随之删除;
+//  分享页 chrome 的新守卫见 flipbook-share-chrome.test.ts。)

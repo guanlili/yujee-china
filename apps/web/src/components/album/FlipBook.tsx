@@ -5,16 +5,17 @@ import { getWebTemplate } from './web-registry';
 import { adaptPageToTemplateData, type ResolveImage } from './adapt-layout';
 import { applyFolioOverlay, pageFolioInfos, preferredPageHtml, type FolioSide, type PageFolio } from './page-html-dom';
 import { FittedPageHtml } from './FittedPageHtml';
-import { buildSpreads, isSoloSpread, shouldDirectSwitch, spreadFullPage, spreadIndexOfPage, spreadPageIndices } from './spreads';
+import { buildSpreads, isSoloSpread, shouldDirectSwitch, spreadIndexOfPage, spreadPageIndices } from './spreads';
 import { PAGE, pageBox } from './templates/constants';
 import type { EditorPage } from './types';
 import { useAlbumFonts } from '@/lib/font/album-font-loader';
 
 // UI-1b 3D flipbook: a 1.414:1 two-page spread with a
 // center-spine shadow, perspective transform, and a page-turn animation between
-// spreads. A bottom glassmorphism thumbnail strip (prev/next + indicator +
-// per-spread thumbnails) drives navigation. This is the preview/navigation
-// layer only — editing, chat, export, and the topbar stay in AlbumEditor.
+// spreads. 唯一消费方是免登分享页(SharedAlbum)。导航是书两侧各一枚小圆钮
+// (2026-08-03 用户拍板:底部缩略图条退场、分享页不画选中框 —— 分享是纯阅读面,
+// 不是编辑器)。This is the preview/navigation layer only — editing, chat,
+// export, and the topbar stay in the editor.
 
 const FLIP_MS = 900; // matches .flipper transition in editor.html
 
@@ -57,8 +58,6 @@ interface Strings {
   nextPage: string;
   noPages: string;
   editPage: string;
-  // "{current} / {total}"
-  pageIndicator: string;
 }
 
 /** 书体上的一个面:pair 的半页,或双宽页(#303)裁出来的一半(half 标注哪半)。 */
@@ -68,8 +67,6 @@ interface Props {
   pages: EditorPage[];
   totalPages: number;
   resolveImage: ResolveImage;
-  /** 缩略图条用的低清解析器(~240px 派生图)。缺省回退 resolveImage。 */
-  resolveThumbImage?: ResolveImage;
   /** Currently selected page (array index into `pages`). */
   selected: number;
   /** Select a page by array index (also moves the book to its spread). */
@@ -171,13 +168,11 @@ export function FlipBook({
   pages,
   totalPages,
   resolveImage,
-  resolveThumbImage,
   selected,
   onSelect,
   onEditPage,
   t,
 }: Props) {
-  const thumbResolver = resolveThumbImage ?? resolveImage;
   const reducedMotion = usePrefersReducedMotion();
   const fontsReady = useAlbumFonts(pages.map((page) => ({ texts: page.textsJson })));
 
@@ -215,11 +210,6 @@ export function FlipBook({
       ];
     },
     [pages, spreads],
-  );
-  // 双宽跨页:它的页数组下标(不是双宽跨页则 -1)。
-  const fullIndexOf = useCallback(
-    (s: number) => spreadFullPage(spreads[s]) ?? -1,
-    [spreads],
   );
   // 书体渲染用的「左右两个面」。pair = 左右两页;full(#303)= **同一页摆两次**,
   // 左半裁/右半裁 —— 装订在一起的两个半页,有中缝、各带页码角、各自参与叶片翻页。
@@ -275,8 +265,9 @@ export function FlipBook({
     const el = stageRef.current;
     if (!el) return;
     const fit = () => {
-      const availH = el.clientHeight - 96; // room for the thumbnail strip
-      const availW = el.clientWidth - 48;
+      const availH = el.clientHeight - 32; // breathing room only(缩略图条已退场)
+      const availW = el.clientWidth - 104; // 两侧翻页小圆钮各留 52px(12 贴边 + 36 钮 + 4 隙),不压书
+
       let h = Math.min(availH, 720);
       let w = h * 1.414;
       if (w > availW) {
@@ -346,7 +337,7 @@ export function FlipBook({
         timerRef.current = null;
       }, FLIP_MS + 40);
     },
-    [spread, spreadCount, anim, reducedMotion, syncSelectionToSpread, soloOf, fullIndexOf],
+    [spread, spreadCount, anim, reducedMotion, syncSelectionToSpread, soloOf],
   );
 
   // prev/next on the strip move one spread at a time.
@@ -393,12 +384,6 @@ export function FlipBook({
   const soloHere = isSoloSpread(spreads[spread], pages);
   const soloPage = soloHere ? (curLeft ?? curRight) : null;
   const soloArrayIndex = soloHere ? (spreadPageIndices(spreads[spread])[0] ?? -1) : -1;
-  const soloActive = soloHere && selected === soloArrayIndex;
-
-  const indicator = useMemo(
-    () => t.pageIndicator.replace('{current}', String(spread + 1)).replace('{total}', String(spreadCount)),
-    [t.pageIndicator, spread, spreadCount],
-  );
 
   if (pages.length === 0) {
     return (
@@ -411,17 +396,16 @@ export function FlipBook({
   // A clickable half-page: selects + opens edit on its own page, shows the edit
   // affordance on hover (preserving the UI-1a "click page to edit" behaviour).
   // 双宽(#303)的两个半面共用同一 pageArrayIndex:点任一半编辑的都是那一页。
+  // 分享页是纯阅读面,选中态不画任何描边框(2026-08-03 用户拍板)。
   const Half = ({
     page,
     pageArrayIndex,
     side,
-    active,
     half,
   }: {
     page: EditorPage | null;
     pageArrayIndex: number;
     side: 'left' | 'right';
-    active: boolean;
     half?: 'left' | 'right';
   }) => (
     <div
@@ -436,7 +420,6 @@ export function FlipBook({
             onClick={() => editPage(pageArrayIndex)}
             onDoubleClick={() => editPage(pageArrayIndex)}
             className="absolute inset-0 cursor-pointer"
-            style={active ? { boxShadow: 'inset 0 0 0 2px var(--fg)' } : undefined}
             title={t.editPage}
             aria-label={t.editPage}
           />
@@ -484,7 +467,7 @@ export function FlipBook({
               overflow: 'hidden',
             }}
           >
-            <Half page={soloPage} pageArrayIndex={soloArrayIndex} side="left" active={soloActive} />
+            <Half page={soloPage} pageArrayIndex={soloArrayIndex} side="left" />
           </div>
         </div>
       )}
@@ -506,8 +489,8 @@ export function FlipBook({
             }}
           >
             {/* under layer: the resting spread (target faces slot in beneath the leaf during a flip) */}
-            <Half page={underLeft.page} pageArrayIndex={underLeft.index} side="left" active={underLeft.index >= 0 && selected === underLeft.index} half={underLeft.half} />
-            <Half page={underRight.page} pageArrayIndex={underRight.index} side="right" active={underRight.index >= 0 && selected === underRight.index} half={underRight.half} />
+            <Half page={underLeft.page} pageArrayIndex={underLeft.index} side="left" half={underLeft.half} />
+            <Half page={underRight.page} pageArrayIndex={underRight.index} side="right" half={underRight.half} />
 
             {/* 左右半页向书脊的弧面明暗(与 editor-port .page-left/.page-right::before 同配方) */}
             <div
@@ -604,115 +587,31 @@ export function FlipBook({
         </div>
       )}
 
-      {/* ─── Bottom glassmorphism thumbnail strip ─── */}
-      <div
-        className="absolute bottom-3 left-1/2 z-[6] flex max-w-[calc(100%-32px)] -translate-x-1/2 items-center gap-2 rounded-full px-3 py-1.5"
-        style={{
-          background: 'rgba(255,255,255,0.8)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-        }}
-      >
+      {/* ─── 两侧翻页小圆钮(书两侧垂直居中;到头/翻页动画中淡出不可点) ─── */}
+      {([
+        { dir: -1 as const, label: t.prevPage, edge: 'left-3', points: '15 18 9 12 15 6', hidden: spread === 0 },
+        { dir: 1 as const, label: t.nextPage, edge: 'right-3', points: '9 18 15 12 9 6', hidden: spread >= spreadCount - 1 },
+      ]).map(({ dir, label, edge, points, hidden }) => (
         <button
+          key={dir}
           type="button"
-          onClick={() => step(-1)}
-          disabled={spread === 0 || !!anim}
-          title={t.prevPage}
-          aria-label={t.prevPage}
-          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--bg)] hover:text-[var(--fg)] disabled:opacity-30"
+          onClick={() => step(dir)}
+          disabled={hidden || !!anim}
+          title={label}
+          aria-label={label}
+          className={`absolute ${edge} top-1/2 z-[7] flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-[var(--fg-2)] transition-opacity hover:text-[var(--fg)] disabled:pointer-events-none ${hidden ? 'opacity-0' : 'disabled:opacity-40'}`}
+          style={{
+            background: 'rgba(255,255,255,0.8)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+          }}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-2.5 w-2.5">
-            <polyline points="15 18 9 12 15 6" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+            <polyline points={points} />
           </svg>
         </button>
-
-        <span className="min-w-[36px] flex-shrink-0 text-center font-mono text-[10px] font-medium tabular-nums text-[var(--fg-2)]">
-          {indicator}
-        </span>
-
-        <button
-          type="button"
-          onClick={() => step(1)}
-          disabled={spread >= spreadCount - 1 || !!anim}
-          title={t.nextPage}
-          aria-label={t.nextPage}
-          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[var(--muted)] transition-colors hover:bg-[var(--bg)] hover:text-[var(--fg)] disabled:opacity-30"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-2.5 w-2.5">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </button>
-
-        {/* per-spread thumbnails */}
-        <div className="flex gap-1.5 overflow-x-auto p-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {Array.from({ length: spreadCount }, (_, s) => {
-            const [tl, tr] = pagesOfSpread(s);
-            // Highlight the spread currently shown in the book, not a stale
-            // selection — turning the page keeps the two in lockstep.
-            const active = s === spread;
-            // Solo cover/ending thumbnail: a single centered page, no blank facing
-            // half and no spine divider — mirrors the book's solo render. (An
-            // interior odd-trailing spread is NOT solo and keeps its blank half.)
-            const solo = soloOf(s);
-            const soloThumb = solo ? (tl ?? tr) : null;
-            // 双宽(#303)跨页缩略图:一整格双宽面(仍是 52px 宽的跨页格),无中缝。
-            const fullIdx = fullIndexOf(s);
-            const fullThumb = fullIdx >= 0 ? pages[fullIdx] ?? null : null;
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => goToSpread(s)}
-                disabled={!!anim}
-                title={`${s + 1}`}
-                className="flex-shrink-0 transition-transform hover:-translate-y-px"
-              >
-                <div
-                  className={`relative flex h-[34px] overflow-hidden rounded-[3px] ${solo ? 'w-[26px]' : 'w-[52px]'}`}
-                  style={{
-                    border: `1.5px solid ${active ? 'var(--fg)' : 'transparent'}`,
-                    boxShadow: active ? '0 0 0 1.5px rgba(0,0,0,0.08)' : undefined,
-                    background: 'var(--bg)',
-                  }}
-                >
-                  {solo ? (
-                    <div className="h-full w-full overflow-hidden">
-                      <PageFace page={soloThumb} totalPages={totalPages} resolveImage={thumbResolver} fitText={false} width={26} height={34} />
-                    </div>
-                  ) : fullIdx >= 0 ? (
-                    <>
-                      <div className="h-full w-full overflow-hidden">
-                        <PageFace page={fullThumb} totalPages={totalPages} resolveImage={thumbResolver} fitText={false} width={52} height={34} />
-                      </div>
-                      {/* 双宽页也是装订的两半 —— 缩略图同样带中缝 */}
-                      <div
-                        aria-hidden
-                        className="absolute inset-y-1 left-1/2 z-[1] w-px -translate-x-1/2"
-                        style={{ background: 'var(--border-soft)' }}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <div className="h-full flex-1 overflow-hidden">
-                        <PageFace page={tl} totalPages={totalPages} resolveImage={thumbResolver} fitText={false} width={26} height={34} />
-                      </div>
-                      <div className="h-full flex-1 overflow-hidden">
-                        <PageFace page={tr} totalPages={totalPages} resolveImage={thumbResolver} fitText={false} width={26} height={34} />
-                      </div>
-                      <div
-                        aria-hidden
-                        className="absolute inset-y-1 left-1/2 z-[1] w-px -translate-x-1/2"
-                        style={{ background: 'var(--border-soft)' }}
-                      />
-                    </>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      ))}
     </div>
   );
 }
