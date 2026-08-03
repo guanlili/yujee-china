@@ -506,12 +506,17 @@ export function MobileEditorRoot({
   };
   const commitDeletePage = (pageIndex: number) => {
     const prev = pages;
+    // 线上契约:URL 里的 idx 是页对象的 pageIndex **字段**(与 persistPage 同口径),
+    // 不是数组下标 —— 存量相册的字段可能不连续(2026-08-03 线上 400 复盘)。
+    // 本地状态仍按数组位置操作(editPage 是数组下标)。
+    const wireIndex = prev[pageIndex]?.pageIndex;
+    if (wireIndex == null) return;
     setPages(prev.filter((_, i) => i !== pageIndex).map((p, newIdx) => ({ ...p, pageIndex: newIdx })));
     // 被删的页正处于编辑焦点,必须退出编辑态(留着会指到错位的页)。
     setEditPage(null);
     setSelection(null);
     closeSheet();
-    void fetch(`/api/v1/albums/${detail.album.id}/pages/${pageIndex}`, { method: 'DELETE' })
+    void fetch(`/api/v1/albums/${detail.album.id}/pages/${wireIndex}`, { method: 'DELETE' })
       .then((res) => {
         if (!res.ok) throw new Error(`delete ${res.status}`);
       })

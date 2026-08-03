@@ -2458,6 +2458,48 @@ test('deletePage:拒绝 —— 删 cover 类目页/删最后一张内页/越界,
   }
 });
 
+// ── 2026-08-03 线上 400 复盘:/pages/[idx] 的线上契约是页对象的 pageIndex **字段**
+// (桌面 data-page-index 写 String(lp.pageIndex)、pageByIndex 按字段 find、移动端
+// persistPage(page.pageIndex))。存量相册的字段可能不连续(线上见 129/132),服务端
+// 按数组下标解析会越界/错位。deletePage 必须按字段解析;删后重编号 0..n-1 顺带把
+// 这类相册洗回连续(自愈)。
+test('deletePage:按 pageIndex 字段解析(不是数组下标)—— 字段不连续(0/129/132)的存量相册照样删对页并重编号', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-delete-sparse');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(129, 'mag-03', 'A'),
+        reorderFixturePage(132, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    // 前端发的是字段值 129(不是数组下标 1)。
+    await albumService.deletePage(user.id, album.id, 129);
+
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.deepEqual(
+      rows.map((r) => [(r.page as Page).pageIndex, ((r.page as Page).texts as Record<string, string>).title]),
+      [
+        [0, 'COVER'],
+        [1, 'B'],
+      ],
+      '删掉字段=129 的那页;余页重编号 0..n-1(稀疏相册被洗回连续)',
+    );
+
+    // 不存在的字段值(哪怕它是合法数组下标)必须明确拒绝,不能静默删错页。
+    await assert.rejects(albumService.deletePage(user.id, album.id, 77), hasCode('VALIDATION_FAILED'));
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('deletePage(无 draft 存量相册):album_pages 行过滤后 pageIndex 重写,整行内容原样', async (t) => {
   if (!(await isDbReachable())) return t.skip('db not reachable');
   const user = await makeUser('wp-delete-legacy');

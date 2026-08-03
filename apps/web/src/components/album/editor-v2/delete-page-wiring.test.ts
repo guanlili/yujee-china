@@ -46,3 +46,16 @@ test('两端都退出被删页的选中/编辑态(不能停留在错位引用上
   assert.match(editor, /selectedPageIndex = null;[\s\S]{0,200}?hideElementToolbar\(\)/);
   assert.match(mobileRoot, /setEditPage\(null\);[\s\S]{0,200}?setSelection\(null\)/);
 });
+
+// 2026-08-03 线上 400 复盘:/pages/[idx] 的线上契约是页对象的 pageIndex **字段**
+// (桌面 data-page-index=String(page.pageIndex)、移动端 persistPage(page.pageIndex)),
+// 存量相册字段可能不连续(线上见 129/132)。删除链路必须全程按字段,不许按数组下标。
+test('线上契约:两端删除都按 pageIndex 字段,不按数组下标', () => {
+  // 桌面:selectedPageIndex 是字段 → 查页用 pageByIndex(字段 find),本地过滤按字段。
+  assert.match(editor, /const page = pageByIndex\(idx\)/, '查页必须按字段(pageByIndex)');
+  assert.match(editor, /prev\.filter\(\(p\) => p\.pageIndex !== idx\)/, '乐观删除必须按字段过滤');
+  // 移动端:editPage 是数组下标,发线前必须换成页对象的字段。
+  assert.match(mobileRoot, /const wireIndex = prev\[pageIndex\]\?\.pageIndex/, '发线前按数组下标取字段');
+  assert.match(mobileRoot, /pages\/\$\{wireIndex\}/, 'URL 用字段值');
+  assert.doesNotMatch(mobileRoot, /pages\/\$\{pageIndex\}`, \{ method: 'DELETE' \}/, '不许把数组下标发上线');
+});
