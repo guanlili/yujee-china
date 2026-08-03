@@ -5,7 +5,7 @@ import { db } from '../../db/client';
 import { albumRepo } from '../../db/repos/album-repo';
 import { draftPageRepo } from '../../db/repos/draft-page-repo';
 import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '../../db/repos/__test__/setup';
-import { ensureDraftPagesSeeded, envelopeJson, loadStoryDraft, type DraftEnvelope } from './draft-store';
+import { ensureDraftPagesSeeded, envelopeJson, loadStoryDraft, parseDraftEnvelope, type DraftEnvelope } from './draft-store';
 
 const TREE: V3LayoutTreeT = { chapters: [] };
 const PROGRESS: V3StoryProgress = { currentChapterId: null, doneChapterIds: [] };
@@ -236,4 +236,16 @@ test('envelopeJson: writes exactly {version, tree, progress, design}, never a pa
   assert.equal('design' in jsonNoDesign, false);
   assert.equal('pages' in jsonNoDesign, false);
   assert.deepEqual(Object.keys(jsonNoDesign).sort(), ['progress', 'tree', 'version']);
+});
+
+// Task 6(pageBackground 契约修复):envelopeJson 写侧从不重新校验(直传 design
+// record),真正会丢字段的是读侧 parseDraftEnvelope 里的 V3StoryDraft.safeParse ——
+// design 子 schema 此前没声明 pageBackground,zod 默认 strip 行为会在这次 parse
+// 悄悄把它丢掉。这条钉住整条写→读链路(不只是裸 schema 单测)。
+test('envelopeJson -> parseDraftEnvelope: design.pageBackground 经完整写读往返存活(此前被 zod 静默丢弃)', () => {
+  const design = { fonts: { body: 'serif' }, colors: { accent: '#ff0000' }, pageBackground: '#FBF8F1' };
+  const json = envelopeJson({ tree: TREE, progress: PROGRESS, design });
+  const roundTripped = parseDraftEnvelope(json);
+  assert.ok(roundTripped);
+  assert.deepEqual(roundTripped!.design, design);
 });

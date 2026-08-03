@@ -382,6 +382,9 @@ export const V3StoryDraft = z
       .object({
         fonts: z.record(z.string(), z.string()),
         colors: z.record(z.string(), z.string()),
+        // 书页底色(design-chat / compose 的封面套色决策):此前没进这个 schema,
+        // 靠默认 zod strip 静默丢弃(往返即丢);Phase 1a Task 6 收口。
+        pageBackground: z.string().optional(),
       })
       .optional(),
   })

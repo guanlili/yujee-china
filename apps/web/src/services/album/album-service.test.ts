@@ -2269,3 +2269,141 @@ test('deletePage(无 draft 存量相册):album_pages 行过滤后 pageIndex 重�
     await cleanupUser(user.id);
   }
 });
+
+// ── persistDesignChat:设计对话提交切 draft_pages 行级写(Phase 1a Task 6)────────
+// Agent 每轮整书回放全部 pages(move_pages 会增删页,不是逐页 PATCH),所以落库
+// 仍是整书 replaceAll,与 reorderPages 同一种「行锁 → seeded → replaceAll(userId)
+// + pageCount 收口 → envelope-only 重写」次序,只是源数据来自 Agent 而不是本地
+// 置换计算。
+
+test('persistDesignChat(committed=true):全书页替换落 draft_pages 行,所有行 version 推进到新 draftRevision、updatedBy=发起人;pageCount 跟随新页数(3→2,模拟 move_pages 删页);COMPLETED 退回 EDITING', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-designchat-replace');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'COMPLETED', stage: 'story', draftJson: wrapped });
+    assert.equal((await draftPageRepo.findByAlbum(album.id)).length, 0, '提交前 draft_pages 尚无行(懒播种)');
+
+    const newPages = [
+      { pageIndex: 0, templateId: 'mag-01', images: {}, texts: { title: 'NEWCOVER' } },
+      { pageIndex: 1, templateId: 'mag-03', images: {}, texts: { title: 'NEWA' } },
+    ];
+    await albumService.persistDesignChat(user.id, album.id, {
+      userMessage: '把第二页删了',
+      assistantReply: '好的,已经删掉了',
+      committed: true,
+      pages: newPages,
+    });
+
+    const after = await albumRepo.findById(album.id);
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.deepEqual(
+      rows.map((r) => [(r.page as Page).pageIndex, (r.page as Page & { texts: Record<string, string> }).texts.title]),
+      [
+        [0, 'NEWCOVER'],
+        [1, 'NEWA'],
+      ],
+      '读回从 draft_pages 行读(整书替换,不是逐页 patch)',
+    );
+    assert.equal(after?.pageCount, 2, 'pageCount 收口点三:move_pages 增删页后与行数一致');
+    assert.equal(after?.status, 'EDITING', '设计对话提交是一次编辑,COMPLETED 须退回 EDITING');
+    for (const row of rows) {
+      assert.equal(row.version, after!.draftRevision, `第 ${row.pageIndex} 行 version 必须等于新 draftRevision`);
+      assert.equal(row.updatedBy, user.id, `第 ${row.pageIndex} 行 updatedBy 必须是发起对话的用户`);
+    }
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('persistDesignChat(committed=true):envelope 沿用锁内最新 tree/progress/design(含 pageBackground),draftJson 不再写回 pages 键', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-designchat-envelope');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 2, { done: true });
+    const design = { fonts: { body: 'serif' }, colors: { accent: '#ff0000' }, pageBackground: '#FBF8F1' };
+    const before = await albumRepo.findById(albumId);
+    await albumRepo.update(db, albumId, {
+      draftJson: { ...(before!.draftJson as Record<string, unknown>), design },
+    });
+
+    const newPages = [{ pageIndex: 0, templateId: 'mag-02', images: {}, texts: { headline: 'X' } }];
+    await albumService.persistDesignChat(user.id, albumId, {
+      userMessage: '换个书页底色',
+      assistantReply: '好的,已经刷新了底色',
+      committed: true,
+      pages: newPages,
+    });
+
+    const after = await albumRepo.findById(albumId);
+    const draft = after!.draftJson as {
+      version: string;
+      tree: unknown;
+      progress: unknown;
+      design?: unknown;
+      pages?: unknown;
+    };
+    assert.equal('pages' in draft, false, 'pages 真相已迁 draft_pages,envelope 不再重写 pages 键');
+    assert.deepEqual(draft.design, design, 'design(含 pageBackground)原样保留锁内最新,不因整书替换页而丢失');
+
+    const rows = await draftPageRepo.findByAlbum(albumId);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.updatedBy, user.id);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('persistDesignChat(committed=true):相册没有 V3 story draft → VALIDATION_FAILED,不落库', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-designchat-noguard');
+  try {
+    const album = await makeAlbum(user.id); // draftJson 仍是 null
+
+    await assert.rejects(
+      albumService.persistDesignChat(user.id, album.id, {
+        userMessage: '',
+        assistantReply: '',
+        committed: true,
+        pages: [],
+      }),
+      hasCode('VALIDATION_FAILED'),
+    );
+    assert.equal((await draftPageRepo.findByAlbum(album.id)).length, 0, '拒绝路径不落库');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('persistDesignChat(committed=false):只读轮次不落 draft_pages/不动 pageCount/draftJson', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-designchat-uncommitted');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 1);
+    const before = await albumRepo.findById(albumId);
+
+    await albumService.persistDesignChat(user.id, albumId, {
+      userMessage: '这页配色好看吗',
+      assistantReply: '我觉得可以再暖一点',
+      committed: false,
+      pages: [],
+    });
+
+    assert.equal((await draftPageRepo.findByAlbum(albumId)).length, 0, '未提交轮次不落 draft_pages 行');
+    const after = await albumRepo.findById(albumId);
+    assert.equal(after?.pageCount, before?.pageCount, 'pageCount 不变');
+    assert.deepEqual(after?.draftJson, before?.draftJson, 'draftJson 不变');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});

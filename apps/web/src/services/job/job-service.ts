@@ -214,10 +214,14 @@ export function mergeComposeIntoDraft(
     draftJson: {
       ...parsed.data,
       pages,
+      // pageBackground 现在是契约字段(V3StoryDraft.design.pageBackground,Phase 1a
+      // Task 6):直接写,不用再靠 spread 绕开 zod 严格 schema 丢字段的问题
+      // (行为等价 —— meta.pageBackground 缺省时这里就是 undefined,JSON 落库时
+      // 与此前「整个键都不出现」的效果相同)。
       design: {
         fonts,
         colors: DESIGN_COLORS,
-        ...(meta.pageBackground ? { pageBackground: meta.pageBackground } : {}),
+        pageBackground: meta.pageBackground,
       },
       progress: { currentChapterId: null, doneChapterIds },
     },
@@ -633,8 +637,9 @@ export const jobService = {
 
       // 页源同 select-layout:从 loadStoryDraft 的行读取 existing pages(bake:false ——
       // assembleDesignedPages 反正会把全书重烘一遍,这里不用重复现场烘),拼一个
-      // draftJson 形状喂给 mergeComposeIntoDraft(该函数内部逻辑原样不动,包括
-      // design.pageBackground 的 spread 写法——Task 6 才改契约)。
+      // draftJson 形状喂给 mergeComposeIntoDraft(该函数内部组页逻辑原样不动;
+      // design.pageBackground 已在 Task 6 进契约,mergeComposeIntoDraft 内部改
+      // 为直写契约字段,不再靠 spread 绕开 zod strip)。
       const loaded = await loadStoryDraft(album, { tx, bake: false });
       const draftJsonLike = loaded
         ? {

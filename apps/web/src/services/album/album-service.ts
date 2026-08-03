@@ -789,18 +789,29 @@ export const albumService = {
       await db.transaction(async (tx) => {
         const latest = await albumRepo.findByIdForUpdate(tx, albumId);
         if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
-        const current = readStoryDraft(latest.draftJson);
-        if (!current?.pages) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft pages');
-        const nextDraft: V3StoryDraft = {
-          version: 'v3-story',
-          tree: current.tree,
-          pages,
-          progress: current.progress,
-        };
-        // 编辑一本已 COMPLETED 的书 → 退回 EDITING(photo-snapshot §5.5,同 updatePage):
-        // 导出即完成、但不锁编辑;一旦改动,旧 PDF 不再代表当前内容,状态回 EDITING。pdfUrl 保留。
+
+        // draft_pages 拆表(Phase 1a)固定写事务次序,同 T3/T4/T5:行锁(above)→
+        // 懒播种 → 用锁内 draftJson 的 envelope(tree/progress/design)—— design
+        // chat 每轮由 Agent 整书回放全部 pages(move_pages 会增删页,不是逐页
+        // patch),这里从来不需要旧 pages 内容,只需要「有没有草稿」这个门禁和
+        // envelope 三件套用于重写 draftJson,所以直接解 envelope 而不是绕
+        // loadStoryDraft 多读一次 draft_pages/legacy pages。
+        const seededRevision = await ensureDraftPagesSeeded(tx, latest);
+        const envelope = parseDraftEnvelope(latest.draftJson);
+        if (!envelope) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft pages');
+
+        const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+        await draftPageRepo.replaceAll(tx, albumId, pages, rev, userId);
+
+        // 编辑一本已 COMPLETED 的书 → 退回 EDITING(photo-snapshot §5.5,同
+        // updatePage/reorderPages):导出即完成、但不锁编辑;一旦改动,旧 PDF 不
+        // 再代表当前内容,状态回 EDITING。pdfUrl 保留。envelope-only 重写:页真
+        // 相已迁 draft_pages,draftJson 只剩 {tree, progress, design}(锁内最新
+        // 值,design chat 没有动 tree/progress)。pageCount 收口点三:
+        // move_pages 会增删页,必须显式跟 pages.length(此前这里遗漏)。
         await albumRepo.update(tx, albumId, {
-          draftJson: nextDraft,
+          draftJson: envelopeJson({ tree: envelope.tree, progress: envelope.progress, design: envelope.design }),
+          pageCount: pages.length,
           ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
         });
       });
