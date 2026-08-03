@@ -223,9 +223,9 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 - Modify: `album-service.ts`(`saveChapterContexts` :848、`markChapterDone` :666)
 - Test: `album-service.test.ts`
 
-**Interfaces:** 两方法只写 envelope(tree/progress),**不再读写 pages**;`saveChapterContexts` 补行锁(修复现状无锁+事务外读)。draft_revision 不推进(页没变——Phase 1b 的 collab-sync 只关心页变化)。
+**Interfaces:** 两方法只写 envelope(tree/progress);`saveChapterContexts` 补行锁(修复现状无锁+事务外读)。写序不破例:行锁后先 `ensureDraftPagesSeeded`(全局写序不例外,防 envelope 覆盖毁掉未播种存量 pages),不 bump revision、不行级写(页没变——Phase 1b 的 collab-sync 只关心页变化)。**修订(code review round 2)**:brief 原文「不碰 draft_pages」与本计划 Global Constraints 的「每个 draft 写事务固定次序:行锁 → `ensureDraftPagesSeeded` → …」冲突——后者是无例外的全局规则,已按此改写;`saveChapterContexts` 在「加照片后再采访」链路上真实可达(ChatPanel `waitForAppendChapters` → `finishInterview` → `POST /chapter-context`),若相册的页仍只活在 legacy `draftJson.pages`(未经任何行级写点播种),不先播种就 envelope-only 覆盖会把这份页连根拔掉。
 
-- [ ] **Step 1: 失败测试**(保存章节上下文后 draft_pages 行的 version/内容完全不动;并发页写不再被章节保存覆盖——用先 updatePage 后 saveChapterContexts 的顺序断言页改动幸存) → **Step 2-4** → **Step 5: Commit**(`fix(web): 章节写点不再搬运 pages,补行锁`)
+- [ ] **Step 1: 失败测试**(保存章节上下文后 draft_pages 行的 version/内容完全不动;并发页写不再被章节保存覆盖——用先 updatePage 后 saveChapterContexts 的顺序断言页改动幸存;相册的页仍只活在 legacy draftJson.pages、draft_pages 零行时,调用后被原样播种进 draft_pages 且不被 envelope-only 覆盖连根拔掉——markChapterDone 同款用例) → **Step 2-4** → **Step 5: Commit**(`fix(web): 章节写点不再搬运 pages,补行锁`)
 
 ---
 

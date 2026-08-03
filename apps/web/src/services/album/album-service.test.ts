@@ -857,15 +857,15 @@ test('markChapterDone: advances cursor; last chapter → stage=theme + export un
     assert.equal(a.stage, 'story'); // not yet all done → stage unchanged
     assert.equal(a.exportUnlocked, false);
     // draft_pages 拆表(Phase 1a)Task 7:markChapterDone 不再搬运 pages —— 它现在只
-    // 重写 envelope(envelopeJson),`seedStoryAlbum` 这里手写的 legacy 裸树 pages 字段
-    // 被有意丢弃(不是回归:真实 analyze-completed 从不在这一步之前写 pages,见
-    // job-service.ts:buildAnalyzeDraftJson 注释;页改动是否幸存由下面专门的
-    // "行不动" 用例断言,经 draft_pages 行读回,不再经 draftJson.pages)。
+    // 重写 envelope(envelopeJson)。`seedStoryAlbum` 这里手写的 legacy 裸树 pages 字段
+    // 没有被静默丢弃:写回前先 ensureDraftPagesSeeded(全局写序无例外),把它们原样
+    // 播种进 draft_pages 行,draftJson 才不再需要携带 pages 键(专门的 "legacy 播种"
+    // 用例见下方,直接断言行内容 + revision 0→1;这里只钉 draftJson 形状本身)。
     const afterFirst = await albumRepo.findById(albumId);
     assert.equal(
       'pages' in (afterFirst!.draftJson as object),
       false,
-      'markChapterDone 只重写 envelope,不再把 pages 搬回 draftJson',
+      'markChapterDone 只重写 envelope,不再把 pages 搬回 draftJson(此时已经播种进 draft_pages 行)',
     );
 
     const b = await albumService.markChapterDone(user.id, albumId, 'c2');
@@ -1124,6 +1124,59 @@ test('markChapterDone: 先 updatePage 改一页,该页改动在 markChapterDone 
       snapshot,
       'markChapterDone 不搬运/不覆盖 draft_pages 行,updatePage 的改动逐字幸存',
     );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// 回归守卫(code review round 2):brief 原文「不碰 draft_pages」与计划 Global
+// Constraints「每个 draft 写事务固定次序:行锁 → ensureDraftPagesSeeded → …」冲突 ——
+// 后者是全局无例外规则。若一本相册从未被任何行级写点摸过,它唯一一份页仍只活在
+// legacy draftJson.pages 里、draft_pages 一行都没有;不先播种就直接做 envelope-only
+// 覆盖会把这份页连根拔掉。这里直接构造这种「零行」形态(不经 updatePage 等会先播种
+// 的方法),证明 markChapterDone 会先把它们播种进 draft_pages 再重写 envelope。
+test('markChapterDone: 相册的页仍只活在 legacy draftJson.pages(draft_pages 零行,未经任何行级写点播种),先播种再重写 envelope,不连根拔掉这份页', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('confirm-legacy-seed');
+  try {
+    const album = await makeAlbum(user.id);
+    const legacyPages = makePreviewPages(2);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(2),
+      pages: legacyPages,
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    };
+    // 手写落库(不经 updatePage/reorderPages/… 任何会先播种的写点)。
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+    assert.equal(await draftPageRepo.countByAlbum(album.id), 0, 'sanity: 播种前确实没有行');
+
+    const result = await albumService.markChapterDone(user.id, album.id, 'c1');
+    assert.deepEqual(result.doneChapterIds, ['c1']);
+
+    const reloaded = await albumRepo.findById(album.id);
+    assert.equal(
+      'pages' in (reloaded!.draftJson as object),
+      false,
+      'envelope-only 重写:draftJson 不带 pages 键',
+    );
+
+    // 页没有被 envelope-only 重写连带抹掉 —— 懒播种把它们原样搬进了 draft_pages 行。
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.equal(rows.length, legacyPages.length, '两页都没丢');
+    assert.deepEqual(rows.map((r) => r.page), legacyPages, '内容逐字节不变(播种不烘 html)');
+    assert.equal(
+      reloaded!.draftRevision,
+      1,
+      '首次播种把 revision 从 0 立到 1(与 T3/T5 懒播种同口径),不是 markChapterDone 自己推进的',
+    );
+    for (const row of rows) {
+      assert.equal(row.version, 1);
+      assert.equal(row.updatedBy, null, '播种是系统动作,不是这次确认章节的用户写入');
+    }
   } finally {
     await cleanupUser(user.id);
   }
@@ -1803,6 +1856,63 @@ test('saveChapterContexts: 先 updatePage 改一页,该页改动在 saveChapterC
     }).tree;
     assert.equal(tree.chapters.find((c) => c.chapterId === 'c1')!.chapterContext, '章节背景采访');
     assert.equal('pages' in (afterSave!.draftJson as object), false, 'envelope-only 重写,不写回 pages 键');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// 回归守卫(code review round 2):brief 原文「不碰 draft_pages」与计划 Global
+// Constraints「每个 draft 写事务固定次序:行锁 → ensureDraftPagesSeeded → …」冲突 ——
+// 后者是全局无例外规则,且这个写点在「加照片后再采访」链路上真实可达(ChatPanel
+// waitForAppendChapters → finishInterview → POST /chapter-context)。若一本相册从未
+// 被任何行级写点摸过,它唯一一份页仍只活在 legacy draftJson.pages 里、draft_pages
+// 一行都没有;不先播种就直接做 envelope-only 覆盖会把这份页连根拔掉。这里直接构造
+// 这种「零行」形态(不经 updatePage 等会先播种的方法),证明 saveChapterContexts 会
+// 先把它们播种进 draft_pages 再重写 envelope。
+test('saveChapterContexts: 相册的页仍只活在 legacy draftJson.pages(draft_pages 零行,未经任何行级写点播种),先播种再重写 envelope,不连根拔掉这份页', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('save-ctx-legacy-seed');
+  try {
+    const album = await makeAlbum(user.id);
+    const legacyPages = makePreviewPages(2);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(2),
+      pages: legacyPages,
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    };
+    // 手写落库(不经 updatePage/reorderPages/… 任何会先播种的写点)。
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+    assert.equal(await draftPageRepo.countByAlbum(album.id), 0, 'sanity: 播种前确实没有行');
+
+    const result = await albumService.saveChapterContexts(user.id, album.id, [
+      { chapterId: 'c1', chapterContext: '章节背景采访' },
+    ]);
+    assert.deepEqual(result.savedChapterIds, ['c1']);
+
+    const reloaded = await albumRepo.findById(album.id);
+    assert.equal(
+      'pages' in (reloaded!.draftJson as object),
+      false,
+      'envelope-only 重写:draftJson 不带 pages 键',
+    );
+
+    // 页没有被 envelope-only 重写连带抹掉 —— 懒播种把它们原样搬进了 draft_pages 行。
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.equal(rows.length, legacyPages.length, '两页都没丢');
+    assert.deepEqual(rows.map((r) => r.page), legacyPages, '内容逐字节不变(播种不烘 html)');
+    assert.equal(
+      reloaded!.draftRevision,
+      1,
+      '首次播种把 revision 从 0 立到 1(与 T3/T5 懒播种同口径),不是 saveChapterContexts 自己推进的',
+    );
+    for (const row of rows) {
+      assert.equal(row.version, 1);
+      assert.equal(row.updatedBy, null, '播种是系统动作,不是这次采访的用户写入');
+    }
   } finally {
     await cleanupUser(user.id);
   }
