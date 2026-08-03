@@ -5,6 +5,7 @@ import { agentJobRepo } from '../../db/repos/agent-job-repo';
 import type { NewAgentJob } from '../../db/schema';
 import { albumMessageRepo } from '../../db/repos/album-message-repo';
 import { albumPageRepo } from '../../db/repos/album-page-repo';
+import { draftPageRepo } from '../../db/repos/draft-page-repo';
 import { albumRepo } from '../../db/repos/album-repo';
 import { creditHoldRepo } from '../../db/repos/credit-hold-repo';
 import { agentClient } from '../../lib/agent/agent-client';
@@ -1702,10 +1703,12 @@ test('saveChapterContexts caps chapterContext at 500 chars and rejects unknown/d
   }
 });
 
-// ── updatePage 的 C 方案分叉:draft 相册的手工编辑必须落 draft_json 的 html 真相 ──
-// 此前 updatePage 无条件写 album_pages 表,而 authoring 读/AI/导出只认
-// albums.draft_json(页含 html)—— 手工编辑全部进了一张没人读的表,刷新即回退。
-test('updatePage(draft 相册):文本/图位/样式全部落 draft_json,且同步进 html 真相', async () => {
+// ── updatePage 的 C 方案分叉:draft 相册的手工编辑必须落页真相(html)──────────
+// 此前 updatePage 无条件写 album_pages 表,而 authoring 读/AI/导出只认草稿页
+// (含 html)—— 手工编辑全部进了一张没人读的表,刷新即回退。draft_pages 拆表
+// (Phase 1a)后,草稿页真相从 albums.draft_json.pages 迁到 draft_pages 行,断言
+// 改经 draftPageRepo 读回;html patch 语义本身逐字未变。
+test('updatePage(draft 相册):文本/图位/样式全部落 draft_pages 行,且同步进 html 真相', async () => {
   const user = await makeUser('wp-updatepage-draft');
   try {
     const album = await makeAlbum(user.id);
@@ -1744,8 +1747,10 @@ test('updatePage(draft 相册):文本/图位/样式全部落 draft_json,且同�
     });
 
     const after = await albumRepo.findById(album.id);
-    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
-    const page = draft.pages[0]!;
+    // draft_pages 拆表(Phase 1a):页真相迁行,读回改经 draftPageRepo(不再是
+    // draftJson.pages —— updatePage 已不写它)。
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const page = rows.find((r) => r.pageIndex === 0)!.page as Page & { html?: string };
     assert.equal(page.texts.title, '新标题');
     assert.deepEqual(page.imagePos, { image: { x: 30, y: 70, scale: 1.4 } });
     // html 真相同步:AI(derivePageTexts)和导出读的就是它,不同步等于白改。
@@ -1802,9 +1807,8 @@ test('updatePage(draft 相册):imagePos patch 失配保留 html 真相,不整页
       imagePosJson: { ghost: { x: 10, y: 20, scale: 1.5 } },
     });
 
-    const after = await albumRepo.findById(album.id);
-    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
-    const page = draft.pages[0]!;
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const page = rows.find((r) => r.pageIndex === 0)!.page as Page & { html?: string };
     assert.equal(page.html, html, 'html 真相必须原样保留(手工背景/字色不能因一笔图位失配被重烘抹掉)');
     assert.deepEqual(page.imagePos, { ghost: { x: 10, y: 20, scale: 1.5 } }, '数据层照常落库');
   } finally {
@@ -1837,8 +1841,8 @@ test('updatePage(draft 相册):pageStyle 把书页背景色写进页根 html + C
 
     const after = await albumRepo.findById(album.id);
     assert.equal(after?.status, 'EDITING');
-    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
-    const page = draft.pages[0]!;
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const page = rows.find((r) => r.pageIndex === 0)!.page as Page & { html?: string };
     // 背景色进页根,内部文字元素不受影响。
     assert.match(page.html!, /background-color:rgba\(20, 30, 40, 0\.4\)/);
     assert.match(page.html!, /<div data-text-key="title" style="color:#111">/);
@@ -1847,11 +1851,10 @@ test('updatePage(draft 相册):pageStyle 把书页背景色写进页根 html + C
     await albumService.updatePage(user.id, album.id, 0, {
       pageStyle: { 'background-color': null },
     });
-    const cleared = (await albumRepo.findById(album.id))?.draftJson as {
-      pages: Array<Page & { html?: string }>;
-    };
-    assert.doesNotMatch(cleared.pages[0]!.html!, /background-color/);
-    assert.match(cleared.pages[0]!.html!, /background:#fff/);
+    const clearedRows = await draftPageRepo.findByAlbum(album.id);
+    const clearedPage = clearedRows.find((r) => r.pageIndex === 0)!.page as Page & { html?: string };
+    assert.doesNotMatch(clearedPage.html!, /background-color/);
+    assert.match(clearedPage.html!, /background:#fff/);
   } finally {
     await cleanupUser(user.id);
   }
@@ -1883,12 +1886,49 @@ test('updatePage(draft 相册):html 锚点失配 → 整页重烘,新文本仍�
       textsJson: { title: 'T', body: '正文来了' },
     });
 
-    const after = await albumRepo.findById(album.id);
-    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
-    const page = draft.pages[0]!;
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const page = rows.find((r) => r.pageIndex === 0)!.page as Page & { html?: string };
     assert.equal(page.texts.body, '正文来了');
     // 宁可整页重烘也不显示旧内容:重烘后的 html 必须带新文本。
     assert.match(page.html!, /正文来了/);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// ── updatePage 切 draft_pages 行级写(Phase 1a Task 3)───────────────────────
+// legacy 相册(只有 draftJson.pages,draft_pages 还没有行)第一次 updatePage 必须
+// 先懒播种全书行(不只是被改的那一页),被改的行 version 推到本次新 draftRevision、
+// updatedBy 是操作用户;没被碰的行留在播种时打的版本(1)、updatedBy 仍是 null
+// (系统写入,不是某个用户)—— 这是 Phase 1b 页锁/CAS 要用的地基,这里先立住不变式。
+test('updatePage(legacy 相册,draft_pages 尚无行):首次调用自动播种全书行;目标行 version 推进到新 draftRevision 且 updatedBy=userId,其余行留在种子版本且 updatedBy=null', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-updatepage-seed');
+  try {
+    const { albumId, pages } = await seedWrappedStoryAlbum(user.id, 3);
+    assert.equal((await draftPageRepo.findByAlbum(albumId)).length, 0, '播种前 draft_pages 无行');
+
+    await albumService.updatePage(user.id, albumId, 1, {
+      textsJson: { headline: '更新后的正文' },
+    });
+
+    const rows = await draftPageRepo.findByAlbum(albumId);
+    assert.equal(rows.length, pages.length, '首次 updatePage 播种全书行,不只是被改的那一页');
+
+    const after = await albumRepo.findById(albumId);
+    assert.ok(after);
+    const touched = rows.find((r) => r.pageIndex === 1);
+    assert.ok(touched);
+    assert.equal(touched!.version, after!.draftRevision, '目标行 version === album.draftRevision');
+    assert.equal(touched!.updatedBy, user.id, '目标行 updatedBy === userId');
+    assert.equal(touched!.page.texts.headline, '更新后的正文');
+
+    const others = rows.filter((r) => r.pageIndex !== 1);
+    assert.equal(others.length, pages.length - 1);
+    for (const row of others) {
+      assert.equal(row.version, 1, '未被本次改动的行保持播种版本(1),不随目标行一起推进');
+      assert.equal(row.updatedBy, null, '播种行 updatedBy 仍是系统写入(null)');
+    }
   } finally {
     await cleanupUser(user.id);
   }

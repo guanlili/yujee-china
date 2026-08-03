@@ -1,5 +1,5 @@
 import { bakePageHtml, bakePagesHtml, type BakeablePage } from './bake-html';
-import { parseDraftEnvelope, readPreviewPages } from './draft-store';
+import { bumpDraftRevision, ensureDraftPagesSeeded, loadStoryDraft, parseDraftEnvelope, readPreviewPages } from './draft-store';
 import { createHash } from 'node:crypto';
 import { normalizeBoardBackground, type BoardBackground } from '@/lib/board-bg/presets';
 import { patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle } from '@/components/album/page-html-dom';
@@ -7,6 +7,7 @@ import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
+import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { albumPhotoRepo } from '@/db/repos/album-photo-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { jobService } from '@/services/job/job-service';
@@ -1322,9 +1323,15 @@ export const albumService = {
       const latest = await albumRepo.findByIdForUpdate(tx, albumId);
       if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
       if (latest.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
-      const current = readStoryDraft(latest.draftJson);
-      const hasDraft = !!current?.pages?.length;
-      if (!hasDraft) {
+
+      // draft_pages 拆表(Phase 1a)固定写事务次序:行锁(above)→ 懒播种 → 行级写
+      // → bump revision(docs/plans/2026-08-03-draft-pages-split.md Global
+      // Constraints)。播种对没有 legacy pages 的相册是 no-op,返回值就是不变的
+      // 当前 revision——`bumpDraftRevision` 必须接它而不是 `latest.draftRevision`,
+      // 否则刚播种(0→1)的相册这次写入会把 revision 撞错。
+      const seededRevision = await ensureDraftPagesSeeded(tx, latest);
+      const draft = await loadStoryDraft(latest, { tx, bake: false });
+      if (!draft || !draft.pages.length) {
         await albumPageRepo.updateOne(tx, albumId, pageIndex, {
           imagesJson: patch.imagesJson,
           textsJson: patch.textsJson,
@@ -1341,9 +1348,8 @@ export const albumService = {
         });
         return;
       }
-      const pages = current?.pages ? [...current.pages] : null;
-      const existing = pages?.[pageIndex];
-      if (!current || !pages || !existing) {
+      const existing = draft.pages[pageIndex];
+      if (!existing) {
         throw ERRORS.VALIDATION_FAILED(`draft page ${pageIndex} not found`);
       }
 
@@ -1396,16 +1402,13 @@ export const albumService = {
         page.html = rebaked.html;
       }
 
-      pages[pageIndex] = page;
-      const nextDraft: V3StoryDraft = {
-        version: 'v3-story',
-        tree: current.tree,
-        pages,
-        progress: current.progress,
-      };
+      const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+      await draftPageRepo.updateOne(tx, albumId, pageIndex, page, rev, userId);
+
+      // envelope(tree/progress/design)不重写:页真相已迁 draft_pages,这次编辑
+      // 没有动 tree/progress,draftJson 保持原样。副作用不变:编辑已 COMPLETED 的
+      // 书 → 退回 EDITING(photo-snapshot §5.5,同上);page 0 清封面缩略图缓存。
       await albumRepo.update(tx, albumId, {
-        draftJson: nextDraft,
-        // 编辑已 COMPLETED 的书 → 退回 EDITING(photo-snapshot §5.5,同上)。
         ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
         ...(pageIndex === 0
           ? { coverThumbnailUrl: null, coverThumbnailR2Key: null }
