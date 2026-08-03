@@ -666,10 +666,14 @@ export const albumService = {
       if (!album) throw ERRORS.ALBUM_NOT_FOUND();
       if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
 
-      const normalized = readStoryDraft(album.draftJson);
-      if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+      // draft_pages 拆表(Phase 1a):此写点只改 tree/progress,从不需要页数据 —— 直接
+      // 解析 envelope(不经 loadStoryDraft,不读/播种 draft_pages),写回同样只重写
+      // envelope(envelopeJson,天然不含 pages 键)。不 bump draft_revision:页没变,
+      // Phase 1b 的 collab-sync 只关心页变化(计划明文)。
+      const envelope = parseDraftEnvelope(album.draftJson);
+      if (!envelope) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
 
-      const chapterOrder = normalized.tree.chapters.map((c) => c.chapterId);
+      const chapterOrder = envelope.tree.chapters.map((c) => c.chapterId);
       if (!chapterOrder.includes(chapterId)) {
         throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
       }
@@ -677,10 +681,10 @@ export const albumService = {
       // The gate already moved past story → nothing to confirm. Surface the current
       // state so the caller is idempotent and never regresses the stage.
       if (album.stage !== 'story') {
-        return storyProgressFrom(album.stage, normalized);
+        return storyProgressFrom(album.stage, envelope);
       }
 
-      const doneSet = new Set(normalized.progress.doneChapterIds);
+      const doneSet = new Set(envelope.progress.doneChapterIds);
       const currentChapterId = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
       if (!doneSet.has(chapterId) && chapterId !== currentChapterId) {
         throw ERRORS.VALIDATION_FAILED('chapterId is not the current story chapter');
@@ -692,22 +696,19 @@ export const albumService = {
       // Next cursor = first chapter (in tree order) not yet done; null when all done.
       const nextCurrent = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
 
-      const nextDraft: V3StoryDraft = {
-        version: 'v3-story',
-        tree: normalized.tree,
-        ...(normalized.pages ? { pages: normalized.pages } : {}),
-        progress: { currentChapterId: nextCurrent, doneChapterIds },
-      };
-
       await albumRepo.update(tx, albumId, {
-        draftJson: nextDraft,
+        draftJson: envelopeJson({
+          tree: envelope.tree,
+          progress: { currentChapterId: nextCurrent, doneChapterIds },
+          design: envelope.design,
+        }),
         // 全章确定 → 进下一环 theme + 解锁导出(§4.2(1) / §4.5a). Only the stage column
         // moves; status stays whatever the init lifecycle left it (EDITING).
         ...(allDone ? { stage: 'theme' as const } : {}),
       });
 
       return storyProgressFrom(allDone ? 'theme' : album.stage, {
-        ...normalized,
+        ...envelope,
         progress: { currentChapterId: nextCurrent, doneChapterIds },
       });
     });
@@ -857,54 +858,59 @@ export const albumService = {
     // 历史(否则收集环节的 AI 问 + 用户答只在 DOM,刷新即失)。可选:跳过采访不传 messages。
     messages?: { chapterId: string; role: 'user' | 'assistant'; content: string }[],
   ): Promise<{ savedChapterIds: string[] }> {
-    const album = await this.findOwned(userId, albumId);
-    const normalized = readStoryDraft(album.draftJson);
-    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+    // draft_pages 拆表(Phase 1a)修复:此前用 findOwned(无锁)在事务外读 album,
+    // 再在一个独立事务里整块重写 draftJson(顺带把当时读到的 pages 原样搬运回去)
+    // —— 无锁 + 事务外读改写窗口,且徒手搬运页数据。现在行锁 + 锁内读 envelope
+    // (parseDraftEnvelope,不需要页数据,不经 loadStoryDraft/不碰 draft_pages)
+    // → 改 tree → envelope-only 重写(envelopeJson,天然不含 pages 键)。不 bump
+    // draft_revision:页没变,Phase 1b 的 collab-sync 只关心页变化(计划明文)。
+    return db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+      if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
 
-    const expectedIds = new Set(normalized.tree.chapters.map((ch) => ch.chapterId));
-    const seen = new Set<string>();
-    const byId = new Map<string, { chapterContext: string; place?: string }>();
-    for (const entry of contexts) {
-      if (!expectedIds.has(entry.chapterId)) {
-        throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+      const envelope = parseDraftEnvelope(album.draftJson);
+      if (!envelope) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+
+      const expectedIds = new Set(envelope.tree.chapters.map((ch) => ch.chapterId));
+      const seen = new Set<string>();
+      const byId = new Map<string, { chapterContext: string; place?: string }>();
+      for (const entry of contexts) {
+        if (!expectedIds.has(entry.chapterId)) {
+          throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+        }
+        if (seen.has(entry.chapterId)) {
+          throw ERRORS.VALIDATION_FAILED('duplicate chapterId in chapter contexts');
+        }
+        seen.add(entry.chapterId);
+        // 裁到 500(与 V3Chapter.chapterContext 上限对齐);空串合法(=该章跳过采访)。
+        // place 是城市级地名文字(V3Chapter.place,§3:坐标不出浏览器,地名文字可出),
+        // 裁到 100;未传 = 不改该章现有 place。
+        byId.set(entry.chapterId, {
+          chapterContext: entry.chapterContext.slice(0, 500),
+          ...(entry.place !== undefined ? { place: entry.place.slice(0, 100) } : {}),
+        });
       }
-      if (seen.has(entry.chapterId)) {
-        throw ERRORS.VALIDATION_FAILED('duplicate chapterId in chapter contexts');
-      }
-      seen.add(entry.chapterId);
-      // 裁到 500(与 V3Chapter.chapterContext 上限对齐);空串合法(=该章跳过采访)。
-      // place 是城市级地名文字(V3Chapter.place,§3:坐标不出浏览器,地名文字可出),
-      // 裁到 100;未传 = 不改该章现有 place。
-      byId.set(entry.chapterId, {
-        chapterContext: entry.chapterContext.slice(0, 500),
-        ...(entry.place !== undefined ? { place: entry.place.slice(0, 100) } : {}),
+
+      const nextTree: typeof envelope.tree = {
+        chapters: envelope.tree.chapters.map((ch) => {
+          const update = byId.get(ch.chapterId);
+          if (update === undefined) return ch;
+          return {
+            ...ch,
+            chapterContext: update.chapterContext,
+            ...(update.place !== undefined ? { place: update.place } : {}),
+          };
+        }),
+      };
+
+      await albumRepo.update(tx, albumId, {
+        draftJson: envelopeJson({ tree: nextTree, progress: envelope.progress, design: envelope.design }),
       });
-    }
 
-    const nextTree: typeof normalized.tree = {
-      chapters: normalized.tree.chapters.map((ch) => {
-        const update = byId.get(ch.chapterId);
-        if (update === undefined) return ch;
-        return {
-          ...ch,
-          chapterContext: update.chapterContext,
-          ...(update.place !== undefined ? { place: update.place } : {}),
-        };
-      }),
-    };
-
-    const nextDraft: V3StoryDraft = {
-      version: 'v3-story',
-      tree: nextTree,
-      ...(normalized.pages ? { pages: normalized.pages } : {}),
-      progress: normalized.progress,
-    };
-
-    await db.transaction(async (tx) => {
-      await albumRepo.update(tx, albumId, { draftJson: nextDraft });
       // 采访问答进 album_messages(带 chapterId),供 loadHistory 按 seq 顺序重建。只存该章存在
       // 的消息。顺序由 repo.create 分配的单调 seq 保证(写入顺序 = 回放顺序),不再手工错开
-      // createdAt —— 「问1→问2→问3→答」按这里的循环顺序落库即可。
+      // createdAt —— 「问1→问2→问3→答」按这里的循环顺序落库即可。原样未动(§brief 第二部分)。
       for (const m of messages ?? []) {
         const content = m.content.trim();
         if (!content || !expectedIds.has(m.chapterId)) continue;
@@ -916,9 +922,9 @@ export const albumService = {
           content: content.slice(0, 2000),
         });
       }
-    });
 
-    return { savedChapterIds: [...seen] };
+      return { savedChapterIds: [...seen] };
+    });
   },
 
   // Read-only RENDER projection of the V3 authoring tree (draft_json) for the

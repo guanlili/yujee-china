@@ -856,11 +856,16 @@ test('markChapterDone: advances cursor; last chapter → stage=theme + export un
     assert.equal(a.allDone, false);
     assert.equal(a.stage, 'story'); // not yet all done → stage unchanged
     assert.equal(a.exportUnlocked, false);
+    // draft_pages 拆表(Phase 1a)Task 7:markChapterDone 不再搬运 pages —— 它现在只
+    // 重写 envelope(envelopeJson),`seedStoryAlbum` 这里手写的 legacy 裸树 pages 字段
+    // 被有意丢弃(不是回归:真实 analyze-completed 从不在这一步之前写 pages,见
+    // job-service.ts:buildAnalyzeDraftJson 注释;页改动是否幸存由下面专门的
+    // "行不动" 用例断言,经 draft_pages 行读回,不再经 draftJson.pages)。
     const afterFirst = await albumRepo.findById(albumId);
-    assert.deepEqual(
-      (afterFirst?.draftJson as { pages?: unknown } | null)?.pages,
-      makePreviewPages(2),
-      'chapter done wrapper must preserve preview pages',
+    assert.equal(
+      'pages' in (afterFirst!.draftJson as object),
+      false,
+      'markChapterDone 只重写 envelope,不再把 pages 搬回 draftJson',
     );
 
     const b = await albumService.markChapterDone(user.id, albumId, 'c2');
@@ -1073,6 +1078,51 @@ test('markChapterDone: unknown chapterId → VALIDATION_FAILED', async (t) => {
     await assert.rejects(
       () => albumService.markChapterDone(user.id, albumId, 'nope'),
       (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// draft_pages 拆表(Phase 1a)Task 7 回归守卫:markChapterDone 此前无锁、事务外读,
+// 且把当时读到的 pages 整块搬回 draftJson —— 与并发的 updatePage(已切行级写)互吃时,
+// 陈旧的搬运会把用户刚落的行级改动盖掉。现在 markChapterDone 只重写 envelope,从不
+// 碰 draft_pages,行改动必须原封不动幸存;draft_revision 也不该跟着推进(页没变)。
+test('markChapterDone: 先 updatePage 改一页,该页改动在 markChapterDone 之后完整幸存(不搬运/不覆盖 draft_pages 行,不推进 draftRevision)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('confirm-page-survive');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 2, { stage: 'story' });
+
+    await albumService.updatePage(user.id, albumId, 0, { textsJson: { headline: '编辑过的正文' } });
+
+    const afterUpdate = await albumRepo.findById(albumId);
+    const rowsAfterUpdate = await draftPageRepo.findByAlbum(albumId);
+    const snapshot = rowsAfterUpdate.map((r) => ({
+      pageIndex: r.pageIndex,
+      version: r.version,
+      updatedBy: r.updatedBy,
+      page: r.page,
+    }));
+
+    const result = await albumService.markChapterDone(user.id, albumId, 'c1');
+    assert.deepEqual(result.doneChapterIds, ['c1']);
+
+    const afterConfirm = await albumRepo.findById(albumId);
+    const rowsAfterConfirm = await draftPageRepo.findByAlbum(albumId);
+
+    assert.equal(
+      afterConfirm!.draftRevision,
+      afterUpdate!.draftRevision,
+      'markChapterDone 不 bump draft_revision(页没变)',
+    );
+    assert.deepEqual(
+      rowsAfterConfirm.map((r) => ({ pageIndex: r.pageIndex, version: r.version, updatedBy: r.updatedBy, page: r.page })),
+      snapshot,
+      'markChapterDone 不搬运/不覆盖 draft_pages 行,updatePage 的改动逐字幸存',
     );
   } finally {
     await cleanupUser(user.id);
@@ -1698,6 +1748,61 @@ test('saveChapterContexts caps chapterContext at 500 chars and rejects unknown/d
         ]),
       hasCode('VALIDATION_FAILED'),
     );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// draft_pages 拆表(Phase 1a)Task 7 回归守卫:saveChapterContexts 此前用 findOwned
+// (无锁)在事务外读 album,再在独立事务里整块重写 draftJson,顺带把当时读到的 pages
+// 原样搬运回去 —— 与并发的 updatePage(已切行级写)互吃时,陈旧的搬运会把用户刚落的
+// 行级改动盖掉。现在行锁 + envelope-only 重写,从不碰 draft_pages,行改动必须原封
+// 不动幸存;draft_revision 也不该跟着推进(页没变)。
+test('saveChapterContexts: 先 updatePage 改一页,该页改动在 saveChapterContexts 之后完整幸存(不搬运/不覆盖 draft_pages 行,不推进 draftRevision)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('save-ctx-page-survive');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 2, { stage: 'story' });
+
+    await albumService.updatePage(user.id, albumId, 0, { textsJson: { headline: '编辑过的正文' } });
+
+    const afterUpdate = await albumRepo.findById(albumId);
+    const rowsAfterUpdate = await draftPageRepo.findByAlbum(albumId);
+    const snapshot = rowsAfterUpdate.map((r) => ({
+      pageIndex: r.pageIndex,
+      version: r.version,
+      updatedBy: r.updatedBy,
+      page: r.page,
+    }));
+
+    const result = await albumService.saveChapterContexts(user.id, albumId, [
+      { chapterId: 'c1', chapterContext: '章节背景采访' },
+    ]);
+    assert.deepEqual(result.savedChapterIds, ['c1']);
+
+    const afterSave = await albumRepo.findById(albumId);
+    const rowsAfterSave = await draftPageRepo.findByAlbum(albumId);
+
+    assert.equal(
+      afterSave!.draftRevision,
+      afterUpdate!.draftRevision,
+      'saveChapterContexts 不 bump draft_revision(页没变)',
+    );
+    assert.deepEqual(
+      rowsAfterSave.map((r) => ({ pageIndex: r.pageIndex, version: r.version, updatedBy: r.updatedBy, page: r.page })),
+      snapshot,
+      'saveChapterContexts 不搬运/不覆盖 draft_pages 行,updatePage 的改动逐字幸存',
+    );
+
+    // chapterContext 确实写进树里 —— 功能没有随着摘除 pages 搬运一起退化。
+    const tree = (afterSave!.draftJson as {
+      tree: { chapters: { chapterId: string; chapterContext: string }[] };
+    }).tree;
+    assert.equal(tree.chapters.find((c) => c.chapterId === 'c1')!.chapterContext, '章节背景采访');
+    assert.equal('pages' in (afterSave!.draftJson as object), false, 'envelope-only 重写,不写回 pages 键');
   } finally {
     await cleanupUser(user.id);
   }
