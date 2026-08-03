@@ -177,6 +177,50 @@ test('loadStoryDraft / ensureDraftPagesSeeded: neither rows nor legacy pages', a
   }
 });
 
+test('loadStoryDraft: envelope unparseable but rows exist -> null, rows left untouched (logged, not fabricated)', async (t) => {
+  if (!(await isDbReachable())) { t.skip('DATABASE_URL is not reachable; skipping'); return; }
+  const user = await makeUser('draft-store-corrupt-envelope');
+  try {
+    const album = await makeAlbum(user.id);
+    // Seed a valid album first: legacy pages via ensureDraftPagesSeeded, so
+    // draft_pages rows genuinely exist before we corrupt the envelope.
+    await albumRepo.update(db, album.id, {
+      draftJson: wrappedDraftJson([legacyPage]),
+      draftRevision: 0,
+    });
+    await db.transaction(async (tx) => {
+      const locked = await albumRepo.findByIdForUpdate(tx, album.id);
+      await ensureDraftPagesSeeded(tx, locked!);
+    });
+    const rowCountBefore = await draftPageRepo.countByAlbum(album.id);
+    assert.equal(rowCountBefore, 1);
+
+    // Now corrupt draftJson: has a `version` key (so it's NOT treated as a
+    // bare-tree candidate) but fails the strict V3StoryDraft schema (missing
+    // tree/progress, has an unknown `bogus` key) -> parseDraftEnvelope's
+    // "has version but wrapped fails" branch -> null, deliberately, with no
+    // tree/progress ever fabricated to paper over it.
+    await albumRepo.update(db, album.id, {
+      draftJson: { version: 'v3-story', bogus: true },
+    });
+
+    const corruptedAlbum = await albumRepo.findById(album.id);
+    const result = await loadStoryDraft(corruptedAlbum!);
+    assert.equal(result, null);
+
+    // Rows are never touched (no write, no delete) — left intact for repair.
+    // (The `logger.error` call this path takes is verified by reading
+    // draft-store.ts's loadStoryDraft; node:test has no stdout-capture
+    // convenience here, so this test asserts the behavioral contract —
+    // null + rows intact — rather than intercepting the log line.)
+    assert.equal(await draftPageRepo.countByAlbum(album.id), rowCountBefore);
+    const rowsAfter = await draftPageRepo.findByAlbum(album.id);
+    assert.deepEqual(rowsAfter[0].page, legacyPage);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('envelopeJson: writes exactly {version, tree, progress, design}, never a pages key', () => {
   const withDesign: DraftEnvelope = { tree: TREE, progress: PROGRESS, design: DESIGN };
   const json = envelopeJson(withDesign);

@@ -3,6 +3,7 @@ import { Page, V3LayoutTree, V3StoryDraft, type V3LayoutTree as V3LayoutTreeT, t
 import { db, type DbOrTx } from '@/db/client';
 import { albums, type Album } from '@/db/schema';
 import { draftPageRepo } from '@/db/repos/draft-page-repo';
+import { logger } from '@/lib/log/logger';
 import { bakePagesHtml, type BakeablePage } from './bake-html';
 
 // draft_pages 拆表(Phase 1a) — the only draft access layer
@@ -79,6 +80,17 @@ export function parseDraftEnvelope(draftJson: unknown): DraftEnvelope | null {
 // share freeze path passes `{ bake: false }` to preserve pages byte-for-byte.
 // `album` is the already-read albums row (avoids a redundant query); pass
 // `tx` when calling inside a row-lock transaction so reads see locked state.
+//
+// null 语义:envelope 无法解析(parseDraftEnvelope 失败)即 null — this is the
+// ONLY null condition, independent of whether draft_pages rows exist. We
+// never fabricate a `tree`/`progress` (both required on `DraftEnvelope`); a
+// fabricated empty tree would silently corrupt chapter-attribution logic
+// downstream, so loud absence beats quiet wrongness. If rows DID exist at
+// that point, this is a data-integrity anomaly (draftJson desynced from
+// draft_pages) — we log it via `logger.error` before returning null, and we
+// never touch the rows (no write, no delete): they stay intact for manual
+// repair. When there are no rows either, this is just the ordinary "no draft
+// at all yet" case and nothing is logged.
 export async function loadStoryDraft(
   album: Album,
   opts?: { bake?: boolean; tx?: DbOrTx },
@@ -87,7 +99,16 @@ export async function loadStoryDraft(
   const bake = opts?.bake ?? true;
 
   const envelope = parseDraftEnvelope(album.draftJson);
-  if (!envelope) return null;
+  if (!envelope) {
+    const rowCount = await draftPageRepo.countByAlbum(album.id, tx);
+    if (rowCount > 0) {
+      logger.error(
+        { albumId: album.id, rowCount },
+        'draft envelope unparseable but draft_pages rows exist',
+      );
+    }
+    return null;
+  }
 
   const rowCount = await draftPageRepo.countByAlbum(album.id, tx);
   let pages: Page[];

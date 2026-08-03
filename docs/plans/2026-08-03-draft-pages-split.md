@@ -133,7 +133,8 @@ export type LoadedDraft = DraftEnvelope & { pages: Page[]; revision: number };
 // bake 开关:默认 { bake: true }(strict:false 现场烘,不回写);share 路径传 { bake: false }。
 // album 参数是已读到的 albums 行(避免重复查询);tx 可选(行锁事务内传 tx 保证读到锁内状态)。
 export function loadStoryDraft(album: Album, opts?: { bake?: boolean; tx?: DbOrTx }): Promise<LoadedDraft | null>;
-// null 语义与现 readStoryDraft 相同:draftJson 无法解析且无行。
+// null 语义:envelope 无法解析即 null(行存在时记 error 日志、行数据不动,留待修复);
+// 行不存在且 legacy 也无 pages 亦为 null。
 
 // 写前播种:album 行锁内调用。已有行 → 直接返回当前 revision;无行且 legacy 有 pages →
 // 按 legacy pages replaceAll(version=1)并把 draft_revision 置 1,返回 1;两者皆无 → 返回当前 revision。
