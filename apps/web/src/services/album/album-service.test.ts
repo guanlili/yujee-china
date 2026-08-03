@@ -2135,3 +2135,137 @@ test('reorderPages 路由判定必须与 updatePage 一致:先 updatePage 改一
     await cleanupUser(user.id);
   }
 });
+
+// ── deletePage:删除书页(2026-08-03 设计:docs/specs/2026-08-03-delete-page-design.md)──
+// 只删内页,图片随页移除不回流;余页 pageIndex 重排 0..n-1;pageCount 收口;
+// COMPLETED → EDITING。校验失败一律 VALIDATION_FAILED 且不落库。
+
+test('deletePage(draft 相册):删内页后行数-1,pageIndex 连续,整条记录跟着走;version 推进;pageCount 收口;COMPLETED 退回 EDITING', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-delete-draft');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'COMPLETED', stage: 'story', draftJson: wrapped });
+
+    await albumService.deletePage(user.id, album.id, 1);
+
+    const after = await albumRepo.findById(album.id);
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const pages = rows.map((r) => r.page as Page & { html?: string; texts: Record<string, string> });
+    assert.deepEqual(
+      pages.map((p) => [p.pageIndex, p.texts.title]),
+      [
+        [0, 'COVER'],
+        [1, 'B'],
+      ],
+      '被删页消失,余页 pageIndex 重排连续',
+    );
+    assert.match(pages[1]!.html!, />B</, '余页整条记录原样跟着走,html 不重烘');
+    assert.equal(after?.status, 'EDITING', '删页是一次编辑,COMPLETED 须退回 EDITING');
+    assert.equal(after?.pageCount, 2, 'pageCount 收口:删后与行数一致');
+    for (const row of rows) {
+      assert.equal(row.version, after!.draftRevision, `第 ${row.pageIndex} 行 version 必须等于新 draftRevision`);
+    }
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('deletePage(draft 相册):双宽内页(spread 模板)同样可删', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-delete-spread');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-54', 'S'), // mag-54: interior + spread:true
+        reorderFixturePage(3, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    await albumService.deletePage(user.id, album.id, 2);
+
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.deepEqual(
+      rows.map((r) => [(r.page as Page).pageIndex, ((r.page as Page).texts as Record<string, string>).title]),
+      [
+        [0, 'COVER'],
+        [1, 'A'],
+        [2, 'B'],
+      ],
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('deletePage:拒绝 —— 删 cover 类目页/删最后一张内页/越界,一律 VALIDATION_FAILED 且不落库', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-delete-invalid');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'ONLY'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    const rejects = (idx: number) =>
+      assert.rejects(albumService.deletePage(user.id, album.id, idx), hasCode('VALIDATION_FAILED'));
+    await rejects(0); // cover 类目:锚定页不许删(服务端二次把关,不只靠前端置灰)
+    await rejects(1); // 最后一张内页:拒绝删到内页数为 0
+    await rejects(9); // 越界
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.notEqual(rows.length, 1, '拒绝路径不落库(事务回滚:要么 0 行要么播种后的 2 行,绝不会剩 1 行)');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('deletePage(无 draft 存量相册):album_pages 行过滤后 pageIndex 重写,整行内容原样', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-delete-legacy');
+  try {
+    const album = await makeAlbum(user.id);
+    await albumPageRepo.bulkInsert(db, [
+      { albumId: album.id, pageIndex: 0, templateId: 'mag-01', imagesJson: {}, textsJson: { title: 'COVER' } },
+      { albumId: album.id, pageIndex: 1, templateId: 'mag-03', imagesJson: { a: 'p1' }, textsJson: { title: 'A' } },
+      { albumId: album.id, pageIndex: 2, templateId: 'mag-05', imagesJson: { b: 'p2' }, textsJson: { title: 'B' } },
+    ]);
+
+    await albumService.deletePage(user.id, album.id, 1);
+
+    const rows = await albumPageRepo.findByAlbum(db, album.id);
+    assert.deepEqual(
+      rows.map((r) => [r.pageIndex, (r.textsJson as Record<string, string>).title]),
+      [
+        [0, 'COVER'],
+        [1, 'B'],
+      ],
+    );
+    assert.deepEqual(rows[1]!.imagesJson, { b: 'p2' }, '整行内容原样跟着走');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});

@@ -1,5 +1,5 @@
 import { bakePageHtml, bakePagesHtml, type BakeablePage } from './bake-html';
-import { bumpDraftRevision, ensureDraftPagesSeeded, loadStoryDraft, parseDraftEnvelope, readPreviewPages } from './draft-store';
+import { bumpDraftRevision, ensureDraftPagesSeeded, envelopeJson, loadStoryDraft, parseDraftEnvelope, readPreviewPages } from './draft-store';
 import { createHash } from 'node:crypto';
 import { normalizeBoardBackground, type BoardBackground } from '@/lib/board-bg/presets';
 import { patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle } from '@/components/album/page-html-dom';
@@ -1517,6 +1517,83 @@ export const albumService = {
       await albumRepo.update(tx, albumId, {
         ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
         ...(touchesCover ? { coverThumbnailUrl: null, coverThumbnailR2Key: null } : {}),
+      });
+    });
+    return { updated: true };
+  },
+
+  // ── 删除书页(2026-08-03 设计:docs/specs/2026-08-03-delete-page-design.md)。
+  // 只删内页(cover/toc/ending 拒绝 —— 服务端二次把关,不只靠前端置灰);图片随页
+  // 移除不回流;拒绝删到内页数为 0。余页 pageIndex 重排 0..n-1(PK (albumId,
+  // pageIndex) 要求连续无洞),pageCount 收口,COMPLETED → EDITING。
+  // 事务骨架与路由判定照抄 reorderPages(理由见其抬头):行锁 → 懒播种 →
+  // loadStoryDraft 判定行/存量路径。bake:false —— 删页不碰余页 html 一个字节。
+  async deletePage(
+    userId: string,
+    albumId: string,
+    pageIndex: number,
+  ): Promise<{ updated: true }> {
+    await db.transaction(async (tx) => {
+      const latest = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
+      if (latest.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+
+      const seededRevision = await ensureDraftPagesSeeded(tx, latest);
+      const draft = await loadStoryDraft(latest, { tx, bake: false });
+      const hasDraft = !!draft && draft.pages.length > 0;
+      const legacyRows = hasDraft ? null : await albumPageRepo.findByAlbum(tx, albumId);
+      const n = hasDraft ? draft!.pages.length : legacyRows!.length;
+
+      if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= n) {
+        throw ERRORS.VALIDATION_FAILED(`page ${pageIndex} out of range 0..${n - 1}`);
+      }
+      const templateIdAt = (i: number): string =>
+        hasDraft ? draft!.pages[i]!.templateId : legacyRows![i]!.templateId;
+      const category = getTemplate(templateIdAt(pageIndex))?.category;
+      if (category !== 'interior') {
+        throw ERRORS.VALIDATION_FAILED(
+          `page ${pageIndex} (${category ?? 'unknown'}) is anchored and cannot be deleted`,
+        );
+      }
+      // 下限保护:删后至少留一张内页(规格:拒绝删到内页数为 0)。
+      let interiorCount = 0;
+      for (let i = 0; i < n; i++) {
+        if (getTemplate(templateIdAt(i))?.category === 'interior') interiorCount += 1;
+      }
+      if (interiorCount <= 1) {
+        throw ERRORS.VALIDATION_FAILED('cannot delete the last interior page');
+      }
+
+      if (hasDraft) {
+        const remaining = draft!.pages
+          .filter((_, i) => i !== pageIndex)
+          .map((page, newIdx) => ({ ...page, pageIndex: newIdx }));
+        const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+        await draftPageRepo.replaceAll(tx, albumId, remaining, rev, userId);
+        // envelope(tree/progress/design)不重写:删页没有动 tree/progress。
+        // pageCount 收口:页数变化写点必须显式跟上(同 reorderPages 收口点一)。
+        await albumRepo.update(tx, albumId, {
+          pageCount: remaining.length,
+          ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
+        });
+        return;
+      }
+
+      // 存量路径(album_pages 行):unique(albumId,pageIndex) 原地平移会撞索引,
+      // 与 reorderPages 同法 delete-then-bulkInsert。
+      await albumPageRepo.deleteByAlbum(tx, albumId);
+      await albumPageRepo.bulkInsert(
+        tx,
+        legacyRows!
+          .filter((_, i) => i !== pageIndex)
+          .map((row, newIdx) => {
+            const { id: _id, updatedAt: _u, ...rest } = row;
+            return { ...rest, pageIndex: newIdx };
+          }),
+      );
+      await albumRepo.update(tx, albumId, {
+        pageCount: legacyRows!.length - 1,
+        ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
       });
     });
     return { updated: true };
