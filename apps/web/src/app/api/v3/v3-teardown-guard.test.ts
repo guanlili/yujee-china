@@ -69,6 +69,9 @@ test('web keeps the v1 infrastructure route whitelist used by V3', () => {
     'apps/web/src/app/api/v1/admin/grant-credit/route.ts',
     'apps/web/src/app/api/v1/admin/invite-codes/route.ts',
     'apps/web/src/app/api/v1/admin/recover-stuck/route.ts',
+    // draft_pages 行修复(2026-08-03 一次性维护接口,幂等;生产 DATABASE_URL 是
+    // sensitive env 本地拉不出,只能由生产运行时自己执行)
+    'apps/web/src/app/api/v1/admin/repair-draft-pages/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/chapters/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/cover-thumbnail-upload-url/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/cover-thumbnail/route.ts',

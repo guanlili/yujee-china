@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { accounts, inviteCodes } from '@/db/schema';
 import { getAuth } from '@/lib/auth/better-auth';
@@ -323,5 +323,40 @@ export const adminService = {
 
     logger.info({ actorId, action: 'admin.cleanupAbandoned', days, deleted }, 'admin cleanup');
     return { scanned: stale.length, deleted };
+  },
+
+  // draft_pages 行修复(2026-08-03 线上事故):0024 回填按页对象的 pageIndex 字段落行,
+  // 老相册字段稀疏/重复时行集被打散、重复字段的页被 ON CONFLICT 静默丢弃。以 legacy
+  // draftJson.pages 的**数组顺序**为真相重建行(页内 pageIndex 字段一并归一到位置值,
+  // 行 version 对齐该相册当前 draft_revision)。envelope-only 相册(design-chat 提交过,
+  // 行即真相)被 jsonb_typeof 守卫天然跳过。单事务,幂等 —— 走 admin 接口是因为生产
+  // DATABASE_URL 是 sensitive env,本地拉不出来,只有生产运行时自己拿得到。
+  async repairDraftPages(actorId: string): Promise<{ rows: number; albums: number }> {
+    const stats = await db.transaction(async (tx) => {
+      await tx.execute(sql`
+        DELETE FROM draft_pages d
+        USING albums a
+        WHERE d.album_id = a.id
+          AND jsonb_typeof(a.draft_json->'pages') = 'array'`);
+      await tx.execute(sql`
+        INSERT INTO draft_pages (album_id, page_index, page, version, updated_by)
+        SELECT a.id,
+               p.ord::int - 1,
+               jsonb_set(p.elem, '{pageIndex}', to_jsonb(p.ord::int - 1)),
+               GREATEST(a.draft_revision, 1),
+               NULL
+        FROM albums a,
+             LATERAL jsonb_array_elements(a.draft_json->'pages') WITH ORDINALITY AS p(elem, ord)
+        WHERE jsonb_typeof(a.draft_json->'pages') = 'array'`);
+      await tx.execute(sql`
+        UPDATE albums SET draft_revision = GREATEST(draft_revision, 1)
+        WHERE jsonb_typeof(draft_json->'pages') = 'array'`);
+      const counted = await tx.execute(sql`
+        SELECT count(*)::int AS rows, count(DISTINCT album_id)::int AS albums FROM draft_pages`);
+      const first = (counted as unknown as Array<{ rows: number; albums: number }>)[0];
+      return { rows: first?.rows ?? 0, albums: first?.albums ?? 0 };
+    });
+    logger.info({ actorId, action: 'admin.repairDraftPages', ...stats }, 'draft_pages repaired');
+    return stats;
   },
 };
