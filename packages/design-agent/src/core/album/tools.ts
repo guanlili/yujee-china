@@ -40,25 +40,50 @@ function catalogCategoryOf(catalog: TemplateCatalog): (templateId: string) => st
 	return (templateId) => catalog.get(templateId)?.category;
 }
 
+// 双宽模板判定:用户口径页码里双宽页占两个号(与画布 folio 同语义,book-state 抬头)。
+function catalogSpreadOf(catalog: TemplateCatalog): (templateId: string) => boolean {
+	return (templateId) => catalog.get(templateId)?.spread === true;
+}
+
 // 模型传入的用户口径页码 → 内部 1 基数组位置。解析失败返回 -1(requirePage 统一报错)。
 function resolveRefToInternal(options: AlbumToolsOptions, value: unknown): number {
 	if (value === undefined || value === null) return -1;
-	return resolvePageUserRef(options.getBookState(), catalogCategoryOf(options.catalog), value) ?? -1;
+	return (
+		resolvePageUserRef(
+			options.getBookState(),
+			catalogCategoryOf(options.catalog),
+			value,
+			catalogSpreadOf(options.catalog),
+		) ?? -1
+	);
 }
 
 // 内部页位 → 用户称呼(报错/回执对模型说人话,与用户所见一致)。
 function pageLabelOf(options: AlbumToolsOptions, state: AlbumBookState, internalNo: number): string {
-	const ref = pageUserRefs(state, catalogCategoryOf(options.catalog))[internalNo - 1];
+	const ref = pageUserRefs(state, catalogCategoryOf(options.catalog), catalogSpreadOf(options.catalog))[
+		internalNo - 1
+	];
 	return ref === undefined ? `#${internalNo}` : formatPageUserRef(ref);
+}
+
+// 用户口径页码 → 工具载荷里的 pageNo 值(数字/类别名;双宽页给 "L-R" 字符串)。
+function payloadPageNo(ref: PageUserRef | undefined): number | string | undefined {
+	if (ref === undefined) return undefined;
+	return typeof ref === "object" ? `${ref.left}-${ref.right}` : ref;
 }
 
 // 本书可用页码清单(报错提示用)。
 function pageRefRangeText(options: AlbumToolsOptions, state: AlbumBookState): string {
-	const refs = pageUserRefs(state, catalogCategoryOf(options.catalog));
-	const interiorCount = refs.filter((ref) => typeof ref === "number").length;
-	const specials = refs.filter((ref): ref is Exclude<PageUserRef, number> => typeof ref === "string");
+	const refs = pageUserRefs(state, catalogCategoryOf(options.catalog), catalogSpreadOf(options.catalog));
+	// 双宽页占两个号:内页号上界取所有号里的最大值(不是内页张数)。
+	let maxInteriorNo = 0;
+	for (const ref of refs) {
+		if (typeof ref === "number") maxInteriorNo = Math.max(maxInteriorNo, ref);
+		else if (typeof ref === "object") maxInteriorNo = Math.max(maxInteriorNo, ref.right);
+	}
+	const specials = refs.filter((ref): ref is "cover" | "toc" | "ending" => typeof ref === "string");
 	const parts: string[] = specials.map((ref) => `${formatPageUserRef(ref)}("${ref}")`);
-	if (interiorCount > 0) parts.push(`内页 1..${interiorCount}`);
+	if (maxInteriorNo > 0) parts.push(`内页 1..${maxInteriorNo}`);
 	return parts.join("、");
 }
 
@@ -215,7 +240,11 @@ function readPagePayload(
 	// 设计简报(主题/配色/封面氛围,见 composeChatTurn),页面语境 = html + 照片描述。
 	// pageNo = 用户口径(内页数字/封面目录封尾类别名);管线原始 pageIndex 不喂模型。
 	return {
-		pageNo: pageUserRefs(state, catalogCategoryOf(options.catalog))[internalNo - 1],
+		pageNo: payloadPageNo(
+			pageUserRefs(state, catalogCategoryOf(options.catalog), catalogSpreadOf(options.catalog))[
+				internalNo - 1
+			],
+		),
 		templateId: page.templateId,
 		category: template.category,
 		images: Object.fromEntries(
@@ -311,7 +340,13 @@ function createSearchBookTool(
 			if (!query) throw new Error("query 是必填项");
 			const limit = clampInteger(params.limit ?? DEFAULT_SEARCH_LIMIT, 1, MAX_SEARCH_LIMIT);
 			const state = options.getBookState();
-			const matches = searchAlbumBook(state, catalogCategoryOf(options.catalog), query, limit);
+			const matches = searchAlbumBook(
+				state,
+				catalogCategoryOf(options.catalog),
+				query,
+				limit,
+				catalogSpreadOf(options.catalog),
+			);
 			return {
 				content: [
 					{
@@ -865,8 +900,9 @@ function createMovePagesTool(options: AlbumToolsOptions): AgentTool<typeof moveP
 			);
 
 			// 结果反馈:每步用户口径描述 + 源页新旧页码映射(模型同轮回话不说错页码)。
-			const oldRefs = pageUserRefs(state, categoryOf);
-			const newRefs = pageUserRefs(nextState, categoryOf);
+			const spreadOf = catalogSpreadOf(options.catalog);
+			const oldRefs = pageUserRefs(state, categoryOf, spreadOf);
+			const newRefs = pageUserRefs(nextState, categoryOf, spreadOf);
 			const sourceNos = resolvedOps.flatMap((op) => (op.type === "swap" ? [op.a, op.b] : [op.pageNo]));
 			const operations = resolvedOps.map((op) =>
 				op.type === "swap"
@@ -1045,8 +1081,8 @@ function slotIdBase(slotId: string): string {
 
 interface BookSearchMatch {
 	where: "pageText" | "photo" | "chapter";
-	/** 用户口径页码(内页数字/封面目录封尾类别名),与用户画面一致。 */
-	pageNo?: PageUserRef;
+	/** 用户口径页码(内页数字/封面目录封尾类别名;双宽页 "L-R"),与用户画面一致。 */
+	pageNo?: number | string;
 	slotId?: string;
 	photoId?: string;
 	chapterId?: string;
@@ -1058,9 +1094,10 @@ function searchAlbumBook(
 	categoryOf: (templateId: string) => string | undefined,
 	query: string,
 	limit: number,
+	isSpread: (templateId: string) => boolean = () => false,
 ): BookSearchMatch[] {
 	const matches: BookSearchMatch[] = [];
-	const userRefs = pageUserRefs(state, categoryOf);
+	const userRefs = pageUserRefs(state, categoryOf, isSpread);
 	const lowerQuery = query.toLowerCase();
 	const push = (match: BookSearchMatch): boolean => {
 		matches.push(match);
@@ -1070,7 +1107,7 @@ function searchAlbumBook(
 	for (const [index, page] of state.pages.entries()) {
 		for (const [slotId, value] of Object.entries(page.texts)) {
 			if (value.toLowerCase().includes(lowerQuery)) {
-				if (push({ where: "pageText", pageNo: userRefs[index], slotId, preview: preview(value, query) })) {
+				if (push({ where: "pageText", pageNo: payloadPageNo(userRefs[index]), slotId, preview: preview(value, query) })) {
 					return matches;
 				}
 			}

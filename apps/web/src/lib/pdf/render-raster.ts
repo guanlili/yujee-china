@@ -65,64 +65,167 @@ function renderFaceHtml(
   );
 }
 
-/** 截图前的 cover 摊平 pass(2026-08-02)。
+/** 截图前的 cover 摊平 pass(2026-08-02 v1;2026-08-03 v2 泛化)。
  *
  *  为什么存在:html2canvas-pro@2.0.4 渲染 object-fit:cover 的 <img> 时**忽略
  *  object-position**(同图不同 position 输出逐像素相同 —— 真实 Chrome 对照实验
  *  坐实,scratchpad h2c-objpos-repro)。屏幕是浏览器画的(对),导出是它复刻画的
- *  (丢位置)。修不了它,就把语义降级成它一定画对的形态:
+ *  (丢位置)。修不了它,就把语义降级成它一定画对的形态。
  *
- *  把每个 cover img 的「object-fit + object-position + scale」换算成明确的
- *  width/height/left/top px(coverContentBox,与屏幕渲染同一套 cover 推导,
- *  单测钉死与 coverCropFraction 互逆)。旋转过的图(盒交换,transform 带 rotate)
- *  改为把内容偏移折进 transform 链尾的局部 translate —— html2canvas 的 transform
- *  支持是完好的(对照实验里 scale 组输出正确)。
+ *  v1 教训(2026-08-03 用户上报「调过显示区域的图导出全变形」):v1 从行内样式
+ *  正则读 x/y/scale,再把 img 摊成「放大 + 绝对定位」—— 只认编辑器写的窄格式。
+ *  AI 手写页(write_page_html 只守锚点,不守 wrapper>img 渲染模型)的 class 样式、
+ *  关键字/px 定位、translate 链全被读歪;裸 img(无裁切 wrapper,图框就是 img
+ *  自己的盒)更是被放大后彻底失去裁切,整页乱窜(真实浏览器取证 H1-H6,偏差
+ *  20-163px)。
+ *
+ *  v2 做法:按**计算样式**(getComputedStyle,类/行内/关键字/单位统统已解析)
+ *  精确复算屏幕可见的源图窗口 —— 内容盒 = cover 布局(object-position 偏移)再经
+ *  CSS transform(绕 transform-origin 的均匀缩放 + 平移,读矩阵)—— 把这块窗口
+ *  预烘进一张与图框同宽高比的 canvas,原地换掉 img.src,清掉 position/transform。
+ *  布局(盒、定位、圆角、wrapper 有无)一个字不动;cover 对同宽高比位图是恒等
+ *  映射,h2c 想忽略 object-position 也无从忽略。矩阵含旋转/非均匀缩放(AI 的
+ *  装饰性倾斜)超出 cover 摊平模型:保守跳过,交给 h2c 原生画(退化为中心裁,
+ *  绝不半应用出「整图 fill 压进框」的变形)。
+ *
+ *  旋转图(编辑器盒交换写法:行内 rotate(90|180|270deg),格式可信)保留 v1 的
+ *  显式几何摊平 —— 2026-08-02 导出实测钉死,盒交换 + 中心缩放模型见
+ *  rotatedCoverTranslate。
  *
  *  只动离屏 host 里的节点,屏幕 DOM 与存库 html 一个字不碰。 */
-async function flattenCoverImagesForCapture(host: HTMLElement): Promise<void> {
+async function flattenCoverImagesForCapture(host: HTMLElement, captureScale: number): Promise<void> {
   const imgs = Array.from(host.querySelectorAll<HTMLImageElement>('img[data-image-slot]'));
   // 摊平要读 naturalWidth:先等解码(失败的图跳过,保持原样交给 html2canvas)。
   await Promise.all(imgs.map((img) => img.decode().catch(() => undefined)));
   for (const img of imgs) {
-    if (getComputedStyle(img).objectFit !== 'cover') continue;
+    const computed = getComputedStyle(img);
+    if (computed.objectFit !== 'cover') continue;
     const natW = img.naturalWidth;
     const natH = img.naturalHeight;
     const boxW = img.offsetWidth; // 盒交换后就是转置盒 —— cover 的参照系本来就是它
     const boxH = img.offsetHeight;
-    // 位置一律读行内(烘焙/模板渲染都写行内);缺省 = 50% 50%。
-    const posMatch = /^([\d.]+)%\s+([\d.]+)%$/.exec(img.style.objectPosition ?? '');
-    const x = posMatch ? parseFloat(posMatch[1]!) : 50;
-    const y = posMatch ? parseFloat(posMatch[2]!) : 50;
-    const scale = parseFloat(/scale\(([\d.]+)\)/.exec(img.style.transform ?? '')?.[1] ?? '1') || 1;
+    if (!(natW > 0) || !(natH > 0) || !(boxW > 0) || !(boxH > 0)) continue;
+
     const rotate = parseInt(/rotate\((\d+)deg\)/.exec(img.style.transform ?? '')?.[1] ?? '0', 10) || 0;
-    const box = coverContentBox(natW, natH, boxW, boxH, { x, y, scale });
-    if (!box) continue;
-    const wrapper = img.parentElement;
-    if (wrapper && !getComputedStyle(wrapper).position.match(/absolute|relative|fixed/)) {
-      wrapper.style.position = 'relative';
-    }
-    img.style.objectFit = 'fill';
-    img.style.objectPosition = '';
-    img.style.width = `${box.width}px`;
-    img.style.height = `${box.height}px`;
-    img.style.position = 'absolute';
-    if (!rotate) {
-      img.style.left = `${box.left}px`;
-      img.style.top = `${box.top}px`;
-      img.style.transform = '';
-      img.style.transformOrigin = '';
-    } else {
+    if (rotate && rotate % 90 === 0) {
+      // ── 编辑器盒交换旋转:行内格式可信,沿用显式几何摊平 ──
+      const posMatch = /^([\d.]+)%\s+([\d.]+)%$/.exec(img.style.objectPosition ?? '');
+      const x = posMatch ? parseFloat(posMatch[1]!) : 50;
+      const y = posMatch ? parseFloat(posMatch[2]!) : 50;
+      const scale = parseFloat(/scale\(([\d.]+)\)/.exec(img.style.transform ?? '')?.[1] ?? '1') || 1;
+      const box = coverContentBox(natW, natH, boxW, boxH, { x, y, scale });
+      if (!box) continue;
+      const wrapper = img.parentElement;
+      if (wrapper && !getComputedStyle(wrapper).position.match(/absolute|relative|fixed/)) {
+        wrapper.style.position = 'relative';
+      }
       // 盒交换的居中锚不变;内容偏移折进 rotate 之后的局部 translate(旋转坐标系)。
       // 旋转态的 scale 是**绕盒中心**(transform 链 scale 在 rotate 之后、origin=中心),
       // 不是非旋转态的焦点缩放 —— 偏移必须用 rotatedCoverTranslate 的中心模型算,
       // 直接套 coverContentBox 的 left/top 会整体错位(2026-08-02 导出实测)。
       const { ox, oy } = rotatedCoverTranslate(box, boxW, boxH, { x, y, scale });
+      img.style.objectFit = 'fill';
+      img.style.objectPosition = '';
+      img.style.width = `${box.width}px`;
+      img.style.height = `${box.height}px`;
+      img.style.position = 'absolute';
       img.style.left = '50%';
       img.style.top = '50%';
       img.style.transform = `translate(-50%, -50%) rotate(${rotate}deg) translate(${ox}px, ${oy}px)`;
       img.style.transformOrigin = '';
+      continue;
     }
+
+    // ── 非旋转:按计算样式预烘位图,布局不动 ──
+    const mtx = parseMatrix2d(computed.transform);
+    if (!mtx) continue; // matrix3d 等超出模型:保持原样
+    const su = Math.hypot(mtx.a, mtx.b);
+    const sv = Math.hypot(mtx.c, mtx.d);
+    // 带旋转/非均匀缩放的矩阵超出 cover 摊平模型:保守不动。
+    if (!(su > 0) || Math.abs(su - sv) > su * 0.01 || Math.abs(mtx.b) > su * 0.01) continue;
+    const s = su;
+    // cover 布局(scale=1):内容盒尺寸 + object-position 偏移。
+    const k0 = Math.max(boxW / natW, boxH / natH);
+    const cw = natW * k0;
+    const ch = natH * k0;
+    const posParts = computed.objectPosition.split(' ');
+    const offX = objectPositionOffset(posParts[0] ?? '', boxW, cw);
+    const offY = objectPositionOffset(posParts[1] ?? '', boxH, ch);
+    if (offX === null || offY === null) continue;
+    const originParts = computed.transformOrigin.split(' ').map((v) => parseFloat(v));
+    const ox = Number.isFinite(originParts[0]) ? originParts[0]! : boxW / 2;
+    const oy = Number.isFinite(originParts[1]) ? originParts[1]! : boxH / 2;
+    // 屏幕真正画出的内容矩形:内容盒经 transform(绕 origin)映射。
+    const paintedLeft = ox + s * (offX - ox) + mtx.e;
+    const paintedTop = oy + s * (offY - oy) + mtx.f;
+    const paintedW = s * cw;
+    // 图框窗口 [0,0,boxW,boxH] 映回源图像素窗口。
+    const perPx = natW / paintedW; // 均匀缩放下与 natH/paintedH 相等
+    const sx = -paintedLeft * perPx;
+    const sy = -paintedTop * perPx;
+    const sw = boxW * perPx;
+    const sh = boxH * perPx;
+    const ix = Math.max(0, sx);
+    const iy = Math.max(0, sy);
+    const ix2 = Math.min(natW, sx + sw);
+    const iy2 = Math.min(natH, sy + sh);
+    if (!(ix2 > ix && iy2 > iy)) continue; // 可见窗口完全出图:保持原样
+    // 预烘分辨率跟截图倍率,但不超过源图密度(超采样只涨体积不涨细节)。
+    const res = Math.min(captureScale, Math.max(1, perPx));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(boxW * res));
+    canvas.height = Math.max(1, Math.round(boxH * res));
+    const ctx = canvas.getContext('2d');
+    if (!ctx) continue;
+    ctx.drawImage(
+      img,
+      ix, iy, ix2 - ix, iy2 - iy,
+      ((ix - sx) / sw) * canvas.width,
+      ((iy - sy) / sh) * canvas.height,
+      ((ix2 - ix) / sw) * canvas.width,
+      ((iy2 - iy) / sh) * canvas.height,
+    );
+    // px 定位/translate 能把内容推出图框(浏览器露背景):出界留透明 → PNG;
+    // 全覆盖(绝大多数)走 JPEG,体积小一个量级。
+    const covered = ix <= sx + 0.5 && iy <= sy + 0.5 && ix2 >= sx + sw - 0.5 && iy2 >= sy + sh - 0.5;
+    let dataUrl: string;
+    try {
+      dataUrl = canvas.toDataURL(covered ? 'image/jpeg' : 'image/png', 0.95);
+    } finally {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    // 先钉死布局尺寸再换 src:auto 尺寸的裸 img 换 src 会跳大小。
+    img.style.width = `${boxW}px`;
+    img.style.height = `${boxH}px`;
+    img.style.objectPosition = '';
+    img.style.transform = 'none';
+    img.style.transformOrigin = '';
+    img.src = dataUrl;
+    await img.decode().catch(() => undefined);
   }
+}
+
+/** 计算样式的 transform → 2D 矩阵。'none' 视为单位阵;matrix3d 等返回 null。 */
+function parseMatrix2d(
+  t: string,
+): { a: number; b: number; c: number; d: number; e: number; f: number } | null {
+  if (!t || t === 'none') return { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+  const m = /^matrix\(([^)]+)\)$/.exec(t);
+  if (!m) return null;
+  const parts = m[1]!.split(',').map((v) => parseFloat(v));
+  if (parts.length !== 6 || parts.some((v) => !Number.isFinite(v))) return null;
+  return { a: parts[0]!, b: parts[1]!, c: parts[2]!, d: parts[3]!, e: parts[4]!, f: parts[5]! };
+}
+
+/** 计算样式的 object-position 单轴分量 → 内容盒相对图框的偏移 px(scale=1 语义)。
+ *  百分比:offset = (box - content) * p / 100(CSS 语义:内容的 p% 点对齐框的 p% 点);
+ *  px:字面偏移。计算值只有这两种形态(关键字已被浏览器解析成百分比)。 */
+function objectPositionOffset(component: string, box: number, content: number): number | null {
+  const v = parseFloat(component);
+  if (!Number.isFinite(v)) return null;
+  if (component.endsWith('%')) return ((box - content) * v) / 100;
+  return v;
 }
 
 export interface FaceRenderOptions {
@@ -157,10 +260,11 @@ export async function renderFaceToCanvas(
     await documentFontsReady();
     // 字体确定后再做固定高度文字槽的字号自适应,与画板同一 pass,屏幕/导出一致。
     fitTextBoxes(host);
-    // 截图前把 cover 语义摊平成纯几何:html2canvas-pro 会忽略 <img> 的
+    // 截图前把 cover 语义摊平(预烘位图):html2canvas-pro 会忽略 <img> 的
     // object-position(2026-08-02 真实浏览器对照实验坐实),用户调过的照片位置
     // 在导出里全部回到默认。摊平后与屏幕逐像素等价,它想忽略也没得忽略。
-    await flattenCoverImagesForCapture(host);
+    // captureScale 决定预烘位图分辨率,与截图倍率同源,免得高倍截图吃到低清位图。
+    await flattenCoverImagesForCapture(host, scale);
     return await html2canvas(host, {
       width: capture.width,
       height: capture.height,
