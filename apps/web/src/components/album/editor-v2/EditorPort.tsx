@@ -2892,8 +2892,11 @@ function EditorBook({
     // 同口径。rebuildSpreads 自带 currentCh 钳位,删掉最后一个跨页也不会画越界。
     async function deleteSelectedPage() {
       if (selectedPageIndex == null) return;
+      // selectedPageIndex 是页对象的 pageIndex **字段**(data-page-index 写的是
+      // String(page.pageIndex)),不是数组下标 —— 存量相册字段可能不连续(2026-08-03
+      // 线上 400 复盘)。查页/本地过滤都按字段;URL 直接透传字段(与服务端契约一致)。
       const idx = selectedPageIndex;
-      const page = pagesState[idx];
+      const page = pageByIndex(idx);
       if (!page) return;
       const tpl = getTemplate(page.templateId);
       if (tpl?.category !== 'interior') { alert(t('deletePageAnchored')); return; }
@@ -2908,7 +2911,7 @@ function EditorBook({
       const prev = pagesState;
       selectedPageIndex = null;
       hideElementToolbar();
-      pagesState = prev.filter((_, i) => i !== idx).map((p, newIdx) => ({ ...p, pageIndex: newIdx }));
+      pagesState = prev.filter((p) => p.pageIndex !== idx).map((p, newIdx) => ({ ...p, pageIndex: newIdx }));
       rebuildSpreads();
       repaintBook();
       updateSelectionHighlight();

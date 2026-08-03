@@ -1685,6 +1685,12 @@ export const albumService = {
   // pageIndex) 要求连续无洞),pageCount 收口,COMPLETED → EDITING。
   // 事务骨架与路由判定照抄 reorderPages(理由见其抬头):行锁 → 懒播种 →
   // loadStoryDraft 判定行/存量路径。bake:false —— 删页不碰余页 html 一个字节。
+  //
+  // pageIndex 参数是页对象的 **pageIndex 字段**,不是数组下标(2026-08-03 线上 400
+  // 复盘):/pages/[idx] 的既有线上契约来自 updatePage 前端 —— 桌面 data-page-index
+  // 写 String(page.pageIndex)、pageByIndex 按字段 find、移动端 persistPage 发
+  // page.pageIndex。存量相册字段可能不连续(线上见 129/132),按下标解析会越界/错位。
+  // 删后重编号 0..n-1 顺带把这类相册洗回连续(自愈)。
   async deletePage(
     userId: string,
     albumId: string,
@@ -1701,12 +1707,21 @@ export const albumService = {
       const legacyRows = hasDraft ? null : await albumPageRepo.findByAlbum(tx, albumId);
       const n = hasDraft ? draft!.pages.length : legacyRows!.length;
 
-      if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= n) {
-        throw ERRORS.VALIDATION_FAILED(`page ${pageIndex} out of range 0..${n - 1}`);
+      const fieldAt = (i: number): number =>
+        hasDraft ? draft!.pages[i]!.pageIndex : legacyRows![i]!.pageIndex;
+      const matches: number[] = [];
+      for (let i = 0; i < n; i++) if (fieldAt(i) === pageIndex) matches.push(i);
+      if (matches.length === 0) {
+        throw ERRORS.VALIDATION_FAILED(`page ${pageIndex} not found`);
       }
+      if (matches.length > 1) {
+        // 字段重复 = 页身份歧义(旧管线按章节计数的遗留),宁拒不猜 —— 删错页不可恢复。
+        throw ERRORS.VALIDATION_FAILED(`page ${pageIndex} is ambiguous (duplicate pageIndex)`);
+      }
+      const arrayIdx = matches[0]!;
       const templateIdAt = (i: number): string =>
         hasDraft ? draft!.pages[i]!.templateId : legacyRows![i]!.templateId;
-      const category = getTemplate(templateIdAt(pageIndex))?.category;
+      const category = getTemplate(templateIdAt(arrayIdx))?.category;
       if (category !== 'interior') {
         throw ERRORS.VALIDATION_FAILED(
           `page ${pageIndex} (${category ?? 'unknown'}) is anchored and cannot be deleted`,
@@ -1723,7 +1738,7 @@ export const albumService = {
 
       if (hasDraft) {
         const remaining = draft!.pages
-          .filter((_, i) => i !== pageIndex)
+          .filter((_, i) => i !== arrayIdx)
           .map((page, newIdx) => ({ ...page, pageIndex: newIdx }));
         const rev = await bumpDraftRevision(tx, albumId, seededRevision);
         await draftPageRepo.replaceAll(tx, albumId, remaining, rev, userId);
@@ -1742,7 +1757,7 @@ export const albumService = {
       await albumPageRepo.bulkInsert(
         tx,
         legacyRows!
-          .filter((_, i) => i !== pageIndex)
+          .filter((_, i) => i !== arrayIdx)
           .map((row, newIdx) => {
             const { id: _id, updatedAt: _u, ...rest } = row;
             return { ...rest, pageIndex: newIdx };
