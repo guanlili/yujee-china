@@ -265,9 +265,12 @@ export function FlipBook({
     const el = stageRef.current;
     if (!el) return;
     const fit = () => {
-      const availH = el.clientHeight - 32; // breathing room only(缩略图条已退场)
-      const availW = el.clientWidth - 104; // 两侧翻页小圆钮各留 52px(12 贴边 + 36 钮 + 4 隙),不压书
-
+      // 翻页钮的让位随断点走(与 Tailwind md/产品 767 移动判定同一边界):
+      // 桌面钮在书两侧 → 横向各留 52px(12 贴边 + 36 钮 + 4 隙);
+      // 移动端(≤767)钮在底部居中 → 纵向留 88px,横向只留呼吸边。
+      const mobile = window.innerWidth < 768;
+      const availH = el.clientHeight - (mobile ? 88 : 32);
+      const availW = el.clientWidth - (mobile ? 16 : 104);
       let h = Math.min(availH, 720);
       let w = h * 1.414;
       if (w > availW) {
@@ -587,31 +590,45 @@ export function FlipBook({
         </div>
       )}
 
-      {/* ─── 两侧翻页小圆钮(书两侧垂直居中;到头/翻页动画中淡出不可点) ─── */}
-      {([
-        { dir: -1 as const, label: t.prevPage, edge: 'left-3', points: '15 18 9 12 15 6', hidden: spread === 0 },
-        { dir: 1 as const, label: t.nextPage, edge: 'right-3', points: '9 18 15 12 9 6', hidden: spread >= spreadCount - 1 },
-      ]).map(({ dir, label, edge, points, hidden }) => (
-        <button
-          key={dir}
-          type="button"
-          onClick={() => step(dir)}
-          disabled={hidden || !!anim}
-          title={label}
-          aria-label={label}
-          className={`absolute ${edge} top-1/2 z-[7] flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-[var(--fg-2)] transition-opacity hover:text-[var(--fg)] disabled:pointer-events-none ${hidden ? 'opacity-0' : 'disabled:opacity-40'}`}
-          style={{
-            background: 'rgba(255,255,255,0.8)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-          }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-            <polyline points={points} />
-          </svg>
-        </button>
-      ))}
+      {/* ─── 翻页小圆钮:桌面在书两侧垂直居中;移动端(≤767,同 md 断点)在底部居中一排。
+             到头淡出不可点、翻页动画中禁点。 ─── */}
+      {(() => {
+        const navBtns = [
+          { dir: -1 as const, label: t.prevPage, points: '15 18 9 12 15 6', hidden: spread === 0 },
+          { dir: 1 as const, label: t.nextPage, points: '9 18 15 12 9 6', hidden: spread >= spreadCount - 1 },
+        ];
+        const navBtn = ({ dir, label, points, hidden }: (typeof navBtns)[number], className: string) => (
+          <button
+            key={dir}
+            type="button"
+            onClick={() => step(dir)}
+            disabled={hidden || !!anim}
+            title={label}
+            aria-label={label}
+            className={`h-9 w-9 items-center justify-center rounded-full text-[var(--fg-2)] transition-opacity hover:text-[var(--fg)] disabled:pointer-events-none ${hidden ? 'opacity-0' : 'disabled:opacity-40'} ${className}`}
+            style={{
+              background: 'rgba(255,255,255,0.8)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+            }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <polyline points={points} />
+            </svg>
+          </button>
+        );
+        return (
+          <>
+            {navBtns.map((b) =>
+              navBtn(b, `absolute top-1/2 z-[7] hidden -translate-y-1/2 md:flex ${b.dir === -1 ? 'left-3' : 'right-3'}`),
+            )}
+            <div className="absolute bottom-5 left-1/2 z-[7] flex -translate-x-1/2 items-center gap-4 md:hidden">
+              {navBtns.map((b) => navBtn(b, 'flex'))}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

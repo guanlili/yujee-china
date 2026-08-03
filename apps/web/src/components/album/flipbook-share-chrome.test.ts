@@ -25,14 +25,19 @@ test('分享页不画选中框:Half 上没有 active 描边,也没有 inset 框'
   assert.doesNotMatch(tsx, /active:\s*boolean/, 'Half 不再接 active 视觉态');
 });
 
-test('翻页导航是书两侧各一枚小圆钮:垂直居中、到头淡出、动画中禁点', () => {
-  // 两枚按钮走同一份 map(方向/贴边/箭头三元组),都调 step()。
-  assert.match(tsx, /\{ dir: -1 as const[\s\S]*?edge: 'left-3'[\s\S]*?hidden: spread === 0 \}/, '左钮:贴左、封面处隐藏');
-  assert.match(tsx, /\{ dir: 1 as const[\s\S]*?edge: 'right-3'[\s\S]*?hidden: spread >= spreadCount - 1 \}/, '右钮:贴右、末跨页处隐藏');
+test('翻页导航:桌面书两侧各一枚小圆钮,移动端沉到底部居中(同 md/767 断点)', () => {
+  // 两枚按钮同一份 navBtns 数据 + 同一个 navBtn 渲染,只有摆位随断点变。
+  assert.match(tsx, /\{ dir: -1 as const[\s\S]*?hidden: spread === 0 \}/, '左钮:封面处隐藏');
+  assert.match(tsx, /\{ dir: 1 as const[\s\S]*?hidden: spread >= spreadCount - 1 \}/, '右钮:末跨页处隐藏');
   assert.match(tsx, /onClick=\{\(\) => step\(dir\)\}/, '按钮必须走 step(dir) 单跨页步进');
-  assert.match(tsx, /top-1\/2 z-\[7\] flex h-9 w-9 -translate-y-1\/2/, '小圆钮:9×9、垂直居中、浮在书之上');
   assert.match(tsx, /disabled=\{hidden \|\| !!anim\}/, '翻页动画中禁点,防连翻错乱');
-  // 书体适配为两侧按钮让位(不再为底部条留 96px 高)。
-  assert.match(tsx, /clientWidth - 104/, '横向为两侧按钮各留位');
+  // 桌面:两侧垂直居中,移动端整组隐藏(hidden … md:flex)。
+  assert.match(tsx, /absolute top-1\/2 z-\[7\] hidden -translate-y-1\/2 md:flex \$\{b\.dir === -1 \? 'left-3' : 'right-3'\}/, '桌面钮:两侧垂直居中,移动端不渲染在两侧');
+  // 移动端:底部居中一排,桌面隐藏(md:hidden)。
+  assert.match(tsx, /bottom-5 left-1\/2 z-\[7\] flex -translate-x-1\/2 items-center gap-4 md:hidden/, '移动端钮:底部居中一排');
+  // 书体适配随断点让位:桌面横向 104(两侧钮),移动端纵向 88(底部钮)。
+  assert.match(tsx, /window\.innerWidth < 768/, '断点与 Tailwind md/产品 767 移动判定同一边界');
+  assert.match(tsx, /clientHeight - \(mobile \? 88 : 32\)/, '移动端为底部按钮留高');
+  assert.match(tsx, /clientWidth - \(mobile \? 16 : 104\)/, '桌面为两侧按钮留宽');
   assert.doesNotMatch(tsx, /clientHeight - 96/, '不再为底部条预留高度');
 });
