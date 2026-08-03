@@ -179,7 +179,8 @@ token or snapshot, and public reads never mutate already-frozen shares.
 ## Page HTML Truth (C 方案)
 
 - 排版/设计落库时每页烘成 HTML(`services/album/bake-html.ts`),draft 页的 `html`
-  是页面唯一真相;读路径对存量 draft 现场烘(`readStoryDraft`)。
+  是页面唯一真相;读路径对存量 draft 现场烘 —— draft_pages 拆表后编辑器读点走
+  `loadStoryDraft`(行优先,`bake:true` 保持兜底烘制),legacy 路径仍是 `readStoryDraft`。
 - 画板(PagePreview/FlipBook)优先渲染存库 html(`components/album/page-html-dom.ts`
   解析 `{{IMG_SRC}}` token → blob URL);无 html 回退模板即时渲染,再缺回退 React 组件。
 - 用户改字走 html 原位补丁(锚点 `data-text-key`),AI/用户手工版面不被覆盖;
@@ -276,5 +277,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 1e999316
+checked-at: 2cc777ae
 -->
