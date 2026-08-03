@@ -1,4 +1,5 @@
 import { bakePageHtml, bakePagesHtml, type BakeablePage } from './bake-html';
+import { parseDraftEnvelope, readPreviewPages } from './draft-store';
 import { createHash } from 'node:crypto';
 import { normalizeBoardBackground, type BoardBackground } from '@/lib/board-bg/presets';
 import { patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle } from '@/components/album/page-html-dom';
@@ -38,7 +39,6 @@ import {
   ComposeRequest,
   Page,
   V3AnalyzeImageDataUrl,
-  V3LayoutTree,
   V3StoryDraft,
   type ImagePos,
   type Page as V3Page,
@@ -130,53 +130,38 @@ type StoryProgressState = {
   exportUnlocked: boolean;
 };
 
-export function readPreviewPages(draftJson: unknown): V3Page[] | undefined {
-  if (!draftJson || typeof draftJson !== 'object' || Array.isArray(draftJson)) return undefined;
-  const pages = (draftJson as { pages?: unknown }).pages;
-  const parsed = Page.array().safeParse(pages);
-  return parsed.success ? parsed.data : undefined;
-}
+// draft_pages 拆表(Phase 1a):moved to `./draft-store` (pure, no DB) so
+// `loadStoryDraft` can reuse it too. Re-exported here so nothing importing it
+// from album-service.ts (share-service.ts) breaks.
+export { readPreviewPages };
 
 // Parse draft_json into { tree, progress }, tolerating both the bare-tree and the
 // wrapped shape. Returns null when draft_json isn't a V3 story draft at all (no
 // draft / finalized album). The initial currentChapterId is the FIRST not-done
 // chapter so a bare tree resumes from chapter 1.
+//
+// draft_pages 拆表(Phase 1a): the {tree, progress, design} parsing itself now
+// lives in `./draft-store` (`parseDraftEnvelope`), shared with `loadStoryDraft`.
+// This function stays as a thin wrapper around it — it stays synchronous (pure
+// off draftJson, no DB row read) and preserves a legacy baking asymmetry that
+// `loadStoryDraft` deliberately does NOT replicate: only the WRAPPED branch's
+// pages get baked on read here (bare-tree fallback pages come back unbaked, as
+// they always have — `readPreviewPages` never bakes). Task 8/9 migrate every
+// caller of this function onto `loadStoryDraft`.
 function readStoryDraft(draftJson: unknown): NormalizedStoryDraft | null {
+  const envelope = parseDraftEnvelope(draftJson);
+  if (!envelope) return null;
+
   const wrapped = V3StoryDraft.safeParse(draftJson);
-  if (wrapped.success) {
-    return {
-      tree: wrapped.data.tree,
-      // C 方案读路径兜底:存量 draft(烘 HTML 上线前落库)的页缺 html,读出时
-      // 现场烘一遍(不回写库;之后任何写路径落库即固化)。lenient 见 bake-html。
-      pages: wrapped.data.pages
-        ? (bakePagesHtml(wrapped.data.pages as BakeablePage[], { strict: false }) as typeof wrapped.data.pages)
-        : wrapped.data.pages,
-      progress: wrapped.data.progress,
-    };
-  }
+  const pages = wrapped.success
+    ? wrapped.data.pages
+      ? // C 方案读路径兜底:存量 draft(烘 HTML 上线前落库)的页缺 html,读出时
+        // 现场烘一遍(不回写库;之后任何写路径落库即固化)。lenient 见 bake-html。
+        (bakePagesHtml(wrapped.data.pages as BakeablePage[], { strict: false }) as typeof wrapped.data.pages)
+      : wrapped.data.pages
+    : readPreviewPages(draftJson);
 
-  if (
-    draftJson &&
-    typeof draftJson === 'object' &&
-    !Array.isArray(draftJson) &&
-    'version' in draftJson
-  ) {
-    return null;
-  }
-
-  const treeCandidate =
-    draftJson && typeof draftJson === 'object' && !Array.isArray(draftJson) && 'chapters' in draftJson
-      ? { chapters: (draftJson as { chapters?: unknown }).chapters }
-      : draftJson;
-  const bare = V3LayoutTree.safeParse(treeCandidate);
-  if (!bare.success) return null;
-  const tree = bare.data;
-  const firstChapterId = tree.chapters[0]?.chapterId ?? null;
-  return {
-    tree,
-    pages: readPreviewPages(draftJson),
-    progress: { currentChapterId: firstChapterId, doneChapterIds: [] },
-  };
+  return { tree: envelope.tree, pages, progress: envelope.progress };
 }
 
 // ② 章节故事 — server-side single-chapter slice for /v3/chapter-chat (§8.3 单章切片;
