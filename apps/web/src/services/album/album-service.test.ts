@@ -2326,6 +2326,55 @@ test('persistDesignChat(committed=true):全书页替换落 draft_pages 行,所�
   }
 });
 
+// design-agent 的写工具只动数组顺序、不改页对象的 pageIndex 字段(move_pages 的
+// album-move-pages-tool.test.ts 锁死逐字节不变;delete_page 同口径)。拆表后
+// replaceAll 按 page.pageIndex 落行、读回按 pageIndex 排序 —— persistDesignChat
+// 必须按数组位置重编号,否则挪页/删页在落库时被旧 pageIndex 静默还原(用户看到
+// AI 说"挪好了",刷新后原样弹回)。这个用例钉住这条回归。
+test('persistDesignChat:数组序是真相 —— 带陈旧 pageIndex 的乱序 pages(模拟 move_pages)落库后行序=数组序,pageIndex 重编号 0..n-1', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-designchat-order');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    // move_pages 挪 A 到 B 后:数组序 [COVER, B, A],但页对象 pageIndex 原样(0, 2, 1)。
+    await albumService.persistDesignChat(user.id, album.id, {
+      userMessage: '把 A 挪到 B 后面',
+      assistantReply: '挪好了',
+      committed: true,
+      pages: [
+        { pageIndex: 0, templateId: 'mag-01', images: {}, texts: { title: 'COVER' } },
+        { pageIndex: 2, templateId: 'mag-05', images: {}, texts: { title: 'B' } },
+        { pageIndex: 1, templateId: 'mag-03', images: {}, texts: { title: 'A' } },
+      ],
+    });
+
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.deepEqual(
+      rows.map((r) => [(r.page as Page).pageIndex, (r.page as Page & { texts: Record<string, string> }).texts.title]),
+      [
+        [0, 'COVER'],
+        [1, 'B'],
+        [2, 'A'],
+      ],
+      '行序必须跟数组序(挪页幸存),pageIndex 重编号连续',
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('persistDesignChat(committed=true):envelope 沿用锁内最新 tree/progress/design(含 pageBackground),draftJson 不再写回 pages 键', async (t) => {
   if (!(await isDbReachable())) return t.skip('db not reachable');
   const user = await makeUser('wp-designchat-envelope');

@@ -785,7 +785,14 @@ export const albumService = {
     },
   ): Promise<void> {
     if (input.committed) {
-      const pages = input.pages.map((page) => Page.parse(page));
+      // 数组序是唯一真相,pageIndex 按位置重编号(0..n-1)。design-agent 的写工具
+      // (move_pages;delete_page 同理)只动数组顺序、不改页对象的 pageIndex 字段
+      // (album-move-pages-tool.test.ts 锁死逐字节不变)—— 拆表前 draftJson.pages
+      // 靠数组顺序天然承载页序,拆表后 replaceAll 按 page.pageIndex 落行、读回按
+      // pageIndex 排序,不重编号的话挪页/删页会在落库时被旧 pageIndex 静默还原。
+      // 行级世界的一致性不变式也要求它:updatePage 按数组下标取页、按 pageIndex
+      // 定位行,二者必须相等且连续。
+      const pages = input.pages.map((page, i) => ({ ...Page.parse(page), pageIndex: i }));
       await db.transaction(async (tx) => {
         const latest = await albumRepo.findByIdForUpdate(tx, albumId);
         if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
