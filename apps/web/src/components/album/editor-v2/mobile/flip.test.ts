@@ -8,10 +8,12 @@ import {
   EDGE_FLIP_MS,
   FLIP_EASE,
   FLIP_MS,
+  edgeBackHalf,
   edgeLayers,
   edgeMotion,
   flipTransition,
   leafGeometry,
+  leafHalves,
   leafLayers,
   leafShading,
 } from './flip';
@@ -75,28 +77,41 @@ test('封尾闭合与打开都有镜像动画', () => {
   assert.equal(flipTransition(pair(), ending(), 'next', false), 'ending-close');
 });
 
-test('独页特殊翻页仍尊重减弱动效和双宽页边界', () => {
+test('独页特殊翻页仍尊重减弱动效', () => {
   assert.equal(flipTransition(cover(), pair(), 'next', true), null);
   assert.equal(flipTransition(ending(), pair(), 'prev', true), null);
-  assert.equal(flipTransition(cover(), full(), 'next', false), null);
 });
 
-test('双宽跨页任一端 → 硬切(一整张连续面,没有可翻的半页)#303', () => {
-  assert.equal(flipTransition(full(), pair(), 'next', false), null);
-  assert.equal(flipTransition(pair(), full(), 'next', false), null);
-  assert.equal(flipTransition(full(), full(), 'next', false), null, '双宽↔双宽也没有半页可翻');
+test('双宽跨页按装订的两半参与翻页(拆渲染不拆数据,#303 决定反转)', () => {
+  // full 的 faces 报 1(一张双宽面)也照样按两半算(flipFaces 规范化)。
+  assert.equal(flipTransition(full(), pair(), 'next', false), 'spread');
+  assert.equal(flipTransition(pair(), full(), 'next', false), 'spread');
+  assert.equal(flipTransition(full(), full(), 'next', false), 'spread');
+  // 封面开卷翻进双宽页、双宽页接封底合卷,也都是正常边缘动画。
+  assert.equal(flipTransition(cover(), full(), 'next', false), 'cover-open');
+  assert.equal(flipTransition(full(), ending(), 'next', false), 'ending-close');
 });
 
-test('共用的那三条理由必须走 spreads.ts 的 shouldDirectSwitch,不在移动端重写', () => {
+test('双宽页的裁半语义:spread 翻页走 leafHalves,封皮开合背面走 edgeBackHalf', () => {
+  assert.deepEqual(leafHalves('next'), { front: 'right', back: 'left' });
+  assert.deepEqual(leafHalves('prev'), { front: 'left', back: 'right' });
+  // 与 edgeLayers 取 body[0]/body[1] 一一对应(cover 系背面是正文左页)。
+  assert.equal(edgeBackHalf('cover-open'), 'left');
+  assert.equal(edgeBackHalf('cover-close'), 'left');
+  assert.equal(edgeBackHalf('ending-close'), 'right');
+  assert.equal(edgeBackHalf('ending-open'), 'right');
+});
+
+test('共用的理由必须走 spreads.ts 的 shouldDirectSwitch,不在移动端重写', () => {
   const src = readFileSync(join(here, 'flip.ts'), 'utf8');
   assert.match(src, /import \{ shouldDirectSwitch \} from '\.\.\/\.\.\/spreads'/);
   assert.match(
     src,
-    /shouldDirectSwitch\(reducedMotion, false, false, from\.full, to\.full\)/,
+    /shouldDirectSwitch\(reducedMotion, false, false\)/,
   );
   assert.match(
     src,
-    /shouldDirectSwitch\(false, sourceSolo, targetSolo, false, false\)/,
+    /shouldDirectSwitch\(false, sourceSolo, targetSolo\)/,
   );
   // 不许在这里自己再写一遍那几个 || —— #303 就是因为运算符钻空子漏判过
   const body = src.slice(src.indexOf('export function flipTransition'));

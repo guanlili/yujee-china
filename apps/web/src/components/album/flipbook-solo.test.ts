@@ -73,24 +73,21 @@ test('a solo spread renders a single centered page at half width, no spine, one 
   );
 });
 
-test('page-turn into/out of a solo OR full edge skips the cross-width leaf flip (direct switch)', () => {
+test('page-turn into/out of a solo edge skips the cross-width leaf flip (direct switch)', () => {
   const tsx = source('FlipBook.tsx');
   // goToSpread short-circuits to a direct setSpread when either end is solo, so a
   // half-width leaf is never flown across a width change (no tear / blank flash).
-  // #303 收紧(不是放松):双宽跨页也必须走这条直切路径 —— 它是一整张连续的双宽面,
-  // 没有可以当叶子转的右半页。
+  // 双宽(#303)页 2026-08-02 起**不再**直切:facesOfSpread 把它裁成装订的两半,
+  // 叶子翻页照常 —— full 从参数表里彻底退场(见 spreads.test.ts)。
   //
   // review 加固(repeat-offense fix): a prior version pinned this via
-  // `cond.includes(term)` substring checks across five terms — substring
-  // containment says nothing about the operator JOINING those terms, so
-  // `reducedMotion || soloOf(spread) && soloOf(to) || ...` (an `&&` slipped in,
-  // which binds tighter than `||` and silently skips the leaf-flip guard for a
-  // solo-source/paired-target move) would still pass. The OR logic now lives in
-  // shouldDirectSwitch — a real, exported, unit-tested pure predicate (see
-  // spreads.test.ts, which drives actual boolean inputs through it and cannot be
-  // fooled by operator precedence at all). This test only pins the WIRING: each
-  // of the five reasons must be its own positional argument, not folded into a
-  // combined boolean expression before being handed to shouldDirectSwitch.
+  // `cond.includes(term)` substring checks — substring containment says nothing
+  // about the operator JOINING those terms, so an `&&` slipped into the `||`
+  // chain would still pass. The OR logic now lives in shouldDirectSwitch — a
+  // real, exported, unit-tested pure predicate (see spreads.test.ts, which
+  // drives actual boolean inputs through it and cannot be fooled by operator
+  // precedence at all). This test only pins the WIRING: each reason must be its
+  // own positional argument, not folded into a combined boolean expression.
   assert.match(
     tsx,
     /import\s*\{[^}]*\bshouldDirectSwitch\b[^}]*\}\s*from\s*'\.\/spreads'/,
@@ -102,7 +99,7 @@ test('page-turn into/out of a solo OR full edge skips the cross-width leaf flip 
   const args = guard![1]!.split(',').map((s) => s.trim());
   assert.deepEqual(
     args,
-    ['reducedMotion', 'soloOf(spread)', 'soloOf(to)', 'fullIndexOf(spread) >= 0', 'fullIndexOf(to) >= 0'],
+    ['reducedMotion', 'soloOf(spread)', 'soloOf(to)'],
     `each reason must be its own positional argument to shouldDirectSwitch (never combined with && or ||) — args were: ${guard![1]}`,
   );
 });
@@ -117,16 +114,17 @@ test('the thumbnail strip renders a solo spread as one page, no spine divider', 
     /solo \? 'w-\[26px\]' : 'w-\[52px\]'/,
     'a solo thumbnail must be single-page width (26px), not the full 52px spread',
   );
-  // The spine divider (border-soft vertical line) must sit in the non-solo branch.
-  const thumbBlock = /\{solo \? \([\s\S]*?\) : \(([\s\S]*?)\)\}\n\s*<\/div>\n\s*<\/button>/.exec(tsx);
-  assert.ok(thumbBlock, 'expected the thumbnail solo/non-solo ternary');
+  // The spine divider (border-soft vertical line) must sit in the non-solo
+  // branches only(pair 与双宽都是装订的两半,都带分隔线;solo 是单页没有)。
+  const thumbBlock = /\{solo \? \([\s\S]*?\) : fullIdx >= 0 \? \(([\s\S]*?)\) : \(([\s\S]*?)\)\}\n\s*<\/div>\n\s*<\/button>/.exec(tsx);
+  assert.ok(thumbBlock, 'expected the thumbnail solo/full/pair ternary');
   assert.match(
-    thumbBlock![1],
+    thumbBlock![2]!,
     /background:\s*'var\(--border-soft\)'/,
-    'the spine divider must live only in the non-solo thumbnail branch',
+    'the spine divider must live in the pair thumbnail branch',
   );
   assert.doesNotMatch(
-    /\{solo \? \(([\s\S]*?)\) : \(/.exec(tsx)![1],
+    /\{solo \? \(([\s\S]*?)\) : fullIdx/.exec(tsx)![1]!,
     /var\(--border-soft\)/,
     'the solo thumbnail branch must not draw a spine divider',
   );

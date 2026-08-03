@@ -56,18 +56,27 @@ export function pageFaceInner(page: EditorPage | null, ctx: PageFaceCtx): string
 
 /** 一页(A4,或双宽跨页模板的 1588×1123)缩放贴合给定框(与 FlipBook PageFace 一致)。
  *  缩放写死进 innerHTML 而非外层 transform:低分辨率位图快照被 transform 放大永远糊。
- *  内框尺寸必须按 pageBox(templateId) 取 —— 双宽页写死 794 会把跨页压成一半(#303)。 */
+ *  内框尺寸必须按 pageBox(templateId) 取 —— 双宽页写死 794 会把跨页压成一半(#303)。
+ *
+ *  half:双宽页裁半 —— 框是半页宽,内容按**整幅**缩放,右半再左移一个框宽。
+ *  这是「拆渲染不拆数据」的关键一刀:双宽页在数据上仍是一页(一份 HTML),
+ *  书上以装订在一起的左右两个半页出现(各自参与翻页、各带页码角)。
+ *  只对双宽模板生效;普通页传了也按整页画(框本来就是整页)。 */
 export function pageFaceHTML(
   page: EditorPage | null,
   boxW: number,
   boxH: number,
   ctx: PageFaceCtx,
+  half?: 'left' | 'right',
 ): string {
   const box = page ? pageBox(page.templateId) : { width: PAGE.width, height: PAGE.height };
-  const scale = Math.min(boxW / box.width, boxH / box.height) || 1;
+  const wide = half != null && box.width > PAGE.width;
+  const scale = (wide ? Math.min((boxW * 2) / box.width, boxH / box.height) : Math.min(boxW / box.width, boxH / box.height)) || 1;
+  // transform 列表右→左生效:先 scale 再平移,平移量因此是屏幕 px(正好一个框宽)。
+  const shift = wide && half === 'right' ? `translateX(${-boxW}px) ` : '';
   return (
     `<div style="width:${boxW}px;height:${boxH}px;overflow:hidden;background:#fff">` +
-    `<div style="transform:scale(${scale});transform-origin:top left;width:${box.width}px;height:${box.height}px">` +
+    `<div style="transform:${shift}scale(${scale});transform-origin:top left;width:${box.width}px;height:${box.height}px">` +
     pageFaceInner(page, ctx) +
     `</div></div>`
   );
