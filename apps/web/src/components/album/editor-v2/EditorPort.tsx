@@ -6110,13 +6110,11 @@ function EditorBook({
             </span>
             <span className="eb-page-label">{locale === 'zh' ? '背景色' : 'Background'}</span>
             {/* 页序弹窗入口(2026-08-02 迭代):挪进选中页气泡,与背景色并排 ——
-                功能作用于「这本书的页」,气泡是选中页的上下文位。 */}
-            <span className="eb-ctrl">
-              <button type="button" className="eb-btn" data-edit-action="reorder-open" data-testid="eb-page-reorder" title={locale === 'zh' ? '调整页序' : 'Reorder pages'} aria-label={locale === 'zh' ? '调整页序' : 'Reorder pages'}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg>
-              </button>
-            </span>
-            <span className="eb-page-label">{locale === 'zh' ? '调整页序' : 'Reorder'}</span>
+                功能作用于「这本书的页」,气泡是选中页的上下文位。样式走全项目
+                统一的文字胶囊族(同图片浮层的 旋转/换图 一排,用户拍板)。 */}
+            <button type="button" className="eb-pill" data-edit-action="reorder-open" data-testid="eb-page-reorder">
+              {locale === 'zh' ? '调整页序' : 'Reorder'}
+            </button>
           </div>
           {/* 图片编辑不再用 el-bar:选中图片=拖动平移(前后左右)+ 滑块/滚轮缩放 + 复位,
               全在图片浮层(img-edit-overlay)里完成。换照片/黑白已去掉。 */}
