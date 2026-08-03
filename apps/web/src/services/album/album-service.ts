@@ -1516,10 +1516,20 @@ export const albumService = {
         });
         return;
       }
-      const existing = draft.pages[pageIndex];
-      if (!existing) {
+      // pageIndex 参数是页对象的 **pageIndex 字段**,不是数组下标(与 deletePage 同一
+      // 条线上契约,2026-08-03 线上 400 复盘):存量相册字段可能不连续(线上见 129/132),
+      // 按下标取页轻则报错、重则字段值恰好落在数组范围内 → 静默改错页。按字段解析,
+      // 字段重复(旧管线按章节计数的遗留)宁拒不猜。draft_pages 行键即字段,updateOne
+      // 直接用参数定位行,与这里的解析口径一致。
+      const existingMatches = draft.pages.filter((p) => p.pageIndex === pageIndex);
+      if (existingMatches.length === 0) {
         throw ERRORS.VALIDATION_FAILED(`draft page ${pageIndex} not found`);
       }
+      if (existingMatches.length > 1) {
+        throw ERRORS.VALIDATION_FAILED(`draft page ${pageIndex} is ambiguous (duplicate pageIndex)`);
+      }
+      const existing = existingMatches[0]!;
+      const existingIdx = draft.pages.indexOf(existing);
 
       const page = { ...existing } as V3Page & { html?: string };
       // html 逐笔 patch;任何一笔失配 → 置 null,收尾整页重烘(宁可丢手工版面
@@ -1575,10 +1585,11 @@ export const albumService = {
 
       // envelope(tree/progress/design)不重写:页真相已迁 draft_pages,这次编辑
       // 没有动 tree/progress,draftJson 保持原样。副作用不变:编辑已 COMPLETED 的
-      // 书 → 退回 EDITING(photo-snapshot §5.5,同上);page 0 清封面缩略图缓存。
+      // 书 → 退回 EDITING(photo-snapshot §5.5,同上);第一页(数组位 0 = 封面)被改
+      // 清封面缩略图缓存 —— 按解析后的数组位判断,稀疏相册封面字段未必是 0。
       await albumRepo.update(tx, albumId, {
         ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
-        ...(pageIndex === 0
+        ...(existingIdx === 0
           ? { coverThumbnailUrl: null, coverThumbnailR2Key: null }
           : {}),
       });

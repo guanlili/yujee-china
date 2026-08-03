@@ -2458,6 +2458,37 @@ test('deletePage:拒绝 —— 删 cover 类目页/删最后一张内页/越界,
   }
 });
 
+// updatePage 与 deletePage 同一条线上契约(pageIndex 字段):稀疏字段相册上按数组
+// 下标解析时,字段值若恰好落在数组范围内会**静默改错页**(比报错更危险)。
+test('updatePage:按 pageIndex 字段解析 —— 稀疏字段(0/129/132)相册改的是字段=129 那页,不是数组第 129/1 位', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-update-sparse');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(129, 'mag-03', 'A'),
+        reorderFixturePage(132, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    await albumService.updatePage(user.id, album.id, 129, { textsJson: { title: '改动落在正确的页' } });
+
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const byField = new Map(rows.map((r) => [(r.page as Page).pageIndex, r.page as Page & { texts: Record<string, string> }]));
+    assert.equal(byField.get(129)?.texts.title, '改动落在正确的页', '字段=129 的页被改');
+    assert.equal(byField.get(0)?.texts.title, 'COVER', '封面原样');
+    assert.equal(byField.get(132)?.texts.title, 'B', '其余页原样');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 // ── 2026-08-03 线上 400 复盘:/pages/[idx] 的线上契约是页对象的 pageIndex **字段**
 // (桌面 data-page-index 写 String(lp.pageIndex)、pageByIndex 按字段 find、移动端
 // persistPage(page.pageIndex))。存量相册的字段可能不连续(线上见 129/132),服务端
