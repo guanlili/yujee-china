@@ -288,7 +288,34 @@ export const jobService = {
     // 不传 = 按 job kind 取默认档(compose 走 12 分钟,其余 5 分钟)。
     timeoutMs?: number,
   ): Promise<{ swept: boolean; releasedHold: boolean }> {
+    // 锁序反转修复(Task 5 follow-up,2026-08-03):三个 job 回调写事务
+    // (handleV3AnalyzeCompleted/handleV3SelectLayoutCompleted/
+    // handleV3ComposeCompleted)现在固定先锁 albums 行、后碰 agent_jobs 行
+    // (计划 Global Constraints 强制的写事务次序:album 行锁必须打头)。这个函数
+    // 原来是反过来:先锁 job 行(agentJobRepo.findByIdForUpdate),只有
+    // kind==='init'(下面的兜底分支)的僵尸才会再去 UPDATE albums 行——那条分支
+    // 因此与三个回调构成经典 AB-BA 锁序,是真实的 Postgres 死锁对(同一个 init
+    // job 恰好在僵尸扫描与真实回调同时触发的窄窗口内可复现)。
+    //
+    // 标准修法:先做一次**不加锁**的 job 读,只用来看 albumId/kind——这两个字段
+    // 在 job 行创建后从不被任何写点改动(不是"可能过期但够用",是真正不可变),
+    // 所以可以放心据此决定"这次 sweep 是否会碰 albums 行、需不需要先把它锁上",
+    // 不必重新验证。真正会变的字段(status/startedAt 等)一律不看这次 peek,
+    // 全部留到进事务、拿到锁之后重读判定——peek 只管锁的顺序,不管业务判定。
+    // layout/compose/add 三个分支在这个函数里从不 UPDATE albums 行(add 分支的
+    // albumRepo.findById 是无锁 plain SELECT,只为读 creditHoldId,不产生行锁),
+    // 维持原来的「只锁 job 行」路径,不存在锁序冲突,不必多绕一次 album 锁。
+    const peek = await agentJobRepo.findById(jobId);
+    if (!peek) return { swept: false, releasedHold: false };
+    const touchesAlbumRow = peek.kind !== 'layout' && peek.kind !== 'compose' && peek.kind !== 'add';
+
     return db.transaction(async (tx) => {
+      // ALBUM 锁必须先拿(需要的话),再拿 JOB 锁——与三个回调的锁序对齐。拿到的
+      // 这份 album 快照就是锁内最新状态,下面兜底分支直接复用,不再多读一次。
+      const lockedAlbum = touchesAlbumRow
+        ? await albumRepo.findByIdForUpdate(tx, peek.albumId)
+        : undefined;
+
       const job = await agentJobRepo.findByIdForUpdate(tx, jobId);
       if (!job) return { swept: false, releasedHold: false };
       if (job.status === 'COMPLETED' || job.status === 'FAILED') {
@@ -322,8 +349,9 @@ export const jobService = {
         return { swept: true, releasedHold: !!appendHoldId };
       }
 
-      const album = await albumRepo.findById(job.albumId);
-      const holdId = album?.creditHoldId ?? null;
+      // job.kind 是不可变字段,这里必然与 peek.kind 一致,touchesAlbumRow 必然为
+      // true,lockedAlbum 就是锁内读到的最新 albums 行——不再重读一次。
+      const holdId = lockedAlbum?.creditHoldId ?? null;
       await albumRepo.update(tx, job.albumId, {
         status: 'FAILED',
         errorMessage: 'Generation timed out. No credit was charged.',
