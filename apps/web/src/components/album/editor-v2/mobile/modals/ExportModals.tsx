@@ -25,6 +25,7 @@ export function ExportMenuModal({
   onLive,
   onSinglePages,
   onPdf,
+  onPdfBleed,
 }: {
   open: boolean;
   zh: boolean;
@@ -34,6 +35,8 @@ export function ExportMenuModal({
   onLive: () => void;
   onSinglePages: () => void;
   onPdf: () => void;
+  /** 印刷版 PDF(含 3mm 出血)。必填 —— 可选 + 父层漏传 = 亮着的死按钮。 */
+  onPdfBleed: () => void;
 }) {
   return (
     <ModalHost
@@ -82,6 +85,23 @@ export function ExportMenuModal({
             <path d="M14 2v6h6" />
           </svg>
           <span>{zh ? '整本 PDF' : 'Full PDF'}</span>
+        </button>
+        <button
+          className="export-opt"
+          onClick={onPdfBleed}
+          data-testid="export-opt-pdf-bleed"
+          title={
+            zh
+              ? '四边各加 3mm 出血，供印刷厂裁切；页面尺寸相当于 216×303mm'
+              : 'Adds 3mm bleed on all sides for print trimming; page equals 216×303mm'
+          }
+        >
+          <svg {...stroke}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+            <path d="M14 2v6h6" />
+            <path d="M3 12h18" strokeDasharray="2 2" />
+          </svg>
+          <span>{zh ? '印刷版 PDF · 含 3mm 出血' : 'Print PDF · 3mm bleed'}</span>
         </button>
       </div>
       <div className="px-5 pb-5">

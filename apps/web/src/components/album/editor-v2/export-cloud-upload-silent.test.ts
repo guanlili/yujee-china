@@ -15,7 +15,8 @@ function source(file: string): string {
   return readFileSync(join(here, file), 'utf8');
 }
 function exportPdfBody(src: string): string {
-  const m = /async function exportPdf\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
+  // 签名可带参数(2026-08-03 出血设计:bleedMm = 0);断言语义不变。
+  const m = /async function exportPdf\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(m, 'exportPdf() body must be parseable');
   return m![0];
 }

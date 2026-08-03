@@ -306,7 +306,9 @@ export function useExport({
     setManualFiles(null);
   }, []);
 
-  const exportPdf = useCallback(async () => {
+  // opts.bleedMm:印刷版传 3(2026-08-03 出血设计)。出血版只本地下载,不上传云端 ——
+  // 云端 PDF 保持标准版,分享/完成态语义不变。
+  const exportPdf = useCallback(async (opts?: { bleedMm?: number }) => {
     if (busy.current) return;
     busy.current = true;
     setManualFiles(null); // 同 runImageExport:新一轮导出作废上一轮的逐张保存列表
@@ -320,7 +322,11 @@ export function useExport({
           const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
           let b: Blob;
           try {
-            b = await renderAlbumPdfRaster(adaptable, resolveImage, { scale: 3, onProgress });
+            b = await renderAlbumPdfRaster(adaptable, resolveImage, {
+              scale: 3,
+              onProgress,
+              bleedMm: opts?.bleedMm ?? 0,
+            });
           } catch (e) {
             throw new ExportError('render', e instanceof Error ? e.message : String(e));
           }
@@ -335,11 +341,12 @@ export function useExport({
       );
       if (!rendered.ok || blob == null) return;
       const renderedBlob = blob;
-      const name = `${stem()}.pdf`;
+      const name = opts?.bleedMm ? `${stem()}-bleed3mm.pdf` : `${stem()}.pdf`;
       setExportReady({ kind: 'files', label: 'PDF', files: [{ name, blob: renderedBlob }] });
       // 本地保存入口已经就绪。云端上传在后台重试,失败**完全静默**(只落日志,不弹框)。
-      // 游客:只本地交付,不上云。
-      if (!skipCloudUpload) {
+      // 游客:只本地交付,不上云。出血版同样跳过 —— 云端 PDF 保持标准版
+      // (分享/完成态语义不变,2026-08-03 出血设计)。
+      if (!skipCloudUpload && !opts?.bleedMm) {
         void runExportWithRetry(() => uploadPdf(albumId, renderedBlob), {
           onExhausted: (lastError, attempts) => {
             logger.error(

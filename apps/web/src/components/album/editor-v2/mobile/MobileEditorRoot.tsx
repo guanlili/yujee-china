@@ -928,6 +928,10 @@ export function MobileEditorRoot({
         setExportMenuOpen(false);
         void exporter.exportPdf();
       }}
+      onPdfBleed={() => {
+        setExportMenuOpen(false);
+        void exporter.exportPdf({ bleedMm: 3 });
+      }}
     />
     <CollageModal
       open={collageOpen}

@@ -963,6 +963,11 @@ function EditorModals({ locale }: { locale: Locale }) {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /></svg>
               <span>{zh ? '整本 PDF' : 'Full PDF'}</span>
             </button>
+            {/* 印刷版(2026-08-03 出血设计):默认无出血,此入口固定 3mm 边缘延伸出血。 */}
+            <button className="export-opt" data-action="exportPdfBleed" data-testid="export-opt-pdf-bleed" title={zh ? '四边各加 3mm 出血，供印刷厂裁切；页面尺寸相当于 216×303mm' : 'Adds 3mm bleed on all sides for print trimming; page equals 216×303mm'}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /><path d="M3 12h18" strokeDasharray="2 2" /></svg>
+              <span>{zh ? '印刷版 PDF · 含 3mm 出血' : 'Print PDF · 3mm bleed'}</span>
+            </button>
           </div>
           <div className="px-5 pb-5">
             <button className="export-cancel" data-action="closeExportMenu">{zh ? '取消' : 'Cancel'}</button>
@@ -1504,11 +1509,14 @@ function EditorBook({
     let exportGateLocked = isAuthoring;
     function setExportGateUi(locked: boolean) {
       exportGateLocked = locked;
-      const exportBtn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
-      if (exportBtn && isAuthoring) {
-        exportBtn.disabled = locked;
-        exportBtn.classList.toggle('is-disabled', locked);
-        exportBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
+      // 印刷版入口与标准 PDF 同一把闸(出血只是渲染参数,不改导出门槛)。
+      for (const selector of ['[data-action="exportPdf"]', '[data-action="exportPdfBleed"]']) {
+        const exportBtn = $(selector) as HTMLButtonElement | null;
+        if (exportBtn && isAuthoring) {
+          exportBtn.disabled = locked;
+          exportBtn.classList.toggle('is-disabled', locked);
+          exportBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
+        }
       }
     }
     // Mutable working copy: chat and inline edits patch this in place and repaint
@@ -5384,13 +5392,14 @@ function EditorBook({
     // 任一环节失败都抛 ExportError(带 phase + 可选 status,供脱敏日志用,§3 隐私)。整段
     // 路径**零 creditService**:导出成功或失败都不碰积分(积分早在 init 成功时已实扣,§5)。
     let didLocalDownload = false;
-    async function renderPdfOnce(): Promise<Blob> {
+    async function renderPdfOnce(bleedMm = 0): Promise<Blob> {
       try {
         // C 方案:PDF 导出 = 栅格截屏幕渲染(存库 html 优先,与画布像素级一致)。
         // 矢量导出路径已退役(消费不了自由 HTML)。喂高分辨率原图,防放大糊。
+        // bleedMm:印刷版传 3(2026-08-03 出血设计),默认 0 走原路径。
         const { adaptable, resolveImage } = await buildExportInput();
         const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
-        return await renderAlbumPdfRaster(adaptable, resolveImage, { scale: 3, onProgress: setExportProgress });
+        return await renderAlbumPdfRaster(adaptable, resolveImage, { scale: 3, onProgress: setExportProgress, bleedMm });
       } catch (e) {
         throw new ExportError('render', e instanceof Error ? e.message : String(e));
       }
@@ -5404,7 +5413,7 @@ function EditorBook({
       const url = URL.createObjectURL(blob);
       const aEl = document.createElement('a');
       aEl.href = url;
-      aEl.download = (currentTitle || 'album') + '.pdf';
+      aEl.download = (currentTitle || 'album') + (exportBleedMm ? '-bleed3mm' : '') + '.pdf';
       document.body.appendChild(aEl);
       aEl.click();
       aEl.remove();
@@ -5440,12 +5449,15 @@ function EditorBook({
     }
 
     let exportingPdf = false;
-    async function exportPdf() {
+    // 当前这轮 PDF 导出的出血值(下载文件名后缀用);只在 exportPdf 入口赋值。
+    let exportBleedMm = 0;
+    async function exportPdf(bleedMm = 0) {
       // The topbar export button is prop-disabled when the gate is locked, and the
       // chat export-ready card only appears when unlocked — but defend anyway.
       if (exportGateLocked) return;
       if (exportingPdf || exportingImages) return;
       exportingPdf = true;
+      exportBleedMm = bleedMm;
       didLocalDownload = false;
       closeExportMenu();
       showExportProgress(aT('正在导出 PDF…', 'Exporting PDF…'));
@@ -5454,7 +5466,7 @@ function EditorBook({
         // 弹安抚框 + 落日志。计数全在前端(runExportWithRetry),**不动积分**(§5)。
         let blob: Blob | null = null;
         const rendered = await runExportWithRetry(
-          async () => { const b = await renderPdfOnce(); downloadPdfOnce(b); blob = b; },
+          async () => { const b = await renderPdfOnce(bleedMm); downloadPdfOnce(b); blob = b; },
           {
             onExhausted: (lastError, attempts) => {
               logger.error(buildExportFailureLog(lastError, { albumId, attempts }), 'pdf export failed');
@@ -5470,14 +5482,17 @@ function EditorBook({
         // (§4.5d):此处只 logger.error,不调任何飞书端点。
         // 游客:只本地下载,跳过云上传(零 R2/零 DB;服务端 pdf 路由对游客也是 403)。
         if (viewerAnonRef.current === true) return;
-        await runExportWithRetry(() => uploadPdfOnce(blob!), {
-          onExhausted: (lastError, attempts) => {
-            logger.error(
-              buildExportFailureLog(lastError, { albumId, attempts }),
-              'pdf cloud upload failed (silent — local download already succeeded)',
-            );
-          },
-        });
+        // 出血版跳过上传:云端 PDF 保持标准版(分享/完成态语义不变,2026-08-03 出血设计)。
+        if (bleedMm === 0) {
+          await runExportWithRetry(() => uploadPdfOnce(blob!), {
+            onExhausted: (lastError, attempts) => {
+              logger.error(
+                buildExportFailureLog(lastError, { albumId, attempts }),
+                'pdf cloud upload failed (silent — local download already succeeded)',
+              );
+            },
+          });
+        }
       } finally {
         hideExportProgress();
         exportingPdf = false;
@@ -5743,6 +5758,8 @@ function EditorBook({
        inside its aside (buyShells / pickAddPhotos / toggleChat-collapse). */
     const actions: Record<string, () => void> = {
       exportPdf,
+      // 印刷版(3mm 出血):同一条导出流程,只是带 bleedMm(2026-08-03 出血设计)。
+      exportPdfBleed: () => void exportPdf(3),
       backupPhotos,
       // .chat-fold-expand lives in the shell (canvas scope) and toggles the shared
       // body class; the .chat-fold-collapse button in the aside is

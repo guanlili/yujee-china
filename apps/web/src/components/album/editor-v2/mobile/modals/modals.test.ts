@@ -112,7 +112,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
       renderToStaticMarkup(
         createElement(ExportMenuModal, {
           open, zh: true, onClose: noop,
-          onCollage: noop, onLive: noop, onSinglePages: noop, onPdf: noop,
+          onCollage: noop, onLive: noop, onSinglePages: noop, onPdf: noop, onPdfBleed: noop,
         }),
       ),
     closeHint: /export-cancel/,
