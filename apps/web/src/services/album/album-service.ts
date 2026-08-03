@@ -10,7 +10,7 @@ import { albumPageRepo } from '@/db/repos/album-page-repo';
 import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { albumPhotoRepo } from '@/db/repos/album-photo-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
-import { jobService } from '@/services/job/job-service';
+import { jobService, readComposeAppendMeta } from '@/services/job/job-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { agentClient } from '@/lib/agent/agent-client';
 import { designAgentClient } from '@/lib/agent/design-agent-client';
@@ -18,6 +18,7 @@ import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
 import { transientPagePhotoRefs } from './page-photo-refs';
+import { extractDesignFromPages } from './append-photos';
 import { buildCoverSets, pickHeroPhotos, slotSpecs, templateCategory } from './design-apply';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/log/logger';
@@ -696,6 +697,15 @@ export const albumService = {
       // Next cursor = first chapter (in tree order) not yet done; null when all done.
       const nextCurrent = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
 
+      // 全局写序无例外(计划 Global Constraints:行锁 → ensureDraftPagesSeeded → …):
+      // 这一步本身不碰页,但下面的 envelope-only 覆盖仍会整块重写 draftJson —— 若这本
+      // 相册还没被任何行级写点摸过,唯一一份 pages 仍只活在 legacy draftJson.pages 里,
+      // 不先播种就直接覆盖会把它连根拔掉(与 job-service.ts 的 append 分支同一个坑,
+      // 同一个修法)。返回值不需要:这里不推进 revision,只是确保任何 legacy pages 在
+      // 被覆盖前已经安全落到 draft_pages 行;真正播种发生时(0→1)的一次性 revision
+      // 前移是播种自身的既定副作用,不是本方法「推进 revision」。
+      await ensureDraftPagesSeeded(tx, album);
+
       await albumRepo.update(tx, albumId, {
         draftJson: envelopeJson({
           tree: envelope.tree,
@@ -861,9 +871,10 @@ export const albumService = {
     // draft_pages 拆表(Phase 1a)修复:此前用 findOwned(无锁)在事务外读 album,
     // 再在一个独立事务里整块重写 draftJson(顺带把当时读到的 pages 原样搬运回去)
     // —— 无锁 + 事务外读改写窗口,且徒手搬运页数据。现在行锁 + 锁内读 envelope
-    // (parseDraftEnvelope,不需要页数据,不经 loadStoryDraft/不碰 draft_pages)
-    // → 改 tree → envelope-only 重写(envelopeJson,天然不含 pages 键)。不 bump
-    // draft_revision:页没变,Phase 1b 的 collab-sync 只关心页变化(计划明文)。
+    // (parseDraftEnvelope,不需要页数据,不经 loadStoryDraft)→ 改 tree →
+    // ensureDraftPagesSeeded(全局写序无例外,见下方调用点注释)→ envelope-only 重写
+    // (envelopeJson,天然不含 pages 键)。不 bump draft_revision、不做行级写:页没变,
+    // Phase 1b 的 collab-sync 只关心页变化(计划明文)。
     return db.transaction(async (tx) => {
       const album = await albumRepo.findByIdForUpdate(tx, albumId);
       if (!album) throw ERRORS.ALBUM_NOT_FOUND();
@@ -903,6 +914,16 @@ export const albumService = {
           };
         }),
       };
+
+      // 全局写序无例外(计划 Global Constraints:行锁 → ensureDraftPagesSeeded → …):
+      // 这一步不碰页,但下面的 envelope-only 覆盖仍会整块重写 draftJson —— 这个写点
+      // 在「加照片后再采访」链路上真实可达(ChatPanel waitForAppendChapters →
+      // finishInterview → POST /chapter-context),若这本相册的页此时仍只活在 legacy
+      // draftJson.pages 里(还没被任何行级写点摸过),不先播种就直接覆盖会把它连根
+      // 拔掉。返回值不需要:这里不推进 revision、不做任何行级写,只是确保 legacy
+      // pages 在被覆盖前已经安全落到 draft_pages 行;播种自身首次触发(0→1)的一次性
+      // revision 前移是它的既定副作用,不是本方法「推进 revision」。
+      await ensureDraftPagesSeeded(tx, album);
 
       await albumRepo.update(tx, albumId, {
         draftJson: envelopeJson({ tree: nextTree, progress: envelope.progress, design: envelope.design }),
@@ -1144,12 +1165,26 @@ export const albumService = {
       : [];
     const rawPages = Array.isArray(root?.pages) ? (root!.pages as Page[]) : [];
     const designed = rawPages.some((page) => templateCategory(page.templateId) === 'cover');
+    const latestCompose = await agentJobRepo.findLatestComposeByAlbum(albumId);
+    // COMPLETED 不等于「真写出来了」:整章掉队时 pagesTexts 全空也是 COMPLETED(回调回执
+    // 诚实,但没有这个字段轮询侧只看得到 status)。writtenPages 是回调完成时回填进
+    // job.meta.composeAppend 的实际合并页数(已按 F1 的章归属守卫过滤)——非追加单或
+    // 追加单还没回填(未完成)一律 null,只有确定完成后才是 true/false。
+    const latestComposeAppendMeta = readComposeAppendMeta(latestCompose?.meta);
+    const lastComposeWrote =
+      latestComposeAppendMeta?.writtenPages !== undefined
+        ? latestComposeAppendMeta.writtenPages > 0
+        : null;
     return {
       sets: buildCoverSets(albumId, chapters.map((c) => ({ photos: c.photos ?? [] }))),
       designed,
       hasPages: rawPages.length > 0,
       // 成稿在跑(异步 compose job 未回调):前端别再弹选择卡,直接进轮询等这一单。
-      composing: !!(await agentJobRepo.findActiveComposeByAlbum(albumId)),
+      composing: latestCompose?.status === 'QUEUED' || latestCompose?.status === 'RUNNING',
+      // 追加范围成稿的完成信号:前端轮询它从 RUNNING 走到 COMPLETED/FAILED。
+      lastComposeStatus: latestCompose?.status ?? null,
+      // 追加范围成稿是否真写出了页(见上);非追加单/还未回填 → null。
+      lastComposeWrote,
     };
   },
 
@@ -1293,6 +1328,104 @@ export const albumService = {
     });
 
     return { requestId, accepted: true as const };
+  },
+
+  // 追加范围成稿:加图增量排版落地后,只为这些章的内页写文案(engine /v3/compose,
+  // 空 coverSlots/endingSlots → engine 跳过全局批次:不写封面、不回字体)。已设计的书
+  // 专用 —— 未设计的书返回 composed:false,新页等用户选封面时随全书成稿一起写。
+  // 幂等:与全书成稿共用 (album,'compose') 活跃唯一索引,在途成稿只有一单。
+  // 拆表适配(合并 origin/main 时改写):页/树源从 loadStoryDraft 行读 —— main 线原
+  // 实现直接读 album.draftJson,对已播种行的相册那是陈旧快照(updatePage 摸过一次
+  // 就分叉)。bake:false:这里只提设计三键与图槽归属,不需要现场烘 html。
+  async composeAppend(
+    userId: string,
+    albumId: string,
+    input: { language: 'zh' | 'en'; chapterIds: string[]; refs?: Record<string, string> },
+  ): Promise<{ accepted: true; composed: boolean; requestId?: string }> {
+    const album = await this.findOwned(userId, albumId);
+    if (album.status !== 'EDITING' || album.layoutJson != null) throw ERRORS.ALBUM_NOT_EDITABLE();
+
+    const draft = await loadStoryDraft(album, { bake: false });
+    const rawPages: Page[] = draft?.pages ?? [];
+    if (rawPages.length === 0) throw ERRORS.VALIDATION_FAILED('append compose requires laid-out pages');
+    // 设计三键提取不到 = 书没设计过:不派发,新页文案等全书成稿(选封面)一起写。
+    if (!extractDesignFromPages(rawPages)) return { accepted: true, composed: false };
+
+    const chapters = (draft?.tree.chapters ?? []) as Array<{
+      chapterId?: string;
+      title?: string;
+      chapterContext?: string;
+      place?: string;
+      photos?: Array<{ photoId: string; takenAt?: string | null }>;
+    }>;
+    const scope = new Set(input.chapterIds);
+    const scoped = chapters.filter((c) => c.chapterId && scope.has(c.chapterId));
+    if (scoped.length !== scope.size) {
+      throw ERRORS.VALIDATION_FAILED('unknown chapterId in append compose scope');
+    }
+
+    const interiorPages = rawPages.filter((page) => templateCategory(page.templateId) === 'interior');
+    const requestId = crypto.randomUUID();
+    const payload = buildComposeRequest({
+      requestId,
+      callbackUrl: `${env.WEB_BASE_URL}/api/v3/internal/job-progress`,
+      language: input.language,
+      albumTitle: (album.title ?? '').slice(0, 120),
+      coverTemplateId: '',
+      endingTemplateId: '',
+      chapters: scoped,
+      interiorPages,
+      refs: input.refs ?? {},
+    });
+    // 范围里的章必须真有页可写(增量排版已合并);全空 = 调用时序错了,诚实拒绝。
+    if (payload.chapters.every((c) => c.pages.length === 0)) {
+      throw ERRORS.VALIDATION_FAILED('append compose scope has no laid-out pages');
+    }
+
+    try {
+      await db.transaction(async (tx) => {
+        const created = await jobService.createGenerationJob(tx, {
+          userId,
+          albumId,
+          requestId,
+          kind: 'compose',
+          meta: { composeAppend: { language: input.language, chapterIds: input.chapterIds } },
+        });
+        await jobService.markRunning(tx, created.id);
+      });
+    } catch (e) {
+      if (!isUniqueViolation(e)) {
+        logger.error({ err: String(e), requestId, albumId }, 'create append compose job failed');
+        throw e;
+      }
+      // 唯一索引冲突:已有一条活跃 (album,'compose') job,但不一定是同一批章的重入 ——
+      // 也可能是全书成稿,或范围完全不同的另一批追加章,那样无条件 composed:true 会把
+      // 本批章无声吞掉(用户以为写了,其实那条在途单根本不认识这些 chapterId)。
+      // 只有在途单确实是 composeAppend 且其 chapterIds 覆盖本次请求的全部 chapterIds
+      // 时才是真幂等重入;否则诚实拒绝,前端 catch 会给「没能开始写」的气泡。
+      const inFlight = await agentJobRepo.findLatestComposeByAlbum(albumId);
+      const inFlightActive = inFlight?.status === 'QUEUED' || inFlight?.status === 'RUNNING';
+      const inFlightAppendMeta = inFlight ? readComposeAppendMeta(inFlight.meta) : null;
+      const sameOrWiderScope =
+        !!inFlightAppendMeta && input.chapterIds.every((id) => inFlightAppendMeta.chapterIds.includes(id));
+      if (inFlightActive && sameOrWiderScope) {
+        return { accepted: true, composed: true };
+      }
+      throw ERRORS.VALIDATION_FAILED('append compose scope conflicts with an in-flight compose job');
+    }
+
+    try {
+      await agentClient.submitComposeV3(payload);
+    } catch (e) {
+      logger.error({ err: String(e), requestId, albumId }, 'agent v3 append compose submit failed');
+      await jobService.handleV3Failed(requestId, {
+        code: 'AGENT_INTERNAL_ERROR',
+        message: 'Failed to submit append compose to agent',
+      });
+      throw ERRORS.AGENT_INTERNAL_ERROR();
+    }
+
+    return { accepted: true, composed: true, requestId };
   },
 
   // Hard delete. FK ON DELETE CASCADE drops pages / messages / jobs / holds /

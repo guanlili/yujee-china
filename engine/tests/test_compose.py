@@ -759,3 +759,54 @@ def test_chapter_payload_sent_to_gemini_marks_title_en_body_user(monkeypatch):
     assert specs["body"]["lang"] == "user", f"body 应为 user,实际 {specs['body']}"
     # decoration 保持模板声明(mag-01 的 label 本就是 en),不被标题规则波及
     assert specs["label"]["role"] == "decoration"
+
+
+# ── 追加范围成稿:空封面/封尾槽跳过全局批次 ───────────────────────────────────
+
+
+def test_追加范围成稿_无封面封尾槽时全局批次不调_gemini(monkeypatch):
+    """coverSlots/endingSlots 全空(追加范围成稿):全局批次直接跳过 ——
+    不调 Gemini,coverTexts/endingTexts/fonts 全空;章节批次照常写。"""
+    from src.workflows import compose as compose_flow
+    from src.workflows.core import compose as compose_agent
+
+    _set_key(monkeypatch)
+
+    async def fake_chapter(chapter, *, language):
+        return compose_agent.ComposeChapterResult(
+            pages_texts={0: {"title": "新章标题"}}, call_count=1
+        )
+
+    global_called = []
+
+    async def fake_global(**kwargs):
+        global_called.append(True)
+        raise AssertionError("no cover/ending slots -> global batch must be skipped")
+
+    posted: list = []
+
+    async def fake_post(url, envelope):
+        posted.append(envelope)
+
+    monkeypatch.setattr(compose_agent, "compose_chapter", fake_chapter)
+    monkeypatch.setattr(compose_agent, "compose_global", fake_global)
+    monkeypatch.setattr(compose_flow.callback, "post", fake_post)
+
+    req = compose_flow.ComposeRequest.model_validate(
+        {
+            "requestId": "req-append",
+            "callbackUrl": "http://web.test/cb",
+            "language": "zh",
+            "chapters": [_CHAPTER],
+        }
+    )
+    asyncio.run(compose_flow._run_compose(compose_flow._Job(req)))
+
+    # 全局批次不应该被调用
+    assert global_called == [], "global batch should be skipped when coverSlots/endingSlots are empty"
+
+    completed = next(e for e in posted if getattr(e, "event", "") == "completed")
+    assert completed.pagesTexts == {0: {"title": "新章标题"}}
+    assert completed.coverTexts == {}
+    assert completed.endingTexts == {}
+    assert completed.fonts == {}

@@ -37,7 +37,10 @@ Postgres + Cloudflare R2
 - 排版是**一次确定性选版**:`/v3/select-layout` 直接回调 `completed` + 完整 `pages`,
   零 AI 调用,没有候选缩略图/评委来回;文案先填模板 JSON 的 `sample` 示例文案。
 - 生成链路只剩**一次** AI 调用:`/v3/compose`(按章并发的 Gemini 成稿,看真实照片 +
-  读用户故事,外加一次全局封面/封尾/字体)。
+  读用户故事,外加一次全局封面/封尾/字体)。已设计的书追加照片后,Web 会在增量排版
+  落地时自动再发一单**范围收窄**的 `/v3/compose`(空 `coverSlots`/`endingSlots`、只送
+  新章;engine 侧全局批次因此直接跳过,不写封面不动字体)—— 仍是同一个端点、同一种
+  AI 调用,只是多了一个触发点(`composeAppend` 服务/路由),不是第二种生成能力。
 - 判断端到端能力时必须同时看 Web caller 和 `engine/src/api/routes.py`。
 
 ### 设计 Agent(yujee-design-agent)
@@ -109,5 +112,5 @@ Postgres + Cloudflare R2
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: b50e6df0
+checked-at: 718123ff
 -->

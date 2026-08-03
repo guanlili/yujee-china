@@ -158,6 +158,36 @@ export function readComposeMeta(meta: unknown): ComposeJobMeta | null {
   };
 }
 
+// 追加范围成稿 job 的派发快照(agent_jobs.meta.composeAppend):只写这些章的内页文案,
+// 不碰封面/封尾/字体/stage。与全书成稿共用 kind='compose'(活跃唯一索引天然互斥)。
+// writtenPages 是回调完成后**回填**的字段(见 handleV3ComposeCompleted):真正合并落库的
+// 页数(章归属守卫过滤之后),派发时不存在;listCoverSets 靠它派生 lastComposeWrote。
+export type ComposeAppendJobMeta = {
+  language: 'zh' | 'en';
+  chapterIds: string[];
+  writtenPages?: number;
+};
+
+export function readComposeAppendMeta(meta: unknown): ComposeAppendJobMeta | null {
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  const raw = (meta as { composeAppend?: unknown }).composeAppend;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  const ids = Array.isArray(value.chapterIds)
+    ? (value.chapterIds as unknown[]).filter((x): x is string => typeof x === 'string')
+    : [];
+  if (ids.length === 0) return null;
+  const writtenPages =
+    typeof value.writtenPages === 'number' && Number.isFinite(value.writtenPages)
+      ? value.writtenPages
+      : undefined;
+  return {
+    language: value.language === 'zh' ? 'zh' : 'en',
+    chapterIds: ids,
+    ...(writtenPages !== undefined ? { writtenPages } : {}),
+  };
+}
+
 /** compose 回调载荷里 Web 真正消费的四块(其余如 usage 走 job 行)。 */
 export type ComposeCompletedPayload = {
   pagesTexts?: Record<string, Record<string, string>>;
@@ -227,6 +257,64 @@ export function mergeComposeIntoDraft(
     },
     pages,
   };
+}
+
+// 追加范围成稿落回 draft(纯函数):pagesTexts 逐槽合进对应页 + 只重烘这些页的 html。
+// 设计三件套/封面封尾/progress/stage 一概不动 —— mergeComposeIntoDraft 的缩小版。
+export function mergeAppendComposeTexts(
+  draftJson: unknown,
+  pagesTexts: ComposeCompletedPayload['pagesTexts'],
+): { draftJson: Record<string, unknown>; writtenPageIndexes: number[] } {
+  const parsed = V3StoryDraft.safeParse(draftJson);
+  if (!parsed.success || !parsed.data.pages || parsed.data.pages.length === 0) {
+    throw ERRORS.VALIDATION_FAILED('append compose completion requires an existing paged draft');
+  }
+  const written = new Set(Object.keys(pagesTexts ?? {}).map(Number));
+  const merged = applyComposePagesTexts(parsed.data.pages, pagesTexts);
+  const touched = merged.filter((page) => written.has(page.pageIndex));
+  const baked = bakePagesHtml(touched.map((page) => ({ ...page, html: undefined }))) as Page[];
+  const bakedByIndex = new Map(baked.map((page) => [page.pageIndex, page]));
+  const pages = merged.map((page) => bakedByIndex.get(page.pageIndex) ?? page);
+  return {
+    draftJson: { ...parsed.data, pages },
+    writtenPageIndexes: touched.map((page) => page.pageIndex).sort((a, b) => a - b),
+  };
+}
+
+// 追加成稿的章归属守卫(防误写老页,纯函数):pagesTexts 的 key 是**派发时**的
+// pageIndex,但 compose 在 engine 侧跑的这几分钟里,页序可能被 reorderPages / 设计
+// Agent 的 move_pages(全书重排)动过 —— 回调如果照旧信这个 index,会把新章文案写进
+// 一个现在其实是老页的位置,连带重烘 html,毁掉用户手改。这里在合并前重新核对:
+// draftJson 的 tree 里 chapterIds 圈定的那些章,其 photoId 并集;pagesTexts 每个
+// pageIndex 对应的**当前**页,其 images 的 photoId 与并集无交集 → 该页跳过不写。
+// draftJson 解析失败时不拦(交给 mergeAppendComposeTexts 按既有口径诚实抛错)。
+export function filterAppendComposePagesTexts(
+  draftJson: unknown,
+  chapterIds: string[],
+  pagesTexts: ComposeCompletedPayload['pagesTexts'],
+): { pagesTexts: ComposeCompletedPayload['pagesTexts']; skippedPageIndexes: number[] } {
+  if (!pagesTexts) return { pagesTexts, skippedPageIndexes: [] };
+  const parsed = V3StoryDraft.safeParse(draftJson);
+  if (!parsed.success) return { pagesTexts, skippedPageIndexes: [] };
+
+  const scope = new Set(chapterIds);
+  const allowedPhotoIds = new Set<string>();
+  for (const chapter of parsed.data.tree.chapters) {
+    if (!scope.has(chapter.chapterId)) continue;
+    for (const photo of chapter.photos) allowedPhotoIds.add(photo.photoId);
+  }
+  const pagesByIndex = new Map((parsed.data.pages ?? []).map((page) => [page.pageIndex, page]));
+
+  const filtered: NonNullable<ComposeCompletedPayload['pagesTexts']> = {};
+  const skippedPageIndexes: number[] = [];
+  for (const [key, texts] of Object.entries(pagesTexts)) {
+    const page = pagesByIndex.get(Number(key));
+    const belongsToScope =
+      !!page && Object.values(page.images).some((photoId) => allowedPhotoIds.has(photoId));
+    if (belongsToScope) filtered[key] = texts;
+    else skippedPageIndexes.push(Number(key));
+  }
+  return { pagesTexts: filtered, skippedPageIndexes };
 }
 
 // layout job 的追加范围标记(agent_jobs.meta.appendChapterIds);非追加/坏形状 → null。
@@ -628,6 +716,99 @@ export const jobService = {
         logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 compose completed');
         return;
       }
+
+      // 追加范围成稿(meta.composeAppend):只合并目标页文案 + 重烘,其余(设计三件套/
+      // 封面封尾/progress/stage)一概不动。拆表适配(合并 origin/main 的 append-compose
+      // 时改写):页源从 loadStoryDraft 行读拼 draftJson 形状喂纯函数 —— main 线原实现
+      // 直接读 album.draftJson,对已播种行的相册那是陈旧快照;落库走 replaceAll 行级写,
+      // 与全书成稿同一口径。
+      const appendMeta = readComposeAppendMeta(job.meta);
+      if (appendMeta) {
+        const loadedAppend = await loadStoryDraft(album, { tx, bake: false });
+        const appendDraftLike = loadedAppend
+          ? {
+              version: 'v3-story' as const,
+              tree: loadedAppend.tree,
+              progress: loadedAppend.progress,
+              pages: loadedAppend.pages,
+              ...(loadedAppend.design ? { design: loadedAppend.design } : {}),
+            }
+          : null;
+        // 章归属守卫(防误写老页):派发之后到回调之前这段窗口里页序可能被重排,先按
+        // **当前**draft 核对每个 pageIndex 是否仍属于本次范围,不属于的一律跳过不写。
+        const { pagesTexts: guardedPagesTexts, skippedPageIndexes } = filterAppendComposePagesTexts(
+          appendDraftLike,
+          appendMeta.chapterIds,
+          payload.pagesTexts,
+        );
+        for (const pageIndex of skippedPageIndexes) {
+          logger.warn(
+            { requestId, albumId: job.albumId, pageIndex },
+            'append compose completed but page no longer belongs to the dispatched chapters (reordered mid-flight) — skipped to avoid clobbering',
+          );
+        }
+
+        let mergedAppend: ReturnType<typeof mergeAppendComposeTexts>;
+        try {
+          mergedAppend = mergeAppendComposeTexts(appendDraftLike, guardedPagesTexts);
+        } catch (e) {
+          logger.error(
+            { err: String(e), requestId, albumId: job.albumId },
+            'append compose completed but merge failed',
+          );
+          failure = {
+            code: 'AGENT_INVALID_OUTPUT',
+            message: 'append compose result could not be applied to the draft',
+          };
+          return;
+        }
+
+        // 真写了几页(守卫过滤后的实际合并数)回填进 job 行 meta:listCoverSets 靠它
+        // 派生 lastComposeWrote,让轮询侧能区分「COMPLETED 但整章掉队」与「真写好了」。
+        const jobMeta = recordOrEmpty(job.meta);
+        const composeAppendMeta = recordOrEmpty(jobMeta.composeAppend);
+        const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
+          progress: 100,
+          stage: 'wrap',
+          usage: (usage as Record<string, unknown> | null) ?? null,
+          completedAt: new Date(),
+          meta: {
+            ...jobMeta,
+            composeAppend: { ...composeAppendMeta, writtenPages: mergedAppend.writtenPageIndexes.length },
+          },
+        });
+        if (!won) return;
+
+        const appendDraft = mergedAppend.draftJson as unknown as V3StoryDraft & { pages: Page[] };
+        const seededRevision = await ensureDraftPagesSeeded(tx, album);
+        const rev = await bumpDraftRevision(tx, job.albumId, seededRevision);
+        // 系统/agent 写点:updatedBy = null(与全书成稿同一口径)。
+        await draftPageRepo.replaceAll(tx, job.albumId, appendDraft.pages, rev, null);
+        await albumRepo.update(tx, job.albumId, {
+          draftJson: envelopeJson({
+            tree: appendDraft.tree,
+            progress: appendDraft.progress,
+            design: appendDraft.design,
+          }),
+          pageCount: appendDraft.pages.length,
+        });
+        // 回执只在真处理后写;文案没写出来也要诚实说(设计对话可补写,不留假成功)。
+        await albumMessageRepo.create(tx, {
+          albumId: job.albumId,
+          userId: job.userId,
+          role: 'assistant',
+          content:
+            mergedAppend.writtenPageIndexes.length > 0
+              ? (appendMeta.language === 'zh'
+                  ? '新照片的文案写好了,和全书一个声音。不合口味随时在对话里改。'
+                  : 'The new pages now have their copy, in the same voice as the rest of the book. Ask me here to tweak anything.')
+              : (appendMeta.language === 'zh'
+                  ? '新照片排进书里了,但这次文案没写出来。在对话里跟我说「给新页写文案」,我来补。'
+                  : "The new photos are in, but their copy didn't come through this time. Tell me here to write it and I'll fill them in."),
+        });
+        return;
+      }
+
       const meta = readComposeMeta(job.meta);
       if (!meta) {
         logger.warn({ requestId, albumId: job.albumId }, 'compose job has no cover-set meta');

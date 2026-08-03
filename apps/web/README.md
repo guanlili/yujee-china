@@ -83,11 +83,31 @@ story 环节:用户逐章讲故事 -> chapter.chapterContext
 候选缩略图 / 视觉评委那条链路已整条删除:浏览器不再渲染排版候选缩略图回传给 Agent 评选,
 同步的 `/v3/design` 也已被异步 `/v3/compose` 取代。
 
+**加照片后的追加范围成稿**(已设计的书专用):`services/album/append-photos.ts` 增量排版
+落地、合并出新页(继承设计 carrier + 模板 sample 文案)之后,前端自动
+`POST /api/v3/albums/[uuid]/compose-append` → `albumService.composeAppend` 只为新章建
+`kind='compose'` job、转发一份**空 `coverSlots`/`endingSlots`、只含新章**的 `/v3/compose`
+请求(Agent 侧全局批次因此跳过,不写封面不动字体)。回调 `handleV3ComposeCompleted` 按
+`agent_jobs.meta.composeAppend` 走缩小版分支:合并前先按**当前** draft 核对每个
+`pageIndex` 的照片归属(章归属守卫,`filterAppendComposePagesTexts`)——compose 在 Agent
+侧跑的这几分钟里页序可能被 `reorderPages` / 设计 Agent 的 `move_pages` 重排,与派发范围
+无交集的页跳过不写,防止把新章文案写进一个此刻其实是老页的位置;真正合并的页数回填进
+`agent_jobs.meta.composeAppend.writtenPages`,`stage`/封面/字体/其余页一律不动。
+`GET /api/v3/albums/[uuid]/design` 新增 `lastComposeStatus`(job 状态)与
+`lastComposeWrote`(是否真写出了页,`writtenPages>0`;非追加单/未完成 → `null`)供前端
+轮询区分「COMPLETED 但整章掉队」与「真写好了」。`composeAppend` 撞在途唯一索引时只有
+在途单确实是同 scope(或范围更宽)的追加成稿才当幂等重入,否则 `VALIDATION_FAILED`
+(不会把撞上全书成稿/别的追加范围的本批章无声吞掉)。书未设计(没有封面/封尾 carrier)
+时 `composeAppend` 直接返回 `composed:false`,不建 job、不调 Agent —— 新页文案维持等选
+封面时随全书成稿一起写的现状。
+
 Key files:
 
 - `src/lib/generation/client.ts`: browser-side submit/retry/select-layout helpers.
 - `src/services/generation/generation-service.ts`: creates jobs, reserves the layout job, calls Agent.
-- `src/services/album/album-service.ts` (`applyDesign`): 校验设计选择,建 `compose` job 并派发。
+- `src/services/album/album-service.ts` (`applyDesign` / `composeAppend`): 前者校验设计选择、
+  建 `compose` job 并派发全书成稿;后者给已设计的书追加照片后建同 kind 的窄口径 job。
+- `src/app/api/v3/albums/[uuid]/compose-append/route.ts`: 追加范围成稿路由薄壳。
 - `src/services/album/design-apply.ts`: 设计环节的确定性应用层(封面组规则、carrier sweep、
   组页、字体兜底),零 AI。
 - `src/app/api/v3/internal/job-progress/handler.ts`: Agent callback sink。
@@ -256,5 +276,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: cc964c98
+checked-at: ef5eac6e
 -->

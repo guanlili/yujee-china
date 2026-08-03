@@ -90,20 +90,14 @@ export const agentJobRepo = {
     return rows[0];
   },
 
-  // 成稿续跑:某 album 是否有在跑的 compose job(QUEUED/RUNNING)。唯一调用方
-  // album-service.listCoverSets 用它判断「成稿还在跑」—— 刷新重进时不重复弹封面选择卡。
-  // uq_agent_jobs_album_kind_active 保证每 album 至多一条活跃 compose job。
-  findActiveComposeByAlbum: async (albumId: string): Promise<AgentJob | undefined> => {
+  // 最近一单成稿 job(不限状态):/design 轮询用它区分「在跑/写完/失败」。唯一调用方
+  // album-service.listCoverSets 同时靠它派生 composing(QUEUED/RUNNING)和
+  // lastComposeStatus(原样透出)—— 刷新重进时不重复弹封面选择卡,轮询能看到完成信号。
+  findLatestComposeByAlbum: async (albumId: string): Promise<AgentJob | undefined> => {
     const rows = await db
       .select()
       .from(agentJobs)
-      .where(
-        and(
-          eq(agentJobs.albumId, albumId),
-          eq(agentJobs.kind, 'compose'),
-          inArray(agentJobs.status, ['QUEUED', 'RUNNING']),
-        ),
-      )
+      .where(and(eq(agentJobs.albumId, albumId), eq(agentJobs.kind, 'compose')))
       .orderBy(desc(agentJobs.createdAt), desc(agentJobs.id))
       .limit(1);
     return rows[0];
