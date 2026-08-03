@@ -126,6 +126,7 @@ export function MobileEditorRoot({
   pages: incomingPages,
   locale,
   onBack,
+  devExportUnlocked,
   photoFilter: controlledPhotoFilter,
   setPhotoFilter: controlledSetPhotoFilter,
   draftChapters = null,
@@ -138,6 +139,8 @@ export function MobileEditorRoot({
   locale: Locale;
   /** 顶栏返回。默认回「我的相册」;dev 预览页覆盖它,免得一点就被踢出预览。 */
   onBack?: () => void;
+  /** dev 预览页专用:跳过导出闸门(样例书没有 story-progress,真实相册永远不传)。 */
+  devExportUnlocked?: boolean;
   /** EditorPort 提供时跨桌面/移动壳共享；独立预览页不提供时使用本地状态。 */
   photoFilter?: PhotoFilterState | null;
   setPhotoFilter?: Dispatch<SetStateAction<PhotoFilterState | null>>;
@@ -673,7 +676,8 @@ export function MobileEditorRoot({
 
   // 导出闸门:ChatPanel 挂载即拉 story-progress 并经 setExportGateUi 推锁态过来
   // (追加照片的整个流程里它还会持续轮询刷新)—— 不再自己发第二份同样的请求。
-  const exportUnlocked = !exportGateLocked;
+  // devExportUnlocked:dev 预览页直通(样例书没有 story-progress,真实相册不传)。
+  const exportUnlocked = devExportUnlocked ?? !exportGateLocked;
 
   /** 书里用到的照片(备份/分享要的就是这一批)。 */
   const bookPhotoIds = photoIds;

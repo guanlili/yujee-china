@@ -21,6 +21,8 @@ export default function DevMobilePreview({ params }: { params: Promise<{ locale:
       pages={SAMPLE_DETAIL.pages}
       locale={locale}
       onBack={() => window.history.back()}
+      // 预览即测试台:样例书没有 story-progress,闸门直通,导出全链路(含出血)可测。
+      devExportUnlocked
     />
   );
 }
