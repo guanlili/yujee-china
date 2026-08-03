@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { db } from '../../db/client';
 import { agentJobRepo } from '../../db/repos/agent-job-repo';
 import { albumRepo } from '../../db/repos/album-repo';
+import { draftPageRepo } from '../../db/repos/draft-page-repo';
 import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '../../db/repos/__test__/setup';
 import { jobService, mergeComposeIntoDraft, readComposeMeta, type ComposeJobMeta } from './job-service';
 import { buildComposeRequest } from '../album/album-service';
@@ -199,12 +200,28 @@ test('③ handleV3ComposeCompleted:落库成书 + stage 推到 ready(导出闸�
     const reloaded = await albumRepo.findById(album.id);
     assert.equal(reloaded?.stage, 'ready');
     assert.equal(reloaded?.pageCount, 4);
-    const pages = (reloaded?.draftJson as { pages: Array<{ templateId: string; texts: Record<string, string> }> }).pages;
-    assert.equal(pages[0]!.templateId, COVER_ID);
-    assert.equal(pages[0]!.texts.title, '我的一年');
-    assert.equal(pages[0]!.texts.label, 'NORWAY · 21 DAYS ');
-    assert.equal(pages[1]!.texts.body, '成稿正文');
-    assert.equal(pages[1]!.texts.title, 'SAMPLE TITLE');
+    // draft_pages 拆表(Phase 1a):compose 落库的页真相搬进 draft_pages 行,
+    // draftJson 瘦身为 envelope —— 不再含 pages 键。
+    assert.equal(
+      (reloaded?.draftJson as Record<string, unknown> | undefined)?.pages,
+      undefined,
+      'draftJson must not carry a pages key after the draft_pages split',
+    );
+
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.equal(rows.length, 4, 'draft_pages row count must match pageCount');
+    assert.equal(rows[0]!.pageIndex, 0);
+    assert.equal(rows[0]!.page.templateId, COVER_ID);
+    assert.equal((rows[0]!.page as { texts: Record<string, string> }).texts.title, '我的一年');
+    assert.equal((rows[0]!.page as { texts: Record<string, string> }).texts.label, 'NORWAY · 21 DAYS ');
+    assert.equal((rows[1]!.page as { texts: Record<string, string> }).texts.body, '成稿正文');
+    assert.equal((rows[1]!.page as { texts: Record<string, string> }).texts.title, 'SAMPLE TITLE');
+    // 每行 version === 新 draft_revision(整书替换,所有页同一版本)。
+    assert.ok(reloaded?.draftRevision && reloaded.draftRevision > 0);
+    for (const row of rows) {
+      assert.equal(row.version, reloaded?.draftRevision);
+      assert.equal(row.updatedBy, null, 'compose is a system/agent write point');
+    }
 
     const doneJob = await agentJobRepo.findByRequestId(requestId);
     assert.equal(doneJob?.status, 'COMPLETED');

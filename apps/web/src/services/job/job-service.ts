@@ -1,6 +1,7 @@
 import { db, type DbOrTx } from '@/db/client';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { albumRepo } from '@/db/repos/album-repo';
+import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { creditService } from '@/services/credit/credit-service';
 import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
@@ -24,6 +25,15 @@ import {
 } from '@/services/album/design-apply';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
 import { bakePagesHtml, type BakeablePage } from '@/services/album/bake-html';
+// draft_pages 拆表(Phase 1a):三个回调写点(analyze-append/select-layout/compose)
+// 加 album 行锁 + 切行级写(docs/plans/2026-08-03-draft-pages-split.md Task 5)。
+import {
+  bumpDraftRevision,
+  ensureDraftPagesSeeded,
+  envelopeJson,
+  loadStoryDraft,
+  parseDraftEnvelope,
+} from '@/services/album/draft-store';
 
 // 解耦后 analyze 与 layout 是两个独立 job:init job(analyze,0→100)与 layout job(排版,
 // 0→100)各自独立,不再共享一行 agent_jobs 用哨兵进度串联。
@@ -369,30 +379,32 @@ export const jobService = {
     if (!job) return;
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
 
-    const album = await albumRepo.findById(job.albumId);
-    if (!album) {
-      logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 analyze completed');
-      return;
-    }
-
     // 追加照片(kind='add'):新章节树「合并」进既有 draft,不覆盖、不动 status/stage。
     // 新 chapterId 重映射防撞号;photoCount 累加;积分照搬首次口径 analyze 完成即 settle
     // (hold 在 submitAddPhotosV3 挂到 album.creditHoldId)。
+    //
+    // draft_pages 拆表(Phase 1a)固定写事务次序:album 行锁(findByIdForUpdate)必须
+    // 打头 —— 这条分支此前在事务外无锁读 album,再用那份陈旧快照在事务内算 draftJson/
+    // photoCount 落库,是收口的「无锁读改写窗口」之一。校验(既有 envelope 能否解析 +
+    // 新树能否解析)现在也挪进锁内,用锁内的新鲜快照判断;仍然只在校验通过后才尝试
+    // job CAS,校验失败照旧走事务外的 handleV3Failed(与今天一致,不在事务里嵌套第二
+    // 个 CAS)。这一分支只改 tree/progress,不碰 pages,不需要 seed/bump revision。
     if (job.kind === 'add') {
-      const parsedDraft = V3StoryDraft.safeParse(album.draftJson);
       const parsedTree = V3LayoutTree.safeParse(tree);
-      if (!parsedDraft.success || !parsedTree.success) {
-        logger.warn(
-          { requestId, albumId: job.albumId },
-          'append analyze completed but draft/tree failed to parse',
-        );
-        await this.handleV3Failed(requestId, {
-          code: 'AGENT_INVALID_OUTPUT',
-          message: 'append tree merge failed',
-        });
-        return;
-      }
+      let invalidReason: string | null = null;
+
       await db.transaction(async (tx) => {
+        const album = await albumRepo.findByIdForUpdate(tx, job.albumId);
+        if (!album) {
+          logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 analyze completed');
+          return;
+        }
+        const envelope = parseDraftEnvelope(album.draftJson);
+        if (!envelope || !parsedTree.success) {
+          invalidReason = 'append tree merge failed';
+          return;
+        }
+
         const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
           progress: 100,
           stage: 'wrap',
@@ -401,26 +413,50 @@ export const jobService = {
         });
         if (!won) return;
 
-        const existingIds = new Set(parsedDraft.data.tree.chapters.map((c) => c.chapterId));
+        const existingIds = new Set(envelope.tree.chapters.map((c) => c.chapterId));
         const remapped = remapAppendChapterIds(
           parsedTree.data.chapters,
           existingIds,
           `add${job.requestId.replace(/-/g, '').slice(0, 8)}`,
         );
-        const draftJson = mergeAppendTree(parsedDraft.data, remapped);
+        const merged = mergeAppendTree(
+          { version: 'v3-story', tree: envelope.tree, progress: envelope.progress },
+          remapped,
+        );
 
         await albumRepo.update(tx, job.albumId, {
-          draftJson,
+          draftJson: envelopeJson({
+            tree: merged.tree,
+            progress: merged.progress,
+            design: envelope.design,
+          }),
           photoCount: album.photoCount + countTreePhotos(remapped),
         });
         if (album.creditHoldId) {
           await creditService.settle(tx, job.userId, album.creditHoldId);
         }
       });
+
+      if (invalidReason) {
+        logger.warn(
+          { requestId, albumId: job.albumId },
+          'append analyze completed but draft/tree failed to parse',
+        );
+        await this.handleV3Failed(requestId, {
+          code: 'AGENT_INVALID_OUTPUT',
+          message: invalidReason,
+        });
+      }
       return;
     }
 
     await db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, job.albumId);
+      if (!album) {
+        logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 analyze completed');
+        return;
+      }
+
       // 解耦:analyze 是 init job 的交付物,完成即 COMPLETED —— 不再停在 layout「等收集」。
       // 相册直接进 EDITING/story(收集态),用户由此进采访编辑器(page.tsx: EDITING &
       // layoutJson==null → authoring)。排版由用户采访完另起独立 layout job 触发。于是采访
@@ -433,6 +469,9 @@ export const jobService = {
       });
       if (!won) return;
 
+      // 这是这本相册第一份 draft(analyze 首次完成),从不带 pages —— buildAnalyzeDraftJson
+      // 已经是 envelope 形状,不需要经 envelopeJson 二次包装,也没有 draft_pages 行可播种/
+      // 推进(还没有页,revision 不动)。
       const draftJson = buildAnalyzeDraftJson(tree);
 
       await albumRepo.update(tx, job.albumId, {
@@ -454,23 +493,28 @@ export const jobService = {
     if (!job) return;
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
 
-    const album = await albumRepo.findById(job.albumId);
-    if (!album) {
-      logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 select-layout completed');
-      return;
-    }
-    const parsedDraft = V3StoryDraft.safeParse(album.draftJson);
-    // 解耦:这是独立 layout job 的完成回调。只需草稿已就绪(analyze 已写树)即可合并排版页;
-    // 相册在 analyze 完成时就已 EDITING/story,这里不再改 status/stage,只补 pages。
-    if (!parsedDraft.success) {
-      logger.warn(
-        { requestId, albumId: job.albumId, albumStatus: album.status },
-        'select-layout completed but album has no v3-story draft',
-      );
-      return;
-    }
-
+    // draft_pages 拆表(Phase 1a)固定写事务次序:album 行锁在前(收口第二个无锁读改写
+    // 窗口 —— 这条分支此前在事务外无锁读 album,再据此在事务内整表替换 draftJson.pages)。
+    // 草稿是否就绪的校验现在也用锁内快照做;校验失败仍是「静默留 job RUNNING」——与今天
+    // 完全一致的语义,不新增 handleV3Failed 调用,也不尝试 job CAS。
     await db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, job.albumId);
+      if (!album) {
+        logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 select-layout completed');
+        return;
+      }
+
+      // 解耦:这是独立 layout job 的完成回调。只需草稿已就绪(analyze 已写树)即可合并
+      // 排版页;相册在 analyze 完成时就已 EDITING/story,这里不再改 status/stage,只补页。
+      const loaded = await loadStoryDraft(album, { tx, bake: false });
+      if (!loaded) {
+        logger.warn(
+          { requestId, albumId: job.albumId, albumStatus: album.status },
+          'select-layout completed but album has no v3-story draft',
+        );
+        return;
+      }
+
       const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
         progress: 100,
         stage: 'wrap',
@@ -479,13 +523,36 @@ export const jobService = {
       });
       if (!won) return;
 
+      // 页源从 album.draftJson.pages 切到 loadStoryDraft 的行读(行存在读行、全书无行才
+      // 回退 legacy draftJson.pages,已在锁内解出)。mergeSelectLayoutPages /
+      // mergeAppendLayoutPages 内部逻辑(含各自的 bake 语义)原样不动,只换它们吃进去的
+      // 「draftJson 形状」页源。
+      const draftJsonLike = {
+        version: 'v3-story' as const,
+        tree: loaded.tree,
+        progress: loaded.progress,
+        pages: loaded.pages,
+        ...(loaded.design ? { design: loaded.design } : {}),
+      };
+
       // 追加排版(job.meta.appendChapterIds)走插入合并;普通全书排版整表替换 pages。
       const appendChapterIds = readAppendChapterIds(job.meta);
-      const draftJson = appendChapterIds
-        ? mergeAppendLayoutPages(album.draftJson, pages, appendChapterIds)
-        : mergeSelectLayoutPages(album.draftJson, pages);
+      const merged = appendChapterIds
+        ? mergeAppendLayoutPages(draftJsonLike, pages, appendChapterIds)
+        : mergeSelectLayoutPages(draftJsonLike, pages);
+      const mergedPages = merged.pages as Page[];
 
-      await albumRepo.update(tx, job.albumId, { draftJson });
+      const seededRevision = await ensureDraftPagesSeeded(tx, album);
+      const rev = await bumpDraftRevision(tx, job.albumId, seededRevision);
+      // 系统/agent 写点:updatedBy = null(与 T3/T4 用户写点传 userId 的口径一致)。
+      await draftPageRepo.replaceAll(tx, job.albumId, mergedPages, rev, null);
+
+      // envelope 只剩 tree/progress/design;pageCount 收口点二 —— 拆表前 pages 与
+      // pageCount 天然同源,拆表后必须显式跟上(此前这里遗漏了 pageCount)。
+      await albumRepo.update(tx, job.albumId, {
+        draftJson: envelopeJson({ tree: merged.tree, progress: merged.progress, design: merged.design }),
+        pageCount: mergedPages.length,
+      });
 
       // 积分已在 analyze 完成时结算,这里不动积分(layout job 不挂 hold)。
     });
@@ -502,37 +569,56 @@ export const jobService = {
     if (!job) return;
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
 
-    const album = await albumRepo.findById(job.albumId);
-    if (!album) {
-      logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 compose completed');
-      return;
-    }
-    const meta = readComposeMeta(job.meta);
-    if (!meta) {
-      logger.warn({ requestId, albumId: job.albumId }, 'compose job has no cover-set meta');
-      await this.handleV3Failed(requestId, {
-        code: 'AGENT_INVALID_OUTPUT',
-        message: 'compose job lost its cover-set meta',
-      });
-      return;
-    }
-
-    let merged: ReturnType<typeof mergeComposeIntoDraft>;
-    try {
-      merged = mergeComposeIntoDraft(album.draftJson, meta, payload);
-    } catch (e) {
-      logger.error(
-        { err: String(e), requestId, albumId: job.albumId },
-        'compose completed but draft assembly failed',
-      );
-      await this.handleV3Failed(requestId, {
-        code: 'AGENT_INVALID_OUTPUT',
-        message: 'compose result could not be applied to the draft',
-      });
-      return;
-    }
+    // draft_pages 拆表(Phase 1a)固定写事务次序:album 行锁在前(收口第三个无锁读改写
+    // 窗口 —— 这条分支此前在事务外无锁读 album、在事务外算好 mergeComposeIntoDraft 的
+    // 结果,再在事务内原样写入,中间那段计算完全没锁)。meta 缺失/合并失败仍在事务内
+    // 判定,失败原因带出事务后再调 handleV3Failed(与今天一致,不在事务里嵌套第二个
+    // CAS)。
+    let failure: { code: string; message: string } | null = null;
 
     await db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, job.albumId);
+      if (!album) {
+        logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 compose completed');
+        return;
+      }
+      const meta = readComposeMeta(job.meta);
+      if (!meta) {
+        logger.warn({ requestId, albumId: job.albumId }, 'compose job has no cover-set meta');
+        failure = { code: 'AGENT_INVALID_OUTPUT', message: 'compose job lost its cover-set meta' };
+        return;
+      }
+
+      // 页源同 select-layout:从 loadStoryDraft 的行读取 existing pages(bake:false ——
+      // assembleDesignedPages 反正会把全书重烘一遍,这里不用重复现场烘),拼一个
+      // draftJson 形状喂给 mergeComposeIntoDraft(该函数内部逻辑原样不动,包括
+      // design.pageBackground 的 spread 写法——Task 6 才改契约)。
+      const loaded = await loadStoryDraft(album, { tx, bake: false });
+      const draftJsonLike = loaded
+        ? {
+            version: 'v3-story' as const,
+            tree: loaded.tree,
+            progress: loaded.progress,
+            pages: loaded.pages,
+            ...(loaded.design ? { design: loaded.design } : {}),
+          }
+        : null;
+
+      let merged: ReturnType<typeof mergeComposeIntoDraft>;
+      try {
+        merged = mergeComposeIntoDraft(draftJsonLike, meta, payload);
+      } catch (e) {
+        logger.error(
+          { err: String(e), requestId, albumId: job.albumId },
+          'compose completed but draft assembly failed',
+        );
+        failure = {
+          code: 'AGENT_INVALID_OUTPUT',
+          message: 'compose result could not be applied to the draft',
+        };
+        return;
+      }
+
       const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
         progress: 100,
         stage: 'wrap',
@@ -541,8 +627,17 @@ export const jobService = {
       });
       if (!won) return;
 
+      const seededRevision = await ensureDraftPagesSeeded(tx, album);
+      const rev = await bumpDraftRevision(tx, job.albumId, seededRevision);
+      // 系统/agent 写点:updatedBy = null(与 T3/T4 用户写点传 userId 的口径一致)。
+      await draftPageRepo.replaceAll(tx, job.albumId, merged.pages, rev, null);
+
       await albumRepo.update(tx, job.albumId, {
-        draftJson: merged.draftJson,
+        draftJson: envelopeJson({
+          tree: merged.draftJson.tree,
+          progress: merged.draftJson.progress,
+          design: merged.draftJson.design,
+        }),
         pageCount: merged.pages.length,
         // 设计完成 → 待导出(导出闸门的唯一开门钥匙);幂等重设计时已是 ready 则维持不动。
         ...(album.stage !== 'ready' ? { stage: 'ready' as const } : {}),
@@ -560,6 +655,10 @@ export const jobService = {
       });
       // 积分已在 analyze 完成时结算,compose job 不挂 hold。
     });
+
+    if (failure) {
+      await this.handleV3Failed(requestId, failure);
+    }
   },
 
   async handleV3Failed(requestId: string, error: { code: string; message: string }) {

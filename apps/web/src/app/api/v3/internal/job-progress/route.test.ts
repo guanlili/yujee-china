@@ -4,6 +4,7 @@ import { env } from '@/lib/env';
 import { db } from '@/db/client';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { albumRepo } from '@/db/repos/album-repo';
+import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { creditHoldRepo } from '@/db/repos/credit-hold-repo';
 import { jobService } from '@/services/job/job-service';
 import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '@/db/repos/__test__/setup';
@@ -228,13 +229,20 @@ test('select-layout/completed under EDITING (时序反转) → merges pages + st
 
     const album = await albumRepo.findById(albumId);
     assert.equal(album?.status, 'EDITING');
-    const draftJson = album?.draftJson as { pages?: unknown } & Record<string, unknown>;
-    assert.deepEqual({ ...draftJson, pages: stripPagesHtml(draftJson.pages) }, {
+    // draft_pages 拆表(Phase 1a):页真相搬进 draft_pages 行,draftJson 瘦身为
+    // envelope(tree/progress/design),不再带 pages 键。
+    assert.deepEqual(album?.draftJson, {
       version: 'v3-story',
       tree: TREE,
-      pages: PAGES,
       progress: { currentChapterId: 'ch_1', doneChapterIds: [] },
     });
+    const rows = await draftPageRepo.findByAlbum(albumId);
+    assert.deepEqual(stripPagesHtml(rows.map((r) => r.page)), PAGES);
+    for (const row of rows) {
+      assert.equal(row.version, album?.draftRevision);
+      assert.equal(row.updatedBy, null);
+    }
+    assert.equal(album?.pageCount, PAGES.length);
     assert.equal(album?.layoutJson, null);
     assert.equal(album?.stage, 'story');
     // 扣费已在 analyze 完成时结算;此用例直接手 seed 到 progress=51(未过 analyze completed),
