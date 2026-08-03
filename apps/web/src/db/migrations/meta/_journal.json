@@ -155,6 +155,27 @@
       "when": 1785239426417,
       "tag": "0021_friendly_mockingbird",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1785682317727,
+      "tag": "0022_nebulous_bishop",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1785727852768,
+      "tag": "0023_big_maddog",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1785728000000,
+      "tag": "0024_draft_pages_backfill",
+      "breakpoints": true
     }
   ]
 }

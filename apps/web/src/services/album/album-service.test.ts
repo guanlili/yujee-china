@@ -5,6 +5,7 @@ import { agentJobRepo } from '../../db/repos/agent-job-repo';
 import type { NewAgentJob } from '../../db/schema';
 import { albumMessageRepo } from '../../db/repos/album-message-repo';
 import { albumPageRepo } from '../../db/repos/album-page-repo';
+import { draftPageRepo } from '../../db/repos/draft-page-repo';
 import { albumRepo } from '../../db/repos/album-repo';
 import { creditHoldRepo } from '../../db/repos/credit-hold-repo';
 import { agentClient } from '../../lib/agent/agent-client';
@@ -855,11 +856,16 @@ test('markChapterDone: advances cursor; last chapter → stage=theme + export un
     assert.equal(a.allDone, false);
     assert.equal(a.stage, 'story'); // not yet all done → stage unchanged
     assert.equal(a.exportUnlocked, false);
+    // draft_pages 拆表(Phase 1a)Task 7:markChapterDone 不再搬运 pages —— 它现在只
+    // 重写 envelope(envelopeJson)。`seedStoryAlbum` 这里手写的 legacy 裸树 pages 字段
+    // 没有被静默丢弃:写回前先 ensureDraftPagesSeeded(全局写序无例外),把它们原样
+    // 播种进 draft_pages 行,draftJson 才不再需要携带 pages 键(专门的 "legacy 播种"
+    // 用例见下方,直接断言行内容 + revision 0→1;这里只钉 draftJson 形状本身)。
     const afterFirst = await albumRepo.findById(albumId);
-    assert.deepEqual(
-      (afterFirst?.draftJson as { pages?: unknown } | null)?.pages,
-      makePreviewPages(2),
-      'chapter done wrapper must preserve preview pages',
+    assert.equal(
+      'pages' in (afterFirst!.draftJson as object),
+      false,
+      'markChapterDone 只重写 envelope,不再把 pages 搬回 draftJson(此时已经播种进 draft_pages 行)',
     );
 
     const b = await albumService.markChapterDone(user.id, albumId, 'c2');
@@ -1073,6 +1079,104 @@ test('markChapterDone: unknown chapterId → VALIDATION_FAILED', async (t) => {
       () => albumService.markChapterDone(user.id, albumId, 'nope'),
       (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
     );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// draft_pages 拆表(Phase 1a)Task 7 回归守卫:markChapterDone 此前无锁、事务外读,
+// 且把当时读到的 pages 整块搬回 draftJson —— 与并发的 updatePage(已切行级写)互吃时,
+// 陈旧的搬运会把用户刚落的行级改动盖掉。现在 markChapterDone 只重写 envelope,从不
+// 碰 draft_pages,行改动必须原封不动幸存;draft_revision 也不该跟着推进(页没变)。
+test('markChapterDone: 先 updatePage 改一页,该页改动在 markChapterDone 之后完整幸存(不搬运/不覆盖 draft_pages 行,不推进 draftRevision)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('confirm-page-survive');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 2, { stage: 'story' });
+
+    await albumService.updatePage(user.id, albumId, 0, { textsJson: { headline: '编辑过的正文' } });
+
+    const afterUpdate = await albumRepo.findById(albumId);
+    const rowsAfterUpdate = await draftPageRepo.findByAlbum(albumId);
+    const snapshot = rowsAfterUpdate.map((r) => ({
+      pageIndex: r.pageIndex,
+      version: r.version,
+      updatedBy: r.updatedBy,
+      page: r.page,
+    }));
+
+    const result = await albumService.markChapterDone(user.id, albumId, 'c1');
+    assert.deepEqual(result.doneChapterIds, ['c1']);
+
+    const afterConfirm = await albumRepo.findById(albumId);
+    const rowsAfterConfirm = await draftPageRepo.findByAlbum(albumId);
+
+    assert.equal(
+      afterConfirm!.draftRevision,
+      afterUpdate!.draftRevision,
+      'markChapterDone 不 bump draft_revision(页没变)',
+    );
+    assert.deepEqual(
+      rowsAfterConfirm.map((r) => ({ pageIndex: r.pageIndex, version: r.version, updatedBy: r.updatedBy, page: r.page })),
+      snapshot,
+      'markChapterDone 不搬运/不覆盖 draft_pages 行,updatePage 的改动逐字幸存',
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// 回归守卫(code review round 2):brief 原文「不碰 draft_pages」与计划 Global
+// Constraints「每个 draft 写事务固定次序:行锁 → ensureDraftPagesSeeded → …」冲突 ——
+// 后者是全局无例外规则。若一本相册从未被任何行级写点摸过,它唯一一份页仍只活在
+// legacy draftJson.pages 里、draft_pages 一行都没有;不先播种就直接做 envelope-only
+// 覆盖会把这份页连根拔掉。这里直接构造这种「零行」形态(不经 updatePage 等会先播种
+// 的方法),证明 markChapterDone 会先把它们播种进 draft_pages 再重写 envelope。
+test('markChapterDone: 相册的页仍只活在 legacy draftJson.pages(draft_pages 零行,未经任何行级写点播种),先播种再重写 envelope,不连根拔掉这份页', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('confirm-legacy-seed');
+  try {
+    const album = await makeAlbum(user.id);
+    const legacyPages = makePreviewPages(2);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(2),
+      pages: legacyPages,
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    };
+    // 手写落库(不经 updatePage/reorderPages/… 任何会先播种的写点)。
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+    assert.equal(await draftPageRepo.countByAlbum(album.id), 0, 'sanity: 播种前确实没有行');
+
+    const result = await albumService.markChapterDone(user.id, album.id, 'c1');
+    assert.deepEqual(result.doneChapterIds, ['c1']);
+
+    const reloaded = await albumRepo.findById(album.id);
+    assert.equal(
+      'pages' in (reloaded!.draftJson as object),
+      false,
+      'envelope-only 重写:draftJson 不带 pages 键',
+    );
+
+    // 页没有被 envelope-only 重写连带抹掉 —— 懒播种把它们原样搬进了 draft_pages 行。
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.equal(rows.length, legacyPages.length, '两页都没丢');
+    assert.deepEqual(rows.map((r) => r.page), legacyPages, '内容逐字节不变(播种不烘 html)');
+    assert.equal(
+      reloaded!.draftRevision,
+      1,
+      '首次播种把 revision 从 0 立到 1(与 T3/T5 懒播种同口径),不是 markChapterDone 自己推进的',
+    );
+    for (const row of rows) {
+      assert.equal(row.version, 1);
+      assert.equal(row.updatedBy, null, '播种是系统动作,不是这次确认章节的用户写入');
+    }
   } finally {
     await cleanupUser(user.id);
   }
@@ -1702,10 +1806,124 @@ test('saveChapterContexts caps chapterContext at 500 chars and rejects unknown/d
   }
 });
 
-// ── updatePage 的 C 方案分叉:draft 相册的手工编辑必须落 draft_json 的 html 真相 ──
-// 此前 updatePage 无条件写 album_pages 表,而 authoring 读/AI/导出只认
-// albums.draft_json(页含 html)—— 手工编辑全部进了一张没人读的表,刷新即回退。
-test('updatePage(draft 相册):文本/图位/样式全部落 draft_json,且同步进 html 真相', async () => {
+// draft_pages 拆表(Phase 1a)Task 7 回归守卫:saveChapterContexts 此前用 findOwned
+// (无锁)在事务外读 album,再在独立事务里整块重写 draftJson,顺带把当时读到的 pages
+// 原样搬运回去 —— 与并发的 updatePage(已切行级写)互吃时,陈旧的搬运会把用户刚落的
+// 行级改动盖掉。现在行锁 + envelope-only 重写,从不碰 draft_pages,行改动必须原封
+// 不动幸存;draft_revision 也不该跟着推进(页没变)。
+test('saveChapterContexts: 先 updatePage 改一页,该页改动在 saveChapterContexts 之后完整幸存(不搬运/不覆盖 draft_pages 行,不推进 draftRevision)', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('save-ctx-page-survive');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 2, { stage: 'story' });
+
+    await albumService.updatePage(user.id, albumId, 0, { textsJson: { headline: '编辑过的正文' } });
+
+    const afterUpdate = await albumRepo.findById(albumId);
+    const rowsAfterUpdate = await draftPageRepo.findByAlbum(albumId);
+    const snapshot = rowsAfterUpdate.map((r) => ({
+      pageIndex: r.pageIndex,
+      version: r.version,
+      updatedBy: r.updatedBy,
+      page: r.page,
+    }));
+
+    const result = await albumService.saveChapterContexts(user.id, albumId, [
+      { chapterId: 'c1', chapterContext: '章节背景采访' },
+    ]);
+    assert.deepEqual(result.savedChapterIds, ['c1']);
+
+    const afterSave = await albumRepo.findById(albumId);
+    const rowsAfterSave = await draftPageRepo.findByAlbum(albumId);
+
+    assert.equal(
+      afterSave!.draftRevision,
+      afterUpdate!.draftRevision,
+      'saveChapterContexts 不 bump draft_revision(页没变)',
+    );
+    assert.deepEqual(
+      rowsAfterSave.map((r) => ({ pageIndex: r.pageIndex, version: r.version, updatedBy: r.updatedBy, page: r.page })),
+      snapshot,
+      'saveChapterContexts 不搬运/不覆盖 draft_pages 行,updatePage 的改动逐字幸存',
+    );
+
+    // chapterContext 确实写进树里 —— 功能没有随着摘除 pages 搬运一起退化。
+    const tree = (afterSave!.draftJson as {
+      tree: { chapters: { chapterId: string; chapterContext: string }[] };
+    }).tree;
+    assert.equal(tree.chapters.find((c) => c.chapterId === 'c1')!.chapterContext, '章节背景采访');
+    assert.equal('pages' in (afterSave!.draftJson as object), false, 'envelope-only 重写,不写回 pages 键');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// 回归守卫(code review round 2):brief 原文「不碰 draft_pages」与计划 Global
+// Constraints「每个 draft 写事务固定次序:行锁 → ensureDraftPagesSeeded → …」冲突 ——
+// 后者是全局无例外规则,且这个写点在「加照片后再采访」链路上真实可达(ChatPanel
+// waitForAppendChapters → finishInterview → POST /chapter-context)。若一本相册从未
+// 被任何行级写点摸过,它唯一一份页仍只活在 legacy draftJson.pages 里、draft_pages
+// 一行都没有;不先播种就直接做 envelope-only 覆盖会把这份页连根拔掉。这里直接构造
+// 这种「零行」形态(不经 updatePage 等会先播种的方法),证明 saveChapterContexts 会
+// 先把它们播种进 draft_pages 再重写 envelope。
+test('saveChapterContexts: 相册的页仍只活在 legacy draftJson.pages(draft_pages 零行,未经任何行级写点播种),先播种再重写 envelope,不连根拔掉这份页', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('save-ctx-legacy-seed');
+  try {
+    const album = await makeAlbum(user.id);
+    const legacyPages = makePreviewPages(2);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(2),
+      pages: legacyPages,
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    };
+    // 手写落库(不经 updatePage/reorderPages/… 任何会先播种的写点)。
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+    assert.equal(await draftPageRepo.countByAlbum(album.id), 0, 'sanity: 播种前确实没有行');
+
+    const result = await albumService.saveChapterContexts(user.id, album.id, [
+      { chapterId: 'c1', chapterContext: '章节背景采访' },
+    ]);
+    assert.deepEqual(result.savedChapterIds, ['c1']);
+
+    const reloaded = await albumRepo.findById(album.id);
+    assert.equal(
+      'pages' in (reloaded!.draftJson as object),
+      false,
+      'envelope-only 重写:draftJson 不带 pages 键',
+    );
+
+    // 页没有被 envelope-only 重写连带抹掉 —— 懒播种把它们原样搬进了 draft_pages 行。
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.equal(rows.length, legacyPages.length, '两页都没丢');
+    assert.deepEqual(rows.map((r) => r.page), legacyPages, '内容逐字节不变(播种不烘 html)');
+    assert.equal(
+      reloaded!.draftRevision,
+      1,
+      '首次播种把 revision 从 0 立到 1(与 T3/T5 懒播种同口径),不是 saveChapterContexts 自己推进的',
+    );
+    for (const row of rows) {
+      assert.equal(row.version, 1);
+      assert.equal(row.updatedBy, null, '播种是系统动作,不是这次采访的用户写入');
+    }
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// ── updatePage 的 C 方案分叉:draft 相册的手工编辑必须落页真相(html)──────────
+// 此前 updatePage 无条件写 album_pages 表,而 authoring 读/AI/导出只认草稿页
+// (含 html)—— 手工编辑全部进了一张没人读的表,刷新即回退。draft_pages 拆表
+// (Phase 1a)后,草稿页真相从 albums.draft_json.pages 迁到 draft_pages 行,断言
+// 改经 draftPageRepo 读回;html patch 语义本身逐字未变。
+test('updatePage(draft 相册):文本/图位/样式全部落 draft_pages 行,且同步进 html 真相', async () => {
   const user = await makeUser('wp-updatepage-draft');
   try {
     const album = await makeAlbum(user.id);
@@ -1744,8 +1962,10 @@ test('updatePage(draft 相册):文本/图位/样式全部落 draft_json,且同�
     });
 
     const after = await albumRepo.findById(album.id);
-    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
-    const page = draft.pages[0]!;
+    // draft_pages 拆表(Phase 1a):页真相迁行,读回改经 draftPageRepo(不再是
+    // draftJson.pages —— updatePage 已不写它)。
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const page = rows.find((r) => r.pageIndex === 0)!.page as Page & { html?: string };
     assert.equal(page.texts.title, '新标题');
     assert.deepEqual(page.imagePos, { image: { x: 30, y: 70, scale: 1.4 } });
     // html 真相同步:AI(derivePageTexts)和导出读的就是它,不同步等于白改。
@@ -1802,9 +2022,8 @@ test('updatePage(draft 相册):imagePos patch 失配保留 html 真相,不整页
       imagePosJson: { ghost: { x: 10, y: 20, scale: 1.5 } },
     });
 
-    const after = await albumRepo.findById(album.id);
-    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
-    const page = draft.pages[0]!;
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const page = rows.find((r) => r.pageIndex === 0)!.page as Page & { html?: string };
     assert.equal(page.html, html, 'html 真相必须原样保留(手工背景/字色不能因一笔图位失配被重烘抹掉)');
     assert.deepEqual(page.imagePos, { ghost: { x: 10, y: 20, scale: 1.5 } }, '数据层照常落库');
   } finally {
@@ -1837,8 +2056,8 @@ test('updatePage(draft 相册):pageStyle 把书页背景色写进页根 html + C
 
     const after = await albumRepo.findById(album.id);
     assert.equal(after?.status, 'EDITING');
-    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
-    const page = draft.pages[0]!;
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const page = rows.find((r) => r.pageIndex === 0)!.page as Page & { html?: string };
     // 背景色进页根,内部文字元素不受影响。
     assert.match(page.html!, /background-color:rgba\(20, 30, 40, 0\.4\)/);
     assert.match(page.html!, /<div data-text-key="title" style="color:#111">/);
@@ -1847,11 +2066,10 @@ test('updatePage(draft 相册):pageStyle 把书页背景色写进页根 html + C
     await albumService.updatePage(user.id, album.id, 0, {
       pageStyle: { 'background-color': null },
     });
-    const cleared = (await albumRepo.findById(album.id))?.draftJson as {
-      pages: Array<Page & { html?: string }>;
-    };
-    assert.doesNotMatch(cleared.pages[0]!.html!, /background-color/);
-    assert.match(cleared.pages[0]!.html!, /background:#fff/);
+    const clearedRows = await draftPageRepo.findByAlbum(album.id);
+    const clearedPage = clearedRows.find((r) => r.pageIndex === 0)!.page as Page & { html?: string };
+    assert.doesNotMatch(clearedPage.html!, /background-color/);
+    assert.match(clearedPage.html!, /background:#fff/);
   } finally {
     await cleanupUser(user.id);
   }
@@ -1883,12 +2101,89 @@ test('updatePage(draft 相册):html 锚点失配 → 整页重烘,新文本仍�
       textsJson: { title: 'T', body: '正文来了' },
     });
 
-    const after = await albumRepo.findById(album.id);
-    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
-    const page = draft.pages[0]!;
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const page = rows.find((r) => r.pageIndex === 0)!.page as Page & { html?: string };
     assert.equal(page.texts.body, '正文来了');
     // 宁可整页重烘也不显示旧内容:重烘后的 html 必须带新文本。
     assert.match(page.html!, /正文来了/);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// updatePage 的读必须烘 html(loadStoryDraft bake:true),不能 bake:false —— 一个从
+// 未落过 html 的草稿页(存量/story 阶段的预览页)如果读回来 html 是 undefined,
+// textStyles/pageStyle 的补丁函数(patchHtmlTextStyle/patchHtmlPageStyle)全部因为
+// `html !== null` 守卫被跳过,收尾的 bakePageHtml 只认 templateId/texts/images/
+// imagePos 四个字段重烘 —— textStyles/pageStyle 除了活在 html 字符串里的行内样式,
+// 没有任何 Page 数据字段能承载它们,补丁就这样在 {updated:true} 的假象下静默消失。
+// 这条测试永久钉住旧 readStoryDraft 的「读时烘」语义:loadStoryDraft 必须 bake:true。
+test('updatePage(draft 相册,页从未烘过 html):textStyles/pageStyle 补丁必须真的烘进新生成的 html,不能静默丢', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-updatepage-nohtml-style');
+  try {
+    const album = await makeAlbum(user.id);
+    const tree = makeStoryTree(1);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree,
+      pages: [
+        // 故意不带 html:模拟 analyze/select-layout 刚产出、还没被任何写路径烘过
+        // 的预览页(makePreviewPages 同款形状)。
+        { pageIndex: 0, templateId: 'mag-01', images: {}, texts: { title: 'T', label: '', body: '' } } as Page,
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    await albumService.updatePage(user.id, album.id, 0, {
+      textStyles: { title: { 'font-size': '48px' } },
+      pageStyle: { 'background-color': 'rgba(1, 2, 3, 0.5)' },
+    });
+
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const page = rows.find((r) => r.pageIndex === 0)!.page as Page & { html?: string };
+    assert.ok(page.html, '从未烘过 html 的页,updatePage 后必须落到一份真实 html(不能是 undefined)');
+    assert.match(page.html!, /font-size:48px/, 'textStyles 补丁必须烘进 html,不能因为读时不烘而静默丢');
+    assert.match(page.html!, /background-color:rgba\(1, 2, 3, 0\.5\)/, 'pageStyle 补丁同理必须烘进 html');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// ── updatePage 切 draft_pages 行级写(Phase 1a Task 3)───────────────────────
+// legacy 相册(只有 draftJson.pages,draft_pages 还没有行)第一次 updatePage 必须
+// 先懒播种全书行(不只是被改的那一页),被改的行 version 推到本次新 draftRevision、
+// updatedBy 是操作用户;没被碰的行留在播种时打的版本(1)、updatedBy 仍是 null
+// (系统写入,不是某个用户)—— 这是 Phase 1b 页锁/CAS 要用的地基,这里先立住不变式。
+test('updatePage(legacy 相册,draft_pages 尚无行):首次调用自动播种全书行;目标行 version 推进到新 draftRevision 且 updatedBy=userId,其余行留在种子版本且 updatedBy=null', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-updatepage-seed');
+  try {
+    const { albumId, pages } = await seedWrappedStoryAlbum(user.id, 3);
+    assert.equal((await draftPageRepo.findByAlbum(albumId)).length, 0, '播种前 draft_pages 无行');
+
+    await albumService.updatePage(user.id, albumId, 1, {
+      textsJson: { headline: '更新后的正文' },
+    });
+
+    const rows = await draftPageRepo.findByAlbum(albumId);
+    assert.equal(rows.length, pages.length, '首次 updatePage 播种全书行,不只是被改的那一页');
+
+    const after = await albumRepo.findById(albumId);
+    assert.ok(after);
+    const touched = rows.find((r) => r.pageIndex === 1);
+    assert.ok(touched);
+    assert.equal(touched!.version, after!.draftRevision, '目标行 version === album.draftRevision');
+    assert.equal(touched!.updatedBy, user.id, '目标行 updatedBy === userId');
+    assert.equal(touched!.page.texts.headline, '更新后的正文');
+
+    const others = rows.filter((r) => r.pageIndex !== 1);
+    assert.equal(others.length, pages.length - 1);
+    for (const row of others) {
+      assert.equal(row.version, 1, '未被本次改动的行保持播种版本(1),不随目标行一起推进');
+      assert.equal(row.updatedBy, null, '播种行 updatedBy 仍是系统写入(null)');
+    }
   } finally {
     await cleanupUser(user.id);
   }
@@ -1909,7 +2204,7 @@ function reorderFixturePage(pageIndex: number, templateId: string, mark: string)
   } as Page;
 }
 
-test('reorderPages(draft 相册):按置换重排 draft_json.pages,pageIndex 重写 0..n-1,整条记录跟着走', async (t) => {
+test('reorderPages(draft 相册):按置换重排 draft_pages 行,pageIndex 重写 0..n-1,整条记录跟着走;所有行 version 推进到新 revision;pageCount 收口', async (t) => {
   if (!(await isDbReachable())) return t.skip('db not reachable');
   const user = await makeUser('wp-reorder-draft');
   try {
@@ -1929,20 +2224,25 @@ test('reorderPages(draft 相册):按置换重排 draft_json.pages,pageIndex 重�
     await albumService.reorderPages(user.id, album.id, [0, 2, 1]);
 
     const after = await albumRepo.findById(album.id);
-    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const pages = rows.map((r) => r.page as Page & { html?: string; texts: Record<string, string> });
     assert.deepEqual(
-      draft.pages.map((p) => [p.pageIndex, p.texts.title]),
+      pages.map((p) => [p.pageIndex, p.texts.title]),
       [
         [0, 'COVER'],
         [1, 'B'],
         [2, 'A'],
       ],
-      '顺序按置换重排,pageIndex 重写连续',
+      '顺序按置换重排(读回从 draft_pages 行读,不再是 draft_json.pages),pageIndex 重写连续',
     );
     // 整页交换搬整条记录:html 原样跟着走,不重烘、不逐字段拆搬。
-    assert.match(draft.pages[1]!.html!, />B</);
-    assert.match(draft.pages[2]!.html!, /A/);
+    assert.match(pages[1]!.html!, />B</);
+    assert.match(pages[2]!.html!, /A/);
     assert.equal(after?.status, 'EDITING', '重排是一次编辑,COMPLETED 须退回 EDITING');
+    assert.equal(after?.pageCount, 3, 'pageCount 收口点一:置换后与行数一致');
+    for (const row of rows) {
+      assert.equal(row.version, after!.draftRevision, `第 ${row.pageIndex} 行 version 必须等于新 draftRevision`);
+    }
   } finally {
     await cleanupUser(user.id);
   }
@@ -2001,6 +2301,372 @@ test('reorderPages(无 draft 存量相册):album_pages 行按置换重写 pageIn
       ],
     );
     assert.deepEqual(rows[2]!.imagesJson, { a: 'p1' }, '整行内容原样跟着走');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// ── reorderPages 的路由判定必须与 updatePage(Task 3)用同一个 loadStoryDraft
+// 依据 ────────────────────────────────────────────────────────────────────
+// Task 3 之后 updatePage 只写 draft_pages 行,不再回写 draftJson.pages —— 被
+// updatePage 摸过的相册,draftJson.pages 从此是陈旧快照。如果 reorderPages 还照
+// 旧代码那样直接读 draftJson.pages 来判定「有没有草稿」、取源数据,重排时就会用
+// 陈旧文案覆盖掉 updatePage 刚写的新文案。这个用例钉住这条误路由回归。
+test('reorderPages 路由判定必须与 updatePage 一致:先 updatePage 改一页文案再 reorder,改动必须幸存(不能被陈旧 draftJson.pages 覆盖)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-reorder-misroute-guard');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 1, {
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-05', 'B'),
+      ],
+    });
+    assert.equal(
+      (await draftPageRepo.findByAlbum(albumId)).length,
+      0,
+      '此时 draft_pages 尚无行,只有 legacy draftJson.pages',
+    );
+
+    await albumService.updatePage(user.id, albumId, 1, { textsJson: { title: '改动幸存' } });
+
+    // updatePage 已经播种全书行并只改了目标行,draftJson.pages 从此是陈旧快照
+    // (Task 3:envelope 不重写,pages 不再进 draftJson)。
+    const stale = await albumRepo.findById(albumId);
+    const staleDraft = stale?.draftJson as { pages: Array<{ texts: { title: string } }> };
+    assert.equal(staleDraft.pages[1]?.texts.title, 'A', 'sanity: draftJson.pages 确实没跟着 updatePage 更新');
+
+    await albumService.reorderPages(user.id, albumId, [0, 2, 1]);
+
+    const rows = await draftPageRepo.findByAlbum(albumId);
+    const movedToIndex2 = rows.find((r) => r.pageIndex === 2)!;
+    assert.equal(
+      (movedToIndex2.page as Page & { texts: Record<string, string> }).texts.title,
+      '改动幸存',
+      'reorder 必须重排 updatePage 写入行级表的最新内容,不能读陈旧 draftJson.pages 覆盖回去',
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// ── deletePage:删除书页(2026-08-03 设计:docs/specs/2026-08-03-delete-page-design.md)──
+// 只删内页,图片随页移除不回流;余页 pageIndex 重排 0..n-1;pageCount 收口;
+// COMPLETED → EDITING。校验失败一律 VALIDATION_FAILED 且不落库。
+
+test('deletePage(draft 相册):删内页后行数-1,pageIndex 连续,整条记录跟着走;version 推进;pageCount 收口;COMPLETED 退回 EDITING', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-delete-draft');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'COMPLETED', stage: 'story', draftJson: wrapped });
+
+    await albumService.deletePage(user.id, album.id, 1);
+
+    const after = await albumRepo.findById(album.id);
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const pages = rows.map((r) => r.page as Page & { html?: string; texts: Record<string, string> });
+    assert.deepEqual(
+      pages.map((p) => [p.pageIndex, p.texts.title]),
+      [
+        [0, 'COVER'],
+        [1, 'B'],
+      ],
+      '被删页消失,余页 pageIndex 重排连续',
+    );
+    assert.match(pages[1]!.html!, />B</, '余页整条记录原样跟着走,html 不重烘');
+    assert.equal(after?.status, 'EDITING', '删页是一次编辑,COMPLETED 须退回 EDITING');
+    assert.equal(after?.pageCount, 2, 'pageCount 收口:删后与行数一致');
+    for (const row of rows) {
+      assert.equal(row.version, after!.draftRevision, `第 ${row.pageIndex} 行 version 必须等于新 draftRevision`);
+    }
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('deletePage(draft 相册):双宽内页(spread 模板)同样可删', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-delete-spread');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-54', 'S'), // mag-54: interior + spread:true
+        reorderFixturePage(3, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    await albumService.deletePage(user.id, album.id, 2);
+
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.deepEqual(
+      rows.map((r) => [(r.page as Page).pageIndex, ((r.page as Page).texts as Record<string, string>).title]),
+      [
+        [0, 'COVER'],
+        [1, 'A'],
+        [2, 'B'],
+      ],
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('deletePage:拒绝 —— 删 cover 类目页/删最后一张内页/越界,一律 VALIDATION_FAILED 且不落库', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-delete-invalid');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'ONLY'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    const rejects = (idx: number) =>
+      assert.rejects(albumService.deletePage(user.id, album.id, idx), hasCode('VALIDATION_FAILED'));
+    await rejects(0); // cover 类目:锚定页不许删(服务端二次把关,不只靠前端置灰)
+    await rejects(1); // 最后一张内页:拒绝删到内页数为 0
+    await rejects(9); // 越界
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.notEqual(rows.length, 1, '拒绝路径不落库(事务回滚:要么 0 行要么播种后的 2 行,绝不会剩 1 行)');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('deletePage(无 draft 存量相册):album_pages 行过滤后 pageIndex 重写,整行内容原样', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-delete-legacy');
+  try {
+    const album = await makeAlbum(user.id);
+    await albumPageRepo.bulkInsert(db, [
+      { albumId: album.id, pageIndex: 0, templateId: 'mag-01', imagesJson: {}, textsJson: { title: 'COVER' } },
+      { albumId: album.id, pageIndex: 1, templateId: 'mag-03', imagesJson: { a: 'p1' }, textsJson: { title: 'A' } },
+      { albumId: album.id, pageIndex: 2, templateId: 'mag-05', imagesJson: { b: 'p2' }, textsJson: { title: 'B' } },
+    ]);
+
+    await albumService.deletePage(user.id, album.id, 1);
+
+    const rows = await albumPageRepo.findByAlbum(db, album.id);
+    assert.deepEqual(
+      rows.map((r) => [r.pageIndex, (r.textsJson as Record<string, string>).title]),
+      [
+        [0, 'COVER'],
+        [1, 'B'],
+      ],
+    );
+    assert.deepEqual(rows[1]!.imagesJson, { b: 'p2' }, '整行内容原样跟着走');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// ── persistDesignChat:设计对话提交切 draft_pages 行级写(Phase 1a Task 6)────────
+// Agent 每轮整书回放全部 pages(move_pages 会增删页,不是逐页 PATCH),所以落库
+// 仍是整书 replaceAll,与 reorderPages 同一种「行锁 → seeded → replaceAll(userId)
+// + pageCount 收口 → envelope-only 重写」次序,只是源数据来自 Agent 而不是本地
+// 置换计算。
+
+test('persistDesignChat(committed=true):全书页替换落 draft_pages 行,所有行 version 推进到新 draftRevision、updatedBy=发起人;pageCount 跟随新页数(3→2,模拟 move_pages 删页);COMPLETED 退回 EDITING', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-designchat-replace');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'COMPLETED', stage: 'story', draftJson: wrapped });
+    assert.equal((await draftPageRepo.findByAlbum(album.id)).length, 0, '提交前 draft_pages 尚无行(懒播种)');
+
+    const newPages = [
+      { pageIndex: 0, templateId: 'mag-01', images: {}, texts: { title: 'NEWCOVER' } },
+      { pageIndex: 1, templateId: 'mag-03', images: {}, texts: { title: 'NEWA' } },
+    ];
+    await albumService.persistDesignChat(user.id, album.id, {
+      userMessage: '把第二页删了',
+      assistantReply: '好的,已经删掉了',
+      committed: true,
+      pages: newPages,
+    });
+
+    const after = await albumRepo.findById(album.id);
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.deepEqual(
+      rows.map((r) => [(r.page as Page).pageIndex, (r.page as Page & { texts: Record<string, string> }).texts.title]),
+      [
+        [0, 'NEWCOVER'],
+        [1, 'NEWA'],
+      ],
+      '读回从 draft_pages 行读(整书替换,不是逐页 patch)',
+    );
+    assert.equal(after?.pageCount, 2, 'pageCount 收口点三:move_pages 增删页后与行数一致');
+    assert.equal(after?.status, 'EDITING', '设计对话提交是一次编辑,COMPLETED 须退回 EDITING');
+    for (const row of rows) {
+      assert.equal(row.version, after!.draftRevision, `第 ${row.pageIndex} 行 version 必须等于新 draftRevision`);
+      assert.equal(row.updatedBy, user.id, `第 ${row.pageIndex} 行 updatedBy 必须是发起对话的用户`);
+    }
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// design-agent 的写工具只动数组顺序、不改页对象的 pageIndex 字段(move_pages 的
+// album-move-pages-tool.test.ts 锁死逐字节不变;delete_page 同口径)。拆表后
+// replaceAll 按 page.pageIndex 落行、读回按 pageIndex 排序 —— persistDesignChat
+// 必须按数组位置重编号,否则挪页/删页在落库时被旧 pageIndex 静默还原(用户看到
+// AI 说"挪好了",刷新后原样弹回)。这个用例钉住这条回归。
+test('persistDesignChat:数组序是真相 —— 带陈旧 pageIndex 的乱序 pages(模拟 move_pages)落库后行序=数组序,pageIndex 重编号 0..n-1', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-designchat-order');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    // move_pages 挪 A 到 B 后:数组序 [COVER, B, A],但页对象 pageIndex 原样(0, 2, 1)。
+    await albumService.persistDesignChat(user.id, album.id, {
+      userMessage: '把 A 挪到 B 后面',
+      assistantReply: '挪好了',
+      committed: true,
+      pages: [
+        { pageIndex: 0, templateId: 'mag-01', images: {}, texts: { title: 'COVER' } },
+        { pageIndex: 2, templateId: 'mag-05', images: {}, texts: { title: 'B' } },
+        { pageIndex: 1, templateId: 'mag-03', images: {}, texts: { title: 'A' } },
+      ],
+    });
+
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.deepEqual(
+      rows.map((r) => [(r.page as Page).pageIndex, (r.page as Page & { texts: Record<string, string> }).texts.title]),
+      [
+        [0, 'COVER'],
+        [1, 'B'],
+        [2, 'A'],
+      ],
+      '行序必须跟数组序(挪页幸存),pageIndex 重编号连续',
+    );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('persistDesignChat(committed=true):envelope 沿用锁内最新 tree/progress/design(含 pageBackground),draftJson 不再写回 pages 键', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-designchat-envelope');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 2, { done: true });
+    const design = { fonts: { body: 'serif' }, colors: { accent: '#ff0000' }, pageBackground: '#FBF8F1' };
+    const before = await albumRepo.findById(albumId);
+    await albumRepo.update(db, albumId, {
+      draftJson: { ...(before!.draftJson as Record<string, unknown>), design },
+    });
+
+    const newPages = [{ pageIndex: 0, templateId: 'mag-02', images: {}, texts: { headline: 'X' } }];
+    await albumService.persistDesignChat(user.id, albumId, {
+      userMessage: '换个书页底色',
+      assistantReply: '好的,已经刷新了底色',
+      committed: true,
+      pages: newPages,
+    });
+
+    const after = await albumRepo.findById(albumId);
+    const draft = after!.draftJson as {
+      version: string;
+      tree: unknown;
+      progress: unknown;
+      design?: unknown;
+      pages?: unknown;
+    };
+    assert.equal('pages' in draft, false, 'pages 真相已迁 draft_pages,envelope 不再重写 pages 键');
+    assert.deepEqual(draft.design, design, 'design(含 pageBackground)原样保留锁内最新,不因整书替换页而丢失');
+
+    const rows = await draftPageRepo.findByAlbum(albumId);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.updatedBy, user.id);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('persistDesignChat(committed=true):相册没有 V3 story draft → VALIDATION_FAILED,不落库', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-designchat-noguard');
+  try {
+    const album = await makeAlbum(user.id); // draftJson 仍是 null
+
+    await assert.rejects(
+      albumService.persistDesignChat(user.id, album.id, {
+        userMessage: '',
+        assistantReply: '',
+        committed: true,
+        pages: [],
+      }),
+      hasCode('VALIDATION_FAILED'),
+    );
+    assert.equal((await draftPageRepo.findByAlbum(album.id)).length, 0, '拒绝路径不落库');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('persistDesignChat(committed=false):只读轮次不落 draft_pages/不动 pageCount/draftJson', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-designchat-uncommitted');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 1);
+    const before = await albumRepo.findById(albumId);
+
+    await albumService.persistDesignChat(user.id, albumId, {
+      userMessage: '这页配色好看吗',
+      assistantReply: '我觉得可以再暖一点',
+      committed: false,
+      pages: [],
+    });
+
+    assert.equal((await draftPageRepo.findByAlbum(albumId)).length, 0, '未提交轮次不落 draft_pages 行');
+    const after = await albumRepo.findById(albumId);
+    assert.equal(after?.pageCount, before?.pageCount, 'pageCount 不变');
+    assert.deepEqual(after?.draftJson, before?.draftJson, 'draftJson 不变');
   } finally {
     await cleanupUser(user.id);
   }

@@ -754,6 +754,27 @@ test('V3StoryDraft: draft_json 包裹形(tree + preview pages + progress)', () =
   assert.equal(V3StoryDraft.safeParse({ chapters: [] }).success, false);
 });
 
+test('V3StoryDraft.design.pageBackground: 契约字段往返保留(此前无 .strict() 的 design 子 schema 会被 zod 默认 strip 静默丢弃)', () => {
+  const parsed = V3StoryDraft.safeParse({
+    version: 'v3-story',
+    tree: { chapters: [] },
+    progress: { currentChapterId: null, doneChapterIds: [] },
+    design: { fonts: { body: 'serif' }, colors: { accent: '#ff0000' }, pageBackground: '#FBF8F1' },
+  });
+  assert.equal(parsed.success, true);
+  assert.equal(parsed.success && parsed.data.design?.pageBackground, '#FBF8F1');
+
+  // 可选:不带 pageBackground 依然合法(旧数据/未选书页底色)。
+  const withoutBg = V3StoryDraft.safeParse({
+    version: 'v3-story',
+    tree: { chapters: [] },
+    progress: { currentChapterId: null, doneChapterIds: [] },
+    design: { fonts: {}, colors: {} },
+  });
+  assert.equal(withoutBg.success, true);
+  assert.equal(withoutBg.success && withoutBg.data.design?.pageBackground, undefined);
+});
+
 test('Page.html:可选、64KB 上限(C 方案页面真相字段)', async () => {
   const { Page } = await import('./layout');
   const base = { pageIndex: 0, templateId: 'mag-01', images: {}, texts: {} };

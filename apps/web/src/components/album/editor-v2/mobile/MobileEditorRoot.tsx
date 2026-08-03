@@ -48,6 +48,7 @@ import { MoreSheet, NoticeModal } from './modals/MoreSheet';
 import { useExport } from './use-export';
 import { useShareLink } from './use-share-link';
 import { usePhotoBackup } from './use-photo-backup';
+import { usePhotoOriginalSync } from '@/lib/hooks/use-photo-original-sync';
 import { useDesignChat } from './use-design-chat';
 import { resolveBackTarget } from './back-nav';
 import { ElementSheet } from './modals/ElementSheet';
@@ -81,6 +82,8 @@ import { DEFAULT_IMAGE_POS, type ImagePosValue } from '../image-edit-util';
 import { swapImageSlots, type SwapSlotRef } from '../image-swap';
 import { PhotoPickerSheet } from './modals/PhotoPickerSheet';
 import { ReorderSheet } from './modals/ReorderSheet';
+import { ModalHost } from './modals/ModalHost';
+import { getTemplate } from '@yujee/contracts/templates';
 import { FilterSheet } from './modals/FilterSheet';
 import type { TextHit, ImageHit } from './EditView';
 import {
@@ -479,6 +482,45 @@ export function MobileEditorRoot({
       });
   };
 
+  // ── 删除书页(2026-08-03 设计):确认弹窗 → 乐观删除 + DELETE,失败回滚 + toast,
+  // 与 commitReorder 同口径。spread 记录当前页是否双宽 —— 双宽净减 2 个页位后续
+  // 不移位,不用提示翻面;普通内页净减 1,后续页左右互换,确认弹窗里明说。
+  const [deleteConfirm, setDeleteConfirm] = useState<{ pageIndex: number; spread: boolean } | null>(
+    null,
+  );
+  const requestDeletePage = () => {
+    if (editPage == null || !pages[editPage]) return;
+    const tpl = getTemplate(pages[editPage]!.templateId);
+    if (tpl?.category !== 'interior') {
+      say(zh ? '封面、目录和封底不能删除' : 'Cover, contents and ending pages cannot be deleted');
+      return;
+    }
+    const interiorCount = pages.filter(
+      (p) => getTemplate(p.templateId)?.category === 'interior',
+    ).length;
+    if (interiorCount <= 1) {
+      say(zh ? '这是最后一张内页，不能删除' : 'The last interior page cannot be deleted');
+      return;
+    }
+    setDeleteConfirm({ pageIndex: editPage, spread: tpl.spread === true });
+  };
+  const commitDeletePage = (pageIndex: number) => {
+    const prev = pages;
+    setPages(prev.filter((_, i) => i !== pageIndex).map((p, newIdx) => ({ ...p, pageIndex: newIdx })));
+    // 被删的页正处于编辑焦点,必须退出编辑态(留着会指到错位的页)。
+    setEditPage(null);
+    setSelection(null);
+    closeSheet();
+    void fetch(`/api/v1/albums/${detail.album.id}/pages/${pageIndex}`, { method: 'DELETE' })
+      .then((res) => {
+        if (!res.ok) throw new Error(`delete ${res.status}`);
+      })
+      .catch(() => {
+        setPages(prev);
+        say(zh ? '页面没有删掉，已恢复，请重试' : 'Page not deleted; restored — please retry');
+      });
+  };
+
   /** 手指还在动:只即时打进书,不落库(与文字面板同一「所见即所存但未存」的口径)。 */
   const onImagePosLive = (pos: ImagePosValue) => {
     if (selection?.kind !== 'image' || !draftBase) return;
@@ -574,6 +616,13 @@ export function MobileEditorRoot({
     photoFilter,
     detail.album.photoSnapshotRenderVersions ?? {},
   );
+  // Task 8(照片真相迁 R2 Phase 0):对账补传 + 远端原图 fetcher,复用上面已算好
+  // 的 photoIds(与展示/导出同一份去重来源)。
+  usePhotoOriginalSync({
+    albumId: detail.album.id,
+    photoIds,
+    enabled: true,
+  });
   const share = useShareLink(detail.album.id, locale, zh);
   // AI 对话:瘦客户端直连 design-chat(桌面那套 ChatPanel 依赖协调器上下文,移动端没有)。
   const chat = useDesignChat(detail.album.id, zh);
@@ -773,7 +822,7 @@ export function MobileEditorRoot({
         void chat.loadHistory(); // 打开时拉一次历史,两端看到同一段对话
         setAiChatOpen(true);
       }}
-      onDeletePage={() => soon('删除页面', 'Delete page')}
+      onDeletePage={requestDeletePage}
     />
     <BoardBgSheet
       open={bgSheetOpen}
@@ -913,6 +962,43 @@ export function MobileEditorRoot({
       onClose={() => setReorderOpen(false)}
       onCommit={commitReorder}
     />
+    <ModalHost
+      open={deleteConfirm != null}
+      onClose={() => setDeleteConfirm(null)}
+      ariaLabel={zh ? '删除页面' : 'Delete page'}
+      testId="delete-page-confirm"
+    >
+      <div className="mdel-body">
+        <p className="mdel-title">{zh ? '删除这一页？' : 'Delete this page?'}</p>
+        <p className="mdel-text">
+          {zh ? '页面上的照片和文字会一起移除。' : 'Its photos and text will be removed together.'}
+        </p>
+        {deleteConfirm != null && !deleteConfirm.spread && (
+          <p className="mdel-text mdel-warn">
+            {zh
+              ? '删除后，这一页之后的页面左右位置会互换。'
+              : 'After deleting, pages after this one will swap left/right sides.'}
+          </p>
+        )}
+      </div>
+      <div className="mdel-actions">
+        <button type="button" className="mdel-btn" onClick={() => setDeleteConfirm(null)}>
+          {zh ? '取消' : 'Cancel'}
+        </button>
+        <button
+          type="button"
+          className="mdel-btn mdel-danger"
+          data-testid="delete-page-confirm-btn"
+          onClick={() => {
+            const target = deleteConfirm;
+            setDeleteConfirm(null);
+            if (target) commitDeletePage(target.pageIndex);
+          }}
+        >
+          {zh ? '删除' : 'Delete'}
+        </button>
+      </div>
+    </ModalHost>
     {lutSupported && filterOpen && (
       <FilterSheet
         open

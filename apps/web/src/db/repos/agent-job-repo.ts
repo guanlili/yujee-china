@@ -38,6 +38,16 @@ export const agentJobRepo = {
     return rows[0];
   },
 
+  // Unlocked read by id. Only caller today is `jobService.sweepStaleJob`'s
+  // deadlock-avoidance peek: it reads `albumId`/`kind` (both immutable once a
+  // job row exists — never patched by any write in this repo) BEFORE deciding
+  // whether it needs to lock the `albums` row first. Never use this result to
+  // drive a status/staleness decision — that must come from a locked re-read.
+  findById: async (id: string): Promise<AgentJob | undefined> => {
+    const rows = await db.select().from(agentJobs).where(eq(agentJobs.id, id)).limit(1);
+    return rows[0];
+  },
+
   findByRequestId: async (requestId: string): Promise<AgentJob | undefined> => {
     const rows = await db
       .select()

@@ -11,7 +11,7 @@ export type ChatRole = 'user' | 'assistant';
 /** design chat 写类操作折成的用户可读类别。 */
 export type DesignChangeCategory = 'fonts' | 'colors' | 'pages' | 'order';
 
-/** 七个写工具 → 类别。与 design-chat 路由落库 designOps 的工具名一一对应。 */
+/** 八个写工具 → 类别。与 design-chat 路由落库 designOps 的工具名一一对应。 */
 const DESIGN_CHANGE_CATEGORY: Record<string, DesignChangeCategory> = {
   set_text_fonts: 'fonts',
   set_text_colors: 'colors',
@@ -20,6 +20,7 @@ const DESIGN_CHANGE_CATEGORY: Record<string, DesignChangeCategory> = {
   update_page_images: 'pages',
   write_page_html: 'pages',
   move_pages: 'order',
+  delete_page: 'pages',
 };
 
 /** 固定展示顺序,不随工具调用顺序抖动。 */

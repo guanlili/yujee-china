@@ -1,13 +1,15 @@
-import { AlbumStage } from '@yujee/contracts';
+import { AlbumStage, type Page } from '@yujee/contracts';
 import type { PhotoFilterState } from '@/lib/photo/filter-state';
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   boolean,
   index,
   integer,
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -60,6 +62,12 @@ export const creditHoldStatusEnum = pgEnum('credit_hold_status', [
 ]);
 
 export const messageRoleEnum = pgEnum('message_role', ['user', 'assistant']);
+
+// 照片真相迁 R2 (Phase 0): server-side registry of each album's canonical photo
+// originals. 'uploaded' = original bytes confirmed in R2; 'missing' = known slot
+// with no confirmed upload yet. Task 4/5's service upserts this under an album
+// row lock; a 'missing' upsert must never downgrade an existing 'uploaded' row.
+export const albumPhotoStatusEnum = pgEnum('album_photo_status', ['uploaded', 'missing']);
 
 // Keep the legacy `stripe` enum value for existing production rows and Drizzle
 // migration compatibility. New application code writes `creem` only.
@@ -233,6 +241,13 @@ export const albums = pgTable(
     // null = v1 album. Discriminator draft vs finalized = layoutJson IS NULL.
     // See docs/agent/rebuild-architecture.md §4.1 / §5.
     draftJson: jsonb('draft_json'),
+    // draft_pages 拆表(Phase 1a): monotonic revision for the whole book's draft
+    // pages. Every draft write transaction bumps this by 1 and stamps the
+    // written row(s)' `version` with the NEW revision — page versions are
+    // comparable book-wide, and a full-book replace (reorder/select-layout/
+    // compose/design-chat) naturally advances every page's version. 0 = no
+    // draft_pages rows yet (legacy-only album). See docs/plans/2026-08-03-draft-pages-split.md.
+    draftRevision: bigint('draft_revision', { mode: 'number' }).notNull().default(0),
     photoCount: integer('photo_count').notNull(),
     pageCount: integer('page_count').notNull().default(0),
     pdfR2Key: text('pdf_r2_key'),
@@ -286,6 +301,49 @@ export const albumPages = pgTable(
   (t) => ({
     albumIndex: uniqueIndex('uq_album_pages_album_index').on(t.albumId, t.pageIndex),
     album: index('idx_album_pages_album').on(t.albumId),
+  }),
+);
+
+// draft_pages 拆表(Phase 1a):V3 draft 页的每页一行真相,取代
+// `albums.draft_json.pages` 数组(legacy 字段只读回退,新写点永不再写它)。PK
+// (albumId, pageIndex)。`page` 一律 contracts `Page`(strict)。`version` = 写入
+// 该行时的新 `albums.draft_revision`(全书单调可比);`updatedBy` null 表示
+// 系统/agent 写入(而非某个用户)。docs/plans/2026-08-03-draft-pages-split.md。
+export const draftPages = pgTable(
+  'draft_pages',
+  {
+    albumId: text('album_id')
+      .notNull()
+      .references(() => albums.id, { onDelete: 'cascade' }),
+    pageIndex: integer('page_index').notNull(),
+    page: jsonb('page').$type<Page>().notNull(),
+    version: bigint('version', { mode: 'number' }).notNull(),
+    updatedBy: text('updated_by'), // null = 系统/agent 写入
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.albumId, t.pageIndex] }),
+  }),
+);
+
+// 照片原图登记表(照片真相迁 R2 Phase 0):album 级别的原图台账,记录每张照片的
+// 上传状态与像素/字节元信息。Task 4/5 的 service 在 album 行锁内 upsert 这张表。
+export const albumPhotos = pgTable(
+  'album_photos',
+  {
+    albumId: text('album_id')
+      .notNull()
+      .references(() => albums.id, { onDelete: 'cascade' }),
+    photoId: text('photo_id').notNull(),
+    status: albumPhotoStatusEnum('status').notNull().default('uploaded'),
+    width: integer('width'),
+    height: integer('height'),
+    bytes: integer('bytes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.albumId, t.photoId] }),
   }),
 );
 
@@ -549,6 +607,10 @@ export type Album = typeof albums.$inferSelect;
 export type NewAlbum = typeof albums.$inferInsert;
 export type AlbumPage = typeof albumPages.$inferSelect;
 export type NewAlbumPage = typeof albumPages.$inferInsert;
+export type DraftPage = typeof draftPages.$inferSelect;
+export type NewDraftPage = typeof draftPages.$inferInsert;
+export type AlbumPhoto = typeof albumPhotos.$inferSelect;
+export type NewAlbumPhoto = typeof albumPhotos.$inferInsert;
 export type AlbumShare = typeof albumShares.$inferSelect;
 export type NewAlbumShare = typeof albumShares.$inferInsert;
 export type AlbumMessage = typeof albumMessages.$inferSelect;

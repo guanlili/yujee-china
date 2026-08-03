@@ -19,3 +19,17 @@ test('signed PUT URL carries no auto checksum params', async () => {
   assert.doesNotMatch(url, /x-amz-checksum/i, 'no checksum param may be signed in');
   assert.doesNotMatch(url, /x-amz-sdk-checksum-algorithm/i);
 });
+
+test('signGetUrl presigns a private read without checksum params', async () => {
+  process.env.R2_ACCOUNT_ID ||= 'testaccount';
+  process.env.R2_ACCESS_KEY_ID ||= 'testkeyid';
+  process.env.R2_SECRET_ACCESS_KEY ||= 'testsecret';
+  process.env.R2_BUCKET ||= 'test-bucket';
+  const { r2 } = await import('./r2-client');
+
+  const url = await r2.signGetUrl('photo-originals/album-1/photo-1.jpg', 60);
+  assert.match(url, /X-Amz-Signature=/);
+  assert.match(url, /photo-originals\/album-1\/photo-1\.jpg/);
+  assert.doesNotMatch(url, /x-amz-checksum/i);
+  assert.doesNotMatch(url, /x-amz-sdk-checksum/i);
+});

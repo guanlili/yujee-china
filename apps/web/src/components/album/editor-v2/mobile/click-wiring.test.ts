@@ -62,15 +62,17 @@ test('MobileEditorRoot:每个必填 handler 都真的传下去了(不是空占)'
   }
 });
 
-test('入口都接到真东西上;仍未实现的(删除页)才给「即将上线」', () => {
+test('入口都接到真东西上', () => {
   const root = read('MobileEditorRoot.tsx');
   // 导出/分享/更多 现在都是真功能,不再是 toast。
   assert.match(root, /onExport=\{openExport\}/, '导出接闸门 + 导出菜单');
   assert.match(root, /onMore=\{\(\) => setMoreOpen\(true\)\}/, '「更多」打开菜单(里面是照片备份)');
   assert.match(root, /onShare=\{\(\) => \{[\s\S]{0,80}setShareOpen\(true\)/, '分享打开分享弹窗');
   assert.match(root, /onOpenChat=\{[\s\S]{0,160}setAiChatOpen\(true\)/, 'AI 气泡打开对话弹窗');
-  // 删除页线上也没有,仍是占位 —— 但必须有反馈,不许是死按钮。
-  assert.match(root, /onDeletePage=\{\(\) => soon\(/);
+  // 删除页(2026-08-03 落地):不再是「即将上线」占位,接到确认弹窗流程 ——
+  // 接线细节(单发射点/回滚/守卫)在 ../delete-page-wiring.test.ts。
+  assert.match(root, /onDeletePage=\{requestDeletePage\}/);
+  assert.doesNotMatch(root, /onDeletePage=\{\(\) => soon\(/, '占位 toast 已退场,不许回来');
 });
 
 test('导出四条格式全部接到真渲染上(不许只开菜单不干活)', () => {

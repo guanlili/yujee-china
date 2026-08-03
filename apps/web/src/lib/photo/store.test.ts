@@ -975,3 +975,245 @@ test('getTierBlobStatus exposes exact filtered success versus base fallback', as
     console.warn = originalWarn;
   }
 });
+
+// ── 照片真相迁 R2(Task 7):getBlob 远端回退 + getCanonicalUploadBlob ──────────
+// originals 表从「原图唯一持有者」降级为「R2 之上的缓存」:本地未命中且注入了
+// fetcher 时,getBlob 允许回退一次远端下载,取到就 memory-back 后写回本地
+// (下次直接命中)。回退只认合法照片 id —— boardbg-* 画板背景与 originals 共用同一个
+// object store,绝不能被当成照片去远端下载。
+
+function installCanonicalUploadImageMocks(
+  source: { width: number; height: number } = { width: 4000, height: 3000 },
+): (() => void) & {
+  toBlobCalls: { width: number; height: number; type: string; quality: number | undefined }[];
+} {
+  const globals = globalThis as Record<string, unknown>;
+  const hadCreateImageBitmap = 'createImageBitmap' in globals;
+  const hadDocument = 'document' in globals;
+  const originalCreateImageBitmap = globals.createImageBitmap;
+  const originalDocument = globals.document;
+  const toBlobCalls: { width: number; height: number; type: string; quality: number | undefined }[] = [];
+
+  Object.defineProperty(globals, 'createImageBitmap', {
+    configurable: true,
+    value: async () => ({ width: source.width, height: source.height, close() {} }),
+  });
+  Object.defineProperty(globals, 'document', {
+    configurable: true,
+    value: {
+      createElement(tag: string) {
+        assert.equal(tag, 'canvas');
+        const canvas = {
+          width: 0,
+          height: 0,
+          getContext: () => ({ fillStyle: '', fillRect() {}, drawImage() {} }),
+          toBlob(callback: (blob: Blob | null) => void, type: string, quality?: number) {
+            toBlobCalls.push({ width: canvas.width, height: canvas.height, type, quality });
+            callback(new Blob([`${canvas.width}x${canvas.height}`], { type }));
+          },
+        };
+        return canvas;
+      },
+    },
+  });
+
+  const restore = (() => {
+    if (hadCreateImageBitmap) {
+      Object.defineProperty(globals, 'createImageBitmap', {
+        configurable: true,
+        value: originalCreateImageBitmap,
+      });
+    } else {
+      delete globals.createImageBitmap;
+    }
+    if (hadDocument) {
+      Object.defineProperty(globals, 'document', { configurable: true, value: originalDocument });
+    } else {
+      delete globals.document;
+    }
+  }) as (() => void) & { toBlobCalls: typeof toBlobCalls };
+  restore.toBlobCalls = toBlobCalls;
+  return restore;
+}
+
+test('getBlob falls back to the remote fetcher on local miss and backfills the local cache', async () => {
+  const photoId = 'remote-fallback-backfill';
+  let calls = 0;
+  const remoteBytes = new Uint8Array([1, 2, 3, 4]);
+  photoStore.setRemoteOriginalFetcher(async (id) => {
+    calls += 1;
+    assert.equal(id, photoId);
+    return new Blob([remoteBytes], { type: 'image/jpeg' });
+  });
+  try {
+    const first = await photoStore.getBlob(photoId);
+    assert.ok(first, 'fetcher blob must be returned on local miss');
+    assert.deepEqual(new Uint8Array(await first!.arrayBuffer()), remoteBytes);
+    assert.equal(calls, 1);
+    assert.ok(stored.get(photoId) instanceof Blob, 'remote blob must be cached back into originals');
+
+    const second = await photoStore.getBlob(photoId);
+    assert.deepEqual(new Uint8Array(await second!.arrayBuffer()), remoteBytes);
+    assert.equal(calls, 1, 'second getBlob must hit the now-local cache, not the fetcher again');
+  } finally {
+    photoStore.setRemoteOriginalFetcher(null);
+  }
+});
+
+test('concurrent getBlob calls for the same missing photoId dedupe into one fetcher call', async () => {
+  const photoId = 'remote-fallback-concurrent';
+  let calls = 0;
+  let releaseFetch!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    releaseFetch = resolve;
+  });
+  photoStore.setRemoteOriginalFetcher(async (id) => {
+    calls += 1;
+    await gate;
+    return new Blob([`remote:${id}`], { type: 'image/jpeg' });
+  });
+  try {
+    const a = photoStore.getBlob(photoId);
+    const b = photoStore.getBlob(photoId);
+    releaseFetch();
+    const [blobA, blobB] = await Promise.all([a, b]);
+    assert.equal(calls, 1, 'two concurrent getBlob calls for the same id must trigger only one fetch');
+    assert.equal(await blobA?.text(), await blobB?.text());
+  } finally {
+    photoStore.setRemoteOriginalFetcher(null);
+  }
+});
+
+test('boardbg- prefixed keys and ids failing the photoId shape never trigger the remote fetcher', async () => {
+  let calls = 0;
+  photoStore.setRemoteOriginalFetcher(async () => {
+    calls += 1;
+    return new Blob(['x'], { type: 'image/jpeg' });
+  });
+  try {
+    // 字符集本身就不合法(含 '.'),isValidPhotoId 一步就会拒 —— 这一条不能单独
+    // 证明前缀守卫在起作用。
+    assert.equal(await photoStore.getBlob('boardbg-album1-2048-cover.png'), undefined);
+    assert.equal(calls, 0);
+
+    // 字符集合法(纯 alnum + hyphen、长度达标),isValidPhotoId 单独看会放行 ——
+    // 只有 boardbg- 前缀检查还在,这一条才会被挡。删掉 store.ts 里的
+    // startsWith(BOARD_BACKGROUND_KEY_PREFIX) 守卫,这一条会变红。
+    assert.equal(await photoStore.getBlob('boardbg-abc123'), undefined);
+    assert.equal(calls, 0);
+
+    // 不匹配 isValidPhotoId 形状的 key(非 alnum/hyphen 字符、超长)同样被挡。
+    assert.equal(await photoStore.getBlob('not a valid id!'), undefined);
+    assert.equal(await photoStore.getBlob('a'.repeat(65)), undefined);
+    assert.equal(calls, 0, 'no shape of excluded key may ever reach the fetcher');
+  } finally {
+    photoStore.setRemoteOriginalFetcher(null);
+  }
+});
+
+test('getBlob returns undefined when the fetcher resolves undefined or throws, without caching anything', async () => {
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    const undefinedId = 'remote-fallback-undefined';
+    let undefinedCalls = 0;
+    photoStore.setRemoteOriginalFetcher(async () => {
+      undefinedCalls += 1;
+      return undefined;
+    });
+    assert.equal(await photoStore.getBlob(undefinedId), undefined);
+    assert.equal(undefinedCalls, 1);
+    assert.equal(stored.has(undefinedId), false);
+
+    const throwId = 'remote-fallback-throws';
+    let throwCalls = 0;
+    photoStore.setRemoteOriginalFetcher(async () => {
+      throwCalls += 1;
+      throw new Error('network down');
+    });
+    await assert.doesNotReject(async () => {
+      assert.equal(await photoStore.getBlob(throwId), undefined);
+    });
+    assert.equal(throwCalls, 1);
+    assert.equal(stored.has(throwId), false);
+  } finally {
+    photoStore.setRemoteOriginalFetcher(null);
+    console.warn = originalWarn;
+  }
+});
+
+test('getCanonicalUploadBlob downsizes the local original to the backup tier with no filter and never calls the fetcher', async () => {
+  const photoId = 'canonical-upload-local';
+  await photoStore.put(
+    photoId,
+    new File([new Uint8Array([1, 2, 3])], 'orig.jpg', { type: 'image/jpeg' }),
+  );
+  const restoreImageMocks = installCanonicalUploadImageMocks();
+  let fetcherCalls = 0;
+  photoStore.setRemoteOriginalFetcher(async () => {
+    fetcherCalls += 1;
+    return undefined;
+  });
+
+  try {
+    const result = await photoStore.getCanonicalUploadBlob(photoId);
+    assert.ok(result, 'a local original must yield a canonical upload blob');
+    // 4000x3000 源图按 backup 档(TIER_MAX_EDGE.backup=3400)夹取 → 3400x2550。
+    assert.equal(result!.width, 3400);
+    assert.equal(result!.height, 2550);
+    assert.equal(await result!.blob.text(), '3400x2550');
+    assert.deepEqual(restoreImageMocks.toBlobCalls, [
+      { width: 3400, height: 2550, type: 'image/jpeg', quality: 0.82 },
+    ]);
+    assert.equal(fetcherCalls, 0, 'getCanonicalUploadBlob must never trigger the remote fetcher');
+  } finally {
+    photoStore.setRemoteOriginalFetcher(null);
+    restoreImageMocks();
+  }
+});
+
+test('getCanonicalUploadBlob force-reencodes even when the source already fits the backup tier', async () => {
+  // 源图 2000x1500,已经在 backup 档(TIER_MAX_EDGE.backup=3400)以内 ——
+  // downscaleToJpeg 默认会走「已经不比目标大就直接返回可解码 blob」的早退分支
+  // (省一次重编码)。getCanonicalUploadBlob 是 R2 真相源,必须绕开这条早退,总是
+  // 强制走 canvas 重编码:剥掉 EXIF/GPS,并保证产出真的是 image/jpeg 字节,不能
+  // 把原始相机文件的字节原样直传出去(review finding I2)。
+  const photoId = 'canonical-upload-already-small';
+  const originalBytes = new Uint8Array([9, 9, 9]);
+  await photoStore.put(
+    photoId,
+    new File([originalBytes], 'orig.jpg', { type: 'image/jpeg' }),
+  );
+  const restoreImageMocks = installCanonicalUploadImageMocks({ width: 2000, height: 1500 });
+
+  try {
+    const result = await photoStore.getCanonicalUploadBlob(photoId);
+    assert.ok(result, 'a local original must yield a canonical upload blob');
+    assert.equal(result!.width, 2000);
+    assert.equal(result!.height, 1500);
+    // canvas.toBlob 被调用了一次(强制重编码走了 canvas 路径,不是早退直通)。
+    assert.deepEqual(restoreImageMocks.toBlobCalls, [
+      { width: 2000, height: 1500, type: 'image/jpeg', quality: 0.82 },
+    ]);
+    // 产出是 canvas mock 编造的新字节,不是原始源字节的直通引用/内容。
+    assert.equal(await result!.blob.text(), '2000x1500');
+    assert.notDeepEqual(new Uint8Array(await result!.blob.arrayBuffer()), originalBytes);
+  } finally {
+    restoreImageMocks();
+  }
+});
+
+test('getCanonicalUploadBlob returns undefined without calling the fetcher when there is no local original', async () => {
+  let fetcherCalls = 0;
+  photoStore.setRemoteOriginalFetcher(async () => {
+    fetcherCalls += 1;
+    return new Blob(['remote'], { type: 'image/jpeg' });
+  });
+  try {
+    const result = await photoStore.getCanonicalUploadBlob('canonical-upload-missing-local');
+    assert.equal(result, undefined);
+    assert.equal(fetcherCalls, 0, 'a local miss must never fall back to downloading just to re-upload');
+  } finally {
+    photoStore.setRemoteOriginalFetcher(null);
+  }
+});

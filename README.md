@@ -26,7 +26,7 @@ Postgres + Cloudflare R2
 | Browser | 持有原图, 压缩/缓存照片, 读取 EXIF, 用浏览器 WebGL 引擎应用照片滤镜, 为 `/v3/select-layout` 和 `/v3/compose` 随请求带上 200px 缩略图 refs, 渲染编辑器, 本地生成 PDF 后直传 R2 |
 | Web | 登录、支付、积分、相册状态、`draft_json`、`photo_filter`、V3 API 编排、Agent callback 合并、R2 presign |
 | Agent | 确定性分章(零 AI)、确定性排版(一次出 pages)、一次性成稿 `/v3/compose`(生成链路唯一的 AI 调用) |
-| Design Agent | 生成**之后**的对话式改书(六个写工具改文字/HTML/换版/换图/配色/字体)。独立 base URL 与鉴权,**必须单机**(session 在进程内存) |
+| Design Agent | 生成**之后**的对话式改书(七个写工具改文字/HTML/换版/换图/配色/字体/页序)。独立 base URL 与鉴权,**必须单机**(session 在进程内存) |
 | contracts | Web 和 Agent 共用的 Zod 契约、模板 JSON、生成类型和 fixtures |
 
 ## 仓库入口
@@ -74,7 +74,11 @@ memoir-agent-rebuild/
 ## 设计边界
 
 - Web 是 album 和 job 状态的真相源;Agent 不推进 Web 的 `stage`。
-- 原图由 Browser 持有;Web/Agent 不把 base64 落库、落 R2 或写日志。
+- 照片规范原图(压缩派生物,长边 3400px/q0.82 无滤镜 JPEG)以 R2 私有桶为真相源
+  (`photo-originals/{albumId}/{photoId}.jpg`),presigned PUT 直传 + 确认落
+  `album_photos` 表,私有读走 `r2.signGetUrl`(300s 预签名);浏览器 IndexedDB 降级为
+  缓存,原始相机文件仍不出浏览器。base64 仍绝不落库、落 R2 或写日志。与下方按渲染版本
+  存的 photo-snapshots 分享快照链路彼此独立,未受影响。
 - 照片滤镜状态落在 `albums.photo_filter`:一本书可设默认 LUT,每张照片可覆盖或显式回到原片,
   强度按 5% 量化。26 个确定性 LUT 以生成的 17³ 缩略资源和 33³ 完整资源随 Web 发布;
   `.cube` 源文件不进仓。滤镜只在浏览器处理派生图,IndexedDB 里的原图永不改写。

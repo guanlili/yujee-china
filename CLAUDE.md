@@ -52,8 +52,9 @@ Postgres + Cloudflare R2
 - **必须单机运行。** 每册的 session/trace/书状态在进程内存里,Web 每轮先 `POST /api/book`
   再 `POST /api/chat`,两个请求必须命中同一台机器。`fly scale count 1`,不要开 HA,
   不要 `auto_stop_machines`。理由和部署命令写在 `packages/design-agent/fly.toml` 注释里。
-- 七个写工具:`update_page_texts` / `write_page_html` / `swap_page_template` /
-  `update_page_images` / `set_text_colors` / `set_text_fonts` / `move_pages`。新增写工具时,
+- 八个写工具:`update_page_texts` / `write_page_html` / `swap_page_template` /
+  `update_page_images` / `set_text_colors` / `set_text_fonts` / `move_pages` /
+  `delete_page`。新增写工具时,
   `design-chat/route.ts` 的 `DESIGN_WRITE_TOOLS` 集合必须同步,否则历史回放会丢更新。
 
 ### 页面真相
@@ -69,6 +70,11 @@ Postgres + Cloudflare R2
   26 个确定性 LUT 只以生成后的 17³/33³ 二进制资源随 Web 发布,`.cube` 源文件不进仓。
 - 滤镜引擎只在 Browser 运行,只生成缓存/导出/上传用的派生像素;IndexedDB 原图不改写,
   Web/Agent 不做服务端滤镜处理。
+- 照片规范原图(压缩派生物,长边 3400/q0.82 无滤镜 JPEG,`getCanonicalUploadBlob` 产出)
+  以 R2 私有桶 `photo-originals/{albumId}/{photoId}.jpg` 为真相源,presigned PUT 上传 +
+  确认落 `album_photos` 表(`status` uploaded/missing,upsert 靠 CASE 保护不倒退),
+  私有读走 `r2.signGetUrl`(300s 预签名);IndexedDB 降级为缓存,原始相机文件仍不出
+  浏览器。与下面按渲染版本存的 photo-snapshots 备份链路彼此独立、未受影响。
 - 每张备份快照使用不可变 `photoId/renderVersion` R2 key。新分享必须在 album 行锁内确认
   页面引用照片都有精确当前版本,否则以 409 拒绝,不会生成带空图的分享。
 - 改滤镜会清 PDF/封面派生元数据。封面签名/确认是 CAS:revision 绑定规范化滤镜、

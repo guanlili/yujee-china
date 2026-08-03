@@ -8,6 +8,10 @@ import {
   zombieTimeoutMsFor,
 } from './job-service';
 import { agentJobRepo } from '../../db/repos/agent-job-repo';
+import { albumRepo } from '../../db/repos/album-repo';
+import { draftPageRepo } from '../../db/repos/draft-page-repo';
+import { db } from '../../db/client';
+import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '../../db/repos/__test__/setup';
 
 const TREE = {
   chapters: [
@@ -72,6 +76,61 @@ test('mergeSelectLayoutPages rejects select-layout output before a Stage1 tree e
     () => mergeSelectLayoutPages(null, PAGES),
     /select-layout completion requires an existing v3-story draft/,
   );
+});
+
+// draft_pages 拆表(Phase 1a,Task 5):handleV3SelectLayoutCompleted 加 album 行锁 +
+// 组页落库切行级写(docs/plans/2026-08-03-draft-pages-split.md)。回调后页真相落
+// draft_pages 行,draftJson 瘦身为 envelope,pageCount 收口(此前 select-layout 这里
+// 遗漏了 pageCount)。
+test('handleV3SelectLayoutCompleted: 组页落库切 draft_pages 行级写 + pageCount 收口', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('select-layout-rows');
+  try {
+    const album = await makeAlbum(user.id);
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: buildAnalyzeDraftJson(TREE),
+    });
+    const requestId = `select-layout-rows-${Date.now()}`;
+    const job = await agentJobRepo.create(db, {
+      userId: user.id,
+      albumId: album.id,
+      requestId,
+      kind: 'layout',
+      status: 'RUNNING',
+      progress: 0,
+    });
+
+    await jobService.handleV3SelectLayoutCompleted(requestId, PAGES, { durationMs: 1, models: {} });
+
+    const reloaded = await albumRepo.findById(album.id);
+    assert.equal(
+      (reloaded?.draftJson as Record<string, unknown> | undefined)?.pages,
+      undefined,
+      'draftJson must not carry a pages key after the draft_pages split',
+    );
+    assert.equal(reloaded?.pageCount, PAGES.length, 'pageCount must follow the replaced row count');
+    assert.ok(reloaded?.draftRevision && reloaded.draftRevision > 0);
+
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.equal(rows.length, PAGES.length);
+    assert.deepEqual(stripPagesHtml(rows.map((r) => r.page)), PAGES);
+    for (const row of rows) {
+      assert.equal(row.version, reloaded?.draftRevision, 'every row lands on the new revision');
+      assert.equal(row.updatedBy, null, 'select-layout is a system/agent write point');
+    }
+
+    const doneJob = await agentJobRepo.findByRequestId(requestId);
+    assert.equal(doneJob?.status, 'COMPLETED');
+    assert.equal(doneJob?.progress, 100);
+    assert.equal(job.id, doneJob?.id);
+  } finally {
+    await cleanupUser(user.id);
+  }
 });
 
 test('mergeV3Usage keeps Stage1 usage when Stage2 reuses the same job', () => {

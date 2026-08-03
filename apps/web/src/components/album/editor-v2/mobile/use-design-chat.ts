@@ -48,6 +48,7 @@ const TOOL_LABEL: Record<string, { zh: string; en: string }> = {
   set_text_colors: { zh: '正在调颜色…', en: 'Adjusting colours…' },
   set_text_fonts: { zh: '正在调字体…', en: 'Adjusting fonts…' },
   move_pages: { zh: '正在挪页…', en: 'Reordering pages…' },
+  delete_page: { zh: '正在删页…', en: 'Deleting the page…' },
   read_page: { zh: '正在读这一页…', en: 'Reading the page…' },
   read_book: { zh: '正在通读整本…', en: 'Reading the book…' },
 };

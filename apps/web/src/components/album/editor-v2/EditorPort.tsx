@@ -40,6 +40,7 @@ import {
   confirmPhotoSnapshot,
   putSnapshotBlob,
 } from '@/lib/album/photo-snapshot-client';
+import { usePhotoOriginalSync } from '@/lib/hooks/use-photo-original-sync';
 import { UserAvatar } from '@/components/app/UserAvatar';
 import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
@@ -1409,6 +1410,17 @@ function EditorBook({
   lutSupported: boolean;
   openPhotoFilter: (scope: 'photo', photoId: string) => void;
 }) {
+  // Task 8(照片真相迁 R2 Phase 0):对账补传 + 远端原图 fetcher。photoIds 与下面
+  // 挂载 effect 里的 bookPhotoIds()(见 refreshBackupStatus 附近)同一份来源
+  // (initialPages 的 imagesJson 去重);必须放在那个 useEffect 之外单独调用 ——
+  // usePhotoOriginalSync 本身是个 Hook,不能挂在另一个 Hook 的回调里调用。
+  usePhotoOriginalSync({
+    albumId: detail.album.id,
+    photoIds: collectPhotoIds(
+      initialPages.map((page) => ({ templateId: page.templateId, images: page.imagesJson, texts: page.textsJson })),
+    ),
+    enabled: true,
+  });
   useEffect(() => {
     // The canvas effect scopes to the SHARED outer root (created by the stable shell)
     // so it can reach the topbar + modals it wires (setLang walks the whole tree). Its
@@ -2875,6 +2887,42 @@ function EditorBook({
         alert(t('pageReorderFailed'));
       }
     }
+    // ── 删除书页(2026-08-03 设计):window.confirm 知情确认(普通内页附翻面提示,
+    // 双宽页净减 2 个页位不提示)→ 乐观删除 + DELETE,失败回滚,与 confirmPageReorder
+    // 同口径。rebuildSpreads 自带 currentCh 钳位,删掉最后一个跨页也不会画越界。
+    async function deleteSelectedPage() {
+      if (selectedPageIndex == null) return;
+      const idx = selectedPageIndex;
+      const page = pagesState[idx];
+      if (!page) return;
+      const tpl = getTemplate(page.templateId);
+      if (tpl?.category !== 'interior') { alert(t('deletePageAnchored')); return; }
+      const interiorCount = pagesState.filter(
+        (p) => getTemplate(p.templateId)?.category === 'interior',
+      ).length;
+      if (interiorCount <= 1) { alert(t('deletePageLast')); return; }
+      const msg = tpl.spread === true
+        ? t('deletePageConfirm')
+        : `${t('deletePageConfirm')}\n${t('deletePageFlipNote')}`;
+      if (!window.confirm(msg)) return;
+      const prev = pagesState;
+      selectedPageIndex = null;
+      hideElementToolbar();
+      pagesState = prev.filter((_, i) => i !== idx).map((p, newIdx) => ({ ...p, pageIndex: newIdx }));
+      rebuildSpreads();
+      repaintBook();
+      updateSelectionHighlight();
+      try {
+        const res = await fetch(`/api/v1/albums/${albumId}/pages/${idx}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`delete ${res.status}`);
+      } catch {
+        // 服务端没删掉,本地不能装作删了 —— 回滚到旧引用重绘(同 reorder 失败口径)。
+        pagesState = prev;
+        rebuildSpreads();
+        repaintBook();
+        alert(t('deletePageFailed'));
+      }
+    }
     function preorderInsertBar(): HTMLElement {
       let bar = byId('preorderBar');
       if (!bar) {
@@ -3754,6 +3802,13 @@ function EditorBook({
         colorContext = pageColorContext;
         const init = pageColorContext.initial();
         if (init) { setColorFromCss(init); updateColorDot(); }
+        // 删除钮只对内页出现:封面/目录/封尾根本不给入口(服务端仍二次把关)。
+        const delBtn = editBar.querySelector<HTMLElement>('[data-edit-action="delete-page"]');
+        if (delBtn) {
+          const pg = selectedPageIndex != null ? pagesState[selectedPageIndex] : undefined;
+          delBtn.style.display =
+            pg && getTemplate(pg.templateId)?.category === 'interior' ? '' : 'none';
+        }
       }
       updateSelectionHighlight(); // 文字图层选中 → 页框让位(三态分离);页组无影响
       requestAnimationFrame(positionElementToolbar);
@@ -4602,6 +4657,7 @@ function EditorBook({
       if (action === 'font-size-open') { toggleSizePanel(); return; }
       if (action === 'color-open') { toggleColorPanel(); return; }
       if (action === 'reorder-open') { closeEbPanels(); openPageReorder(); return; }
+      if (action === 'delete-page') { closeEbPanels(); void deleteSelectedPage(); return; }
       if (action === 'font-size-input') return; // 交给 input/change
       closeEbPanels(); // 其它按钮点击 → 收起面板
       if (action === 'edit-text') {
@@ -6118,6 +6174,11 @@ function EditorBook({
                 统一的文字胶囊族(同图片浮层的 旋转/换图 一排,用户拍板)。 */}
             <button type="button" className="eb-pill" data-edit-action="reorder-open" data-testid="eb-page-reorder">
               {locale === 'zh' ? '调整页序' : 'Reorder'}
+            </button>
+            {/* 删除书页(2026-08-03 设计):同一排文字胶囊。只对内页显示 ——
+                showElementToolbar 的 page 分支按选中页类目切显隐。 */}
+            <button type="button" className="eb-pill" data-edit-action="delete-page" data-testid="eb-page-delete">
+              {locale === 'zh' ? '删除此页' : 'Delete page'}
             </button>
           </div>
           {/* 图片编辑不再用 el-bar:选中图片=拖动平移(前后左右)+ 滑块/滚轮缩放 + 复位,

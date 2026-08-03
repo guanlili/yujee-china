@@ -114,16 +114,28 @@ Key files:
 
 ## Browser Data Boundary
 
-- Original photos stay in the browser.
+- The canonical photo original is now a compressed, unfiltered JPEG derivative (long
+  edge 3400px, q0.82, built by `store.ts`'s `getCanonicalUploadBlob`) uploaded to a
+  private R2 bucket at `photo-originals/{albumId}/{photoId}.jpg` via presigned PUT +
+  confirm; private reads use `r2.signGetUrl` (300s TTL). The raw camera file itself
+  still never leaves the browser.
 - `src/lib/photo/compress.ts` creates upload-sized image data.
-- `src/lib/photo/store.ts` keeps local originals for retry/resume and stores bounded
-  filter-derived display/thumb variants without mutating those originals.
+- `src/lib/photo/store.ts`'s IndexedDB `originals` store is a **cache**, not the sole
+  holder: `getBlob` falls back to an injected `RemoteOriginalFetcher` on local miss
+  (in-flight dedup; `boardbg-`-prefixed and otherwise-invalid ids are excluded from
+  remote fallback) and backfills the cache via `toMemoryBackedBlob`.
 - `src/lib/photo/cluster.ts` derives opaque grouping labels.
 - `src/lib/photo/lut/engine.ts` is browser-only. Unsupported WebGL/resource/render
   failures keep the exact original/base blob and log a diagnostic warning; Web and
   both Agents never process photo-filter pixels.
 - PDF/JPG/Live exports, manual snapshots, and cover thumbnails all resolve the same
   effective filter in the browser; Web only persists state and issues R2 presigned URLs.
+- `usePhotoOriginalSync` (wired into editor-v2 `EditorBook` in `EditorPort.tsx` and
+  into `MobileEditorRoot`) runs on mount: probes the server-uploaded set via
+  `.../photo-originals/urls` (chunked 300), uploads only the delta (batch 50, PUT
+  concurrency 3), and confirms any still-missing entries. Resumable and idempotent —
+  every run re-probes before uploading, so a photoId already confirmed server-side is
+  skipped and a partial run just leaves it in the next diff.
 
 ## Photo Filters and Derived Artifacts
 
@@ -183,6 +195,13 @@ Core tables:
 
 - `albums`: album status, stage, draft/final layout JSON, normalized `photo_filter`,
   versioned photo-snapshot metadata, PDF/cover derivative metadata.
+- `album_photos`: per-photo canonical-original upload state — composite PK
+  `(albumId, photoId)`, `status` (`uploaded`/`missing`), `width`/`height`/`bytes`.
+  `upsertMany` never downgrades an existing `uploaded` row back to `missing`
+  (CASE-guarded). `countByStatus` backs `getDetail`'s
+  `photoOriginals: {uploaded, missing}` projection, which feeds `albumLiveSignature`
+  polling. Deleting an album row-locks and deletes its `album_photos` rows in the
+  same transaction.
 - `album_pages`: finalized page rows.
 - `album_messages`: conversation/history rows where still used by Web.
 - `agent_jobs`: async Agent job state and callback progress。`kind` 枚举在迁移 `0020` 里

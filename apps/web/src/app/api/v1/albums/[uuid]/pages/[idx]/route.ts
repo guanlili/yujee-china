@@ -45,3 +45,18 @@ export async function PATCH(
     return fromException(e);
   }
 }
+
+// 删除书页(2026-08-03 设计):只删内页,图片随页移除;校验与语义都在 service 层。
+export async function DELETE(
+  req: Request,
+  ctx: { params: Promise<{ uuid: string; idx: string }> },
+) {
+  try {
+    const user = await requireAuth(req);
+    const { uuid, idx } = await ctx.params;
+    const data = await albumService.deletePage(user.id, uuid, Number(idx));
+    return ok(data);
+  } catch (e) {
+    return fromException(e);
+  }
+}

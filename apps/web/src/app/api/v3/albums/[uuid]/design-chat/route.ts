@@ -8,8 +8,8 @@ import { designAgentClient } from '@/lib/agent/design-agent-client';
 import { buildDesignDonePayload, type DesignDoneResponse } from '@/lib/agent/design-chat-done';
 
 // 写类工具：其操作在历史里以「更新了什么」彩色条呈现，需随 assistant 消息落库（存 layout_patch
-// 的 designOps）。必须覆盖全部 6 个写工具 —— set_text_fonts / write_page_html 过去漏在集合外，
-// 导致历史回放里字体/HTML 更新丢失、彩色条少报。类别映射见 ChatPanel 的 DESIGN_CHANGE_CATEGORY。
+// 的 designOps）。必须覆盖全部 8 个写工具 —— set_text_fonts / write_page_html 过去漏在集合外，
+// 导致历史回放里字体/HTML 更新丢失、彩色条少报。类别映射见 chat-history.ts 的 DESIGN_CHANGE_CATEGORY。
 const DESIGN_WRITE_TOOLS = new Set([
   'update_page_texts',
   'write_page_html',
@@ -18,6 +18,7 @@ const DESIGN_WRITE_TOOLS = new Set([
   'set_text_colors',
   'set_text_fonts',
   'move_pages',
+  'delete_page',
 ]);
 
 // 设计 Agent 全书对话。默认同步 JSON；?stream=1 时把 8787 的 NDJSON 事件流逐行

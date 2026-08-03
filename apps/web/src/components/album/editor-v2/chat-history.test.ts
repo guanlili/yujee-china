@@ -47,6 +47,11 @@ test('move_pages 归入 order 类别,与其余写工具类别并存', () => {
   assert.deepEqual(designOpCategories(['move_pages', 'set_text_fonts']), ['fonts', 'order']);
 });
 
+test('delete_page 归入 pages 类别(2026-08-03 删除书页落地)', () => {
+  assert.equal(designChangeCategoryOf('delete_page'), 'pages');
+  assert.deepEqual(designOpCategories(['delete_page', 'move_pages']), ['pages', 'order']);
+});
+
 test('历史到达不抹掉本地还没落库的消息(回归:setMessages(rows) 整体覆盖)', () => {
   // design chat 一轮要跑到 120s,落库在 done 事件。这期间用户看到的那条「刚发出去的话」
   // 只在本地。历史请求晚一步回来时整体覆盖 → 用户眼睁睁看着自己刚发的消息消失。

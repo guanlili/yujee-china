@@ -23,13 +23,17 @@ Web 侧客户端:`apps/web/src/lib/agent/design-agent-client.ts`。
 | `POST /api/chat` | 一轮对话;`?stream=1` 走 NDJSON 事件流 |
 | `GET /api/albums` · `/api/traces` · `/api/state` | 调试/观测 |
 
-## 七个写工具
+## 八个写工具
 
 `update_page_texts` · `write_page_html` · `swap_page_template` · `update_page_images` ·
-`set_text_colors` · `set_text_fonts` · `move_pages`
+`set_text_colors` · `set_text_fonts` · `move_pages` · `delete_page`
 
 `move_pages` 挪动页面:批量 move(插入)/swap(对调)重排页序,只动内页
 (封面/目录/封尾钉死),单纯挪位置不改任何页内容(纯逻辑在 `page-move.ts`)。
+
+`delete_page` 删除书页(2026-08-03 设计:`docs/specs/2026-08-03-delete-page-design.md`):
+只删内页,照片随页移除不回流,拒删到内页数为 0。与 move_pages 同口径只动数组、
+不改余页 pageIndex —— 落库行序由 Web 侧 `persistDesignChat` 按数组位置重编号。
 
 新增写工具时,**必须同步** `design-chat/route.ts` 里的 `DESIGN_WRITE_TOOLS` 集合,
 否则该工具的改动不会进 `layout_patch.designOps`,历史回放里会丢更新、彩色条少报。
@@ -89,5 +93,5 @@ print/RPC/interactive 三种模式。**通用 agent loop 在 `packages/agent`**,
 
 <!-- doc-scope
 paths: packages/design-agent/src/**, packages/design-agent/fly.toml, apps/web/src/lib/agent/design-agent-client.ts
-checked-at: 3b53781c
+checked-at: a532d0cd
 -->

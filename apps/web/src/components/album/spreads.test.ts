@@ -380,3 +380,34 @@ test('shouldDirectSwitch: a full (double-wide) endpoint no longer forces a direc
 test('shouldDirectSwitch: multiple reasons at once still direct-switches', () => {
   assert.equal(shouldDirectSwitch(true, true, false), true);
 });
+
+// ── 删页安全(2026-08-03 删除书页设计):删除任意一张内页后 buildSpreads 必须
+// 不炸且页数守恒(奇偶位、双宽页都覆盖)。buildSpreads 对不变式破坏是 throw
+// (宁炸不丢页,spreads.ts:63),所以「不炸 + 面数守恒」= 删页后全书仍可渲染。──
+const SPREAD_ID = TEMPLATE_IDS.find((id) => TEMPLATES[id]?.spread === true);
+const ENDING_ID = TEMPLATE_IDS.find((id) => TEMPLATES[id]?.category === 'ending');
+
+test('删除任意一张内页后 buildSpreads 不炸,占用面数 == 余页数(含双宽/奇偶位)', () => {
+  assert.ok(SPREAD_ID && ENDING_ID, '需要至少一个双宽模板和一个封尾模板');
+  // 结构:封面 + 普通内页×2 + 双宽 + 普通内页×2 + 封尾 —— 奇偶位内页、双宽页都在场。
+  const book = [
+    page(COVER_A!, 0),
+    page('mag-03', 1),
+    page('mag-05', 2),
+    page(SPREAD_ID!, 3),
+    page('mag-03', 4),
+    page('mag-05', 5),
+    page(ENDING_ID!, 6),
+  ];
+  for (let removed = 1; removed <= 5; removed++) {
+    const remaining = book.filter((_, i) => i !== removed).map((p, i) => ({ ...p, pageIndex: i }));
+    const spreads = buildSpreads(remaining); // 不 throw 即通过一半
+    const occupied = spreads.flatMap((s) => spreadPageIndices(s));
+    assert.equal(occupied.length, remaining.length, `删第 ${removed} 页后页数必须守恒(不丢页)`);
+    assert.deepEqual(
+      [...occupied].sort((a, b) => a - b),
+      remaining.map((_, i) => i),
+      '每一页都被恰好一个跨页持有',
+    );
+  }
+});

@@ -1,4 +1,5 @@
 import { bakePageHtml, bakePagesHtml, type BakeablePage } from './bake-html';
+import { bumpDraftRevision, ensureDraftPagesSeeded, envelopeJson, loadStoryDraft, parseDraftEnvelope, readPreviewPages } from './draft-store';
 import { createHash } from 'node:crypto';
 import { normalizeBoardBackground, type BoardBackground } from '@/lib/board-bg/presets';
 import { patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle } from '@/components/album/page-html-dom';
@@ -6,6 +7,8 @@ import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
+import { draftPageRepo } from '@/db/repos/draft-page-repo';
+import { albumPhotoRepo } from '@/db/repos/album-photo-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { jobService, readComposeAppendMeta } from '@/services/job/job-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
@@ -38,7 +41,6 @@ import {
   ComposeRequest,
   Page,
   V3AnalyzeImageDataUrl,
-  V3LayoutTree,
   V3StoryDraft,
   type ImagePos,
   type Page as V3Page,
@@ -130,53 +132,38 @@ type StoryProgressState = {
   exportUnlocked: boolean;
 };
 
-export function readPreviewPages(draftJson: unknown): V3Page[] | undefined {
-  if (!draftJson || typeof draftJson !== 'object' || Array.isArray(draftJson)) return undefined;
-  const pages = (draftJson as { pages?: unknown }).pages;
-  const parsed = Page.array().safeParse(pages);
-  return parsed.success ? parsed.data : undefined;
-}
+// draft_pages 拆表(Phase 1a):moved to `./draft-store` (pure, no DB) so
+// `loadStoryDraft` can reuse it too. Re-exported here so nothing importing it
+// from album-service.ts (share-service.ts) breaks.
+export { readPreviewPages };
 
 // Parse draft_json into { tree, progress }, tolerating both the bare-tree and the
 // wrapped shape. Returns null when draft_json isn't a V3 story draft at all (no
 // draft / finalized album). The initial currentChapterId is the FIRST not-done
 // chapter so a bare tree resumes from chapter 1.
+//
+// draft_pages 拆表(Phase 1a): the {tree, progress, design} parsing itself now
+// lives in `./draft-store` (`parseDraftEnvelope`), shared with `loadStoryDraft`.
+// This function stays as a thin wrapper around it — it stays synchronous (pure
+// off draftJson, no DB row read) and preserves a legacy baking asymmetry that
+// `loadStoryDraft` deliberately does NOT replicate: only the WRAPPED branch's
+// pages get baked on read here (bare-tree fallback pages come back unbaked, as
+// they always have — `readPreviewPages` never bakes). Task 8/9 migrate every
+// caller of this function onto `loadStoryDraft`.
 function readStoryDraft(draftJson: unknown): NormalizedStoryDraft | null {
+  const envelope = parseDraftEnvelope(draftJson);
+  if (!envelope) return null;
+
   const wrapped = V3StoryDraft.safeParse(draftJson);
-  if (wrapped.success) {
-    return {
-      tree: wrapped.data.tree,
-      // C 方案读路径兜底:存量 draft(烘 HTML 上线前落库)的页缺 html,读出时
-      // 现场烘一遍(不回写库;之后任何写路径落库即固化)。lenient 见 bake-html。
-      pages: wrapped.data.pages
-        ? (bakePagesHtml(wrapped.data.pages as BakeablePage[], { strict: false }) as typeof wrapped.data.pages)
-        : wrapped.data.pages,
-      progress: wrapped.data.progress,
-    };
-  }
+  const pages = wrapped.success
+    ? wrapped.data.pages
+      ? // C 方案读路径兜底:存量 draft(烘 HTML 上线前落库)的页缺 html,读出时
+        // 现场烘一遍(不回写库;之后任何写路径落库即固化)。lenient 见 bake-html。
+        (bakePagesHtml(wrapped.data.pages as BakeablePage[], { strict: false }) as typeof wrapped.data.pages)
+      : wrapped.data.pages
+    : readPreviewPages(draftJson);
 
-  if (
-    draftJson &&
-    typeof draftJson === 'object' &&
-    !Array.isArray(draftJson) &&
-    'version' in draftJson
-  ) {
-    return null;
-  }
-
-  const treeCandidate =
-    draftJson && typeof draftJson === 'object' && !Array.isArray(draftJson) && 'chapters' in draftJson
-      ? { chapters: (draftJson as { chapters?: unknown }).chapters }
-      : draftJson;
-  const bare = V3LayoutTree.safeParse(treeCandidate);
-  if (!bare.success) return null;
-  const tree = bare.data;
-  const firstChapterId = tree.chapters[0]?.chapterId ?? null;
-  return {
-    tree,
-    pages: readPreviewPages(draftJson),
-    progress: { currentChapterId: firstChapterId, doneChapterIds: [] },
-  };
+  return { tree: envelope.tree, pages, progress: envelope.progress };
 }
 
 // ② 章节故事 — server-side single-chapter slice for /v3/chapter-chat (§8.3 单章切片;
@@ -463,7 +450,10 @@ export const albumService = {
       }
     }
 
-    const pages = await albumPageRepo.findByAlbum(db, albumId);
+    const [pages, photoOriginals] = await Promise.all([
+      albumPageRepo.findByAlbum(db, albumId),
+      albumPhotoRepo.countByStatus(albumId),
+    ]);
     return {
       album: {
         id: album.id,
@@ -491,6 +481,9 @@ export const albumService = {
           album.photoSnapshot?.photoIds,
           album.photoSnapshot?.renderVersions,
         ),
+        // album_photos 里 uploaded/missing 的行数(照片真相迁 R2 Phase 0)。无行 →
+        // {uploaded:0,missing:0},让上传面板知道还差多少张原图没落地。
+        photoOriginals,
         // 预览垫底背景(相册级);编辑器读它铺画板、导出拼图也读它。null = 无。
         boardBackground: album.boardBackground ?? null,
         photoFilter: album.photoFilter ?? null,
@@ -674,10 +667,14 @@ export const albumService = {
       if (!album) throw ERRORS.ALBUM_NOT_FOUND();
       if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
 
-      const normalized = readStoryDraft(album.draftJson);
-      if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+      // draft_pages 拆表(Phase 1a):此写点只改 tree/progress,从不需要页数据 —— 直接
+      // 解析 envelope(不经 loadStoryDraft,不读/播种 draft_pages),写回同样只重写
+      // envelope(envelopeJson,天然不含 pages 键)。不 bump draft_revision:页没变,
+      // Phase 1b 的 collab-sync 只关心页变化(计划明文)。
+      const envelope = parseDraftEnvelope(album.draftJson);
+      if (!envelope) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
 
-      const chapterOrder = normalized.tree.chapters.map((c) => c.chapterId);
+      const chapterOrder = envelope.tree.chapters.map((c) => c.chapterId);
       if (!chapterOrder.includes(chapterId)) {
         throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
       }
@@ -685,10 +682,10 @@ export const albumService = {
       // The gate already moved past story → nothing to confirm. Surface the current
       // state so the caller is idempotent and never regresses the stage.
       if (album.stage !== 'story') {
-        return storyProgressFrom(album.stage, normalized);
+        return storyProgressFrom(album.stage, envelope);
       }
 
-      const doneSet = new Set(normalized.progress.doneChapterIds);
+      const doneSet = new Set(envelope.progress.doneChapterIds);
       const currentChapterId = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
       if (!doneSet.has(chapterId) && chapterId !== currentChapterId) {
         throw ERRORS.VALIDATION_FAILED('chapterId is not the current story chapter');
@@ -700,22 +697,28 @@ export const albumService = {
       // Next cursor = first chapter (in tree order) not yet done; null when all done.
       const nextCurrent = chapterOrder.find((id) => !doneSet.has(id)) ?? null;
 
-      const nextDraft: V3StoryDraft = {
-        version: 'v3-story',
-        tree: normalized.tree,
-        ...(normalized.pages ? { pages: normalized.pages } : {}),
-        progress: { currentChapterId: nextCurrent, doneChapterIds },
-      };
+      // 全局写序无例外(计划 Global Constraints:行锁 → ensureDraftPagesSeeded → …):
+      // 这一步本身不碰页,但下面的 envelope-only 覆盖仍会整块重写 draftJson —— 若这本
+      // 相册还没被任何行级写点摸过,唯一一份 pages 仍只活在 legacy draftJson.pages 里,
+      // 不先播种就直接覆盖会把它连根拔掉(与 job-service.ts 的 append 分支同一个坑,
+      // 同一个修法)。返回值不需要:这里不推进 revision,只是确保任何 legacy pages 在
+      // 被覆盖前已经安全落到 draft_pages 行;真正播种发生时(0→1)的一次性 revision
+      // 前移是播种自身的既定副作用,不是本方法「推进 revision」。
+      await ensureDraftPagesSeeded(tx, album);
 
       await albumRepo.update(tx, albumId, {
-        draftJson: nextDraft,
+        draftJson: envelopeJson({
+          tree: envelope.tree,
+          progress: { currentChapterId: nextCurrent, doneChapterIds },
+          design: envelope.design,
+        }),
         // 全章确定 → 进下一环 theme + 解锁导出(§4.2(1) / §4.5a). Only the stage column
         // moves; status stays whatever the init lifecycle left it (EDITING).
         ...(allDone ? { stage: 'theme' as const } : {}),
       });
 
       return storyProgressFrom(allDone ? 'theme' : album.stage, {
-        ...normalized,
+        ...envelope,
         progress: { currentChapterId: nextCurrent, doneChapterIds },
       });
     });
@@ -793,22 +796,40 @@ export const albumService = {
     },
   ): Promise<void> {
     if (input.committed) {
-      const pages = input.pages.map((page) => Page.parse(page));
+      // 数组序是唯一真相,pageIndex 按位置重编号(0..n-1)。design-agent 的写工具
+      // (move_pages;delete_page 同理)只动数组顺序、不改页对象的 pageIndex 字段
+      // (album-move-pages-tool.test.ts 锁死逐字节不变)—— 拆表前 draftJson.pages
+      // 靠数组顺序天然承载页序,拆表后 replaceAll 按 page.pageIndex 落行、读回按
+      // pageIndex 排序,不重编号的话挪页/删页会在落库时被旧 pageIndex 静默还原。
+      // 行级世界的一致性不变式也要求它:updatePage 按数组下标取页、按 pageIndex
+      // 定位行,二者必须相等且连续。
+      const pages = input.pages.map((page, i) => ({ ...Page.parse(page), pageIndex: i }));
       await db.transaction(async (tx) => {
         const latest = await albumRepo.findByIdForUpdate(tx, albumId);
         if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
-        const current = readStoryDraft(latest.draftJson);
-        if (!current?.pages) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft pages');
-        const nextDraft: V3StoryDraft = {
-          version: 'v3-story',
-          tree: current.tree,
-          pages,
-          progress: current.progress,
-        };
-        // 编辑一本已 COMPLETED 的书 → 退回 EDITING(photo-snapshot §5.5,同 updatePage):
-        // 导出即完成、但不锁编辑;一旦改动,旧 PDF 不再代表当前内容,状态回 EDITING。pdfUrl 保留。
+
+        // draft_pages 拆表(Phase 1a)固定写事务次序,同 T3/T4/T5:行锁(above)→
+        // 懒播种 → 用锁内 draftJson 的 envelope(tree/progress/design)—— design
+        // chat 每轮由 Agent 整书回放全部 pages(move_pages 会增删页,不是逐页
+        // patch),这里从来不需要旧 pages 内容,只需要「有没有草稿」这个门禁和
+        // envelope 三件套用于重写 draftJson,所以直接解 envelope 而不是绕
+        // loadStoryDraft 多读一次 draft_pages/legacy pages。
+        const seededRevision = await ensureDraftPagesSeeded(tx, latest);
+        const envelope = parseDraftEnvelope(latest.draftJson);
+        if (!envelope) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft pages');
+
+        const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+        await draftPageRepo.replaceAll(tx, albumId, pages, rev, userId);
+
+        // 编辑一本已 COMPLETED 的书 → 退回 EDITING(photo-snapshot §5.5,同
+        // updatePage/reorderPages):导出即完成、但不锁编辑;一旦改动,旧 PDF 不
+        // 再代表当前内容,状态回 EDITING。pdfUrl 保留。envelope-only 重写:页真
+        // 相已迁 draft_pages,draftJson 只剩 {tree, progress, design}(锁内最新
+        // 值,design chat 没有动 tree/progress)。pageCount 收口点三:
+        // move_pages 会增删页,必须显式跟 pages.length(此前这里遗漏)。
         await albumRepo.update(tx, albumId, {
-          draftJson: nextDraft,
+          draftJson: envelopeJson({ tree: envelope.tree, progress: envelope.progress, design: envelope.design }),
+          pageCount: pages.length,
           ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
         });
       });
@@ -847,54 +868,70 @@ export const albumService = {
     // 历史(否则收集环节的 AI 问 + 用户答只在 DOM,刷新即失)。可选:跳过采访不传 messages。
     messages?: { chapterId: string; role: 'user' | 'assistant'; content: string }[],
   ): Promise<{ savedChapterIds: string[] }> {
-    const album = await this.findOwned(userId, albumId);
-    const normalized = readStoryDraft(album.draftJson);
-    if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+    // draft_pages 拆表(Phase 1a)修复:此前用 findOwned(无锁)在事务外读 album,
+    // 再在一个独立事务里整块重写 draftJson(顺带把当时读到的 pages 原样搬运回去)
+    // —— 无锁 + 事务外读改写窗口,且徒手搬运页数据。现在行锁 + 锁内读 envelope
+    // (parseDraftEnvelope,不需要页数据,不经 loadStoryDraft)→ 改 tree →
+    // ensureDraftPagesSeeded(全局写序无例外,见下方调用点注释)→ envelope-only 重写
+    // (envelopeJson,天然不含 pages 键)。不 bump draft_revision、不做行级写:页没变,
+    // Phase 1b 的 collab-sync 只关心页变化(计划明文)。
+    return db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+      if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
 
-    const expectedIds = new Set(normalized.tree.chapters.map((ch) => ch.chapterId));
-    const seen = new Set<string>();
-    const byId = new Map<string, { chapterContext: string; place?: string }>();
-    for (const entry of contexts) {
-      if (!expectedIds.has(entry.chapterId)) {
-        throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+      const envelope = parseDraftEnvelope(album.draftJson);
+      if (!envelope) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
+
+      const expectedIds = new Set(envelope.tree.chapters.map((ch) => ch.chapterId));
+      const seen = new Set<string>();
+      const byId = new Map<string, { chapterContext: string; place?: string }>();
+      for (const entry of contexts) {
+        if (!expectedIds.has(entry.chapterId)) {
+          throw ERRORS.VALIDATION_FAILED('chapterId not found in draft');
+        }
+        if (seen.has(entry.chapterId)) {
+          throw ERRORS.VALIDATION_FAILED('duplicate chapterId in chapter contexts');
+        }
+        seen.add(entry.chapterId);
+        // 裁到 500(与 V3Chapter.chapterContext 上限对齐);空串合法(=该章跳过采访)。
+        // place 是城市级地名文字(V3Chapter.place,§3:坐标不出浏览器,地名文字可出),
+        // 裁到 100;未传 = 不改该章现有 place。
+        byId.set(entry.chapterId, {
+          chapterContext: entry.chapterContext.slice(0, 500),
+          ...(entry.place !== undefined ? { place: entry.place.slice(0, 100) } : {}),
+        });
       }
-      if (seen.has(entry.chapterId)) {
-        throw ERRORS.VALIDATION_FAILED('duplicate chapterId in chapter contexts');
-      }
-      seen.add(entry.chapterId);
-      // 裁到 500(与 V3Chapter.chapterContext 上限对齐);空串合法(=该章跳过采访)。
-      // place 是城市级地名文字(V3Chapter.place,§3:坐标不出浏览器,地名文字可出),
-      // 裁到 100;未传 = 不改该章现有 place。
-      byId.set(entry.chapterId, {
-        chapterContext: entry.chapterContext.slice(0, 500),
-        ...(entry.place !== undefined ? { place: entry.place.slice(0, 100) } : {}),
+
+      const nextTree: typeof envelope.tree = {
+        chapters: envelope.tree.chapters.map((ch) => {
+          const update = byId.get(ch.chapterId);
+          if (update === undefined) return ch;
+          return {
+            ...ch,
+            chapterContext: update.chapterContext,
+            ...(update.place !== undefined ? { place: update.place } : {}),
+          };
+        }),
+      };
+
+      // 全局写序无例外(计划 Global Constraints:行锁 → ensureDraftPagesSeeded → …):
+      // 这一步不碰页,但下面的 envelope-only 覆盖仍会整块重写 draftJson —— 这个写点
+      // 在「加照片后再采访」链路上真实可达(ChatPanel waitForAppendChapters →
+      // finishInterview → POST /chapter-context),若这本相册的页此时仍只活在 legacy
+      // draftJson.pages 里(还没被任何行级写点摸过),不先播种就直接覆盖会把它连根
+      // 拔掉。返回值不需要:这里不推进 revision、不做任何行级写,只是确保 legacy
+      // pages 在被覆盖前已经安全落到 draft_pages 行;播种自身首次触发(0→1)的一次性
+      // revision 前移是它的既定副作用,不是本方法「推进 revision」。
+      await ensureDraftPagesSeeded(tx, album);
+
+      await albumRepo.update(tx, albumId, {
+        draftJson: envelopeJson({ tree: nextTree, progress: envelope.progress, design: envelope.design }),
       });
-    }
 
-    const nextTree: typeof normalized.tree = {
-      chapters: normalized.tree.chapters.map((ch) => {
-        const update = byId.get(ch.chapterId);
-        if (update === undefined) return ch;
-        return {
-          ...ch,
-          chapterContext: update.chapterContext,
-          ...(update.place !== undefined ? { place: update.place } : {}),
-        };
-      }),
-    };
-
-    const nextDraft: V3StoryDraft = {
-      version: 'v3-story',
-      tree: nextTree,
-      ...(normalized.pages ? { pages: normalized.pages } : {}),
-      progress: normalized.progress,
-    };
-
-    await db.transaction(async (tx) => {
-      await albumRepo.update(tx, albumId, { draftJson: nextDraft });
       // 采访问答进 album_messages(带 chapterId),供 loadHistory 按 seq 顺序重建。只存该章存在
       // 的消息。顺序由 repo.create 分配的单调 seq 保证(写入顺序 = 回放顺序),不再手工错开
-      // createdAt —— 「问1→问2→问3→答」按这里的循环顺序落库即可。
+      // createdAt —— 「问1→问2→问3→答」按这里的循环顺序落库即可。原样未动(§brief 第二部分)。
       for (const m of messages ?? []) {
         const content = m.content.trim();
         if (!content || !expectedIds.has(m.chapterId)) continue;
@@ -906,9 +943,9 @@ export const albumService = {
           content: content.slice(0, 2000),
         });
       }
-    });
 
-    return { savedChapterIds: [...seen] };
+      return { savedChapterIds: [...seen] };
+    });
   },
 
   // Read-only RENDER projection of the V3 authoring tree (draft_json) for the
@@ -1297,6 +1334,9 @@ export const albumService = {
   // 空 coverSlots/endingSlots → engine 跳过全局批次:不写封面、不回字体)。已设计的书
   // 专用 —— 未设计的书返回 composed:false,新页等用户选封面时随全书成稿一起写。
   // 幂等:与全书成稿共用 (album,'compose') 活跃唯一索引,在途成稿只有一单。
+  // 拆表适配(合并 origin/main 时改写):页/树源从 loadStoryDraft 行读 —— main 线原
+  // 实现直接读 album.draftJson,对已播种行的相册那是陈旧快照(updatePage 摸过一次
+  // 就分叉)。bake:false:这里只提设计三键与图槽归属,不需要现场烘 html。
   async composeAppend(
     userId: string,
     albumId: string,
@@ -1305,21 +1345,19 @@ export const albumService = {
     const album = await this.findOwned(userId, albumId);
     if (album.status !== 'EDITING' || album.layoutJson != null) throw ERRORS.ALBUM_NOT_EDITABLE();
 
-    const root = album.draftJson as { tree?: { chapters?: unknown }; pages?: unknown } | null;
-    const rawPages = Array.isArray(root?.pages) ? (root!.pages as Page[]) : [];
+    const draft = await loadStoryDraft(album, { bake: false });
+    const rawPages: Page[] = draft?.pages ?? [];
     if (rawPages.length === 0) throw ERRORS.VALIDATION_FAILED('append compose requires laid-out pages');
     // 设计三键提取不到 = 书没设计过:不派发,新页文案等全书成稿(选封面)一起写。
     if (!extractDesignFromPages(rawPages)) return { accepted: true, composed: false };
 
-    const chapters = Array.isArray((root?.tree as { chapters?: unknown })?.chapters)
-      ? ((root!.tree as { chapters: unknown[] }).chapters as Array<{
-          chapterId?: string;
-          title?: string;
-          chapterContext?: string;
-          place?: string;
-          photos?: Array<{ photoId: string; takenAt?: string | null }>;
-        }>)
-      : [];
+    const chapters = (draft?.tree.chapters ?? []) as Array<{
+      chapterId?: string;
+      title?: string;
+      chapterContext?: string;
+      place?: string;
+      photos?: Array<{ photoId: string; takenAt?: string | null }>;
+    }>;
     const scope = new Set(input.chapterIds);
     const scoped = chapters.filter((c) => c.chapterId && scope.has(c.chapterId));
     if (scoped.length !== scope.size) {
@@ -1390,13 +1428,25 @@ export const albumService = {
     return { accepted: true, composed: true, requestId };
   },
 
-  // Hard delete. FK ON DELETE CASCADE drops pages / messages / jobs / holds in
-  // the same statement; credit_ledger.related_album_id is set null so the audit
-  // trail survives. A still-HOLDING hold never debited the balance, so removing
-  // it strands no credit.
+  // Hard delete. FK ON DELETE CASCADE drops pages / messages / jobs / holds /
+  // photos in the same statement; credit_ledger.related_album_id is set null so
+  // the audit trail survives. A still-HOLDING hold never debited the balance, so
+  // removing it strands no credit. album_photos is still deleted explicitly
+  // (belt-and-suspenders alongside the FK cascade, same as the rest of this
+  // method relying on cascade for album_pages etc).
+  //
+  // Row-locked (findByIdForUpdate) rather than a plain findOwned: photo-original
+  // confirm() takes the same albums row lock before reading/writing album_photos,
+  // so locking here too serializes delete against a concurrent confirm instead of
+  // racing an unlocked deleteByAlbum against confirm's read-then-upsert.
   async delete(userId: string, albumId: string): Promise<void> {
-    await this.findOwned(userId, albumId);
-    await albumRepo.delete(db, albumId);
+    await db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+      if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+      await albumPhotoRepo.deleteByAlbum(tx, albumId);
+      await albumRepo.delete(tx, albumId);
+    });
   },
 
   // Editor saves a single page (docs/web/api.md §3.5). The whole layout_json is
@@ -1430,9 +1480,26 @@ export const albumService = {
       const latest = await albumRepo.findByIdForUpdate(tx, albumId);
       if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
       if (latest.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
-      const current = readStoryDraft(latest.draftJson);
-      const hasDraft = !!current?.pages?.length;
-      if (!hasDraft) {
+
+      // draft_pages 拆表(Phase 1a)固定写事务次序:行锁(above)→ 懒播种 → 行级写
+      // → bump revision(docs/plans/2026-08-03-draft-pages-split.md Global
+      // Constraints)。播种对没有 legacy pages 的相册是 no-op,返回值就是不变的
+      // 当前 revision——`bumpDraftRevision` 必须接它而不是 `latest.draftRevision`,
+      // 否则刚播种(0→1)的相册这次写入会把 revision 撞错。
+      const seededRevision = await ensureDraftPagesSeeded(tx, latest);
+      // bake:true(not false) is load-bearing here: a page that has never had
+      // `html` baked must come back WITH a freshly-baked html so the
+      // textStyles/pageStyle patch calls below have something to attach to.
+      // This restores the old `readStoryDraft`'s wrapped-branch behavior
+      // (bakePagesHtml on read, before the patch block ran) — bake:false would
+      // leave `page.html` undefined, skip every guarded html patch, and the
+      // tail's bakePageHtml({strict:false}) fallback has no textStyles/
+      // pageStyle inputs to rebake from (those only ever exist as inline style
+      // mutations on an html string, never as a Page data field), so a
+      // textStyles/pageStyle edit on such a page would silently vanish while
+      // still returning {updated:true}.
+      const draft = await loadStoryDraft(latest, { tx, bake: true });
+      if (!draft || !draft.pages.length) {
         await albumPageRepo.updateOne(tx, albumId, pageIndex, {
           imagesJson: patch.imagesJson,
           textsJson: patch.textsJson,
@@ -1449,9 +1516,8 @@ export const albumService = {
         });
         return;
       }
-      const pages = current?.pages ? [...current.pages] : null;
-      const existing = pages?.[pageIndex];
-      if (!current || !pages || !existing) {
+      const existing = draft.pages[pageIndex];
+      if (!existing) {
         throw ERRORS.VALIDATION_FAILED(`draft page ${pageIndex} not found`);
       }
 
@@ -1504,16 +1570,13 @@ export const albumService = {
         page.html = rebaked.html;
       }
 
-      pages[pageIndex] = page;
-      const nextDraft: V3StoryDraft = {
-        version: 'v3-story',
-        tree: current.tree,
-        pages,
-        progress: current.progress,
-      };
+      const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+      await draftPageRepo.updateOne(tx, albumId, pageIndex, page, rev, userId);
+
+      // envelope(tree/progress/design)不重写:页真相已迁 draft_pages,这次编辑
+      // 没有动 tree/progress,draftJson 保持原样。副作用不变:编辑已 COMPLETED 的
+      // 书 → 退回 EDITING(photo-snapshot §5.5,同上);page 0 清封面缩略图缓存。
       await albumRepo.update(tx, albumId, {
-        draftJson: nextDraft,
-        // 编辑已 COMPLETED 的书 → 退回 EDITING(photo-snapshot §5.5,同上)。
         ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
         ...(pageIndex === 0
           ? { coverThumbnailUrl: null, coverThumbnailR2Key: null }
@@ -1541,11 +1604,19 @@ export const albumService = {
       if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
       if (latest.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
 
-      const current = readStoryDraft(latest.draftJson);
-      const draftPages = current?.pages;
-      const hasDraft = !!draftPages?.length;
+      // draft_pages 拆表(Phase 1a)固定写事务次序,同 updatePage(Task 3):行锁
+      // (above)→ 懒播种 → 用 loadStoryDraft 的行/回退判定路由。这里不能再用旧的
+      // 「直接读 draftJson.pages」判定:Task 3 之后 updatePage 只写行、不回写
+      // draftJson.pages,被 updatePage 摸过的相册 draftJson.pages 从此是陈旧快
+      // 照 —— 旧判定会在重排时用陈旧文案覆盖刚写的新文案(两轮 review 标记的误
+      // 路由隐患,回归守卫见 album-service.test.ts 的「reorderPages 路由判定必须
+      // 与 updatePage 一致」用例)。bake:false:这里不碰 html 一个字节,不需要现
+      // 场烘(html 逐字节不动的既有语义保留)。
+      const seededRevision = await ensureDraftPagesSeeded(tx, latest);
+      const draft = await loadStoryDraft(latest, { tx, bake: false });
+      const hasDraft = !!draft && draft.pages.length > 0;
       const legacyRows = hasDraft ? null : await albumPageRepo.findByAlbum(tx, albumId);
-      const n = hasDraft ? draftPages!.length : legacyRows!.length;
+      const n = hasDraft ? draft!.pages.length : legacyRows!.length;
 
       // 完整双射校验:长度一致、每个 0..n-1 恰好出现一次。
       if (permutation.length !== n) {
@@ -1557,7 +1628,7 @@ export const albumService = {
       }
       // 锚定页(cover/toc/ending)不许动 —— 服务端二次把关,不只靠前端置灰。
       const templateIdAt = (i: number): string =>
-        hasDraft ? draftPages![i]!.templateId : legacyRows![i]!.templateId;
+        hasDraft ? draft!.pages[i]!.templateId : legacyRows![i]!.templateId;
       for (let newIdx = 0; newIdx < n; newIdx++) {
         const oldIdx = permutation[newIdx]!;
         if (oldIdx === newIdx) continue;
@@ -1569,14 +1640,20 @@ export const albumService = {
       const touchesCover = permutation[0] !== 0;
 
       if (hasDraft) {
-        const nextDraft: V3StoryDraft = {
-          version: 'v3-story',
-          tree: current!.tree,
-          pages: permutation.map((oldIdx, newIdx) => ({ ...draftPages![oldIdx]!, pageIndex: newIdx })),
-          progress: current!.progress,
-        };
+        // 置换后整条记录跟着走,html 一个字不碰(与图片交换只动 imagesJson 刻意
+        // 不同,见本函数抬头注释)。
+        const permuted = permutation.map((oldIdx, newIdx) => ({
+          ...draft!.pages[oldIdx]!,
+          pageIndex: newIdx,
+        }));
+        const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+        await draftPageRepo.replaceAll(tx, albumId, permuted, rev, userId);
+        // envelope(tree/progress/design)不重写:页真相已迁 draft_pages,重排没
+        // 有动 tree/progress。pageCount 收口点一:整书替换后行数就是新的真相
+        // 页数(此前这里遗漏了 pageCount,拆表前 pages 与 pageCount 天然同源,
+        // 拆表后二者分离,必须显式跟上)。
         await albumRepo.update(tx, albumId, {
-          draftJson: nextDraft,
+          pageCount: permuted.length,
           ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
           // 防御:类目校验已经挡住封面移动,万一 0 号位真被换了,过期封面缩略图不能留。
           ...(touchesCover ? { coverThumbnailUrl: null, coverThumbnailR2Key: null } : {}),
@@ -1597,6 +1674,83 @@ export const albumService = {
       await albumRepo.update(tx, albumId, {
         ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
         ...(touchesCover ? { coverThumbnailUrl: null, coverThumbnailR2Key: null } : {}),
+      });
+    });
+    return { updated: true };
+  },
+
+  // ── 删除书页(2026-08-03 设计:docs/specs/2026-08-03-delete-page-design.md)。
+  // 只删内页(cover/toc/ending 拒绝 —— 服务端二次把关,不只靠前端置灰);图片随页
+  // 移除不回流;拒绝删到内页数为 0。余页 pageIndex 重排 0..n-1(PK (albumId,
+  // pageIndex) 要求连续无洞),pageCount 收口,COMPLETED → EDITING。
+  // 事务骨架与路由判定照抄 reorderPages(理由见其抬头):行锁 → 懒播种 →
+  // loadStoryDraft 判定行/存量路径。bake:false —— 删页不碰余页 html 一个字节。
+  async deletePage(
+    userId: string,
+    albumId: string,
+    pageIndex: number,
+  ): Promise<{ updated: true }> {
+    await db.transaction(async (tx) => {
+      const latest = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
+      if (latest.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+
+      const seededRevision = await ensureDraftPagesSeeded(tx, latest);
+      const draft = await loadStoryDraft(latest, { tx, bake: false });
+      const hasDraft = !!draft && draft.pages.length > 0;
+      const legacyRows = hasDraft ? null : await albumPageRepo.findByAlbum(tx, albumId);
+      const n = hasDraft ? draft!.pages.length : legacyRows!.length;
+
+      if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= n) {
+        throw ERRORS.VALIDATION_FAILED(`page ${pageIndex} out of range 0..${n - 1}`);
+      }
+      const templateIdAt = (i: number): string =>
+        hasDraft ? draft!.pages[i]!.templateId : legacyRows![i]!.templateId;
+      const category = getTemplate(templateIdAt(pageIndex))?.category;
+      if (category !== 'interior') {
+        throw ERRORS.VALIDATION_FAILED(
+          `page ${pageIndex} (${category ?? 'unknown'}) is anchored and cannot be deleted`,
+        );
+      }
+      // 下限保护:删后至少留一张内页(规格:拒绝删到内页数为 0)。
+      let interiorCount = 0;
+      for (let i = 0; i < n; i++) {
+        if (getTemplate(templateIdAt(i))?.category === 'interior') interiorCount += 1;
+      }
+      if (interiorCount <= 1) {
+        throw ERRORS.VALIDATION_FAILED('cannot delete the last interior page');
+      }
+
+      if (hasDraft) {
+        const remaining = draft!.pages
+          .filter((_, i) => i !== pageIndex)
+          .map((page, newIdx) => ({ ...page, pageIndex: newIdx }));
+        const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+        await draftPageRepo.replaceAll(tx, albumId, remaining, rev, userId);
+        // envelope(tree/progress/design)不重写:删页没有动 tree/progress。
+        // pageCount 收口:页数变化写点必须显式跟上(同 reorderPages 收口点一)。
+        await albumRepo.update(tx, albumId, {
+          pageCount: remaining.length,
+          ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
+        });
+        return;
+      }
+
+      // 存量路径(album_pages 行):unique(albumId,pageIndex) 原地平移会撞索引,
+      // 与 reorderPages 同法 delete-then-bulkInsert。
+      await albumPageRepo.deleteByAlbum(tx, albumId);
+      await albumPageRepo.bulkInsert(
+        tx,
+        legacyRows!
+          .filter((_, i) => i !== pageIndex)
+          .map((row, newIdx) => {
+            const { id: _id, updatedAt: _u, ...rest } = row;
+            return { ...rest, pageIndex: newIdx };
+          }),
+      );
+      await albumRepo.update(tx, albumId, {
+        pageCount: legacyRows!.length - 1,
+        ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
       });
     });
     return { updated: true };
