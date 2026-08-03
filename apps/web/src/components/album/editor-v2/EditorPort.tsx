@@ -106,6 +106,7 @@ import { isCjkFontId, type CjkFontId } from '@/services/font/font-manifest';
 import { FONT_CATALOG } from '@yujee/contracts/render';
 import { EDITOR_FONTS, CJK_PREVIEW_SAMPLE, type EditorFont } from './editor-fonts';
 import { clamp01, hsvToRgb, rgbToHsv, hexToRgb, toHex, rgbToHex } from './color-util';
+import { loadRecentColors, saveRecentColor } from './color-recent';
 import {
   applyPatchToPages,
   type AlbumDetail,
@@ -4034,6 +4035,8 @@ function EditorBook({
     // ── 字体面板(带搜索,列全部项目字体,自身字体预览)+ 字号预设面板 ──
     const SIZE_PRESETS = [12, 14, 16, 18, 24, 32, 40, 48, 64, 80, 96, 120];
     function closeEbPanels() {
+      // 取色面板从开到关 = 一次选色会话结束:此刻(且仅此刻)记「最近使用」。
+      if (byId('ebColorPanel')?.classList.contains('open')) commitRecentColor();
       byId('ebFontPanel')?.classList.remove('open');
       byId('ebSizePanel')?.classList.remove('open');
       byId('ebColorPanel')?.classList.remove('open');
@@ -4175,6 +4178,9 @@ function EditorBook({
 
     // ── 自定义取色器(「填充」弹层):HSV 方块 + 色相/透明度条 + 预设 + hex/不透明度 ──
     const ebColor = { h: 0, s: 0, v: 0, a: 1 };
+    // 本次打开是否真的应用过颜色(emitColor 置位)。关面板那一刻只有它为真才记
+    // 「最近使用」—— 开了就关不记,「无背景」清除也不记(见 color-recent.ts 抬头)。
+    let ebColorDirty = false;
     const ebColorRgb = () => hsvToRgb(ebColor.h, ebColor.s, ebColor.v);
     function ebColorCss() {
       const { r, g, b } = ebColorRgb();
@@ -4216,7 +4222,27 @@ function EditorBook({
       });
       updateColorDot();
     }
-    function emitColor() { colorContext.apply(ebColorCss()); updateColorDot(); }
+    function emitColor() { colorContext.apply(ebColorCss()); updateColorDot(); ebColorDirty = true; }
+    /** 关面板/换挂载点那一刻记「最近使用」。只记应用过颜色的会话,记完即复位。 */
+    function commitRecentColor() {
+      if (!ebColorDirty) return;
+      ebColorDirty = false;
+      saveRecentColor(ebColorCss());
+      renderRecentRow();
+    }
+    /** 预设一排下方的「最近使用」一排:空则整块隐藏。按钮同样带 data-swatch,
+     *  点选复用面板上已有的委托(setColorFromCss + emitColor),不另写处理器。 */
+    function renderRecentRow() {
+      const p = byId('ebColorPanel');
+      const wrap = p?.querySelector<HTMLElement>('[data-recent-wrap]');
+      const row = p?.querySelector<HTMLElement>('[data-recent-row]');
+      if (!wrap || !row) return;
+      const recents = loadRecentColors();
+      wrap.style.display = recents.length > 0 ? '' : 'none';
+      row.innerHTML = recents
+        .map((c) => `<button type="button" class="eb-color-swatch" data-swatch="${c}" style="background:${c}"></button>`)
+        .join('');
+    }
     function buildColorPanel() {
       const p = byId('ebColorPanel');
       if (!p || p.dataset.built) return;
@@ -4237,12 +4263,14 @@ function EditorBook({
           `<div class="eb-track eb-hue" data-hue><div class="eb-track-thumb" data-hue-thumb></div></div>` +
           `<div class="eb-track eb-alpha" data-alpha><div class="eb-alpha-bg" data-alpha-bg></div><div class="eb-track-thumb" data-alpha-thumb></div></div>` +
           `<div class="eb-swatch-row">${COLOR_SWATCHES.map((c) => `<button type="button" class="eb-color-swatch" data-swatch="${c}" style="background:${c}"></button>`).join('')}</div>` +
+          // 最近使用:预设一排的正下方(2026-08-03 用户拍板)。行内容由 renderRecentRow 填,空则整块隐藏。
+          `<div class="eb-recent-wrap" data-recent-wrap style="display:none"><div class="eb-recent-label">${zh ? '最近使用' : 'Recent'}</div><div class="eb-swatch-row eb-recent-row" data-recent-row></div></div>` +
           `<div class="eb-color-fields"><span class="eb-hex-field"><b>#</b><input class="eb-hex-input" data-hex maxlength="6" spellcheck="false" /></span><span class="eb-alpha-field"><input class="eb-alpha-input" data-alpha-input inputmode="numeric" /><b>%</b></span></div>` +
         `</div>` +
         // 「无背景」:仅书页背景色场景显示(见 toggleColorPanel 按 colorContext.none 决定显隐),
         // 点击清除页背景 → 回落模板默认(白)。两模式共用,放最底。
         `<button type="button" class="eb-color-none" data-color-none style="display:none">${zh ? '无背景' : 'No background'}</button>`;
-      p.dataset.mode = 'grid'; // 默认色板模式(用户拍板)
+      p.dataset.mode = 'picker'; // 默认拾色器模式(2026-08-03 用户拍板,推翻早先的默认色板)
       // 顶部「填充」标题条 = 拖动手柄,整个气泡可挪。
       const head = p.querySelector<HTMLElement>('.eb-color-head');
       if (head) head.addEventListener('pointerdown', (e) => {
@@ -4265,7 +4293,8 @@ function EditorBook({
       p.addEventListener('click', (e) => {
         const t = e.target as HTMLElement;
         if (t.closest('[data-color-close]')) { closeEbPanels(); return; }
-        if (t.closest('[data-color-none]')) { colorContext.none?.(); if (p.classList.contains('eb-color-inline')) renderColorPanel(); else closeEbPanels(); return; }
+        // 「无背景」是清除不是选色:复位脏标记,随后的关面板不把被清掉的颜色记进「最近使用」。
+        if (t.closest('[data-color-none]')) { ebColorDirty = false; colorContext.none?.(); if (p.classList.contains('eb-color-inline')) renderColorPanel(); else closeEbPanels(); return; }
         const modeBtn = t.closest<HTMLElement>('[data-color-mode]');
         if (modeBtn?.dataset.colorMode) { p.dataset.mode = modeBtn.dataset.colorMode; renderColorPanel(); return; }
         const sw = t.closest<HTMLElement>('[data-swatch]');
@@ -4289,12 +4318,14 @@ function EditorBook({
       closeEbPanels();
       if (!willOpen) return;
       buildColorPanel();
-      p.dataset.mode = 'grid'; // 每次打开默认回到色板模式(用户拍板)
+      p.dataset.mode = 'picker'; // 每次打开默认回到拾色器模式(2026-08-03 用户拍板)
+      ebColorDirty = false; // 新会话:还没选过色
       // 初值从当前作用对象回填(文字色 / 页背景色);「无背景」按钮仅在有 none 动作时显示。
       const init = colorContext.initial();
       if (init) setColorFromCss(init);
       const noneBtn = p.querySelector<HTMLElement>('[data-color-none]');
       if (noneBtn) noneBtn.style.display = colorContext.none ? '' : 'none';
+      renderRecentRow();
       renderColorPanel();
       p.classList.add('open');
       positionEbPanel(p);
@@ -4406,11 +4437,13 @@ function EditorBook({
       closeEbPanels();
       buildColorPanel();
       colorContext = ctx;
-      panel.dataset.mode = 'grid'; // 默认色板(用户拍板);拾色器由段控件切换
+      panel.dataset.mode = 'picker'; // 默认拾色器(2026-08-03 用户拍板);色板由段控件切换
+      ebColorDirty = false; // 新会话:还没选过色
       const init = ctx.initial();
       if (init) setColorFromCss(init);
       const noneBtn = panel.querySelector<HTMLElement>('[data-color-none]');
       if (noneBtn) noneBtn.style.display = ctx.none ? '' : 'none';
+      renderRecentRow();
       renderColorPanel();
       panel.classList.add('eb-color-inline', 'open');
       slot.appendChild(panel);
@@ -4418,6 +4451,8 @@ function EditorBook({
     function unmountSharedColorPicker() {
       const panel = byId('ebColorPanel');
       if (!panel || !panel.classList.contains('eb-color-inline')) return;
+      // 内联挂载的卸载不经 closeEbPanels,这里补同一笔「最近使用」记账。
+      commitRecentColor();
       panel.classList.remove('eb-color-inline', 'open');
       const noneBtn = panel.querySelector<HTMLElement>('[data-color-none]');
       if (noneBtn) noneBtn.style.display = 'none';

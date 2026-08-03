@@ -1777,6 +1777,9 @@
   box-shadow:0 0 0 1px var(--border);
 }
 .editor-port .eb-color-swatch.active{ box-shadow:0 0 0 2px var(--accent); }
+/* 最近使用:预设一排正下方,小标签 + 同款 swatch 行(空时 JS 整块隐藏) */
+.editor-port .eb-recent-label{ padding:12px 14px 0; font-size:11px; color:var(--meta); }
+.editor-port .eb-recent-row{ padding-top:6px; }
 .editor-port .eb-color-fields{ display:flex; gap:8px; padding:8px 14px 14px; min-width:0; }
 .editor-port .eb-hex-field, .editor-port .eb-alpha-field{
   display:flex; align-items:center; gap:4px; height:32px; padding:0 10px; border-radius:9px;
