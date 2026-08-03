@@ -1447,11 +1447,19 @@ export const albumService = {
       if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
       if (latest.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
 
-      const current = readStoryDraft(latest.draftJson);
-      const draftPages = current?.pages;
-      const hasDraft = !!draftPages?.length;
+      // draft_pages 拆表(Phase 1a)固定写事务次序,同 updatePage(Task 3):行锁
+      // (above)→ 懒播种 → 用 loadStoryDraft 的行/回退判定路由。这里不能再用旧的
+      // 「直接读 draftJson.pages」判定:Task 3 之后 updatePage 只写行、不回写
+      // draftJson.pages,被 updatePage 摸过的相册 draftJson.pages 从此是陈旧快
+      // 照 —— 旧判定会在重排时用陈旧文案覆盖刚写的新文案(两轮 review 标记的误
+      // 路由隐患,回归守卫见 album-service.test.ts 的「reorderPages 路由判定必须
+      // 与 updatePage 一致」用例)。bake:false:这里不碰 html 一个字节,不需要现
+      // 场烘(html 逐字节不动的既有语义保留)。
+      const seededRevision = await ensureDraftPagesSeeded(tx, latest);
+      const draft = await loadStoryDraft(latest, { tx, bake: false });
+      const hasDraft = !!draft && draft.pages.length > 0;
       const legacyRows = hasDraft ? null : await albumPageRepo.findByAlbum(tx, albumId);
-      const n = hasDraft ? draftPages!.length : legacyRows!.length;
+      const n = hasDraft ? draft!.pages.length : legacyRows!.length;
 
       // 完整双射校验:长度一致、每个 0..n-1 恰好出现一次。
       if (permutation.length !== n) {
@@ -1463,7 +1471,7 @@ export const albumService = {
       }
       // 锚定页(cover/toc/ending)不许动 —— 服务端二次把关,不只靠前端置灰。
       const templateIdAt = (i: number): string =>
-        hasDraft ? draftPages![i]!.templateId : legacyRows![i]!.templateId;
+        hasDraft ? draft!.pages[i]!.templateId : legacyRows![i]!.templateId;
       for (let newIdx = 0; newIdx < n; newIdx++) {
         const oldIdx = permutation[newIdx]!;
         if (oldIdx === newIdx) continue;
@@ -1475,14 +1483,20 @@ export const albumService = {
       const touchesCover = permutation[0] !== 0;
 
       if (hasDraft) {
-        const nextDraft: V3StoryDraft = {
-          version: 'v3-story',
-          tree: current!.tree,
-          pages: permutation.map((oldIdx, newIdx) => ({ ...draftPages![oldIdx]!, pageIndex: newIdx })),
-          progress: current!.progress,
-        };
+        // 置换后整条记录跟着走,html 一个字不碰(与图片交换只动 imagesJson 刻意
+        // 不同,见本函数抬头注释)。
+        const permuted = permutation.map((oldIdx, newIdx) => ({
+          ...draft!.pages[oldIdx]!,
+          pageIndex: newIdx,
+        }));
+        const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+        await draftPageRepo.replaceAll(tx, albumId, permuted, rev, userId);
+        // envelope(tree/progress/design)不重写:页真相已迁 draft_pages,重排没
+        // 有动 tree/progress。pageCount 收口点一:整书替换后行数就是新的真相
+        // 页数(此前这里遗漏了 pageCount,拆表前 pages 与 pageCount 天然同源,
+        // 拆表后二者分离,必须显式跟上)。
         await albumRepo.update(tx, albumId, {
-          draftJson: nextDraft,
+          pageCount: permuted.length,
           ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
           // 防御:类目校验已经挡住封面移动,万一 0 号位真被换了,过期封面缩略图不能留。
           ...(touchesCover ? { coverThumbnailUrl: null, coverThumbnailR2Key: null } : {}),

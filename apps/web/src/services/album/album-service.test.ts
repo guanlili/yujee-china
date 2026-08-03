@@ -1989,7 +1989,7 @@ function reorderFixturePage(pageIndex: number, templateId: string, mark: string)
   } as Page;
 }
 
-test('reorderPages(draft 相册):按置换重排 draft_json.pages,pageIndex 重写 0..n-1,整条记录跟着走', async (t) => {
+test('reorderPages(draft 相册):按置换重排 draft_pages 行,pageIndex 重写 0..n-1,整条记录跟着走;所有行 version 推进到新 revision;pageCount 收口', async (t) => {
   if (!(await isDbReachable())) return t.skip('db not reachable');
   const user = await makeUser('wp-reorder-draft');
   try {
@@ -2009,20 +2009,25 @@ test('reorderPages(draft 相册):按置换重排 draft_json.pages,pageIndex 重�
     await albumService.reorderPages(user.id, album.id, [0, 2, 1]);
 
     const after = await albumRepo.findById(album.id);
-    const draft = after?.draftJson as { pages: Array<Page & { html?: string }> };
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const pages = rows.map((r) => r.page as Page & { html?: string; texts: Record<string, string> });
     assert.deepEqual(
-      draft.pages.map((p) => [p.pageIndex, p.texts.title]),
+      pages.map((p) => [p.pageIndex, p.texts.title]),
       [
         [0, 'COVER'],
         [1, 'B'],
         [2, 'A'],
       ],
-      '顺序按置换重排,pageIndex 重写连续',
+      '顺序按置换重排(读回从 draft_pages 行读,不再是 draft_json.pages),pageIndex 重写连续',
     );
     // 整页交换搬整条记录:html 原样跟着走,不重烘、不逐字段拆搬。
-    assert.match(draft.pages[1]!.html!, />B</);
-    assert.match(draft.pages[2]!.html!, /A/);
+    assert.match(pages[1]!.html!, />B</);
+    assert.match(pages[2]!.html!, /A/);
     assert.equal(after?.status, 'EDITING', '重排是一次编辑,COMPLETED 须退回 EDITING');
+    assert.equal(after?.pageCount, 3, 'pageCount 收口点一:置换后与行数一致');
+    for (const row of rows) {
+      assert.equal(row.version, after!.draftRevision, `第 ${row.pageIndex} 行 version 必须等于新 draftRevision`);
+    }
   } finally {
     await cleanupUser(user.id);
   }
@@ -2081,6 +2086,51 @@ test('reorderPages(无 draft 存量相册):album_pages 行按置换重写 pageIn
       ],
     );
     assert.deepEqual(rows[2]!.imagesJson, { a: 'p1' }, '整行内容原样跟着走');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// ── reorderPages 的路由判定必须与 updatePage(Task 3)用同一个 loadStoryDraft
+// 依据 ────────────────────────────────────────────────────────────────────
+// Task 3 之后 updatePage 只写 draft_pages 行,不再回写 draftJson.pages —— 被
+// updatePage 摸过的相册,draftJson.pages 从此是陈旧快照。如果 reorderPages 还照
+// 旧代码那样直接读 draftJson.pages 来判定「有没有草稿」、取源数据,重排时就会用
+// 陈旧文案覆盖掉 updatePage 刚写的新文案。这个用例钉住这条误路由回归。
+test('reorderPages 路由判定必须与 updatePage 一致:先 updatePage 改一页文案再 reorder,改动必须幸存(不能被陈旧 draftJson.pages 覆盖)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-reorder-misroute-guard');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 1, {
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-05', 'B'),
+      ],
+    });
+    assert.equal(
+      (await draftPageRepo.findByAlbum(albumId)).length,
+      0,
+      '此时 draft_pages 尚无行,只有 legacy draftJson.pages',
+    );
+
+    await albumService.updatePage(user.id, albumId, 1, { textsJson: { title: '改动幸存' } });
+
+    // updatePage 已经播种全书行并只改了目标行,draftJson.pages 从此是陈旧快照
+    // (Task 3:envelope 不重写,pages 不再进 draftJson)。
+    const stale = await albumRepo.findById(albumId);
+    const staleDraft = stale?.draftJson as { pages: Array<{ texts: { title: string } }> };
+    assert.equal(staleDraft.pages[1]?.texts.title, 'A', 'sanity: draftJson.pages 确实没跟着 updatePage 更新');
+
+    await albumService.reorderPages(user.id, albumId, [0, 2, 1]);
+
+    const rows = await draftPageRepo.findByAlbum(albumId);
+    const movedToIndex2 = rows.find((r) => r.pageIndex === 2)!;
+    assert.equal(
+      (movedToIndex2.page as Page & { texts: Record<string, string> }).texts.title,
+      '改动幸存',
+      'reorder 必须重排 updatePage 写入行级表的最新内容,不能读陈旧 draftJson.pages 覆盖回去',
+    );
   } finally {
     await cleanupUser(user.id);
   }
