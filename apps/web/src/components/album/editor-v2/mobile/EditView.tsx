@@ -31,6 +31,7 @@ import { pageFaceHTML, type PageFaceCtx } from '../page-face';
 import { pageFolioInfos } from '../../page-html-dom';
 import { useFitTextBoxes } from '../../use-fit-text-boxes';
 import { isSpreadTemplate } from '../../templates/constants';
+import { getTemplate } from '@yujee/contracts/templates';
 import type { ResolveImage } from '../../adapt-layout';
 import { fitBox, spreadAspect } from './fit-box';
 import { MobileTopbar } from './MobileTopbar';
@@ -775,10 +776,26 @@ export function EditView({
           <IconText className="ml1-ic" />
           <span>{zh ? '文字' : 'Text'}</span>
         </button>
-        <button type="button" className="ml1-cell" data-danger="1" onClick={onDeletePage}>
-          <IconTrash className="ml1-ic" />
-          <span>{zh ? '删除' : 'Delete'}</span>
-        </button>
+        {(() => {
+          // 非内页(封面/目录/封尾)置灰:仍可点,点了由容器层 toast 说明原因 ——
+          // 沿用「不做死按钮」口径,置灰只是视觉预告,服务端另有二次把关。
+          const current = editPage != null ? pages[editPage] : undefined;
+          const deletable = current
+            ? getTemplate(current.templateId)?.category === 'interior'
+            : false;
+          return (
+            <button
+              type="button"
+              className="ml1-cell"
+              data-danger="1"
+              aria-disabled={deletable ? undefined : true}
+              onClick={onDeletePage}
+            >
+              <IconTrash className="ml1-ic" />
+              <span>{zh ? '删除' : 'Delete'}</span>
+            </button>
+          );
+        })()}
       </nav>
     </div>
   );
