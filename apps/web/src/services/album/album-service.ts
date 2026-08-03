@@ -752,7 +752,9 @@ export const albumService = {
   // 路径共用。
   async prepareDesignChat(userId: string, albumId: string): Promise<void> {
     const album = await this.findOwned(userId, albumId);
-    const normalized = readStoryDraft(album.draftJson);
+    // 行读(同 getDraftSkeleton,2026-08-03 线上事故):否则设计 Agent 装的是 legacy
+    // 陈旧书,commit 回写时 replaceAll 会用陈旧页覆盖用户在编辑器里的行级编辑。
+    const normalized = await loadStoryDraft(album, { bake: true });
     if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
     if (!normalized.pages || normalized.pages.length === 0) {
       throw ERRORS.VALIDATION_FAILED('album has no layout pages yet');
@@ -977,7 +979,11 @@ export const albumService = {
       album.layoutJson
     )
       return null;
-    const normalized = readStoryDraft(album.draftJson);
+    // draft_pages 拆表:页真相在行级表,这里必须行读(loadStoryDraft 行优先、无行才
+    // 回退 legacy)。2026-08-03 线上事故:写点(T3-T5)已切行、这里还读 legacy
+    // draftJson.pages,用户的编辑「保存成功但刷新消失」。bake:true 保持原
+    // readStoryDraft 的兜底烘制语义(skeleton 对外带 htmlJson)。
+    const normalized = await loadStoryDraft(album, { bake: true });
     if (!normalized) return null;
     // 排版前 pages 尚不存在 —— 用空数组,chapters 仍从 tree 出(带 photoIds),让收集面板可用。
     const draftPages = normalized.pages ?? [];

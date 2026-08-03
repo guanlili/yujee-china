@@ -2458,6 +2458,43 @@ test('deletePage:拒绝 —— 删 cover 类目页/删最后一张内页/越界,
   }
 });
 
+// ── 2026-08-03 线上事故回归:「保存成功但刷新消失」。写点(T3-T5)已切 draft_pages
+// 行,而编辑器读点(getDraftSkeleton)仍读 legacy draftJson.pages —— 用户改完刷新,
+// 读回的是拆表前的陈旧快照,所有编辑不可见。读点必须走 loadStoryDraft(行优先)。
+test('getDraftSkeleton 读行级真相:updatePage/deletePage 之后再读必须看见改动', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-skeleton-rows');
+  try {
+    const album = await makeAlbum(user.id);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree: makeStoryTree(1),
+      pages: [
+        reorderFixturePage(0, 'mag-01', 'COVER'),
+        reorderFixturePage(1, 'mag-03', 'A'),
+        reorderFixturePage(2, 'mag-05', 'B'),
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    await albumService.updatePage(user.id, album.id, 1, { textsJson: { title: '编辑必须活过刷新' } });
+    const afterEdit = await albumService.getDraftSkeleton(user.id, album.id);
+    assert.equal(
+      afterEdit?.pages[1]?.textsJson.title,
+      '编辑必须活过刷新',
+      '改文字后重新读 skeleton 必须看见新文案(不能读 legacy 陈旧快照)',
+    );
+
+    await albumService.deletePage(user.id, album.id, 1);
+    const afterDelete = await albumService.getDraftSkeleton(user.id, album.id);
+    assert.equal(afterDelete?.pages.length, 2, '删页后重新读 skeleton 页数必须变少');
+    assert.equal(afterDelete?.pages[1]?.textsJson.title, 'B', '幸存页顺延');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 // updatePage 与 deletePage 同一条线上契约(pageIndex 字段):稀疏字段相册上按数组
 // 下标解析时,字段值若恰好落在数组范围内会**静默改错页**(比报错更危险)。
 test('updatePage:按 pageIndex 字段解析 —— 稀疏字段(0/129/132)相册改的是字段=129 那页,不是数组第 129/1 位', async (t) => {
