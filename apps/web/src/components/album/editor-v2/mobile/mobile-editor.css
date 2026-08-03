@@ -1279,6 +1279,6 @@
   flex: 1; padding: 11px 0; border-radius: 10px; font-size: 15px;
   border: 1px solid rgba(0, 0, 0, 0.12); background: transparent; color: var(--fg);
 }
-.mobile-modal-host .mdel-danger { background: #c44; border-color: #c44; color: #fff; }
+.mobile-modal-host .mdel-danger { background: #c44; border-color: #c44; color: var(--surface); }
 /* 一级栏删除格:非内页时置灰(仍可点,点了 toast 说明原因)。 */
 .mobile-editor .ml1-cell[aria-disabled='true'] { opacity: 0.35; }
