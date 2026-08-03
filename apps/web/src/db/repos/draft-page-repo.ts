@@ -1,4 +1,4 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import type { Page } from '@yujee/contracts';
 import { db, type DbOrTx } from '../client';
 import { draftPages, type DraftPage } from '../schema';
@@ -24,10 +24,14 @@ export const draftPageRepo = {
     return rows[0]?.total ?? 0;
   },
 
-  // Single-row replace: overwrites the page content, stamps the new
-  // version/updatedBy. Caller passes the open transaction (write path always
-  // runs inside an `albums` row lock — see the plan's fixed write-transaction
-  // order).
+  // Single-row replace of an EXISTING row: overwrites the page content,
+  // stamps the new version/updatedBy. Caller passes the open transaction
+  // (write path always runs `ensureDraftPagesSeeded` inside the `albums` row
+  // lock before this — see the plan's fixed write-transaction order — so the
+  // row is expected to already exist). Deliberately a strict UPDATE, not an
+  // upsert: a 0-row hit means a caller skipped seeding or passed an
+  // out-of-range pageIndex, and that must fail loudly rather than silently
+  // create a stray row.
   updateOne: async (
     tx: DbOrTx,
     albumId: string,
@@ -36,13 +40,16 @@ export const draftPageRepo = {
     version: number,
     updatedBy: string | null,
   ): Promise<void> => {
-    await tx
-      .insert(draftPages)
-      .values({ albumId, pageIndex, page, version, updatedBy })
-      .onConflictDoUpdate({
-        target: [draftPages.albumId, draftPages.pageIndex],
-        set: { page, version, updatedBy, updatedAt: new Date() },
-      });
+    const updated = await tx
+      .update(draftPages)
+      .set({ page, version, updatedBy, updatedAt: new Date() })
+      .where(and(eq(draftPages.albumId, albumId), eq(draftPages.pageIndex, pageIndex)))
+      .returning({ pageIndex: draftPages.pageIndex });
+    if (updated.length === 0) {
+      throw new Error(
+        `draft_pages.updateOne: row not found (albumId=${albumId}, pageIndex=${pageIndex})`,
+      );
+    }
   },
 
   // Full-book replace = deleteByAlbum + bulk insert, same transaction (the

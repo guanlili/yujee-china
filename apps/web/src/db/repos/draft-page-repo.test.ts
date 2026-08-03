@@ -71,6 +71,21 @@ test('draftPageRepo: replaceAll + findByAlbum + countByAlbum + updateOne + idemp
     assert.equal(untouched?.version, 1);
     assert.equal(untouched?.updatedBy, user.id);
 
+    // --- updateOne on a pageIndex that doesn't exist rejects loudly and
+    // leaves no stray row behind (strict UPDATE, not an upsert) ---
+    const countBeforeMiss = await draftPageRepo.countByAlbum(album.id);
+    await assert.rejects(
+      db.transaction(async (tx) => {
+        await draftPageRepo.updateOne(tx, album.id, 99, page0Edited, 4, user.id);
+      }),
+      /draft_pages\.updateOne: row not found/,
+    );
+    assert.equal(await draftPageRepo.countByAlbum(album.id), countBeforeMiss);
+    assert.equal(
+      (await draftPageRepo.findByAlbum(album.id)).find((r) => r.pageIndex === 99),
+      undefined,
+    );
+
     // --- replaceAll is idempotent: rerunning with the identical args yields
     // the same two rows, not duplicates ---
     const rerun = [page0Edited, page1];
