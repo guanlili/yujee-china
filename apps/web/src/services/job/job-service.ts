@@ -709,7 +709,21 @@ export const jobService = {
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
 
     const mapped = { code: mapAgentErrorCode(error.code), message: error.message };
+    // 锁序修复(controller 二次派单,2026-08-03,与 sweepStaleJob 同一类问题):下面的
+    // 兜底(init/finalize)分支原来是先锁 job 行(agentJobRepo.transitionStatus)、再锁
+    // album 行(albumRepo.update)——与三个回调 + 已修的 sweepStaleJob 的 album→job 顺序
+    // 相反,构成同一类 AB-BA 死锁对。这条路径从 /api/v3/internal/job-progress 的
+    // event:'failed' 活着可达,最可能撞上的窗口是:同一个 init job 快到僵尸超时,一条
+    // 迟到的 'failed' 回调与 sweepStaleJob 前后脚触发。
+    // job.kind/job.albumId 不可变(与 sweepStaleJob 的 peek 同一论证——job 行创建后这两个
+    // 字段从不被任何写点改动),可以直接用最上面已经读到的 job 对象判断这次要不要先锁
+    // album,不需要像 sweepStaleJob 那样再多读一次。
+    const touchesAlbumRow = job.kind !== 'layout' && job.kind !== 'compose' && job.kind !== 'add';
     await db.transaction(async (tx) => {
+      // ALBUM 锁必须先拿(需要的话),再拿 JOB 锁——与三个回调、sweepStaleJob 的锁序对齐。
+      if (touchesAlbumRow) {
+        await albumRepo.findByIdForUpdate(tx, job.albumId);
+      }
       const won = await agentJobRepo.transitionStatus(tx, job.id, 'FAILED', ['QUEUED', 'RUNNING'], {
         error: mapped,
         completedAt: new Date(),
