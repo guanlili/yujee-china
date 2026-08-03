@@ -4874,8 +4874,12 @@ function EditorBook({
     // 的图 URL，不重挂 EditorBook、不重载图，避免"全局刷新闪一下"）。页数不变时当前位置保持。
     function replacePages(pages: EditorPage[]): boolean {
       if (pages.length === 0) return false;
-      pagesState = pages.map((p) => ({
-        pageIndex: p.pageIndex,
+      // pageIndex 按数组位置重编号,不信来料字段:编辑器全部按「数组下标 == pageIndex」
+      // 寻址,而 design-agent 的挪页/删页只动数组顺序、不改页对象字段 —— 原样采纳会让
+      // 之后的选中/改字/删页全部打错页(2026-08-03 挪页错乱的根因,服务端已同口径重编号,
+      // 这里是边界防御)。
+      pagesState = pages.map((p, i) => ({
+        pageIndex: i,
         templateId: p.templateId,
         imagesJson: { ...p.imagesJson },
         textsJson: { ...p.textsJson },

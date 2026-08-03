@@ -5,6 +5,7 @@ import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
 import { albumService } from '@/services/album/album-service';
 import { designAgentClient } from '@/lib/agent/design-agent-client';
+import { buildDesignDonePayload, type DesignDoneResponse } from '@/lib/agent/design-chat-done';
 
 // 写类工具：其操作在历史里以「更新了什么」彩色条呈现，需随 assistant 消息落库（存 layout_patch
 // 的 designOps）。必须覆盖全部 6 个写工具 —— set_text_fonts / write_page_html 过去漏在集合外，
@@ -93,15 +94,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
             }
             return;
           }
-          const response = (event.response ?? {}) as {
-            assistant?: { text?: unknown };
-            committed?: unknown;
-            book?: { pages?: unknown };
-          };
-          const assistantReply =
-            typeof response.assistant?.text === 'string' ? response.assistant.text : '';
-          const committed = response.committed === true;
-          const pages = Array.isArray(response.book?.pages) ? response.book.pages : [];
+          // pages 按数组序重编号 pageIndex(理由见 design-chat-done.ts 抬头):落库与
+          // 回发浏览器必须是同一份重编号结果,否则挪页/删页后浏览器书状态的 pageIndex
+          // 与数组序错位,画板一切按 pageIndex 寻址的操作从此打错页。
+          const { assistantReply, committed, pages } = buildDesignDonePayload(
+            (event.response ?? {}) as DesignDoneResponse,
+          );
           await albumService.persistDesignChat(user.id, uuid, {
             userMessage: body.userMessage,
             assistantReply,

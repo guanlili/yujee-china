@@ -182,7 +182,9 @@ export function useDesignChat(albumId: string, zh: boolean) {
             if (committed && Array.isArray(r.pages)) {
               onPages(
                 (r.pages as Record<string, unknown>[]).map((p, i) => ({
-                  pageIndex: typeof p.pageIndex === 'number' ? p.pageIndex : i,
+                  // 按数组位置重编号,不信来料 pageIndex 字段(与桌面 replacePages 同口径:
+                  // 挪页/删页只动数组序,原样采纳字段会让按 pageIndex 寻址的操作打错页)。
+                  pageIndex: i,
                   templateId: String(p.templateId ?? ''),
                   imagesJson: (p.images ?? {}) as Record<string, string>,
                   textsJson: (p.texts ?? {}) as Record<string, string>,
