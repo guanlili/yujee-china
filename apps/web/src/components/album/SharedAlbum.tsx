@@ -13,8 +13,8 @@ export type SharedBoardBackground =
   | null;
 
 const STRINGS = {
-  zh: { prevPage: '上一页', nextPage: '下一页', noPages: '暂无内容', editPage: '', pageIndicator: '{current} / {total}' },
-  en: { prevPage: 'Previous', nextPage: 'Next', noPages: 'Nothing to show', editPage: '', pageIndicator: '{current} / {total}' },
+  zh: { prevPage: '上一页', nextPage: '下一页', noPages: '暂无内容', editPage: '' },
+  en: { prevPage: 'Previous', nextPage: 'Next', noPages: 'Nothing to show', editPage: '' },
 } as const;
 
 // 免登只读分享视图:复用编辑器的 FlipBook 翻书;不传 onEditPage => 铅笔按钮不渲染,纯只读。

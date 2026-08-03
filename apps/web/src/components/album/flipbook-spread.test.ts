@@ -16,14 +16,8 @@ import { test } from 'node:test';
 const here = dirname(fileURLToPath(import.meta.url));
 const tsx = readFileSync(join(here, 'FlipBook.tsx'), 'utf8');
 
-test('FlipBook resolves a full (double-wide) spread from the shared spreads helper', () => {
-  assert.match(
-    tsx,
-    /import\s*\{[^}]*\bspreadFullPage\b[^}]*\}\s*from\s*'\.\/spreads'/,
-    'FlipBook must resolve the full-spread page through spreadFullPage',
-  );
-  assert.match(tsx, /const fullIndexOf = useCallback\(\s*\n\s*\(s: number\) => spreadFullPage\(spreads\[s\]\) \?\? -1/);
-});
+// (fullIndexOf/spreadFullPage 只服务缩略图条;条 2026-08-03 从分享页退场后一并删除。
+//  双宽页的唯一渲染真相是 facesOfSpread 的 sp.kind === 'full' 分支,由下一个用例钉住。)
 
 test('a full spread renders as TWO bound half-crops of the SAME page (spine + leaf like a pair)', () => {
   // 2026-08-02 反转「整幅无中缝」的旧决定:双宽页按装订的两半渲染(拆渲染不拆数据)。
@@ -52,18 +46,8 @@ test('selection sync resolves a full spread to its page (not -1)', () => {
   assert.match(
     sync![0],
     /spreadPageIndices\(spreads\[s\]\)\[0\] \?\? -1/,
-    'sp.left ?? sp.right 对双宽页解析成 -1(选中不动、缩略图高亮错位);必须走 spreadPageIndices',
+    'sp.left ?? sp.right 对双宽页解析成 -1(选中同步失效);必须走 spreadPageIndices',
   );
-});
-
-test('the thumbnail strip renders a full spread as one double-wide thumb with a spine divider', () => {
-  assert.match(tsx, /const fullIdx = fullIndexOf\(s\)/);
-  // 双宽缩略图仍是 52px 的跨页格(不是 26px 的单页格),内容是一整张面;
-  // 但它也是装订的两半 —— 缩略图同样带中缝分隔线。
-  const fullThumb = /\) : fullIdx >= 0 \? \(([\s\S]*?)\) : \(/.exec(tsx);
-  assert.ok(fullThumb, 'expected the fullIdx thumbnail branch');
-  assert.match(fullThumb![1]!, /page=\{fullThumb\}[\s\S]*?width=\{52\}/);
-  assert.match(fullThumb![1]!, /var\(--border-soft\)/, '双宽缩略图必须带中缝分隔线');
 });
 
 test('no-spread baseline: the solo and pair branches keep their original geometry', () => {
