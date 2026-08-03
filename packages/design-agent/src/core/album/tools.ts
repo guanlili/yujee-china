@@ -158,6 +158,12 @@ const movePagesSchema = Type.Object({
 
 type MovePagesInput = Static<typeof movePagesSchema>;
 
+const deletePageSchema = Type.Object({
+	pageNo: PageRefSchema,
+});
+
+type DeletePageInput = Static<typeof deletePageSchema>;
+
 const listTemplatesSchema = Type.Object({
 	category: Type.Optional(Type.String({ description: "按类目过滤：cover / toc / interior / ending。" })),
 	imageSlotCount: Type.Optional(Type.Number({ description: "按图槽数量过滤。" })),
@@ -192,6 +198,7 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 		createSetTextColorsTool(options),
 		createSetTextFontsTool(options),
 		createMovePagesTool(options),
+		createDeletePageTool(options),
 		createReadSkillTool(options),
 	];
 }
@@ -873,6 +880,59 @@ function createMovePagesTool(options: AlbumToolsOptions): AgentTool<typeof moveP
 			});
 			notes.push("其余内页页码相应顺延;页面内容全部原样未动");
 			return commitWrite(options, nextState, { pageNo: sourceNos[0] ?? -1, operations, notes });
+		},
+	};
+}
+
+// 删除书页(2026-08-03 设计:docs/specs/2026-08-03-delete-page-design.md)。
+// 只删内页,照片随页移除不回流,拒绝删到内页数为 0。与 move_pages 同口径:只动
+// pages 数组、不改余页对象的 pageIndex 字段(落库行序由 persistDesignChat 按数组
+// 位置重编号)。
+function createDeletePageTool(options: AlbumToolsOptions): AgentTool<typeof deletePageSchema, AlbumWriteDetails> {
+	return {
+		name: "delete_page",
+		label: "删除页面",
+		description:
+			"删除一张内页,页上的照片和文字一起移除(照片不会转移到其他页)。只能删内页,封面/目录/封尾不可删,书里至少要留一张内页。注意区分意图:用户要「把内容合并/挤到别的页」时不要用本工具,先反问确认。写入后本轮即结束。",
+		parameters: deletePageSchema,
+		prepareArguments(args: unknown): DeletePageInput {
+			return { pageNo: isRecord(args) ? resolveRefToInternal(options, args.pageNo ?? args.pageIndex) : -1 };
+		},
+		async execute(_toolCallId: string, params: DeletePageInput): Promise<AgentToolResult<AlbumWriteDetails>> {
+			const state = options.getBookState();
+			const internalNo = Number(params.pageNo);
+			if (internalNo === -1)
+				throw new Error(`页码引用无法解析。本书可用页码:${pageRefRangeText(options, state)}`);
+			const page = requirePage(options, state, internalNo);
+			const categoryOf = catalogCategoryOf(options.catalog);
+			const isInterior = (candidate: AlbumPage) => {
+				const category = categoryOf(candidate.templateId);
+				return category === undefined || !NON_NUMBERED_PAGE_CATEGORIES.has(category);
+			};
+			const label = pageLabelOf(options, state, internalNo);
+			if (!isInterior(page)) throw new Error(`${label}是封面/目录/封尾,不可删除`);
+			const interiorCount = state.pages.filter(isInterior).length;
+			if (interiorCount <= 1) throw new Error("这是最后一张内页,不能删除(书里至少要留一张内页)");
+
+			const nextState = cloneAlbumBookState(state);
+			nextState.pages = nextState.pages.filter((_, index) => index !== internalNo - 1);
+
+			// 回执说清两件用户可感知的事:照片去向(随页移除,不回流)和翻面效应
+			// (普通内页净减 1 个页位 → 后续内页左右互换;双宽页净减 2 → 不移位)。
+			const photoCount = Object.keys(page.images).length;
+			const isSpreadTemplate = options.catalog.get(page.templateId)?.spread === true;
+			const notes = [
+				`${label}已删除;页上 ${photoCount} 张照片一并移除,不会转移到其他页`,
+				`剩余内页 ${interiorCount - 1} 张,后续内页页码相应前移`,
+				isSpreadTemplate
+					? "删的是双宽页(占两个页位),后续页面的左右位置不变"
+					: "后续内页的左右位置会互换(直到下一个封面/封尾/双宽页为止),回复里要提醒用户",
+			];
+			return commitWrite(options, nextState, {
+				pageNo: internalNo,
+				operations: [`delete:${label}`],
+				notes,
+			});
 		},
 	};
 }

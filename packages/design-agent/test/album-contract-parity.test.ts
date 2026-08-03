@@ -72,7 +72,8 @@ test("工具写入之后所有页仍然契约合法", async () => {
 	const updateTexts = tools.get("update_page_texts");
 	const swapTemplate = tools.get("swap_page_template");
 	const updateImages = tools.get("update_page_images");
-	assert.ok(updateTexts && swapTemplate && updateImages);
+	const deletePage = tools.get("delete_page");
+	assert.ok(updateTexts && swapTemplate && updateImages && deletePage);
 
 	await updateTexts.execute("t1", {
 		updates: [
@@ -92,6 +93,8 @@ test("工具写入之后所有页仍然契约合法", async () => {
 		],
 	} as never);
 
-	assert.equal(book.version, 4);
+	await deletePage.execute("t4", deletePage.prepareArguments({ pageNo: 2 }) as never);
+
+	assert.equal(book.version, 5);
 	assertPagesContractLegal(book.pages);
 });

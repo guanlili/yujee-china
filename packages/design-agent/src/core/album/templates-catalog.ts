@@ -34,6 +34,8 @@ export interface CatalogImageSlotDef {
 export interface TemplateCatalogEntry {
 	id: string;
 	category: string;
+	/** 双宽模板(#303):一张面铺满整个跨页,占两个物理页位。删页提示翻面与否要看它。 */
+	spread?: boolean;
 	/** 具体图槽 id（如 `image`、items 重复槽保持 base id）。 */
 	imageSlotIds: string[];
 	/** 具体文字槽 id（base id;items 重复槽也在内,寻址时用 `id[n]`）。 */
@@ -128,6 +130,7 @@ interface RawTemplateTextSlot {
 interface RawTemplate {
 	id: string;
 	category?: string;
+	spread?: boolean;
 	images?: CatalogImageSlotDef[];
 	texts?: RawTemplateTextSlot[];
 	svgs?: { id: string; variableDecor?: boolean }[];
@@ -184,6 +187,7 @@ function buildEntry(raw: RawTemplate): TemplateCatalogEntry {
 	return {
 		id: raw.id,
 		category: raw.category ?? "interior",
+		spread: raw.spread === true ? true : undefined,
 		imageSlotIds,
 		textSlotIds,
 		repeatTextSlotBases,
