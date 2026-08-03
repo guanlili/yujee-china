@@ -1896,6 +1896,46 @@ test('updatePage(draft 相册):html 锚点失配 → 整页重烘,新文本仍�
   }
 });
 
+// updatePage 的读必须烘 html(loadStoryDraft bake:true),不能 bake:false —— 一个从
+// 未落过 html 的草稿页(存量/story 阶段的预览页)如果读回来 html 是 undefined,
+// textStyles/pageStyle 的补丁函数(patchHtmlTextStyle/patchHtmlPageStyle)全部因为
+// `html !== null` 守卫被跳过,收尾的 bakePageHtml 只认 templateId/texts/images/
+// imagePos 四个字段重烘 —— textStyles/pageStyle 除了活在 html 字符串里的行内样式,
+// 没有任何 Page 数据字段能承载它们,补丁就这样在 {updated:true} 的假象下静默消失。
+// 这条测试永久钉住旧 readStoryDraft 的「读时烘」语义:loadStoryDraft 必须 bake:true。
+test('updatePage(draft 相册,页从未烘过 html):textStyles/pageStyle 补丁必须真的烘进新生成的 html,不能静默丢', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-updatepage-nohtml-style');
+  try {
+    const album = await makeAlbum(user.id);
+    const tree = makeStoryTree(1);
+    const wrapped: V3StoryDraft = {
+      version: 'v3-story',
+      tree,
+      pages: [
+        // 故意不带 html:模拟 analyze/select-layout 刚产出、还没被任何写路径烘过
+        // 的预览页(makePreviewPages 同款形状)。
+        { pageIndex: 0, templateId: 'mag-01', images: {}, texts: { title: 'T', label: '', body: '' } } as Page,
+      ],
+      progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+    };
+    await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
+
+    await albumService.updatePage(user.id, album.id, 0, {
+      textStyles: { title: { 'font-size': '48px' } },
+      pageStyle: { 'background-color': 'rgba(1, 2, 3, 0.5)' },
+    });
+
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    const page = rows.find((r) => r.pageIndex === 0)!.page as Page & { html?: string };
+    assert.ok(page.html, '从未烘过 html 的页,updatePage 后必须落到一份真实 html(不能是 undefined)');
+    assert.match(page.html!, /font-size:48px/, 'textStyles 补丁必须烘进 html,不能因为读时不烘而静默丢');
+    assert.match(page.html!, /background-color:rgba\(1, 2, 3, 0\.5\)/, 'pageStyle 补丁同理必须烘进 html');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 // ── updatePage 切 draft_pages 行级写(Phase 1a Task 3)───────────────────────
 // legacy 相册(只有 draftJson.pages,draft_pages 还没有行)第一次 updatePage 必须
 // 先懒播种全书行(不只是被改的那一页),被改的行 version 推到本次新 draftRevision、

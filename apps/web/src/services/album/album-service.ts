@@ -1330,7 +1330,18 @@ export const albumService = {
       // 当前 revision——`bumpDraftRevision` 必须接它而不是 `latest.draftRevision`,
       // 否则刚播种(0→1)的相册这次写入会把 revision 撞错。
       const seededRevision = await ensureDraftPagesSeeded(tx, latest);
-      const draft = await loadStoryDraft(latest, { tx, bake: false });
+      // bake:true(not false) is load-bearing here: a page that has never had
+      // `html` baked must come back WITH a freshly-baked html so the
+      // textStyles/pageStyle patch calls below have something to attach to.
+      // This restores the old `readStoryDraft`'s wrapped-branch behavior
+      // (bakePagesHtml on read, before the patch block ran) — bake:false would
+      // leave `page.html` undefined, skip every guarded html patch, and the
+      // tail's bakePageHtml({strict:false}) fallback has no textStyles/
+      // pageStyle inputs to rebake from (those only ever exist as inline style
+      // mutations on an html string, never as a Page data field), so a
+      // textStyles/pageStyle edit on such a page would silently vanish while
+      // still returning {updated:true}.
+      const draft = await loadStoryDraft(latest, { tx, bake: true });
       if (!draft || !draft.pages.length) {
         await albumPageRepo.updateOne(tx, albumId, pageIndex, {
           imagesJson: patch.imagesJson,

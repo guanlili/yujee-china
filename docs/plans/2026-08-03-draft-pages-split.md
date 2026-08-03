@@ -174,7 +174,7 @@ Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: Task 1/2 全部
-- Produces: `updatePage` 对外签名与行为不变;内部改为:行锁 → seeded → `loadStoryDraft({tx, bake:false})` 取目标页 → 既有 html patch 语义逐字保留(patch 失配 → html=null → `bakePageHtml` 重烘;imagePos 失败 `?? html` 保留)→ `bumpDraftRevision` → `draftPageRepo.updateOne(tx, albumId, pageIndex, patched, rev, userId)`。envelope 不重写(pages 不再进 draftJson)。COMPLETED→EDITING、pageIndex===0 清封面缩略图两个副作用保留。无 draft 相册(v1/v2)仍走 `albumPageRepo.updateOne` 分支,不动。
+- Produces: `updatePage` 对外签名与行为不变;内部改为:行锁 → seeded → `loadStoryDraft({tx, bake:true})`(必须烘:html patch 需有 html 可附,恢复旧 readStoryDraft 读时烘语义;bake:false 会静默丢样式补丁)取目标页 → 既有 html patch 语义逐字保留(patch 失配 → html=null → `bakePageHtml` 重烘;imagePos 失败 `?? html` 保留)→ `bumpDraftRevision` → `draftPageRepo.updateOne(tx, albumId, pageIndex, patched, rev, userId)`。envelope 不重写(pages 不再进 draftJson)。COMPLETED→EDITING、pageIndex===0 清封面缩略图两个副作用保留。无 draft 相册(v1/v2)仍走 `albumPageRepo.updateOne` 分支,不动。
 
 - [ ] **Step 1: 新增失败测试** — 行级断言:updatePage 后 `draftPageRepo.findByAlbum` 该行 version === album.draftRevision、updatedBy === userId、其他行 version 不变;legacy 相册(只有 draftJson.pages)首次 updatePage 自动播种全书行。
 - [ ] **Step 2: 确认失败** → **Step 3: 实现** → **Step 4: updatePage 相关既有用例 + 新用例全绿 + typecheck** → **Step 5: Commit**(`feat(web): updatePage 切 draft_pages 行级写`,尾注同前)
