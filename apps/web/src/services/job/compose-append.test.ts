@@ -6,6 +6,7 @@ import { db } from '../../db/client';
 import { agentJobRepo } from '../../db/repos/agent-job-repo';
 import { albumMessageRepo } from '../../db/repos/album-message-repo';
 import { albumRepo } from '../../db/repos/album-repo';
+import { draftPageRepo } from '../../db/repos/draft-page-repo';
 import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '../../db/repos/__test__/setup';
 import {
   filterAppendComposePagesTexts,
@@ -167,7 +168,10 @@ test('handleV3ComposeCompleted: composeAppend 分支', async (t) => {
       );
 
       const after = await albumRepo.findById(album.id);
-      const pages = (after!.draftJson as { pages: Page[] }).pages;
+      // 拆表(Phase 1a)后回调写行级表:断言语义不变,读法迁到 draft_pages 行。
+      const pages = (await draftPageRepo.findByAlbum(album.id)).map(
+        (r) => r.page as Page & { html?: string; texts: Record<string, string> },
+      );
       assert.equal(pages[1]!.texts[titleSlot], '追加页新标题');
       assert.ok(pages[1]!.html?.includes('追加页新标题'));
       assert.deepEqual(pages[0]!.texts, PAGES[0]!.texts); // 老页文案原样不动
@@ -245,7 +249,10 @@ test('handleV3ComposeCompleted: composeAppend 分支', async (t) => {
       );
 
       const after = await albumRepo.findById(album.id);
-      const pages = (after!.draftJson as { pages: Page[] }).pages;
+      // 拆表(Phase 1a)后回调写行级表:断言语义不变,读法迁到 draft_pages 行。
+      const pages = (await draftPageRepo.findByAlbum(album.id)).map(
+        (r) => r.page as Page & { html?: string; texts: Record<string, string> },
+      );
       assert.equal(pages[1]!.texts[titleSlot], 'OLD CHAPTER TITLE'); // 没被劫持
       assert.equal(pages[1]!.html, undefined); // 未被守卫放行的页压根没进 touched 集,不重烘
       const job = await agentJobRepo.findByRequestId(requestId);
