@@ -4298,7 +4298,12 @@ function EditorBook({
         const modeBtn = t.closest<HTMLElement>('[data-color-mode]');
         if (modeBtn?.dataset.colorMode) { p.dataset.mode = modeBtn.dataset.colorMode; renderColorPanel(); return; }
         const sw = t.closest<HTMLElement>('[data-swatch]');
-        if (sw?.dataset.swatch) { setColorFromCss(sw.dataset.swatch); renderColorPanel(); emitColor(); }
+        if (sw?.dataset.swatch) {
+          setColorFromCss(sw.dataset.swatch); renderColorPanel(); emitColor();
+          // 离散点选(预设/格子/最近一排)立刻记账并刷新「最近使用」—— 不等关面板,
+          // 点一下就能看到自己的最近色;拖拽取色仍在关面板时只记最终色(防渐变噪音)。
+          saveRecentColor(sw.dataset.swatch); renderRecentRow(); ebColorDirty = false;
+        }
       });
       p.addEventListener('input', (e) => {
         const t = e.target as HTMLElement;
@@ -4616,7 +4621,9 @@ function EditorBook({
       if (open) { mesState.view = open; renderMesBody(); return; }
       // 主视图漏出的常用色:直选即时套用文字色。
       const cq = t.closest<HTMLElement>('[data-mes-color-quick]')?.dataset.mesColorQuick;
-      if (cq) { setColorFromCss(cq); emitColor(); mesMarkQuickColor(); return; }
+      // 快捷色也是「选择的颜色」:立刻记进最近使用(此前只置脏标记,不开 Fill 面板
+      // 就永远不会落账 —— 用户只用快捷色时最近一排一直是空的)。
+      if (cq) { setColorFromCss(cq); emitColor(); saveRecentColor(cq); renderRecentRow(); ebColorDirty = false; mesMarkQuickColor(); return; }
       // 主视图漏出的常用字体:直选即时套用。
       const fq = t.closest<HTMLElement>('[data-mes-font-quick]')?.dataset.mesFontQuick;
       if (fq) {
