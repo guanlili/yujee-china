@@ -154,22 +154,37 @@ export function findAlbumPageByNo(state: AlbumBookState, pageNo: number): AlbumP
 // ───────────────────────── 用户口径页码 ─────────────────────────
 //
 // 铁律:喂给 AI 的页码必须等于用户在画面上看到的页码。Web 展示层的 folio 规则
-// (page-html-dom.pageFolioNumbers)是:封面/目录/封尾不编号,内页从 1 连续编号。
-// AI 侧完全对齐 —— 内页用数字(1..M),封面/目录/封尾用类别名指代,绝不占号。
+// (page-html-dom.pageFolioInfos)是:封面/目录/封尾不编号,内页从 1 连续编号,
+// **双宽页(spread 模板)占两个号**({left,right},一张面铺满整个跨页 = 两个物理
+// 页位,画面左下右下各标一个数)。AI 侧完全对齐 —— 内页用数字,双宽页是一个
+// spread ref(第 L-R 页,说 L 或 R 都指它),封面/目录/封尾用类别名指代,绝不占号。
+// (2026-08-03 线上复盘:此前双宽页只 +1,书里有几张双宽页,AI 与用户的页码就差几。)
 
-export type PageUserRef = number | "cover" | "toc" | "ending";
+export type PageUserRef =
+	| number
+	| "cover"
+	| "toc"
+	| "ending"
+	| { kind: "spread"; left: number; right: number };
 
 export const NON_NUMBERED_PAGE_CATEGORIES = new Set(["cover", "toc", "ending"]);
 
-/** 每页(按数组序)的用户口径页码:内页 1..M;封面/目录/封尾返回类别名。 */
+/** 每页(按数组序)的用户口径页码:内页 1..M(双宽页吃两个号);封面/目录/封尾返回类别名。 */
 export function pageUserRefs(
 	state: AlbumBookState,
 	categoryOf: (templateId: string) => string | undefined,
+	isSpread: (templateId: string) => boolean = () => false,
 ): PageUserRef[] {
 	let interiorNo = 0;
 	return state.pages.map((page) => {
 		const category = categoryOf(page.templateId) ?? "";
 		if (NON_NUMBERED_PAGE_CATEGORIES.has(category)) return category as PageUserRef;
+		if (isSpread(page.templateId)) {
+			const left = interiorNo + 1;
+			const right = interiorNo + 2;
+			interiorNo += 2;
+			return { kind: "spread", left, right };
+		}
 		interiorNo += 1;
 		return interiorNo;
 	});
@@ -180,6 +195,7 @@ export function formatPageUserRef(ref: PageUserRef): string {
 	if (ref === "cover") return "封面";
 	if (ref === "toc") return "目录";
 	if (ref === "ending") return "封尾";
+	if (typeof ref === "object") return `第 ${ref.left}-${ref.right} 页`;
 	return `第 ${ref} 页`;
 }
 
@@ -189,12 +205,13 @@ export function resolvePageUserRef(
 	state: AlbumBookState,
 	categoryOf: (templateId: string) => string | undefined,
 	ref: unknown,
+	isSpread: (templateId: string) => boolean = () => false,
 ): number | undefined {
-	const refs = pageUserRefs(state, categoryOf);
+	const refs = pageUserRefs(state, categoryOf, isSpread);
 	if (typeof ref === "string") {
 		const key = ref.trim().toLowerCase();
 		// 类别名(含中文别名)寻址
-		const alias: Record<string, PageUserRef> = {
+		const alias: Record<string, "cover" | "toc" | "ending"> = {
 			cover: "cover", 封面: "cover",
 			toc: "toc", 目录: "toc",
 			ending: "ending", 封底: "ending", 封尾: "ending",
@@ -205,11 +222,16 @@ export function resolvePageUserRef(
 			return index === -1 ? undefined : index + 1;
 		}
 		const numeric = Number(key);
-		if (Number.isInteger(numeric)) return resolvePageUserRef(state, categoryOf, numeric);
+		if (Number.isInteger(numeric)) return resolvePageUserRef(state, categoryOf, numeric, isSpread);
 		return undefined;
 	}
 	if (typeof ref === "number" && Number.isInteger(ref) && ref >= 1) {
-		const index = refs.indexOf(ref);
+		// 双宽页占两个号:左右任一个号都指它(画面上两个数标在同一张面上)。
+		const index = refs.findIndex((candidate) =>
+			typeof candidate === "object"
+				? candidate.left === ref || candidate.right === ref
+				: candidate === ref,
+		);
 		return index === -1 ? undefined : index + 1;
 	}
 	return undefined;
