@@ -23,7 +23,6 @@ import {
   ExportFailModal,
 } from './ExportModals';
 import { MoreSheet, NoticeModal } from './MoreSheet';
-import { AiChatSheet } from './AiChatSheet';
 import { FilterSheet } from './FilterSheet';
 import { ReorderSheet } from './ReorderSheet';
 
@@ -207,17 +206,6 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
     closeHint: /知道了/,
   },
   {
-    name: 'AiChatSheet AI对话',
-    render: (open) =>
-      renderToStaticMarkup(
-        createElement(AiChatSheet, {
-          open, zh: true, messages: [], status: { kind: 'idle' as const },
-          onSend: noop, onClose: noop,
-        }),
-      ),
-    closeHint: /mai-sheet-close/,
-  },
-  {
     name: 'ElementSheet 元素编辑',
     render: (open) =>
       renderToStaticMarkup(
@@ -251,8 +239,9 @@ test('借用桌面样式的弹窗必须套 .editor-port 宿主(漏了样式一�
   // 借用的是桌面成品样式(定义在 editor-port.css,选择器带 .editor-port 祖先),于是遮罩、
   // 卡片底、定位全部失效 —— 照片网格裸奔铺满整屏盖住画布,标题被压成一个字。
   //
-  // 判据按「用没用桌面那套类」来定,不是一刀切:AiChatSheet 走自有的 .mai-*
-  // (就定义在 mobile-editor.css、无 .editor-port 前缀),它不需要这层宿主。
+  // 判据按「用没用桌面那套类」来定,不是一刀切:自有样式体系的弹窗不需要这层宿主。
+  // (AI 对话不在此列 —— 它是桌面 ChatPanel 本体,宿主是 .mobile-chat-port,
+  //  守卫见 ../chat-replay-wiring.test.ts。)
   for (const c of CASES) {
     const html = c.render(true);
     if (!/class="[^"]*\b(mes-|modal-)/.test(html)) continue; // 自有样式体系,豁免
@@ -348,42 +337,32 @@ test('架构守卫:宿主样式不许再用 pointer-events 放行名单(曾漏�
   );
 });
 
-test('AI 对话弹窗是可拖高度的:默认 75vh、下限 150px、上限 90vh', () => {
-  const css = readFileSync(join(here, '..', 'mobile-editor.css'), 'utf8').replace(
+test('AI 对话抽屉可拖高度:默认 75vh、下限 150px、上限 90vh(统一后住在 editor-port.css)', () => {
+  // 2026-08-03 起移动端 AI 对话就是桌面 ChatPanel 本体,抽屉几何只有一份真相。
+  const css = readFileSync(join(here, '..', '..', 'editor-port.css'), 'utf8').replace(
     /\/\*[\s\S]*?\*\//g,
     '',
   );
-  const at = css.indexOf('.mai-sheet {');
-  assert.ok(at >= 0);
+  const at = css.indexOf('.editor-port .pane-chat-col{\n    position:fixed; left:0; right:0; bottom:0;');
+  assert.ok(at >= 0, '≤767 的对话栏必须是贴边抽屉(左右/底边 0)');
   const sheet = css.slice(at, css.indexOf('}', at));
-  // height 必须写死一个 vh 值:靠内容撑高会让空对话只有一条气泡那么高,拖把手也没处拖。
-  assert.match(sheet, /(?<!max-|min-)height:\s*75vh/, '默认高度 75vh —— 90vh 时选封面卡看不全');
-  assert.match(sheet, /min-height:\s*150px/, '下限 150px(同桌面 .pane-chat-col)');
-  assert.match(sheet, /max-height:\s*90vh/, '上限 90vh(同桌面)');
-  assert.doesNotMatch(sheet, /max-height:\s*78vh/, '78vh 是改之前那个过高的值');
-  // 把手要够大、且不能被浏览器当成页面滚动/下拉刷新
-  const gAt = css.indexOf('.mai-sheet-grab {');
-  const grab = css.slice(gAt, css.indexOf('}', gAt));
-  assert.match(grab, /touch-action:\s*none/, '把手必须 touch-action:none,否则手机上拖不动');
-  assert.match(grab, /cursor:\s*grab/);
-  // 拖动中不许有过渡/动画插手,否则不跟手
-  assert.match(css, /\.mai-sheet\[data-dragging='1'\]\s*\{[^}]*animation:\s*none/);
+  assert.match(sheet, /height:75vh/, '默认高度 75vh —— 90vh 时选封面卡看不全');
+  assert.match(sheet, /min-height:150px/, '下限 150px');
+  assert.match(sheet, /max-height:90vh/, '上限 90vh');
+  // 把手不能被浏览器当成页面滚动/下拉刷新;拖动中不许过渡插手(不跟手)。
+  assert.match(css, /\.editor-port \.chat-mobile-handle\{[^}]*touch-action:none/);
+  assert.match(css, /\.editor-port\.chat-dragging \.pane-chat-col\{ transition:none; \}/);
 });
 
-test('AI 对话把手真的接了拖拽(不是画个把手当装饰)', () => {
-  const src = readFileSync(join(here, 'AiChatSheet.tsx'), 'utf8');
-  assert.match(src, /onPointerDown=\{onGrabDown\}/);
-  assert.match(src, /onPointerMove=\{onGrabMove\}/);
-  assert.match(src, /onPointerUp=\{onGrabUp\}/);
+test('AI 对话把手真的接了拖拽(ChatPanel 的 onSheetDown,底边钉死)', () => {
+  const src = readFileSync(join(here, '..', '..', 'ChatPanel.tsx'), 'utf8');
+  assert.match(src, /mobileHandleEl\?\.addEventListener\('pointerdown', onSheetDown\)/);
   assert.match(src, /setPointerCapture/, '用指针捕获,手指滑出把手也不该断');
   // 底边钉死:高度 = 起始高度 - 位移
-  assert.match(src, /d\.startH - d\.dy/, '底边钉死,下拉变矮');
-  // 轻点把手 = 收起(与桌面同一语义)
-  assert.match(src, /Math\.abs\(d\.dy\) <= TAP_SLOP[\s\S]{0,120}onClose\(\)/);
+  assert.match(src, /startH - dy/, '底边钉死,下拉变矮');
 });
 
-test('AI 是「圆形图标浮标 / 弹窗浅」,水母稳定浮在按钮上层', () => {
-  // 收起时是一枚黑色图标浮标,展开的对话面板是浅色卡片 + 压暗遮罩。
+test('AI 浮标是黑色圆形图标,水母稳定浮在按钮上层(展开的抽屉本身是浅色,见 editor-port.css)', () => {
   const css = readFileSync(join(here, '..', 'mobile-editor.css'), 'utf8').replace(
     /\/\*[\s\S]*?\*\//g,
     '',
@@ -401,10 +380,6 @@ test('AI 是「圆形图标浮标 / 弹窗浅」,水母稳定浮在按钮上层'
   assert.match(fab, /border-radius:\s*50%/, 'AI 浮标应为圆形');
   assert.match(fab, /background:\s*var\(--fg\)/, 'AI 浮标必须是黑色(var(--fg))');
   assert.match(fab, /color:\s*var\(--surface\)/, '黑色按钮上的图标必须是浅色');
-  // 弹窗:浅底深字
-  const sheet = block('.mai-sheet');
-  assert.match(sheet, /background:\s*var\(--surface\)/, '对话弹窗是浅色卡片,不是黑的');
-  assert.match(sheet, /color:\s*var\(--fg\)/);
   // 水母不能再用 multiply:压在深色页面/黑色按钮上会发暗,看起来像掉到下层。
   const jelly = block('.mobile-editor .mai-jelly');
   assert.match(jelly, /mix-blend-mode:\s*normal/);

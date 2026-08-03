@@ -2074,15 +2074,16 @@
   .editor-port.mc-on .canvas-hint,
   .editor-port.mc-on .ctrl-dock,
   .editor-port.mc-on .zoom-ctrl{ display:none !important; }
-  /* AI 对话 = 标准移动弹窗,放最顶层(#304 用户反馈):底部 sheet,底边钉死、高度可拖,
-     z-index 高于编辑器全部移动 chrome(mc-l1/mc-ai-fab/mc-dens 等 z95-100、mes z140),
-     打开时它们不再戳在对话上面。展开时铺一层半透明遮罩(::before)压暗背后画布,
-     像原生 App 的 bottom sheet。默认 75vh,最高 90vh,最低 150px。
+  /* AI 对话 = 标准移动弹窗,放最顶层(#304 用户反馈):抽屉式 bottom sheet,左右、底边
+     贴屏(不留 10px 悬浮边距 —— 悬浮卡在手机上像第二个"弹窗",与原生抽屉直觉相悖),
+     底边钉死、高度可拖。z-index 高于编辑器全部移动 chrome(mc-l1/mc-ai-fab/mc-dens 等
+     z95-100、mes z140),打开时它们不再戳在对话上面。展开时铺一层半透明遮罩(::before)
+     压暗背后画布,像原生 App 的 bottom sheet。默认 75vh,最高 90vh,最低 150px。
      默认从 46vh 提到 75vh:选封面卡(cv-pick-card,四套竖排 + 卡头两行说明)挂在这栏里,
      46vh 装不下,得先拖高才看得全 —— 而那一步是**必选、不能跳过**的。桌面那份仍是
      46vh(上面 min-width:768px 的规则),两栏并排时对话不该吃掉大半屏。 */
   .editor-port .pane-chat-col{
-    position:fixed; left:10px; right:10px; bottom:10px;
+    position:fixed; left:0; right:0; bottom:0;
     width:auto !important; height:75vh; max-height:90vh; min-height:150px;
     z-index:300; padding:0; display:flex;
     transition:height var(--motion-base) var(--ease);
@@ -2093,11 +2094,12 @@
     background:rgba(20,22,28,.42); pointer-events:auto;
   }
   .editor-port.chat-dragging .pane-chat-col{ transition:none; }
+  /* 抽屉卡本体:贴边后只留顶部圆角;左右/底边框去掉(贴着屏幕边,画出来只会是一条脏线)。 */
   .editor-port .pane-right{
     position:relative; left:auto; right:auto; top:auto; bottom:auto;
     width:100%; height:100%;
-    border:1px solid rgba(0,0,0,.06);
-    border-radius:24px 24px 18px 18px;
+    border:none; border-top:1px solid rgba(0,0,0,.06);
+    border-radius:22px 22px 0 0;
     box-shadow:0 -18px 46px rgba(0,0,0,.16);
   }
   .editor-port .chat-mobile-handle{ cursor:grab; touch-action:none; }
@@ -2110,8 +2112,9 @@
     border-radius:9999px; color:#fff; background:var(--fg); border:none; z-index:92;
     box-shadow:0 10px 24px rgba(0,0,0,.24), 0 2px 6px rgba(0,0,0,.16);
   }
+  /* 贴边抽屉后,底部内边距要给 iPhone 手势条让位(safe-area),否则输入框贴着 home 条。 */
   .editor-port .composer-group{
-    margin:10px;
+    margin:10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
   }
 
   /* ── 顶栏精简(#304 Task13):移动端右侧只留 分享 + 导出,份量对齐(都是 44×44 图标触点)。

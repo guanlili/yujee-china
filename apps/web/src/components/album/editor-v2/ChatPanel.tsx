@@ -759,9 +759,8 @@ export function ChatPanel({
     // 了的:字体/颜色/页面);④终稿总结回复置于最底。committed 时把新页原地重绘;done 时 pages 已
     // 写回 draft_json。
     //
-    // 写类工具 → 更新类别的口径在 ./chat-history(移动端 AiChatSheet 用同一份)。
-    // 那边是唯一真相:两棵壳的历史回放必须折出同样的类别,否则同一段对话在手机和电脑上
-    // 长得不一样 —— 用户在响应式分叉点两侧来回一次就以为历史丢了。这里只留展示用的词。
+    // 写类工具 → 更新类别的口径在 ./chat-history(唯一真相,单测直取)。
+    // 这里只留展示用的词。
     const DESIGN_CHANGE_LABEL: Record<DesignChangeCategory, [string, string]> = {
       fonts: ['字体', 'Fonts'],
       colors: ['颜色', 'Colors'],

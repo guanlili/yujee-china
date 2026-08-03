@@ -272,6 +272,9 @@ function ReadyEditor({
         locale={locale}
         photoFilter={photoFilter}
         setPhotoFilter={setPhotoFilter}
+        // legacy 定稿相册没有草稿骨架;对话与桌面 editing 壳同口径。
+        draftChapters={null}
+        chatMode="editing"
       />
     );
   }
@@ -520,6 +523,10 @@ function EditorAuthoring({
         locale={locale}
         photoFilter={photoFilter}
         setPhotoFilter={setPhotoFilter}
+        // 草稿骨架给移动树里的 ChatPanel(章节卡/追加照片采访都要它);
+        // 过了上面 loadState 闸门 skeleton 必非空。
+        draftChapters={skeleton}
+        chatMode="authoring"
       />
     );
   }

@@ -49,7 +49,7 @@ import { useExport } from './use-export';
 import { useShareLink } from './use-share-link';
 import { usePhotoBackup } from './use-photo-backup';
 import { usePhotoOriginalSync } from '@/lib/hooks/use-photo-original-sync';
-import { useDesignChat } from './use-design-chat';
+import { useChatCoordinator } from './use-chat-coordinator';
 import { resolveBackTarget } from './back-nav';
 import { ElementSheet } from './modals/ElementSheet';
 import { TextPanel } from './modals/TextPanel';
@@ -57,11 +57,16 @@ import { PageBgPanel } from './modals/PageBgPanel';
 import type { Locale } from '@/lib/i18n/routing';
 import { collectPhotoIds, type ResolveImage } from '../../adapt-layout';
 import { interiorSpreads } from '@/lib/export/collage';
-import { computeExportUnlocked } from '../export-gate-util';
-import { extractPhotoIds, type AlbumDetail, type EditorPage } from '../../types';
+import type { DraftSkeleton } from '@/lib/album/authoring-client';
+import {
+  extractPhotoIds,
+  type AlbumDetail,
+  type EditorPage,
+  type StoryProgress,
+} from '../../types';
 import { MobileEditor } from './MobileEditor';
 import { MobileToast } from './MobileToast';
-import { AiChatSheet } from './modals/AiChatSheet';
+import { ChatPanel, type ChatMode } from '../ChatPanel';
 import {
   applyImageClear,
   applyImagePos,
@@ -104,6 +109,10 @@ import './mobile-editor.css';
 // 展示层保持无副作用 import,才能在 node 测试里直接渲染断言。
 import '../editor-port.css';
 
+/** ChatPanel 要求这个 setter(桌面壳用它控 loading 骨架);移动树没有对应 UI,
+ *  给一个模块级稳定引用,不在 JSX 里写内联空箭头。 */
+const ignoreStoryProgressLoading = () => {};
+
 /** 选中态。文字与图片共用一个高亮框,靠 kind 区分后续用哪个面板/落哪条库。
  *  文字带 base(打开面板那一刻的真实样式,取消要回到这里);图片不需要 ——
  *  它的「原状」在 draftBase 那张整页快照里。 */
@@ -118,6 +127,8 @@ export function MobileEditorRoot({
   onBack,
   photoFilter: controlledPhotoFilter,
   setPhotoFilter: controlledSetPhotoFilter,
+  draftChapters = null,
+  chatMode = 'authoring',
 }: {
   detail: AlbumDetail;
   /** 书页。**由调用方给** —— 真实相册的书住在草稿(authoring)里,那边的 pages
@@ -129,6 +140,12 @@ export function MobileEditorRoot({
   /** EditorPort 提供时跨桌面/移动壳共享；独立预览页不提供时使用本地状态。 */
   photoFilter?: PhotoFilterState | null;
   setPhotoFilter?: Dispatch<SetStateAction<PhotoFilterState | null>>;
+  /** 草稿骨架:ChatPanel 的章节卡/追加照片采访要它。authoring 挂载点传真骨架;
+     legacy(editing)与 dev 预览没有草稿,传/缺省 null。 */
+  draftChapters?: DraftSkeleton | null;
+  /** ChatPanel 的模式:V3 真实相册恒为 authoring(与桌面同口径,见 EditorPort
+     设备分流处注释);legacy 定稿相册走 editing。 */
+  chatMode?: ChatMode;
 }) {
   const router = useRouter();
   const zh = locale === 'zh';
@@ -209,7 +226,19 @@ export function MobileEditorRoot({
 
   // 未实现功能的统一反馈:点了给一句「即将上线」,不做死按钮。
   const [toast, setToast] = useState<string | null>(null);
-  const [aiChatOpen, setAiChatOpen] = useState(false);
+  /* ── AI 对话 = 桌面同一份 ChatPanel,以贴边抽屉呈现 ──────────────────────────
+     宿主 div 带 .editor-port 类(命中桌面对话那批 ≤767 抽屉样式,同 ModalHost 借样
+     式的做法),初始 chat-collapsed(收起)。展开/收起走 root class:ChatPanel 自己
+     的手柄轻点/下拉会加 chat-collapsed,FAB 把它摘掉 —— 不经 React 状态,与桌面
+     .chat-fold-expand / mc-ai-fab 的 openChat 完全同一机制。 */
+  const chatRootRef = useRef<HTMLDivElement>(null);
+  // ChatPanel 拥有 story-progress 的拉取(挂载即拉、追加照片时轮询);这里只持有状态。
+  const [storyProgress, setStoryProgress] = useState<StoryProgress | null>(null);
+  // 导出闸门由 ChatPanel 经协调器 setExportGateUi 推过来(它算的是 live stage,比
+  // detail.album.stage 新)。默认不拦:宁可点了见提示,不无声禁按钮(与旧口径一致)。
+  const [exportGateLocked, setExportGateLocked] = useState(false);
+  // 聊天驱动的跳页(章节卡/采访推进):seq 递增让「同一页再跳一次」也生效。
+  const [chatNav, setChatNav] = useState<{ page: number; seq: number } | null>(null);
   const say = useCallback((label: string) => {
     setToast(label);
     // 3 秒后自动消失(用 setTimeout,与桌面 alert 不同,不阻塞)。
@@ -629,29 +658,10 @@ export function MobileEditorRoot({
     enabled: true,
   });
   const share = useShareLink(detail.album.id, locale, zh);
-  // AI 对话:瘦客户端直连 design-chat(桌面那套 ChatPanel 依赖协调器上下文,移动端没有)。
-  const chat = useDesignChat(detail.album.id, zh);
 
-  // 导出闸门(与桌面 computeExportUnlocked 同口径):没到 ready / 故事没写完不给导出。
-  // allDone 要问 story-progress —— detail 里只有 stage。
-  const [storyAllDone, setStoryAllDone] = useState<boolean | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    void fetch(`/api/v3/albums/${detail.album.id}/story-progress`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => {
-        if (!cancelled) setStoryAllDone(Boolean(j?.data?.allDone));
-      })
-      .catch(() => {
-        if (!cancelled) setStoryAllDone(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [detail.album.id]);
-  // 还没问回来时不拦(null):宁可让用户点一下看到提示,也不要把按钮无声禁掉。
-  const exportUnlocked =
-    storyAllDone == null || computeExportUnlocked(detail.album.stage, storyAllDone);
+  // 导出闸门:ChatPanel 挂载即拉 story-progress 并经 setExportGateUi 推锁态过来
+  // (追加照片的整个流程里它还会持续轮询刷新)—— 不再自己发第二份同样的请求。
+  const exportUnlocked = !exportGateLocked;
 
   /** 书里用到的照片(备份/分享要的就是这一批)。 */
   const bookPhotoIds = photoIds;
@@ -734,6 +744,34 @@ export function MobileEditorRoot({
     (id) => thumbUrls[id] ?? imageUrls[id] ?? snapshotUrls[id],
     [thumbUrls, imageUrls, snapshotUrls],
   );
+
+  // ── ChatPanel 的移动协调器(实现见 use-chat-coordinator.ts) ─────────────────
+  // 聊天跳页:编辑态先收回浏览(选中框/面板的 rect 都是按旧焦点算的),再挪浏览游标。
+  const goToPage = useCallback((pageIndex: number) => {
+    setEditPage(null);
+    setSelection(null);
+    closeSheet();
+    setChatNav((prev) => ({ page: pageIndex, seq: (prev?.seq ?? 0) + 1 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // 设计对话 committed:整书原地替换(协调器已重编号),同时把编辑焦点收掉 ——
+  // 选中框的 rect 是按旧版面算的,换书后不再对得上(与旧 AiChatSheet 回调同口径)。
+  const replacePagesFromChat = useCallback((next: EditorPage[]) => {
+    setPages(next);
+    setSelection(null);
+    closeSheet();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const chatCoordinator = useChatCoordinator({
+    pages,
+    editPage,
+    draftChapters,
+    resolve,
+    replacePages: replacePagesFromChat,
+    goToPage,
+    setExportGateLocked,
+    exportPdf: exporter.exportPdf,
+  });
 
   const boardBackground =
     boardBg == null
@@ -824,9 +862,11 @@ export function MobileEditorRoot({
       }}
       onMore={() => setMoreOpen(true)}
       onOpenChat={() => {
-        void chat.loadHistory(); // 打开时拉一次历史,两端看到同一段对话
-        setAiChatOpen(true);
+        // 展开抽屉 = 摘掉 root 的 chat-collapsed(ChatPanel 收起时自己会把类加回去,
+        // 与桌面 .chat-fold-expand / mc-ai-fab 的 openChat 同一机制,不经 React 状态)。
+        chatRootRef.current?.classList.remove('chat-collapsed');
       }}
+      navSignal={chatNav}
       onDeletePage={requestDeletePage}
     />
     <BoardBgSheet
@@ -1092,22 +1132,28 @@ export function MobileEditorRoot({
       onPick={onPickPhoto}
       onClose={() => setPhotoPickerOpen(false)}
     />
-    <AiChatSheet
-      open={aiChatOpen}
-      zh={zh}
-      messages={chat.messages}
-      status={chat.status}
-      onClose={() => setAiChatOpen(false)}
-      onSend={(text) =>
-        void chat.send(text, editPage, (nextPages) => {
-          // AI 改完书:committed 的 pages 直接换上,画板原地反映(不重拉草稿、不闪屏)。
-          // 同时把编辑焦点收掉 —— 选中框的 rect 是按旧版面算的,换书后不再对得上。
-          setPages(nextPages);
-          setSelection(null);
-          closeSheet();
-        })
-      }
-    />
+    {/* AI 对话:桌面同一份 ChatPanel(完整弹窗 —— 对话/历史回放/采访/加照片/发送),
+        以左右、底边贴屏的抽屉呈现。生成阶段与成书之后从此是同一个弹窗,不再有第二套
+        瘦实现(2026-08-03 之前的 AiChatSheet 已删)。宿主是 .mobile-editor 的兄弟节点:
+        树内 touch-action:none / user-select:none 会废掉输入框与滚动。 */}
+    <div
+      ref={chatRootRef}
+      className="editor-port mobile-chat-port chat-collapsed font-sans antialiased leading-relaxed"
+    >
+      <ChatPanel
+        key={detail.album.id}
+        detail={detail}
+        locale={locale}
+        mode={chatMode}
+        draftChapters={draftChapters}
+        outerRootRef={chatRootRef}
+        coordinator={chatCoordinator}
+        breadcrumbStage={storyProgress?.stage ?? detail.album.stage ?? 'analysing'}
+        storyProgress={storyProgress}
+        setStoryProgress={setStoryProgress}
+        setStoryProgressLoading={ignoreStoryProgressLoading}
+      />
+    </div>
     <MobileToast text={toast} />
     </>
   );

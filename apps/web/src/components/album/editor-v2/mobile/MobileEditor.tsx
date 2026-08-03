@@ -19,7 +19,7 @@
    这样这棵树能被 renderToStaticMarkup 直接断言(仓里无 jsdom)。
    ════════════════════════════════════════════════════════════════════════════ */
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { EditorPage } from '../../types';
 import { buildSpreads, isSoloSpread, pageSlot, spreadPageIndices, spreadRenderKind } from '../../spreads';
@@ -108,6 +108,9 @@ export type MobileEditorProps = {
   onMore: () => void;
   onBoardBg: () => void;
   onOpenChat: () => void;
+  /** 聊天驱动的跳页(章节卡/采访推进):浏览游标对齐到 page 所在的屏。
+     seq 递增触发 —— 同一页再跳一次也要重新对齐(用户可能已翻走)。 */
+  navSignal?: { page: number; seq: number } | null;
   onPageBg: () => void;
   onPickImage: () => void;
   onPickText: () => void;
@@ -162,6 +165,7 @@ export function MobileEditor({
   onMore,
   onBoardBg,
   onOpenChat,
+  navSignal,
   onPageBg,
   onPickImage,
   onPickText,
@@ -207,6 +211,14 @@ export function MobileEditor({
     () => browseUnits(spreads, pages, MOBILE_BROWSE_DENSITY),
     [spreads, pages],
   );
+
+  /* 聊天驱动的跳页:只认 seq 变化(spreads/pages 变不该触发重跳 —— 那是换书,
+     游标已由别的逻辑处理);跳的瞬间从当前 spreads 取最新对齐。 */
+  useEffect(() => {
+    if (!navSignal) return;
+    setStartPage(screenStartOfPage(spreads, pages, navSignal.page, MOBILE_BROWSE_DENSITY));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navSignal?.seq]);
 
   /** 一个开页在本屏里实际摆出来的「面」。
    *  三种画法与桌面共用同一套分类(spreadRenderKind):
