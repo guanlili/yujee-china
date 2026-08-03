@@ -177,6 +177,71 @@ test('handleV3AnalyzeCompleted(append): 只重写 envelope,draft_pages 行与 re
   }
 });
 
+// 2026-08-03 controller follow-up:上面那条用例把页种在 draft_pages 行里,从没
+// 覆盖过「相册的页此刻还只活在 legacy draftJson.pages、draft_pages 还没有一行」
+// 这个更早期的存量状态(analyze→select-layout 都还没经过任何行级写点触碰过,
+// 拆表前的老书,或者刚上线拆表当天还没被 updatePage/reorderPages/select-layout/
+// compose 摸过的书)。append 分支若不先 ensureDraftPagesSeeded 就用 envelope-only
+// 覆盖 draftJson,会把这份唯一的 pages 副本连根拔掉 —— 静默丢一整本书的页(严重
+// 数据丢失,generation-service.test.ts 的『submitAddPhotosV3 hold 积分…』用例
+// 用的就是这个未播种的老式 fixture,间接踩中了这个洞)。
+test('handleV3AnalyzeCompleted(append): legacy 相册(draft_pages 尚无行)首次追加自动播种,pages 不丢', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('append-analyze-legacy-seed');
+  try {
+    const album = await makeAlbum(user.id, { photoCount: 2 });
+    const legacyPages = [page(0, interior.id), page(1, ending.id)];
+    // legacy 存量形态:pages 直接躺在 draftJson 里,draft_pages 一行都没有 ——
+    // 与 draftPageRepo.replaceAll 播种过的上一条用例刻意不同。
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'ready',
+      draftJson: {
+        version: 'v3-story',
+        tree: { chapters: [chapterNode('c1')] },
+        pages: legacyPages,
+        progress: { currentChapterId: null, doneChapterIds: ['c1'] },
+      },
+    });
+    assert.equal(await draftPageRepo.countByAlbum(album.id), 0, 'sanity: 播种前确实没有行');
+
+    const requestId = `append-analyze-legacy-seed-${Date.now()}`;
+    await agentJobRepo.create(db, {
+      userId: user.id,
+      albumId: album.id,
+      requestId,
+      kind: 'add',
+      status: 'RUNNING',
+      progress: 0,
+    });
+
+    await jobService.handleV3AnalyzeCompleted(
+      requestId,
+      { chapters: [chapterNode('addx-c1')] },
+      { durationMs: 1, models: {} },
+    );
+
+    const reloaded = await albumRepo.findById(album.id);
+    const draft = reloaded?.draftJson as { pages?: unknown } | undefined;
+    assert.equal(draft?.pages, undefined, 'envelope-only 重写:draftJson 不带 pages 键');
+
+    // 页没有被 envelope-only 重写连带抹掉 —— 懒播种把它们原样搬进了 draft_pages 行。
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.equal(rows.length, 2, '两页都没丢');
+    assert.deepEqual(rows.map((r) => r.page), legacyPages, '内容逐字节不变(播种不烘 html)');
+    assert.equal(reloaded?.draftRevision, 1, '首次播种把 revision 从 0 立到 1(与 T3/T4 懒播种同口径)');
+    for (const row of rows) {
+      assert.equal(row.version, 1);
+      assert.equal(row.updatedBy, null, '播种是系统动作,不是这次追加的用户写入');
+    }
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('handleV3SelectLayoutCompleted(append): 既有页源切到 draft_pages 行,不再依赖 draftJson.pages', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');

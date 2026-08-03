@@ -416,7 +416,16 @@ export const jobService = {
     // photoCount 落库,是收口的「无锁读改写窗口」之一。校验(既有 envelope 能否解析 +
     // 新树能否解析)现在也挪进锁内,用锁内的新鲜快照判断;仍然只在校验通过后才尝试
     // job CAS,校验失败照旧走事务外的 handleV3Failed(与今天一致,不在事务里嵌套第二
-    // 个 CAS)。这一分支只改 tree/progress,不碰 pages,不需要 seed/bump revision。
+    // 个 CAS)。这一分支只改 tree/progress、不编辑 pages,但**仍然必须**
+    // ensureDraftPagesSeeded(2026-08-03 controller follow-up 修的真实 bug):
+    // add-photos 的前置闸门(generation-service.submitAddPhotosV3)要求相册已有
+    // 排版页,但那些页可能还没被任何行级写点摸过、仍然只活在 legacy
+    // draftJson.pages 里(拆表刚上线、或老书从没被 updatePage/reorderPages/
+    // select-layout/compose 碰过)。若不先播种就直接拿 envelope-only 覆盖
+    // draftJson,会把这唯一一份 pages 连根拔掉——整本书的页静默消失。播种是
+    // no-op-or-migrate:已有行 → 什么也不做;只有 legacy pages 才复制进
+    // draft_pages 行,不推进 revision(除了「从 0 首次立到 1」这个懒播种自身
+    // 的既定副作用,与 Task 3/4 同口径)。
     if (job.kind === 'add') {
       const parsedTree = V3LayoutTree.safeParse(tree);
       let invalidReason: string | null = null;
@@ -451,6 +460,11 @@ export const jobService = {
           { version: 'v3-story', tree: envelope.tree, progress: envelope.progress },
           remapped,
         );
+
+        // 播种必须先于下面的 envelope-only 覆盖(见上方注释);返回值本身不需要
+        // ——这条分支不推进 revision,只是确保任何 legacy pages 在被覆盖前已经
+        // 安全落到 draft_pages 行。
+        await ensureDraftPagesSeeded(tx, album);
 
         await albumRepo.update(tx, job.albumId, {
           draftJson: envelopeJson({

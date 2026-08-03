@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { db } from '@/db/client';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { albumRepo } from '@/db/repos/album-repo';
+import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '@/db/repos/__test__/setup';
 import { agentClient } from '@/lib/agent/agent-client';
 import { jobService } from '@/services/job/job-service';
@@ -289,7 +290,11 @@ test('submitSelectLayoutV3 starts a fresh layout job whose requestId the select-
     await jobService.handleV3SelectLayoutCompleted(layoutRequestId, PAGES, USAGE);
     const reloaded = await albumRepo.findById(album.id);
     assert.equal(reloaded?.status, 'EDITING');
-    assert.deepEqual(stripPagesHtml((reloaded?.draftJson as { pages?: unknown }).pages), PAGES);
+    // draft_pages 拆表(Phase 1a):页真相搬进 draft_pages 行,draftJson 瘦身为 envelope,
+    // 不再带 pages 键 —— 读回改走 draftPageRepo(job-service.ts Task 5 收口)。
+    assert.equal((reloaded?.draftJson as { pages?: unknown } | undefined)?.pages, undefined);
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.deepEqual(stripPagesHtml(rows.map((r) => r.page)), PAGES);
     const completedLayoutJob = await agentJobRepo.findByRequestId(layoutRequestId);
     assert.equal(completedLayoutJob?.status, 'COMPLETED');
   } finally {
@@ -427,8 +432,8 @@ test('submitAddPhotosV3: hold 积分 + kind=add job;analyze 完成合并树/结�
 
     const after = await albumRepo.findById(album.id);
     const draft = after?.draftJson as {
+      pages?: unknown;
       tree: { chapters: Array<{ chapterId: string }> };
-      pages: unknown[];
       progress: { currentChapterId: string | null; doneChapterIds: string[] };
     };
     assert.equal(draft.tree.chapters.length, 2); // 合并,不覆盖
@@ -436,7 +441,12 @@ test('submitAddPhotosV3: hold 积分 + kind=add job;analyze 完成合并树/结�
     assert.match(draft.tree.chapters[1].chapterId, /^add[0-9a-f]{0,8}.*ch_1$/); // 重映射防撞
     assert.equal(draft.progress.currentChapterId, draft.tree.chapters[1].chapterId); // cursor 指新章
     assert.deepEqual(draft.progress.doneChapterIds, ['ch_1']); // 老章 done 不动
-    assert.equal(draft.pages.length, PAGES.length); // 原页保留
+    // draft_pages 拆表(Phase 1a):draftJson 瘦身为 envelope,不再带 pages 键;
+    // append 分支必须先播种(job-service.ts 的 ensureDraftPagesSeeded),老书这
+    // 唯一一份 legacy pages 才不会被 envelope-only 覆盖连根拔掉。
+    assert.equal(draft.pages, undefined);
+    const rows = await draftPageRepo.findByAlbum(album.id);
+    assert.equal(rows.length, PAGES.length); // 原页保留(搬进了行,不是没了)
     assert.equal(after?.status, 'EDITING');
     assert.equal(after?.stage, 'ready'); // 追加不回退 stage
     assert.equal(after?.photoCount, 3); // 2 + 1

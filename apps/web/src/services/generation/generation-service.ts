@@ -5,9 +5,10 @@ import { env } from '@/lib/env';
 import { ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 import { albumService } from '@/services/album/album-service';
+import { loadStoryDraft } from '@/services/album/draft-store';
 import { creditService } from '@/services/credit/credit-service';
 import { jobService } from '@/services/job/job-service';
-import { SelectLayoutRequest, V3LayoutTree, V3StoryDraft } from '@yujee/contracts';
+import { SelectLayoutRequest, V3LayoutTree } from '@yujee/contracts';
 import type { V3AnalyzeRequest } from '@yujee/contracts';
 
 type V3AnalyzeInput = {
@@ -102,8 +103,13 @@ export const generationService = {
   ) {
     const album = await albumService.findOwned(userId, albumId);
     if (album.status !== 'EDITING' || album.layoutJson != null) throw ERRORS.ALBUM_NOT_EDITABLE();
-    const draft = V3StoryDraft.safeParse(album.draftJson);
-    if (!draft.success || !draft.data.pages || draft.data.pages.length === 0) {
+    // draft_pages 拆表(Phase 1a)后 pages 不一定还活在 draftJson 里(见
+    // handleV3SelectLayoutCompleted/handleV3ComposeCompleted,job-service.ts) ——
+    // "已有排版页"闸门必须走 loadStoryDraft(行存在读行、无行才回退 legacy
+    // draftJson.pages),不能再直接裸读 draftJson.pages。bake:false:这里只用
+    // pages.length 判存在性,不碰 html,不需要现场烘。
+    const draft = await loadStoryDraft(album, { bake: false });
+    if (!draft || draft.pages.length === 0) {
       throw ERRORS.VALIDATION_FAILED('add-photos requires laid-out pages');
     }
     const amount = creditService.cost(input.photos.length);
@@ -136,7 +142,13 @@ export const generationService = {
     if (album.status !== 'EDITING' || album.layoutJson != null) {
       throw ERRORS.ALBUM_NOT_EDITABLE();
     }
-    const tree = readDraftTree(album.draftJson); // 无树(还没 analyze 完)会抛,挡住误触发
+    // draft_pages 拆表(Phase 1a):envelope(tree/progress)读点也统一经
+    // loadStoryDraft(与 pages 闸门同一读层,唯一草稿存取层);无树(还没 analyze
+    // 完)仍然抛,挡住误触发——只是从裸 zod parse 的 raw ZodError 换成
+    // ERRORS.VALIDATION_FAILED,与本文件其余闸门错误同一口径。
+    const loaded = await loadStoryDraft(album, { bake: false });
+    if (!loaded) throw ERRORS.VALIDATION_FAILED('album has no story tree yet');
+    const tree = loaded.tree;
 
     // 排版另起独立 layout job:自己的 requestId、kind='layout'、不碰积分。
     const layoutRequestId = crypto.randomUUID();
@@ -187,18 +199,6 @@ export const generationService = {
 function toRefMap(refs: SelectLayoutInput['refs']): Map<string, string> {
   if (Array.isArray(refs)) return new Map(refs.map((item) => [item.photoId, item.ref200px]));
   return new Map(Object.entries(refs));
-}
-
-function readDraftTree(draftJson: unknown) {
-  if (
-    draftJson &&
-    typeof draftJson === 'object' &&
-    !Array.isArray(draftJson) &&
-    (draftJson as { version?: unknown }).version === 'v3-story'
-  ) {
-    return V3LayoutTree.parse((draftJson as { tree?: unknown }).tree);
-  }
-  return V3LayoutTree.parse(draftJson);
 }
 
 export function buildSelectLayoutRequestFromTree(input: {
