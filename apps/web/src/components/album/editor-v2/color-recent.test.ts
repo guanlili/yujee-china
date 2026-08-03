@@ -73,3 +73,18 @@ test('最近使用:预设一排下方渲染,只在关面板时记最终色,「�
   // 「无背景」清除不算选色。
   assert.match(port, /data-color-none[^\n]*\{ ebColorDirty = false/, '无背景分支先复位脏标记再关面板');
 });
+
+test('离散点选立刻记账:面板色块与 mes 快捷色点一下就落「最近使用」,不等关面板', () => {
+  // 面板内点色块(预设/格子/最近一排):记账 + 立刻刷新行 + 复位脏标记(不重复记)。
+  assert.match(
+    port,
+    /saveRecentColor\(sw\.dataset\.swatch\); renderRecentRow\(\); ebColorDirty = false;/,
+    '面板色块点选必须立刻记账并刷新最近一排',
+  );
+  // mes 主视图快捷色:不开 Fill 面板也要落账(只置脏标记的话永远不会被 commit)。
+  assert.match(
+    port,
+    /saveRecentColor\(cq\); renderRecentRow\(\); ebColorDirty = false;/,
+    'mes 快捷色点选必须立刻记账',
+  );
+});
