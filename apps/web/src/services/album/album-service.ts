@@ -488,6 +488,9 @@ export const albumService = {
         // 预览垫底背景(相册级);编辑器读它铺画板、导出拼图也读它。null = 无。
         boardBackground: album.boardBackground ?? null,
         photoFilter: album.photoFilter ?? null,
+        // 成稿文案来源:'placeholder' = 游客占位样稿(登录后前端检测到它自动补跑真
+        // compose)、'ai' = 真文案、null = 未成稿/历史相册。
+        copySource: album.copySource ?? null,
         errorMessage: album.errorMessage,
         createdAt: album.createdAt,
       },
