@@ -128,7 +128,7 @@ const copies: Record<Locale, Copy> = {
     login: 'Log in',
     menu: 'Menu',
     createTitle: 'Turn your scattered photos into a photo book you can read, touch, and keep',
-    createSub: '',
+    createSub: 'Upload your photos and the AI groups them, writes the story, and automatically lays out a magazine-style photo book — fully editable, ready to print.',
     sampleCta: 'See example',
     makeSame: 'Make one like this',
     samplesNote: 'Demo books made by the Yujee team to show what the product can do — fictional content, not customer work.',
@@ -143,9 +143,9 @@ const copies: Record<Locale, Copy> = {
     heroSub: 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful memory book made just for you.',
     heroCta: 'Start creating',
     heroExamples: 'See examples',
-    trust: ['No design skills needed', 'Fully editable', 'HD-ready export'],
+    trust: ['No design skills needed', 'Fully editable layout', 'Print-ready PDF export'],
     workflowTitle: 'How it works',
-    workflow: ['Auto photo grouping', 'AI-assisted writing', 'Auto design'],
+    workflow: ['Automatic photo grouping', 'AI-assisted story writing', 'Automatic magazine-style layout'],
     polish: 'Polishing the text…',
     featuresLabel: 'What it does',
     featuresTitle: (
@@ -159,7 +159,7 @@ const copies: Record<Locale, Copy> = {
       {
         title: 'Auto-layout into a photo book',
         body:
-          'Drop in a set of photos and the AI lays out spreads with rhythm — full bleeds, grids, white space — no dragging one by one.',
+          'Drop in a set of photos and the AI automatically lays out magazine-style spreads — full bleeds, grids, white space — a finished photo book layout without dragging pictures one by one.',
         icon: 'layout',
       },
       {
@@ -176,7 +176,7 @@ const copies: Record<Locale, Copy> = {
       },
     ],
     ctaTitle: "Don't leave those photos in a folder — make them a keepsake book",
-    ctaSub: 'Make your first book in minutes. Start free; think about export and print once you love it.',
+    ctaSub: 'Make your first photo book in minutes. Start free; think about export and print once you love it.',
     start: 'Start free',
     faqLabel: 'FAQ',
     faqTitle: 'AI photo book questions, answered',
@@ -196,7 +196,7 @@ const copies: Record<Locale, Copy> = {
     samples: [
       {
         title: 'Year in a book',
-        brief: 'One book a year, bound each December',
+        brief: 'One photo book a year, bound each December',
         body:
           'Pack a whole year into one book. Holidays, trips, and everyday moments are laid out by month and continued year after year.',
         bullets: ['Grouped by month or event', 'One click for the year-end book', 'Same style, a matching set each year'],
@@ -205,7 +205,7 @@ const copies: Record<Locale, Copy> = {
       },
       {
         title: 'Life story',
-        brief: 'Your milestones, into a life story',
+        brief: 'Your milestones, into a life story book',
         body:
           'Lay milestones along a timeline: birth, school, people, and journeys. Each group gets editable short essays, bound like a biography.',
         bullets: ['Auto-grouped by life stage', 'Long-form text and pull quotes per group', 'Great as a birthday or memorial gift'],
@@ -214,7 +214,7 @@ const copies: Record<Locale, Copy> = {
       },
       {
         title: 'Travel',
-        brief: 'A trip, auto-bound into a journal',
+        brief: 'A trip, auto-bound into a travel photo book',
         body:
           'Auto-grouped by date, with places and order sorted for you. One spread per day, with room to breathe between photos.',
         bullets: ['Auto-split by timeline', 'Add map pages and route notes', 'Export a PDF to share with travel mates'],
@@ -277,7 +277,7 @@ const copies: Record<Locale, Copy> = {
     login: '登录',
     menu: '菜单',
     createTitle: '把散落的照片，做成一本能读、能摸、能留的照片书',
-    createSub: 'YUJEE AI 将您的照片、故事、回忆和想法变成一本专为您制作的精美杂志。',
+    createSub: 'YUJEE AI 将您的照片、故事、回忆和想法变成一本专为您制作的精美纪念册。',
     sampleCta: '查看示例',
     makeSame: '做同款',
     samplesNote: '以下样书均为遇己官方制作的演示作品（内容为虚构示例），非真实用户创作。',

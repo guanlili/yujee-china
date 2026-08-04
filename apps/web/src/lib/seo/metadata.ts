@@ -11,7 +11,7 @@ export const OG_IMAGE = {
   url: absoluteUrl('/og/yujee-og.png'),
   width: 1200,
   height: 630,
-  alt: 'A Yujee memoir spread — photos laid out as a printed magazine',
+  alt: 'A Yujee memoir spread — photos laid out as a printed memory book',
 };
 
 /**
