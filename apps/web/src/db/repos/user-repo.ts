@@ -1,4 +1,4 @@
-import { desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import { db, type DbOrTx } from '../client';
 import { users, type NewUser, type User } from '../schema';
 
@@ -55,6 +55,22 @@ export const userRepo = {
     }
     const inserted = await tx.insert(users).values(data).returning();
     return inserted[0]!;
+  },
+
+  // 游客清理(cron):创建早于 cutoff 且仍未转正的匿名账号。转正的在 onLinkAccount
+  // 时已被插件删掉,这里扫到的只剩「来了没登录」的。limit 分批,防单次事务过大。
+  findAnonymousCreatedBefore: async (cutoff: Date, limit = 500): Promise<User[]> =>
+    db
+      .select()
+      .from(users)
+      .where(and(eq(users.isAnonymous, true), lt(users.createdAt, cutoff)))
+      .orderBy(users.createdAt)
+      .limit(limit),
+
+  // 删除用户行:albums/agent_jobs/album_messages/sessions 等 11 处 onDelete:'cascade'
+  // 随行清空。仅供游客清理 cron 使用 —— 真实账号删除是产品级流程,不走这里。
+  deleteById: async (tx: DbOrTx, id: string): Promise<void> => {
+    await tx.delete(users).where(eq(users.id, id));
   },
 
   updateCredit: async (tx: DbOrTx, id: string, delta: number): Promise<void> => {
