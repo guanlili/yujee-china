@@ -867,6 +867,8 @@ export const jobService = {
           design: merged.draftJson.design,
         }),
         pageCount: merged.pages.length,
+        // 真 compose 落地:文案来源升为 'ai'(游客期的 'placeholder' 到此被覆盖)。
+        copySource: 'ai',
         // 设计完成 → 待导出(导出闸门的唯一开门钥匙);幂等重设计时已是 ready 则维持不动。
         ...(album.stage !== 'ready' ? { stage: 'ready' as const } : {}),
       });
@@ -881,7 +883,12 @@ export const jobService = {
             ? '写好了:封面封底就位,全书文案、字体和配色也一起刷上了。不满意随时在对话里改。'
             : 'All set — cover & back cover are in, and the whole book now has its copy, fonts and colors. Ask me here to tweak anything.',
       });
-      // 积分已在 analyze 完成时结算,compose job 不挂 hold。
+      // 普通相册:积分在 analyze 完成时已结算,compose 不挂 hold,这里 settle 是幂等
+      // 空转。游客升级路径:applyDesign 对 copySource='placeholder' 的相册重新挂了
+      // hold(登录后真文案首跑才计费),在此结算 —— hold/settle 的条件迁移保证并发安全。
+      if (album.creditHoldId) {
+        await creditService.settle(tx, job.userId, album.creditHoldId);
+      }
     });
 
     if (failure) {
@@ -916,9 +923,13 @@ export const jobService = {
       });
       if (!won) return;
       // layout / compose job 失败:相册已是 EDITING(草稿完好),保持可编辑,用户可重触发。
-      // 不标相册 FAILED、不动积分(积分在 analyze 时已结算,这两类 job 不挂 hold)。
-      // 只有 init 失败才失败相册。
-      if (job.kind === 'layout' || job.kind === 'compose') return;
+      // 不标相册 FAILED。只有 init 失败才失败相册。
+      // compose 补一手释放:游客升级路径的真 compose 挂了 hold(applyDesign 计费),
+      // 失败必须放钱;普通 compose 无 hold,releaseByAlbum 幂等空转。
+      if (job.kind === 'layout' || job.kind === 'compose') {
+        if (job.kind === 'compose') await creditService.releaseByAlbum(tx, job.albumId);
+        return;
+      }
       // 追加失败:老书完好,只释放追加 hold,不标 FAILED;用户重新点「+」再来一次。
       if (job.kind === 'add') {
         await creditService.releaseByAlbum(tx, job.albumId);

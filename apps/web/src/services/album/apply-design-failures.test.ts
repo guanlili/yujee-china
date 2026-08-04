@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { db } from '../../db/client';
 import { albumRepo } from '../../db/repos/album-repo';
 import { albumMessageRepo } from '../../db/repos/album-message-repo';
+import { draftPageRepo } from '../../db/repos/draft-page-repo';
 import { jobService } from '../job/job-service';
 import { agentClient } from '../../lib/agent/agent-client';
 import { albumService, buildComposeRequest } from './album-service';
@@ -26,11 +27,16 @@ function interiorPage(): Page {
 }
 
 function editingAlbum() {
+  // draftJson 必须是合法 DraftEnvelope:applyDesign 的页源已切 loadStoryDraft
+  // (draft_pages 拆表适配),parseDraftEnvelope 解析失败会变成
+  // 'design requires laid-out pages',测不到本文件想测的失败语义。
   return {
     id: 'album-1',
     userId: 'user-1',
     title: '我的书',
     status: 'EDITING',
+    draftRevision: 0,
+    copySource: null,
     draftJson: {
       version: 'v3-story',
       tree: {
@@ -38,13 +44,28 @@ function editingAlbum() {
           {
             chapterId: 'c1',
             title: '第一章',
+            description: '',
             chapterContext: '用户讲的故事',
             place: '杭州',
-            photos: [{ photoId: 'p1', takenAt: null }],
+            keywords: [],
+            extractedColor: null,
+            accentColor: null,
+            artFont: null,
+            photos: [
+              {
+                photoId: 'p1',
+                sceneDescription: '',
+                width: 800,
+                height: 600,
+                orientation: 'landscape',
+                takenAt: null,
+              },
+            ],
           },
         ],
       },
       pages: [interiorPage()],
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
     },
   };
 }
@@ -62,7 +83,10 @@ function mockAlbumAndTx() {
   const findById = mock.method(albumRepo, 'findById', async () => editingAlbum() as never);
   const transaction = mock.method(db, 'transaction', (async (fn: (tx: unknown) => unknown) =>
     fn({} as unknown)) as never);
-  return { findById, transaction };
+  // loadStoryDraft 会数 draft_pages 行:mock 成 0 行走 legacy draftJson.pages 回退,
+  // 保持本文件零 DB 依赖(它测的是 job/submit 失败语义,不是页源)。
+  const countRows = mock.method(draftPageRepo, 'countByAlbum', async () => 0);
+  return { findById, transaction, countRows };
 }
 
 test('建 job 抛非 23505 的错误 → applyDesign 原样抛,绝不谎报 accepted', async () => {

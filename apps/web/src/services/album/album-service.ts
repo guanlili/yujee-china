@@ -10,7 +10,8 @@ import { albumPageRepo } from '@/db/repos/album-page-repo';
 import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { albumPhotoRepo } from '@/db/repos/album-photo-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
-import { jobService, readComposeAppendMeta } from '@/services/job/job-service';
+import { jobService, mergeComposeIntoDraft, readComposeAppendMeta, type ComposeJobMeta } from '@/services/job/job-service';
+import { creditService } from '@/services/credit/credit-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { agentClient } from '@/lib/agent/agent-client';
 import { designAgentClient } from '@/lib/agent/design-agent-client';
@@ -1224,9 +1225,12 @@ export const albumService = {
     if (input.pageBackground && !isValidPageBackground(input.pageBackground))
       throw ERRORS.VALIDATION_FAILED(`invalid page background: ${input.pageBackground}`);
 
-    const root = album.draftJson as { tree?: { chapters?: unknown }; pages?: unknown } | null;
-    const chapters = Array.isArray((root?.tree as { chapters?: unknown })?.chapters)
-      ? ((root!.tree as { chapters: unknown[] }).chapters as Array<{
+    // 页/树源走 loadStoryDraft 行读:draft_pages 拆表后 envelopeJson 从不把 pages 写回
+    // draftJson,新相册排版完 draftJson.pages 就是空的 —— 拆表前这里裸读 draftJson.pages
+    // 是「陈旧快照」问题,拆表后直接是「必空」问题(composeAppend 已同款修过)。
+    const draft = await loadStoryDraft(album, { bake: false });
+    const chapters = Array.isArray((draft?.tree as { chapters?: unknown } | undefined)?.chapters)
+      ? ((draft!.tree as { chapters: unknown[] }).chapters as Array<{
           chapterId?: string;
           title?: string;
           chapterContext?: string;
@@ -1234,8 +1238,16 @@ export const albumService = {
           photos?: Array<{ photoId: string; takenAt?: string | null }>;
         }>)
       : [];
-    const rawPages = Array.isArray(root?.pages) ? (root!.pages as Page[]) : [];
+    const rawPages: Page[] = draft?.pages ?? [];
     if (rawPages.length === 0) throw ERRORS.VALIDATION_FAILED('design requires laid-out pages');
+
+    // 游客升级计费:占位成稿的书,真文案首跑在此收钱(匿名期 analyze 没扣过)。
+    // 普通相册 copySource 为 null/'ai',不重复计费。hold 挂在下方 job 事务里,
+    // settle 在 compose 完成回调,失败/僵尸由 handleV3Failed/sweeper 释放。
+    const upgradeAmount = album.copySource === 'placeholder'
+      ? creditService.cost(album.photoCount)
+      : 0;
+    if (upgradeAmount > 0) await creditService.precheck(userId, upgradeAmount);
     const treePhotoIds = new Set(
       chapters.flatMap((c) => (c.photos ?? []).map((p) => p.photoId)),
     );
@@ -1289,6 +1301,9 @@ export const albumService = {
           },
         });
         await jobService.markRunning(tx, created.id);
+        if (upgradeAmount > 0) {
+          await creditService.hold(tx, userId, upgradeAmount, albumId);
+        }
       });
     } catch (e) {
       // 只有唯一索引冲突(23505)才是「已有在途成稿」:幂等接受(前端继续轮询那一单),
@@ -1336,6 +1351,123 @@ export const albumService = {
     return { requestId, accepted: true as const };
   },
 
+  // 游客占位成稿:确认封面后**不派 compose、不碰 Gemini、不动积分**,同步在 Web 端
+  // 组书 —— 复用 mergeComposeIntoDraft 传空 compose 载荷:内页文案保留 select-layout
+  // 时 engine 已填的模板 sample(fill_sample_texts),封面/封尾用模板 sample,字体按
+  // 语言兜底(normalizeDesignFonts),carrier/重烘/pageIndex 重排全部走真成稿同一条
+  // 纯函数,画板立刻显示一本完整的「示例文案书」。相册标记 copySource='placeholder',
+  // 登录转正后前端检测到它会自动重发 POST /design 跑真 compose(那时才计费)。
+  async applyPlaceholderDesign(
+    userId: string,
+    albumId: string,
+    input: {
+      language: 'zh' | 'en';
+      coverTemplateId: string;
+      coverPhotoId: string;
+      endingTemplateId: string;
+      endingPhotoId: string;
+      pageBackground?: string;
+    },
+  ): Promise<{ accepted: true; placeholder: true }> {
+    const album = await this.findOwned(userId, albumId);
+    if (album.status !== 'EDITING') throw ERRORS.ALBUM_NOT_EDITABLE();
+    if (templateCategory(input.coverTemplateId) !== 'cover')
+      throw ERRORS.VALIDATION_FAILED(`not a cover template: ${input.coverTemplateId}`);
+    if (templateCategory(input.endingTemplateId) !== 'ending')
+      throw ERRORS.VALIDATION_FAILED(`not an ending template: ${input.endingTemplateId}`);
+    if (input.pageBackground && !isValidPageBackground(input.pageBackground))
+      throw ERRORS.VALIDATION_FAILED(`invalid page background: ${input.pageBackground}`);
+
+    await db.transaction(async (tx) => {
+      // 写事务固定次序(与三个回调对齐):album 行锁 → seed → bump → replaceAll → update。
+      const locked = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!locked) throw ERRORS.ALBUM_NOT_FOUND();
+      const loaded = await loadStoryDraft(locked, { tx, bake: false });
+      if (!loaded || loaded.pages.length === 0)
+        throw ERRORS.VALIDATION_FAILED('design requires laid-out pages');
+
+      const chapters = Array.isArray((loaded.tree as { chapters?: unknown } | undefined)?.chapters)
+        ? ((loaded.tree as { chapters: unknown[] }).chapters as Array<{
+            photos?: Array<{ photoId: string }>;
+          }>)
+        : [];
+      const treePhotoIds = new Set(
+        chapters.flatMap((c) => (c.photos ?? []).map((p) => p.photoId)),
+      );
+      if (!treePhotoIds.has(input.coverPhotoId) || !treePhotoIds.has(input.endingPhotoId))
+        throw ERRORS.VALIDATION_FAILED('cover/ending photo not in this album');
+
+      const meta: ComposeJobMeta = {
+        language: input.language,
+        coverTemplateId: input.coverTemplateId,
+        coverPhotoId: input.coverPhotoId,
+        endingTemplateId: input.endingTemplateId,
+        endingPhotoId: input.endingPhotoId,
+        extraEndingPhotoIds: pickHeroPhotos(
+          chapters.map((c) => ({ photos: (c.photos ?? []) as { photoId: string }[] })),
+          4,
+        ).filter((id) => id !== input.endingPhotoId && id !== input.coverPhotoId),
+        ...(input.pageBackground ? { pageBackground: input.pageBackground } : {}),
+      };
+      const draftJsonLike = {
+        version: 'v3-story' as const,
+        tree: loaded.tree,
+        progress: loaded.progress,
+        pages: loaded.pages,
+        ...(loaded.design ? { design: loaded.design } : {}),
+      };
+      // 空载荷语义由真成稿同一套纯函数保证:pagesTexts 空 → 内页保留 sample;
+      // cover/endingTexts 空 → mergeSlotTexts 落模板 sample;fonts 空 → 按语言兜底。
+      const merged = mergeComposeIntoDraft(draftJsonLike, meta, {
+        pagesTexts: {},
+        coverTexts: {},
+        endingTexts: {},
+        fonts: {},
+      });
+
+      const seededRevision = await ensureDraftPagesSeeded(tx, locked);
+      const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+      await draftPageRepo.replaceAll(tx, albumId, merged.pages, rev, userId);
+      await albumRepo.update(tx, albumId, {
+        draftJson: envelopeJson({
+          tree: merged.draftJson.tree,
+          progress: merged.draftJson.progress,
+          design: merged.draftJson.design,
+        }),
+        pageCount: merged.pages.length,
+        copySource: 'placeholder',
+        ...(locked.stage !== 'ready' ? { stage: 'ready' as const } : {}),
+      });
+
+      // 回放同序:用户气泡(designApplied 供回执卡重建)+ assistant 回执说明是示例文案。
+      await albumMessageRepo.create(tx, {
+        albumId,
+        userId,
+        role: 'user',
+        content: input.language === 'zh' ? '就用这组封面' : 'Use this cover set',
+        layoutPatch: {
+          designApplied: {
+            coverTemplateId: input.coverTemplateId,
+            coverPhotoId: input.coverPhotoId,
+            endingTemplateId: input.endingTemplateId,
+            endingPhotoId: input.endingPhotoId,
+          },
+        },
+      });
+      await albumMessageRepo.create(tx, {
+        albumId,
+        userId,
+        role: 'assistant',
+        content:
+          input.language === 'zh'
+            ? '封面就位,整本书排好了!现在书里的文字是示例样稿 —— 登录后我会照你讲的故事写出真文案。'
+            : "Cover set — your book is assembled! The words are sample copy for now; sign in and I'll write the real story from what you told me.",
+      });
+    });
+
+    return { accepted: true as const, placeholder: true as const };
+  },
+
   // 追加范围成稿:加图增量排版落地后,只为这些章的内页写文案(engine /v3/compose,
   // 空 coverSlots/endingSlots → engine 跳过全局批次:不写封面、不回字体)。已设计的书
   // 专用 —— 未设计的书返回 composed:false,新页等用户选封面时随全书成稿一起写。
@@ -1347,7 +1479,12 @@ export const albumService = {
     userId: string,
     albumId: string,
     input: { language: 'zh' | 'en'; chapterIds: string[]; refs?: Record<string, string> },
+    opts: { isAnonymous?: boolean } = {},
   ): Promise<{ accepted: true; composed: boolean; requestId?: string }> {
+    // 游客的占位书也「设计过」(carrier 三键齐全),不拦会直接烧 Gemini —— 匿名一律
+    // composed:false:新页的 sample 文案在追加排版时已由 engine 填好,真文案等登录后
+    // 全书 compose 一起覆盖。
+    if (opts.isAnonymous) return { accepted: true, composed: false };
     const album = await this.findOwned(userId, albumId);
     if (album.status !== 'EDITING' || album.layoutJson != null) throw ERRORS.ALBUM_NOT_EDITABLE();
 
