@@ -27,6 +27,7 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { EditorPage } from '../../types';
+import { editableTextOf } from '../editable-text';
 import { pageFaceHTML, type PageFaceCtx } from '../page-face';
 import { pageFolioInfos } from '../../page-html-dom';
 import { useFitTextBoxes } from '../../use-fit-text-boxes';
@@ -586,7 +587,8 @@ export function EditView({
       slotId,
       rect: { left: t.left - s.left, top: t.top - s.top, width: t.width, height: t.height },
       probe: {
-        text: el.textContent ?? '',
+        // editableTextOf 不是 textContent:槽里可能有 <br>(AI 写的),textarea 要看到真换行。
+        text: editableTextOf(el),
         fontSize: cs.fontSize,
         color: cs.color,
         fontWeight: cs.fontWeight,

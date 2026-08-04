@@ -75,3 +75,23 @@ test("patchHtmlText:原位替换槽位文字,保留元素与其余版面", async
 	assert.ok(next!.includes("说明"));
 	assert.equal(patchHtmlText(html, "missing", "x"), null);
 });
+
+test("patchHtmlText:含换行的文案给槽元素补 white-space:pre-wrap(多行渲染支持)", async () => {
+	const { patchHtmlText } = await import("../src/core/album/html-guard.ts");
+	const html = `<div data-template="mag-01"><h1 data-text-key="title" style="color:#111">旧</h1><p data-text-key="explain1">说明</p></div>`;
+	const next = patchHtmlText(html, "title", "第一行\n第二行")!;
+	assert.ok(next.includes("white-space:pre-wrap"), "未补 white-space");
+	assert.ok(next.includes("color:#111"), "既有声明被冲掉");
+	assert.match(next, /<h1[^>]*data-text-key="title"[^>]*>第一行\n第二行<\/h1>/);
+	// 无 style 属性的槽也能补
+	const noStyle = patchHtmlText(html, "explain1", "甲\n乙")!;
+	assert.match(noStyle, /<p[^>]*data-text-key="explain1"[^>]*white-space:pre-wrap[^>]*>甲\n乙<\/p>/);
+	// 重复改字不叠加声明
+	const twice = patchHtmlText(next, "title", "丙\n丁")!;
+	assert.equal(twice.match(/white-space/g)!.length, 1);
+	// 单行文案不动 style(既有行为不变)
+	const single = patchHtmlText(html, "title", "新")!;
+	assert.equal(single.includes("white-space"), false);
+	// 往返:derivePageTexts 把多行文案原样读回(\n 保留)
+	assert.equal(derivePageTexts(next).title, "第一行\n第二行");
+});

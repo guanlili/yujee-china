@@ -49,6 +49,38 @@ test('既有能力回归:resolveDisplayHtml / patchHtmlText 不受影响', () =>
   assert.ok(patchHtmlText(html, 'title', '新')!.includes('>新</h1>'));
 });
 
+// ── 多行文案:换行渲染支持 ────────────────────────────────────────────────────
+// 文本节点里的 \n 会被 HTML 渲染折叠成空格 —— 含换行的文案要在槽元素上补
+// white-space:pre-wrap(行内样式跟着 html 真相走,编辑器/翻书/导出所有表面同款生效)。
+
+test('patchHtmlText:含换行的文案给槽元素补 white-space:pre-wrap', () => {
+  const html = '<div data-template="mag-01"><p data-text-key="body" style="font-size:18px">旧</p></div>';
+  const out = patchHtmlText(html, 'body', '第一行\n第二行')!;
+  assert.ok(out.includes('white-space:pre-wrap'), '未补 white-space');
+  assert.ok(out.includes('font-size:18px'), '既有声明被冲掉');
+  assert.ok(out.includes('>第一行\n第二行</p>'), '换行没进内容');
+});
+
+test('patchHtmlText:无 style 属性的槽也能补 white-space', () => {
+  const html = '<div data-template="mag-01"><h1 data-text-key="title">旧</h1></div>';
+  const out = patchHtmlText(html, 'title', 'A\nB')!;
+  assert.match(out, /<h1 data-text-key="title"[^>]*white-space:pre-wrap[^>]*>A\nB<\/h1>/);
+});
+
+test('patchHtmlText:重复改字不叠加 white-space 声明(upsert 语义)', () => {
+  const html = '<div data-template="mag-01"><p data-text-key="body">旧</p></div>';
+  const once = patchHtmlText(html, 'body', '甲\n乙')!;
+  const twice = patchHtmlText(once, 'body', '丙\n丁')!;
+  assert.equal(twice.match(/white-space/g)!.length, 1);
+});
+
+test('patchHtmlText:单行文案不动 style(既有行为不变)', () => {
+  const html = '<div data-template="mag-01"><p data-text-key="body" style="color:#111">旧</p></div>';
+  const out = patchHtmlText(html, 'body', '新')!;
+  assert.equal(out.includes('white-space'), false);
+  assert.ok(out.includes('style="color:#111"'), 'style 属性不该被改写');
+});
+
 // ── 手工编辑固化进 html 真相的两个 patcher ─────────────────────────────────────
 // C 方案:页面真相 = html。编辑器此前只改画出来的 DOM + textsJson,html 不动 ——
 // 重绘/刷新回退,AI 和导出读到旧内容。这两个 patcher 是客户端(本地即时同步)与

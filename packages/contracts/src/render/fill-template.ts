@@ -59,7 +59,7 @@ export function fillTemplateHtml(templateHtml: string, page: FillablePage, resol
     switch (type) {
       case 'TEXT': {
         const carrier = resolveThemeCarrier(data, slot, roleFor(slot));
-        return escapeHtml(carrier.text ?? stringOf(data[slot]));
+        return multilineHtml(escapeHtml(carrier.text ?? stringOf(data[slot])));
       }
       case 'COLOR': {
         const carrier = resolveThemeCarrier(data, slot, roleFor(slot));
@@ -113,6 +113,15 @@ function stringOf(value: TemplateData[string]): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'number') return String(value);
   return '';
+}
+
+// 换行渲染支持:文本节点里的 \n 会被 HTML 渲染折叠成空格,含换行的文案包一层
+// white-space:pre-wrap 的 span。TEXT token 站在槽元素内容里、够不到父级开标签,
+// 只能包内层;槽位标签只有 div/p/h1(见 html-templates),不会干扰 patchHtmlText/
+// derivePageTexts 按「最近同名闭合标签」截取内容的假设。
+function multilineHtml(escaped: string): string {
+  if (!/[\r\n]/.test(escaped)) return escaped;
+  return `<span style="white-space:pre-wrap">${escaped}</span>`;
 }
 
 function escapeHtml(value: string): string {

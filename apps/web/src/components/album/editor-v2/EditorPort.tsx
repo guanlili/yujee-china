@@ -52,6 +52,7 @@ import { fitTextBoxes, pageFolioInfos, patchHtmlImagePos, patchHtmlPageStyle, pa
 import { PAGE, pageBox } from '../templates/constants';
 // 页面渲染是共享层(移动端那棵 UI 树用同一份,见 page-face.tsx 抬头)。main 上新加的
 // 双宽页 pageBox / 跨页 folio 都已折进 page-face,这里不再持第二份实现。
+import { editableTextOf } from './editable-text';
 import { pageFaceInner, pageFaceHTML, type PageFaceCtx } from './page-face';
 import { clampZoom, paintDecision } from './zoom-util';
 import { resolveDeviceMode, initMobileCanvas } from './mobile-canvas';
@@ -3911,7 +3912,8 @@ function EditorBook({
         textEl.removeAttribute('contenteditable');
         textEl.style.cursor = '';
         if (!textKey || !page) return;
-        const nextText = textEl.textContent ?? '';
+        // 不能用 textContent:按 Enter 打的换行是 <br>/<div> 节点,textContent 会拼成一行。
+        const nextText = editableTextOf(textEl);
         page.textsJson = { ...page.textsJson, [textKey]: nextText };
         syncPageHtml(page, (html) => patchHtmlText(html, textKey, nextText));
         ensureCurrentFonts();
@@ -4503,7 +4505,8 @@ function EditorBook({
       const el = mesState.snap?.textEl;
       if (!body || !el) return;
       const ta = body.querySelector<HTMLTextAreaElement>('[data-mes-text]');
-      if (ta && document.activeElement !== ta) ta.value = el.textContent ?? '';
+      // editableTextOf 不是 textContent:槽里可能有 <br>(AI 写的)/字面 \n,textarea 要看到真换行。
+      if (ta && document.activeElement !== ta) ta.value = editableTextOf(el);
       const si = body.querySelector<HTMLInputElement>('[data-mes-size-input]');
       if (si && document.activeElement !== si) si.value = String(Math.round(parseFloat(getComputedStyle(el).fontSize) || 14));
       mesMarkQuickColor();
@@ -4560,7 +4563,9 @@ function EditorBook({
         textsJson: page ? { ...page.textsJson } : undefined,
         textEl,
         styleAttr: textEl ? textEl.getAttribute('style') : null,
-        text: textEl ? (textEl.textContent ?? '') : null,
+        // 基线与 mesFinalizeText 的终值必须同一把尺(editableTextOf):否则槽里
+        // 原有 <br> 时基线是拼行的、终值是带 \n 的,「没改内容」会被误判成改了。
+        text: textEl ? editableTextOf(textEl) : null,
         textKey: textEl?.dataset.textKey,
         pageBg,
       };
@@ -4576,7 +4581,7 @@ function EditorBook({
       if (!snap || mesState.mode !== 'text') return;
       const { page, textEl, textKey } = snap;
       if (!page || !textEl || !textKey) return;
-      const nextText = textEl.textContent ?? '';
+      const nextText = editableTextOf(textEl); // 与 snap.text 同一把尺(换行安全)
       if (nextText === snap.text) return; // 内容没改 → DOM 已即时反映样式,无需重绘
       page.textsJson = { ...page.textsJson, [textKey]: nextText };
       syncPageHtml(page, (html) => patchHtmlText(html, textKey, nextText));
@@ -4616,7 +4621,11 @@ function EditorBook({
     // 文字内容实时预览:只改活节点文本(视觉即时),不落库/不重绘(交给「完成」),避免每键重绘换节点。
     function mesLiveSetText(value: string) {
       const el = mesState.snap?.textEl;
-      if (el) el.textContent = value;
+      if (!el) return;
+      el.textContent = value;
+      // 新打的换行重绘前就要看得见(文本节点里的 \n 默认被折叠成空格)。落库时
+      // patchHtmlText 把同款样式固化进 html 真相;取消走 mesRevert 的 styleAttr 快照还原。
+      if (value.includes('\n')) el.style.whiteSpace = 'pre-wrap';
     }
     const onMesClick = (e: Event) => {
       e.stopPropagation();

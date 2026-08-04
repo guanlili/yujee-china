@@ -94,7 +94,10 @@ function escapeHtmlText(value: string): string {
 }
 
 /** 槽位级改字:替换存库 html 中 data-text-key 元素的内容,保留其余版面。
- * 找不到锚点返回 null(调用方回退整页重烘或仅更新数据层)。 */
+ * 找不到锚点返回 null(调用方回退整页重烘或仅更新数据层)。
+ * 含换行的文案给槽元素补 white-space:pre-wrap —— 文本节点里的 \n 默认被 HTML
+ * 渲染折叠成空格;行内样式跟着 html 真相走,编辑器/翻书/导出所有表面同款生效
+ * (与 design-agent html-guard 的同名实现保持同步)。 */
 export function patchHtmlText(html: string, slotId: string, value: string): string | null {
   const escapedSlot = slotId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const openRe = new RegExp(`<([a-z0-9]+)\\b[^>]*data-text-key="${escapedSlot}"[^>]*>`, 'i');
@@ -103,7 +106,10 @@ export function patchHtmlText(html: string, slotId: string, value: string): stri
   const start = m.index + m[0].length;
   const end = html.indexOf(`</${m[1]}>`, start);
   if (end === -1) return null;
-  return html.slice(0, start) + escapeHtmlText(value) + html.slice(end);
+  const openTag = /[\r\n]/.test(value)
+    ? (upsertStyleAttr(m[0], { 'white-space': 'pre-wrap' }) ?? m[0])
+    : m[0];
+  return html.slice(0, m.index) + openTag + escapeHtmlText(value) + html.slice(end);
 }
 
 // ── 手工编辑固化进存库 html(C 方案:页面真相 = html) ─────────────────────────

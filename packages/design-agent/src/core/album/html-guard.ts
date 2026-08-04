@@ -100,8 +100,20 @@ function escapeHtmlText(value: string): string {
 	return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** 含换行的文案要在槽元素上补 white-space:pre-wrap —— 文本节点里的 \n 默认被
+ * HTML 渲染折叠成空格。追加在 style 末尾(CSS 后声明胜出,模板自带的 nowrap 等
+ * 被用户的换行意图覆盖);已有 pre-wrap 则不重复追加。 */
+function withPreWrap(openTag: string): string {
+	const styleMatch = /style="([^"]*)"/.exec(openTag);
+	if (!styleMatch) return openTag.replace(/>$/, ' style="white-space:pre-wrap">');
+	if (/white-space\s*:\s*pre-wrap/i.test(styleMatch[1]!)) return openTag;
+	const sep = styleMatch[1] === "" || styleMatch[1]!.endsWith(";") ? "" : ";";
+	return openTag.replace(styleMatch[0], `style="${styleMatch[1]}${sep}white-space:pre-wrap"`);
+}
+
 /** 槽位级改字:直接替换 html 中 data-text-key 元素的内容(保留 AI 手工版面)。
- * 找不到锚点返回 null(调用方决定报错或重烘)。 */
+ * 找不到锚点返回 null(调用方决定报错或重烘)。换行支持与 web page-html-dom 的
+ * 同名实现保持同步。 */
 export function patchHtmlText(html: string, slotId: string, value: string): string | null {
 	const openRe = new RegExp(`<([a-z0-9]+)\\b[^>]*data-text-key="${slotId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"[^>]*>`, "i");
 	const m = openRe.exec(html);
@@ -109,5 +121,6 @@ export function patchHtmlText(html: string, slotId: string, value: string): stri
 	const start = m.index + m[0].length;
 	const end = html.indexOf(`</${m[1]}>`, start);
 	if (end === -1) return null;
-	return html.slice(0, start) + escapeHtmlText(value) + html.slice(end);
+	const openTag = /[\r\n]/.test(value) ? withPreWrap(m[0]) : m[0];
+	return html.slice(0, m.index) + openTag + escapeHtmlText(value) + html.slice(end);
 }

@@ -49,3 +49,20 @@ test('HTML renderer applies contract roles to CJK defaults and incompatible carr
     );
   }
 });
+
+test('TEXT token:含换行的文案包 white-space:pre-wrap 的 span(换行渲染支持)', () => {
+  const html = renderPageHtml(
+    {
+      templateId: 'mag-01',
+      images: {},
+      texts: { title: '标题', body: '第一行\n第二行' },
+    },
+    () => undefined,
+  );
+  assert.ok(html);
+  assert.ok(
+    html.includes('<span style="white-space:pre-wrap">第一行\n第二行</span>'),
+    '含换行的文案必须包 pre-wrap span,否则 \\n 被 HTML 渲染折叠成空格');
+  // 单行文案不包(既有输出不变)
+  assert.doesNotMatch(html, /<span style="white-space:pre-wrap">标题<\/span>/);
+});
