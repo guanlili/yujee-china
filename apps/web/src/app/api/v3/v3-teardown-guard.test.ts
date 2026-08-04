@@ -64,6 +64,7 @@ test('contracts no longer exposes the old v2 contract module', () => {
 
 test('web keeps the v1 infrastructure route whitelist used by V3', () => {
   const allowedRoutes = [
+    'apps/web/src/app/api/v1/admin/cleanup-anon/route.ts',
     'apps/web/src/app/api/v1/admin/cleanup-photos/route.ts',
     'apps/web/src/app/api/v1/admin/create-user/route.ts',
     'apps/web/src/app/api/v1/admin/grant-credit/route.ts',

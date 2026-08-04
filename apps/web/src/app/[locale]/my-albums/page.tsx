@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
+import { useAnonymousRedirect } from '@/components/app/useAnonymousRedirect';
 import { authHrefWithFrom } from '@/lib/auth/redirect';
 import { Brand } from '@/components/app/Brand';
 import { ChromeStatusBar } from '@/components/app/ChromeStatusBar';
@@ -64,6 +65,8 @@ function coverThumbnailStateKey(album: Album, candidatePhotoIds: string[]): stri
 
 export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = use(params);
+  // 游客(匿名影子账号)不进账号页:带回跳丢去登录(middleware 只看 cookie 存在性,拦不住)。
+  useAnonymousRedirect(locale, `/${locale}/my-albums`);
   const t = getMessages(locale).dashboard;
 
   const router = useRouter();

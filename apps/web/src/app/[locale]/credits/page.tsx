@@ -4,6 +4,7 @@ import { use, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
+import { useAnonymousRedirect } from '@/components/app/useAnonymousRedirect';
 import {
   ADDON_PACKS,
   type CheckoutSource,
@@ -37,6 +38,8 @@ function checkoutSource(value: string | null): CheckoutSource | undefined {
 
 export default function CreditsPage({ params }: { params: Promise<{ locale: Locale }> }) {
   const { locale } = use(params);
+  // 游客(匿名影子账号)不进账号页:带回跳丢去登录(middleware 只看 cookie 存在性,拦不住)。
+  useAnonymousRedirect(locale, `/${locale}/credits`);
   const t = getMessages(locale).dashboard.credits;
   const tc = getMessages(locale).dashboard.common;
   const searchParams = useSearchParams();

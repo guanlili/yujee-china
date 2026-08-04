@@ -46,6 +46,9 @@ export interface AlbumInfo {
   // 预览垫底背景(相册级):书页浮在其上的画板底。null/省略 = 无。
   boardBackground?: BoardBackground | null;
   photoFilter?: PhotoFilterState | null;
+  // 成稿文案来源:'placeholder' = 游客占位样稿(登录后 ChatPanel 自动补跑真 compose)、
+  // 'ai' = 真文案、null/省略 = 未成稿或历史相册。
+  copySource?: 'placeholder' | 'ai' | null;
   errorMessage: string | null;
   createdAt: string;
 }

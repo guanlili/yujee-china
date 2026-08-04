@@ -7,6 +7,8 @@ export interface ChromeUser {
   email: string;
   avatarInitial: string;
   creditBalance: number;
+  // 游客(匿名影子账号):顶栏换「登录」CTA,保存/分享/聊天入口弹登录,关自动上云。
+  isAnonymous: boolean;
 }
 
 export interface ChromeSession {
@@ -36,6 +38,7 @@ export function useChromeSession(): ChromeSession {
             email: meJson.data.email,
             avatarInitial: initialFor(meJson.data),
             creditBalance: meJson.data.creditBalance ?? 0,
+            isAnonymous: meJson.data.isAnonymous ?? false,
           });
         }
       } finally {

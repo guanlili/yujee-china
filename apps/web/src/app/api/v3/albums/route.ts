@@ -1,4 +1,4 @@
-import { requireAuth } from '@/lib/auth/require-auth';
+import { getAuthUser } from '@/lib/auth/require-auth';
 import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
@@ -15,9 +15,11 @@ export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const user = await requireAuth(req);
+    const user = await getAuthUser(req);
     const body = await parseBody(BodySchema, req);
-    const data = await generationService.submitAnalyzeV3(user.id, body);
+    const data = await generationService.submitAnalyzeV3(user.id, body, {
+      isAnonymous: user.isAnonymous,
+    });
     return ok(data);
   } catch (e) {
     return fromException(e);

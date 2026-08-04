@@ -159,6 +159,17 @@ export class UnauthorizedError extends Error {
   }
 }
 
+// 游客撞硬上限(20 张 / 1 本):处置与未登录同款 —— 存草稿跳登录,登录后 resume
+// 自动重交(解锁 100 张/多本)。单独成类是为了和真 401 在日志/文案上可区分。
+export class AnonLimitError extends Error {
+  readonly code: string;
+  constructor(code: 'ANON_PHOTO_LIMIT' | 'ANON_ALBUM_LIMIT') {
+    super('Guest limit reached — sign in to continue');
+    this.name = 'AnonLimitError';
+    this.code = code;
+  }
+}
+
 // Thrown when one or more originals can't be rebuilt from IndexedDB (cache
 // cleared / different device). Carries the missing ids so the caller can react
 // without re-deriving them.
@@ -245,6 +256,9 @@ async function postJobs(path: string, body: unknown): Promise<SubmitResult> {
   if (!json.ok) {
     if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
     if (json.error?.code === 'CREDIT_INSUFFICIENT') throw new CreditInsufficientError();
+    if (json.error?.code === 'ANON_PHOTO_LIMIT' || json.error?.code === 'ANON_ALBUM_LIMIT') {
+      throw new AnonLimitError(json.error.code);
+    }
     throw new Error(json.error?.message ?? 'Request failed');
   }
   return json.data as SubmitResult;
@@ -298,18 +312,24 @@ async function backupGenerationPreviews(
   if (uploaded.length > 0) await confirmPhotoSnapshot(albumId, uploaded);
 }
 
-export async function submitAnalyzeV3(input: {
-  requestId: string;
-  language: 'zh' | 'en';
-  promptHint?: string;
-  photos: GenerationPhoto[];
-}): Promise<SubmitResult> {
+export async function submitAnalyzeV3(
+  input: {
+    requestId: string;
+    language: 'zh' | 'en';
+    promptHint?: string;
+    photos: GenerationPhoto[];
+  },
+  opts: { skipCloudBackup?: boolean } = {},
+): Promise<SubmitResult> {
   const result = await postJobs('/api/v3/albums', input);
-  try {
-    await backupGenerationPreviews(result.albumId, input.photos);
-  } catch {
-    // The album/Agent job already exists. A cloud-backup outage must not make the
-    // user retry creation and accidentally create or charge for a second album.
+  // 游客零 R2 写入:快照备份是真实账号的能力(服务端也会 403),干脆不发起。
+  if (!opts.skipCloudBackup) {
+    try {
+      await backupGenerationPreviews(result.albumId, input.photos);
+    } catch {
+      // The album/Agent job already exists. A cloud-backup outage must not make the
+      // user retry creation and accidentally create or charge for a second album.
+    }
   }
   return result;
 }

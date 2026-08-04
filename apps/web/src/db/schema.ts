@@ -96,6 +96,9 @@ export const users = pgTable('users', {
   emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
   isAdmin: boolean('is_admin').notNull().default(false),
+  // 游客(匿名)账号:better-auth anonymous 插件创建,临时邮箱占位。登录转正时
+  // onLinkAccount 过户相册后删除该行;超过 ANON_CLEANUP_DAYS 未转正由 cron 清理。
+  isAnonymous: boolean('is_anonymous').notNull().default(false),
   // Column default aligned to FREE_PLAN_CREDITS (welcome grant). better-auth
   // normally inserts that value explicitly; this default is the fallback for any
   // other insert path. Re-denominated to 20 with the 1-credit-per-photo change
@@ -269,6 +272,10 @@ export const albums = pgTable(
       { kind: 'color'; color: string } | { kind: 'preset'; presetId: string } | { kind: 'upload'; key: string }
     >(),
     photoFilter: jsonb('photo_filter').$type<PhotoFilterState>(),
+    // 成稿文案来源:'placeholder' = 匿名占位成稿(模板 sample 文案,零 AI),
+    // 'ai' = 真 compose 已写,null = 尚未成稿/历史相册。登录后前端看到 'placeholder'
+    // 会自动重发 POST /design 补跑真 compose(此时才计费)。
+    copySource: text('copy_source'),
     creditHoldId: text('credit_hold_id'),
     errorMessage: text('error_message'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

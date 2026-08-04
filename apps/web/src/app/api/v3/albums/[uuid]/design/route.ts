@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requireAuth } from '@/lib/auth/require-auth';
+import { getAuthUser, requireAuth } from '@/lib/auth/require-auth';
 import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
@@ -27,10 +27,13 @@ export const maxDuration = 60;
 
 export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }> }) {
   try {
-    const user = await requireAuth(req);
+    const user = await getAuthUser(req);
     const { uuid } = await ctx.params;
     const body = await parseBody(BodySchema, req);
-    const result = await albumService.applyDesign(user.id, uuid, body);
+    // 游客走占位成稿(零 AI、零积分、同步组书,refs 用不上);真实账号照旧异步派 compose。
+    const result = user.isAnonymous
+      ? await albumService.applyPlaceholderDesign(user.id, uuid, body)
+      : await albumService.applyDesign(user.id, uuid, body);
     return ok(result);
   } catch (e) {
     return fromException(e);

@@ -68,6 +68,8 @@ export type ExportDeps = {
    *  与展示层 `imageUrls[id] ?? snapshotUrls[id]` 同一份表、同一条规则。
    *  漏了它,换设备/清缓存后导出的就是一本空图(见 export-backup-fallback.test.ts)。 */
   snapshotUrls: Record<string, string>;
+  /** 游客(匿名):只本地交付,跳过 PDF 云上传(零 R2/零 DB;服务端对游客也是 403)。 */
+  skipCloudUpload?: boolean;
 };
 
 export function useExport({
@@ -78,6 +80,7 @@ export function useExport({
   background,
   photoFilter,
   snapshotUrls,
+  skipCloudUpload = false,
 }: ExportDeps) {
   const [progress, setProgress] = useState<ExportProgress>(null);
   const [failed, setFailed] = useState(false);
@@ -335,19 +338,22 @@ export function useExport({
       const name = `${stem()}.pdf`;
       setExportReady({ kind: 'files', label: 'PDF', files: [{ name, blob: renderedBlob }] });
       // 本地保存入口已经就绪。云端上传在后台重试,失败**完全静默**(只落日志,不弹框)。
-      void runExportWithRetry(() => uploadPdf(albumId, renderedBlob), {
-        onExhausted: (lastError, attempts) => {
-          logger.error(
-            buildExportFailureLog(lastError, { albumId, attempts }),
-            'mobile pdf cloud upload failed (silent — local download already succeeded)',
-          );
-        },
-      });
+      // 游客:只本地交付,不上云。
+      if (!skipCloudUpload) {
+        void runExportWithRetry(() => uploadPdf(albumId, renderedBlob), {
+          onExhausted: (lastError, attempts) => {
+            logger.error(
+              buildExportFailureLog(lastError, { albumId, attempts }),
+              'mobile pdf cloud upload failed (silent — local download already succeeded)',
+            );
+          },
+        });
+      }
     } finally {
       setProgress(null);
       busy.current = false;
     }
-  }, [albumId, buildInput, onProgress, stem, t]);
+  }, [albumId, buildInput, onProgress, skipCloudUpload, stem, t]);
 
   return {
     progress,

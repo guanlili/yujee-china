@@ -3,6 +3,7 @@ import { db } from '@/db/client';
 import { accounts, inviteCodes } from '@/db/schema';
 import { getAuth } from '@/lib/auth/better-auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
+import { ANON_CLEANUP_DAYS } from '@/config/anon';
 import { userRepo } from '@/db/repos/user-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
@@ -322,6 +323,30 @@ export const adminService = {
     }
 
     logger.info({ actorId, action: 'admin.cleanupAbandoned', days, deleted }, 'admin cleanup');
+    return { scanned: stale.length, deleted };
+  },
+
+  // 游客(匿名影子账号)清理:创建超过 N 天仍未转正的匿名用户,连同名下相册/任务/
+  // 消息一起删(schema 里 11 处 onDelete:'cascade' 收尾)。转正过的用户在
+  // onLinkAccount 时已被 anonymous 插件删除并过户,这里扫到的只剩「来了没登录」的。
+  // 游客零积分变动、零 R2 写入,删行即删干净 —— 没有对象存储要跟着清。
+  async cleanupAnonymous(actorId: string, opts: { olderThanDays?: number } = {}) {
+    const days = Math.min(Math.max(opts.olderThanDays ?? ANON_CLEANUP_DAYS, 1), 365);
+    const cutoff = new Date(Date.now() - days * DAY_MS);
+
+    const stale = await userRepo.findAnonymousCreatedBefore(cutoff);
+    let deleted = 0;
+
+    if (stale.length > 0) {
+      await db.transaction(async (tx) => {
+        for (const user of stale) {
+          await userRepo.deleteById(tx, user.id);
+          deleted += 1;
+        }
+      });
+    }
+
+    logger.info({ actorId, action: 'admin.cleanupAnonymous', days, deleted }, 'anon cleanup');
     return { scanned: stale.length, deleted };
   },
 

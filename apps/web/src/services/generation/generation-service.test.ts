@@ -520,3 +520,119 @@ test('append 失败:释放 hold、相册保持 EDITING 不标 FAILED', async (t:
   }
 });
 
+
+// ── 游客(匿名)口径:零积分变动 + 20 张上限 + 1 本上限 ──────────────────────────
+
+async function makeAnonUser(suffix: string) {
+  const { userRepo } = await import('@/db/repos/user-repo');
+  return userRepo.upsertById(db, {
+    email: `anon-gen-${suffix}-${Date.now()}@yujee.test`,
+    name: 'Anonymous',
+    isAnonymous: true,
+    creditBalance: 0,
+  });
+}
+
+function dummyPhotos(n: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    photoId: `ap${i + 1}`,
+    base64: 'data:image/jpeg;base64,aGk=',
+    width: 800,
+    height: 600,
+  }));
+}
+
+test('submitAnalyzeV3(匿名): 建相册零积分变动(无 precheck、无 hold),余额 0 也能建', async (t: TestContext) => {
+  if (!(await isDbReachable())) { t.skip('DATABASE_URL is not reachable'); return; }
+  const anon = await makeAnonUser('ok');
+  try {
+    t.mock.method(agentClient, 'submitAnalyzeV3', async () => ({ requestId: 'anon-r1' }));
+    const result = await generationService.submitAnalyzeV3(
+      anon.id,
+      { requestId: crypto.randomUUID(), language: 'zh', photos: dummyPhotos(3) },
+      { isAnonymous: true },
+    );
+    assert.equal(result.accepted, true);
+    const album = await albumRepo.findById(result.albumId);
+    assert.equal(album?.userId, anon.id);
+    assert.equal(album?.creditHoldId, null); // 没挂 hold
+    const { userRepo } = await import('@/db/repos/user-repo');
+    const after = await userRepo.findById(anon.id);
+    assert.equal(after?.creditBalance, 0); // 余额纹丝不动
+  } finally {
+    await cleanupUser(anon.id);
+  }
+});
+
+test('submitAnalyzeV3(匿名): 超过 20 张抛 ANON_PHOTO_LIMIT,一行不写库', async (t: TestContext) => {
+  if (!(await isDbReachable())) { t.skip('DATABASE_URL is not reachable'); return; }
+  const anon = await makeAnonUser('photos');
+  try {
+    await assert.rejects(
+      () => generationService.submitAnalyzeV3(
+        anon.id,
+        { requestId: crypto.randomUUID(), language: 'zh', photos: dummyPhotos(21) },
+        { isAnonymous: true },
+      ),
+      (e: { code?: string; status?: number }) => e.code === 'ANON_PHOTO_LIMIT' && e.status === 403,
+    );
+    const list = await albumRepo.findByUser(anon.id);
+    assert.equal(list.length, 0);
+  } finally {
+    await cleanupUser(anon.id);
+  }
+});
+
+test('submitAnalyzeV3(匿名): 第 2 本抛 ANON_ALBUM_LIMIT;登录用户不受 1 本上限影响', async (t: TestContext) => {
+  if (!(await isDbReachable())) { t.skip('DATABASE_URL is not reachable'); return; }
+  const anon = await makeAnonUser('limit');
+  const real = await makeUser('anon-gen-real');
+  try {
+    await makeAlbum(anon.id, { title: 'first' });
+    t.mock.method(agentClient, 'submitAnalyzeV3', async () => ({ requestId: 'anon-r2' }));
+    await assert.rejects(
+      () => generationService.submitAnalyzeV3(
+        anon.id,
+        { requestId: crypto.randomUUID(), language: 'zh', photos: dummyPhotos(2) },
+        { isAnonymous: true },
+      ),
+      (e: { code?: string }) => e.code === 'ANON_ALBUM_LIMIT',
+    );
+    // 登录用户(足额积分)建第 2 本照常
+    await makeAlbum(real.id, { title: 'real first' });
+    const ok2 = await generationService.submitAnalyzeV3(real.id, {
+      requestId: crypto.randomUUID(), language: 'zh', photos: dummyPhotos(2),
+    });
+    assert.equal(ok2.accepted, true);
+  } finally {
+    await cleanupUser(anon.id);
+    await cleanupUser(real.id);
+  }
+});
+
+test('submitAddPhotosV3(匿名): 累计超 20 张抛 ANON_PHOTO_LIMIT;20 内零积分追加', async (t: TestContext) => {
+  if (!(await isDbReachable())) { t.skip('DATABASE_URL is not reachable'); return; }
+  const anon = await makeAnonUser('append');
+  try {
+    const album = await seedPagedAlbum(anon.id); // seedPagedAlbum 的 photoCount = 2
+    await assert.rejects(
+      () => generationService.submitAddPhotosV3(
+        anon.id, album.id,
+        { requestId: crypto.randomUUID(), language: 'en', photos: dummyPhotos(19) }, // 2+19>20
+        { isAnonymous: true },
+      ),
+      (e: { code?: string }) => e.code === 'ANON_PHOTO_LIMIT',
+    );
+    t.mock.method(agentClient, 'submitAnalyzeV3', async () => ({ requestId: 'anon-append-1' }));
+    const ok = await generationService.submitAddPhotosV3(
+      anon.id, album.id,
+      { requestId: 'anon-append-1', language: 'en', photos: dummyPhotos(3) }, // 5+3≤20
+      { isAnonymous: true },
+    );
+    assert.equal(ok.accepted, true);
+    const after = await albumRepo.findById(album.id);
+    assert.equal(after?.creditHoldId, null); // 追加同样不挂 hold
+  } finally {
+    await cleanupUser(anon.id);
+  }
+});

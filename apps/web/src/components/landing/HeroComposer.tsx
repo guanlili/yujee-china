@@ -2,11 +2,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getSession } from '@/lib/auth/client';
+import { getSession, signIn } from '@/lib/auth/client';
 import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
 import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
 import { photoStore } from '@/lib/photo/store';
 import {
+  AnonLimitError,
   clusterCompressedPhotos,
   compressedPhotosFromCache,
   CreditInsufficientError,
@@ -162,7 +163,35 @@ export function HeroComposer({
     router.push(loginPath);
   };
 
-  const submitDraft = async (draft: GenerationDraft, cachedPhotos?: readonly CompressedPhoto[]) => {
+  // 游客模式:没 session 就静默建匿名影子账号继续创作(登录墙从「发送」后移到
+  // 聊天/保存/分享)。建号失败(IP 限流/网络)退回老路:存草稿跳登录。
+  // anonymous=true 时跳过照片快照上云(游客零 R2 写入,服务端同样会 403)。
+  const ensureSession = async (): Promise<{ ok: boolean; anonymous: boolean }> => {
+    try {
+      const { data } = await getSession();
+      if (data?.session) {
+        return {
+          ok: true,
+          anonymous: Boolean((data.user as { isAnonymous?: boolean | null })?.isAnonymous),
+        };
+      }
+    } catch {
+      // fall through to anonymous sign-in
+    }
+    try {
+      const { error } = await signIn.anonymous();
+      if (!error) return { ok: true, anonymous: true };
+    } catch {
+      // fall through
+    }
+    return { ok: false, anonymous: false };
+  };
+
+  const submitDraft = async (
+    draft: GenerationDraft,
+    cachedPhotos?: readonly CompressedPhoto[],
+    opts: { anonymous?: boolean } = {},
+  ) => {
     const photoIds = draft.photoIds;
     // No client-side balance pre-check here on purpose: selecting/uploading photos
     // is cheap (compressed, client-side) and is exactly the investment we WANT the
@@ -177,13 +206,16 @@ export function HeroComposer({
     const cached = compressedPhotosFromCache(photoIds, cachedPhotos);
     const builtPhotos = cached ? clusterCompressedPhotos(cached) : await photosFromStore(photoIds);
     const trimmed = draft.prompt.trim();
-    const { albumId, requestId } = await submitAnalyzeV3({
-      requestId: crypto.randomUUID(),
-      language: draft.language,
-      // promptHint is optional — omit when blank.
-      ...(trimmed ? { promptHint: trimmed } : {}),
-      photos: builtPhotos,
-    });
+    const { albumId, requestId } = await submitAnalyzeV3(
+      {
+        requestId: crypto.randomUUID(),
+        language: draft.language,
+        // promptHint is optional — omit when blank.
+        ...(trimmed ? { promptHint: trimmed } : {}),
+        photos: builtPhotos,
+      },
+      { skipCloudBackup: opts.anonymous === true },
+    );
     generationDraft.clear();
     albumRecipe.save(albumId, { language: draft.language, photoIds, requestId });
     router.push(`/${locale}/album/${albumId}`);
@@ -213,19 +245,19 @@ export function HeroComposer({
         return;
       }
       try {
-        const hasSession = await hasActiveSession();
-        if (!hasSession) {
+        const session = await ensureSession();
+        if (!session.ok) {
           saveDraftAndLogin(draft);
           return;
         }
-        await submitDraft(draft);
+        await submitDraft(draft, undefined, { anonymous: session.anonymous });
       } catch (e) {
         if (cancelled) return;
         if (e instanceof CreditInsufficientError) {
           router.push(`/${locale}/credits?from=home`);
           return;
         }
-        if (e instanceof UnauthorizedError) {
+        if (e instanceof UnauthorizedError || e instanceof AnonLimitError) {
           saveDraftAndLogin(draft);
           return;
         }
@@ -304,12 +336,16 @@ export function HeroComposer({
     const photoIds = photos.map((p) => p.photoId);
     const draft = { prompt: value.trim(), language, photoIds };
     try {
-      const hasSession = await hasActiveSession();
-      if (!hasSession) {
+      const session = await ensureSession();
+      if (!session.ok) {
         saveDraftAndLogin(draft);
         return;
       }
-      await submitDraft(draft, photos.map((p) => p.compressed).filter((p): p is CompressedPhoto => !!p));
+      await submitDraft(
+        draft,
+        photos.map((p) => p.compressed).filter((p): p is CompressedPhoto => !!p),
+        { anonymous: session.anonymous },
+      );
     } catch (e) {
       setUploadStage(null);
       if (e instanceof CreditInsufficientError) {
@@ -317,7 +353,7 @@ export function HeroComposer({
         router.push(`/${locale}/credits?from=home`);
         return;
       }
-      if (e instanceof UnauthorizedError) {
+      if (e instanceof UnauthorizedError || e instanceof AnonLimitError) {
         saveDraftAndLogin(draft);
         return;
       }
