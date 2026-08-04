@@ -53,7 +53,7 @@ describe('better-auth schema bridge', () => {
     });
   });
 
-  it('registers nextCookies outside production for route handlers', () => {
+  it('registers anonymous before nextCookies (cookie middleware must run last)', () => {
     const options = createAuthOptions({
       users: {},
       sessions: {},
@@ -61,7 +61,33 @@ describe('better-auth schema bridge', () => {
       verifications: {},
     });
 
-    assert.equal(options.plugins?.length, 1);
+    assert.equal(options.plugins?.length, 2);
+    // anonymous 插件的转正 after-hook 要从 responseHeaders 读 set-cookie,
+    // nextCookies() 必须是最后一个插件。
+    assert.equal(options.plugins?.[0]?.id, 'anonymous');
+    assert.equal(options.plugins?.[1]?.id, 'next-cookies');
+  });
+
+  it('zeroes the welcome credits for anonymous (guest) user creation only', async () => {
+    const options = createAuthOptions({
+      users: {},
+      sessions: {},
+      accounts: {},
+      verifications: {},
+    });
+
+    const before = options.databaseHooks?.user?.create?.before;
+    assert.ok(before, 'databaseHooks.user.create.before must exist');
+
+    const anonUser = { email: 'temp@x.com', isAnonymous: true, creditBalance: FREE_PLAN_CREDITS };
+    const anonResult = (await before(anonUser as never, null)) as {
+      data: { creditBalance: number };
+    };
+    assert.equal(anonResult.data.creditBalance, 0);
+
+    const realUser = { email: 'real@x.com', creditBalance: FREE_PLAN_CREDITS };
+    const realResult = await before(realUser as never, null);
+    assert.equal(realResult, undefined); // 不动真实注册:defaultValue 20 照旧
   });
 
   it('trusts common local dev origins used by alternate ports', () => {
