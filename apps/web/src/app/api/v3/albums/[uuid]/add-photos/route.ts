@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requireAuth } from '@/lib/auth/require-auth';
+import { getAuthUser } from '@/lib/auth/require-auth';
 import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
@@ -36,10 +36,12 @@ const AddPhotosBodySchema = z
 
 export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }> }) {
   try {
-    const user = await requireAuth(req);
+    const user = await getAuthUser(req);
     const { uuid } = await ctx.params;
     const body = await parseBody(AddPhotosBodySchema, req);
-    const result = await generationService.submitAddPhotosV3(user.id, uuid, body);
+    const result = await generationService.submitAddPhotosV3(user.id, uuid, body, {
+      isAnonymous: user.isAnonymous,
+    });
     return ok(result);
   } catch (e) {
     return fromException(e);

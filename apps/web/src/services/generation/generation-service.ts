@@ -1,4 +1,6 @@
+import { eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
+import { albums, users } from '@/db/schema';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { agentClient, type AgentPhotoInput } from '@/lib/agent/agent-client';
 import { env } from '@/lib/env';
@@ -10,6 +12,11 @@ import { creditService } from '@/services/credit/credit-service';
 import { jobService } from '@/services/job/job-service';
 import { SelectLayoutRequest, V3LayoutTree } from '@yujee/contracts';
 import type { V3AnalyzeRequest } from '@yujee/contracts';
+import { ANON_MAX_ALBUMS, ANON_MAX_PHOTOS_PER_GENERATION } from '@/config/anon';
+
+// 游客(匿名)口径:整条创作链零积分变动(不 precheck、不 hold —— 匿名余额被建号
+// 钩子归零,真文案计费推迟到登录后 applyDesign 首跑);照片走 20 张小上限。
+type GenerationOpts = { isAnonymous?: boolean };
 
 type V3AnalyzeInput = {
   requestId: string;
@@ -42,14 +49,27 @@ type SelectLayoutInput = {
 };
 
 export const generationService = {
-  async submitAnalyzeV3(userId: string, input: V3AnalyzeInput) {
+  async submitAnalyzeV3(userId: string, input: V3AnalyzeInput, opts: GenerationOpts = {}) {
+    const anon = opts.isAnonymous === true;
+    if (anon && input.photos.length > ANON_MAX_PHOTOS_PER_GENERATION) {
+      throw ERRORS.ANON_PHOTO_LIMIT();
+    }
     const amount = creditService.cost(input.photos.length);
-    await creditService.precheck(userId, amount);
+    if (!anon) await creditService.precheck(userId, amount);
 
     const placeholderTitle =
       input.promptHint?.trim().slice(0, 40) || (input.language === 'zh' ? '我的故事' : 'My Memoir');
 
     const { albumId } = await db.transaction(async (tx) => {
+      if (anon) {
+        // 锁 user 行序列化同一游客的并发创建(双击「发送」只建一本),再数相册。
+        await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for('update');
+        const [row] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(albums)
+          .where(eq(albums.userId, userId));
+        if ((row?.count ?? 0) >= ANON_MAX_ALBUMS) throw ERRORS.ANON_ALBUM_LIMIT();
+      }
       const album = await albumService.create(tx, {
         userId,
         prompt: input.promptHint ?? '',
@@ -62,7 +82,7 @@ export const generationService = {
         requestId: input.requestId,
         kind: 'init',
       });
-      await creditService.hold(tx, userId, amount, album.albumId);
+      if (!anon) await creditService.hold(tx, userId, amount, album.albumId);
       return album;
     });
 
@@ -100,9 +120,15 @@ export const generationService = {
     userId: string,
     albumId: string,
     input: { requestId: string; language: 'zh' | 'en'; photos: V3AnalyzeInput['photos'] },
+    opts: GenerationOpts = {},
   ) {
+    const anon = opts.isAnonymous === true;
     const album = await albumService.findOwned(userId, albumId);
     if (album.status !== 'EDITING' || album.layoutJson != null) throw ERRORS.ALBUM_NOT_EDITABLE();
+    // 游客上限按全书累计口径:已有 + 新增 ≤ 20,防止 1 本相册反复追加绕开小上限。
+    if (anon && album.photoCount + input.photos.length > ANON_MAX_PHOTOS_PER_GENERATION) {
+      throw ERRORS.ANON_PHOTO_LIMIT();
+    }
     // draft_pages 拆表(Phase 1a)后 pages 不一定还活在 draftJson 里(见
     // handleV3SelectLayoutCompleted/handleV3ComposeCompleted,job-service.ts) ——
     // "已有排版页"闸门必须走 loadStoryDraft(行存在读行、无行才回退 legacy
@@ -113,7 +139,7 @@ export const generationService = {
       throw ERRORS.VALIDATION_FAILED('add-photos requires laid-out pages');
     }
     const amount = creditService.cost(input.photos.length);
-    await creditService.precheck(userId, amount);
+    if (!anon) await creditService.precheck(userId, amount);
     try {
       await db.transaction(async (tx) => {
         await jobService.createGenerationJob(tx, {
@@ -122,7 +148,7 @@ export const generationService = {
           requestId: input.requestId,
           kind: 'add',
         });
-        await creditService.hold(tx, userId, amount, albumId);
+        if (!anon) await creditService.hold(tx, userId, amount, albumId);
       });
     } catch {
       // (album,'add') 活跃唯一索引撞上 = 已有在途追加;按不可编辑返回,前端提示稍后再试。
