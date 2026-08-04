@@ -26,7 +26,7 @@ import {
   type RefObject,
   type SetStateAction,
 } from 'react';
-import { type Locale } from '@/lib/i18n/routing';
+import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
 import { lutEngine } from '@/lib/photo/lut/engine';
@@ -1418,6 +1418,16 @@ function EditorBook({
   lutSupported: boolean;
   openPhotoFilter: (scope: 'photo', photoId: string) => void;
 }) {
+  // 游客态:命令式 handlers(保存/分享/导出上传)经 ref 读身份;/user/me 未返回前
+  // 视为「未知」不拦(服务端 403 兜底),但自动上云(原图对账补传)保持关闭直到
+  // 确认是真实账号 —— 游客零 R2 写入。
+  const viewerSession = useChromeSession();
+  const viewerAnonRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (viewerSession.loading) return;
+    viewerAnonRef.current = viewerSession.user ? viewerSession.user.isAnonymous : null;
+  }, [viewerSession.loading, viewerSession.user]);
+
   // Task 8(照片真相迁 R2 Phase 0):对账补传 + 远端原图 fetcher。photoIds 与下面
   // 挂载 effect 里的 bookPhotoIds()(见 refreshBackupStatus 附近)同一份来源
   // (initialPages 的 imagesJson 去重);必须放在那个 useEffect 之外单独调用 ——
@@ -1427,7 +1437,7 @@ function EditorBook({
     photoIds: collectPhotoIds(
       initialPages.map((page) => ({ templateId: page.templateId, images: page.imagesJson, texts: page.textsJson })),
     ),
-    enabled: true,
+    enabled: Boolean(viewerSession.user && !viewerSession.user.isAnonymous),
   });
   useEffect(() => {
     // The canvas effect scopes to the SHARED outer root (created by the stable shell)
@@ -5449,6 +5459,8 @@ function EditorBook({
         // 到这里用户已拿到 PDF = 导出成功。云端上传(R2 + 落库)解耦,失败【完全静默】:
         // 后台自动重试 ≤3 次,耗尽也只落日志——不弹框、不提示(用户诉求)。飞书推送后置
         // (§4.5d):此处只 logger.error,不调任何飞书端点。
+        // 游客:只本地下载,跳过云上传(零 R2/零 DB;服务端 pdf 路由对游客也是 403)。
+        if (viewerAnonRef.current === true) return;
         await runExportWithRetry(() => uploadPdfOnce(blob!), {
           onExhausted: (lastError, attempts) => {
             logger.error(
@@ -5535,8 +5547,15 @@ function EditorBook({
       if (copy[state].tip) chip.title = copy[state].tip;
       else chip.removeAttribute('title');
     }
+    // 游客门禁:保存(照片快照上云)/分享是真实账号能力,明确是游客就带回跳去登录。
+    function guestGate(): boolean {
+      if (viewerAnonRef.current !== true) return false;
+      window.location.assign(localizePath(`/login?from=/album/${albumId}`, locale));
+      return true;
+    }
     let backingUp = false;
     async function backupPhotos() {
+      if (guestGate()) return;
       if (backingUp) return;
       // Capture one immutable, normalized filter snapshot before any await. Every
       // photo render and renderVersion in this batch is derived from that same object.
@@ -5605,6 +5624,7 @@ function EditorBook({
     // 分享链接(免登只读)。分享页在对方浏览器渲染,那里没有本机 IndexedDB 的原图,所以
     // 照片压缩快照必须全量上云对方才看得到。打开弹窗只展示说明 + 确认按钮,不做任何上传。
     function shareLink() {
+      if (guestGate()) return;
       const input = byId('shareLinkInput') as HTMLInputElement | null;
       const hint = byId('shareLinkHint');
       if (input) input.value = '';

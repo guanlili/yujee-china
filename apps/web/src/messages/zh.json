@@ -100,7 +100,8 @@
       "feedbackSubmit": "发送反馈",
       "feedbackSending": "发送中…",
       "feedbackDone": "收到啦,每条反馈我们都会看。",
-      "feedbackFail": "暂时没发出去,稍后再试一下。"
+      "feedbackFail": "暂时没发出去,稍后再试一下。",
+      "signIn": "登录"
     },
     "nav": {
       "myAlbums": "我的相册",

@@ -49,12 +49,13 @@ import { useExport } from './use-export';
 import { useShareLink } from './use-share-link';
 import { usePhotoBackup } from './use-photo-backup';
 import { usePhotoOriginalSync } from '@/lib/hooks/use-photo-original-sync';
+import { useChromeSession } from '@/components/app/useChromeSession';
 import { useChatCoordinator } from './use-chat-coordinator';
 import { resolveBackTarget } from './back-nav';
 import { ElementSheet } from './modals/ElementSheet';
 import { TextPanel } from './modals/TextPanel';
 import { PageBgPanel } from './modals/PageBgPanel';
-import type { Locale } from '@/lib/i18n/routing';
+import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { collectPhotoIds, type ResolveImage } from '../../adapt-layout';
 import { interiorSpreads } from '@/lib/export/collage';
 import type { DraftSkeleton } from '@/lib/album/authoring-client';
@@ -635,6 +636,15 @@ export function MobileEditorRoot({
     [detail.album.photoSnapshotUrls],
   );
 
+  // 游客态(匿名影子账号):保存/分享弹登录、导出只本地交付、关自动上云。
+  const viewerSession = useChromeSession();
+  const isGuest = Boolean(viewerSession.user?.isAnonymous);
+  const goLogin = useCallback(() => {
+    window.location.assign(
+      localizePath(`/login?from=/album/${detail.album.id}`, locale),
+    );
+  }, [detail.album.id, locale]);
+
   const exporter = useExport({
     albumId: detail.album.id,
     title: detail.album.title,
@@ -644,6 +654,7 @@ export function MobileEditorRoot({
     photoFilter,
     // 展示层与导出层用**同一份**备份表:本地没有原图时都回落到它。
     snapshotUrls,
+    skipCloudUpload: isGuest,
   });
   const backup = usePhotoBackup(
     detail.album.id,
@@ -655,7 +666,8 @@ export function MobileEditorRoot({
   usePhotoOriginalSync({
     albumId: detail.album.id,
     photoIds,
-    enabled: true,
+    // 游客零 R2 写入:确认是真实账号才开自动对账补传(服务端对游客也是 403)。
+    enabled: Boolean(viewerSession.user && !viewerSession.user.isAnonymous),
   });
   const share = useShareLink(detail.album.id, locale, zh);
 
@@ -686,6 +698,7 @@ export function MobileEditorRoot({
   /** 整本重传:把存量的老档备份覆盖成当前上传档(3400)。同 key、同 renderVersion,
    *  所以不会把已有分享打成 409;只是字节更好了。 */
   const rebackup = useCallback(() => {
+    if (isGuest) { setMoreOpen(false); goLogin(); return; }
     setMoreOpen(false);
     say(zh ? '正在重新备份…' : 'Re-backing up…');
     void backup.backup(bookPhotoIds, true).then(({ missing, uploaded }) => {
@@ -695,6 +708,8 @@ export function MobileEditorRoot({
   }, [backup, bookPhotoIds, say, zh]);
 
   const runBackup = useCallback(() => {
+    // 游客门禁:保存 = 照片快照上云,真实账号能力。
+    if (isGuest) { goLogin(); return; }
     void backup.backup(bookPhotoIds).then(({ missing, uploaded }) => {
       if (missing === 0) say(zh ? '照片已全部备份' : 'All photos backed up');
       else if (uploaded > 0)
@@ -838,6 +853,8 @@ export function MobileEditorRoot({
       }}
       onExport={openExport}
       onShare={() => {
+        // 游客门禁:分享要冻结快照+写库,真实账号能力。
+        if (isGuest) { goLogin(); return; }
         share.reset();
         setShareOpen(true);
       }}

@@ -74,7 +74,7 @@ async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(path, { cache: 'no-store' });
   const json = await res.json();
   if (!json.ok) {
-    if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
+    if (res.status === 401 || json.error?.code === 'UNAUTHORIZED' || json.error?.code === 'ANON_UPGRADE_REQUIRED') throw new UnauthorizedError();
     throw new Error(json.error?.message ?? 'Request failed');
   }
   return json.data as T;
@@ -90,7 +90,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   if (!json.ok) {
     // Same typed-error posture as the generation client so the editor can redirect
     // to login / surface the buy-credits card instead of dumping a raw message.
-    if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
+    if (res.status === 401 || json.error?.code === 'UNAUTHORIZED' || json.error?.code === 'ANON_UPGRADE_REQUIRED') throw new UnauthorizedError();
     if (json.error?.code === 'CREDIT_INSUFFICIENT') throw new CreditInsufficientError();
     throw new Error(json.error?.message ?? 'Request failed');
   }

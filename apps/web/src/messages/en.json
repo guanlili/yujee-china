@@ -100,7 +100,8 @@
       "feedbackSubmit": "Send feedback",
       "feedbackSending": "Sending…",
       "feedbackDone": "Thanks! We read every message.",
-      "feedbackFail": "Couldn't send right now — please try again later."
+      "feedbackFail": "Couldn't send right now — please try again later.",
+      "signIn": "Sign in"
     },
     "nav": {
       "myAlbums": "My albums",

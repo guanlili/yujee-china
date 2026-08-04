@@ -23,6 +23,19 @@ export function UserMenu({ user, locale, onSignOut, showLangSwitch = false }: Pr
   const pathname = usePathname();
   const m = getMessages(locale).dashboard;
   const c = m.chrome;
+
+  // 游客(匿名影子账号):不渲染账号菜单(临时邮箱/积分/登出都没意义),
+  // 换成「登录」CTA,带当前路径回跳 —— 登录成功即转正过户,回来继续编辑。
+  if (user?.isAnonymous) {
+    return (
+      <Link
+        href={`/${locale}/login?from=${encodeURIComponent(pathname)}`}
+        className="rounded-full bg-[var(--fg)] px-4 py-1.5 text-[var(--text-sm)] font-semibold text-white no-underline shadow-sm transition-transform hover:-translate-y-px"
+      >
+        {c.signIn}
+      </Link>
+    );
+  }
   const balance = user?.creditBalance ?? 0;
   const balanceLabel = `${balance.toLocaleString(locale)} ${
     balance === 1 ? m.credits.unitSingular : m.credits.unit

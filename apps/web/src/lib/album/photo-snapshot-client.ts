@@ -4,6 +4,7 @@
 // 原图不上传;上传的是 display 档压缩图(photoStore.getTierBlob)。mirror PDF/封面直传。
 
 import type { SnapshotEntry } from '@/services/album/photo-snapshot-util';
+import { UnauthorizedError } from '@/lib/generation/client';
 
 export type { SnapshotEntry };
 
@@ -24,8 +25,13 @@ async function postJson(url: string, body: unknown): Promise<unknown> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const json = (await res.json().catch(() => null)) as { ok?: boolean; data?: unknown; error?: { message?: string } } | null;
+  const json = (await res.json().catch(() => null)) as { ok?: boolean; data?: unknown; error?: { code?: string; message?: string } } | null;
   if (!res.ok || !json?.ok) {
+    // 会话过期/游客碰真实账号专属能力:类型化抛出,调用方(保存/分享)引导去登录,
+    // 不再糊一个含混的 request failed。
+    if (res.status === 401 || json?.error?.code === 'UNAUTHORIZED' || json?.error?.code === 'ANON_UPGRADE_REQUIRED') {
+      throw new UnauthorizedError();
+    }
     throw new Error(json?.error?.message ?? `request failed (${res.status})`);
   }
   return json.data;

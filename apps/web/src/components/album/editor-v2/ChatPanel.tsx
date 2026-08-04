@@ -27,6 +27,7 @@
 
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
+import { useChromeSession } from '@/components/app/useChromeSession';
 import { CreditsPurchaseModal } from './CreditsPurchaseModal';
 import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
 import { renderMarkdownSafe } from '@/lib/markdown/render';
@@ -146,6 +147,22 @@ export function ChatPanel({
   // it can re-enable #sendBtn / hide #balanceAlert using the effect's own DOM helpers.
   const [creditsModalOpen, setCreditsModalOpen] = useState(false);
   const toppedUpHandlerRef = useRef<() => void>(() => {});
+
+  // 游客态(匿名影子账号):/user/me 的 isAnonymous。null = 还没拿到(未知)。
+  // 命令式聊天引擎经 ref 读取 —— 门禁只在明确 true 时拦(未知放行,服务端 403 兜底);
+  // 占位书自动补跑真 compose 只在明确 false 时触发。
+  const chromeSession = useChromeSession();
+  const viewerAnonRef = useRef<boolean | null>(null);
+  // 占位书升级触发器:mount effect 里的 maybeUpgradePlaceholder 注册进来,身份晚于
+  // 聊天引擎就绪时(/user/me 慢)由下面的 effect 补触发。
+  const upgradeTriggerRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (chromeSession.loading) return;
+    viewerAnonRef.current = chromeSession.user ? chromeSession.user.isAnonymous : null;
+    if (chromeSession.user && !chromeSession.user.isAnonymous) {
+      upgradeTriggerRef.current?.();
+    }
+  }, [chromeSession.loading, chromeSession.user]);
 
   useEffect(() => {
     const root = outerRootRef.current;
@@ -297,8 +314,20 @@ export function ChatPanel({
           return;
         }
         // authoring 期、画板已有页:对话改书统一走设计 Agent。
+        // 游客门禁:自由输入的对话改书是真实账号能力(采访答题/讲故事在上面早已分流,
+        // 匿名照常可用)。明确是游客才拦;身份未知放行,服务端 403 兜底。
+        if (viewerAnonRef.current === true) {
+          setSending(false);
+          window.location.assign(localizePath(`/login?from=/album/${albumId}`, locale));
+          return;
+        }
         await runDesignChatTurn(txt);
       } else {
+        if (viewerAnonRef.current === true) {
+          setSending(false);
+          window.location.assign(localizePath(`/login?from=/album/${albumId}`, locale));
+          return;
+        }
         await runEdit(txt);
       }
       setSending(false);
@@ -889,6 +918,8 @@ export function ChatPanel({
         if (!res.ok || !res.body) {
           if (res.status === 401) throw new UnauthorizedError();
           const payload = await res.json().catch(() => null);
+          // 游客撞门(前置闸漏了/身份未知时的服务端兜底):同 401 处置 → authErr 跳登录。
+          if (payload?.error?.code === 'ANON_UPGRADE_REQUIRED') throw new UnauthorizedError();
           throw new Error(payload?.error?.message ?? 'Request failed');
         }
         const outcome: {
@@ -1568,7 +1599,13 @@ export function ChatPanel({
         const res = await fetch(`/api/v3/albums/${albumId}/design`);
         const json = await res.json();
         if (!json.ok) return;
-        if (json.data.designed || !json.data.hasPages) return;
+        if (json.data.designed) {
+          // 已设计:普通书到此为止;游客占位书(copySource='placeholder')登录后
+          // 从这里接住 —— 自动补跑真 compose(函数内部自判身份/在途状态)。
+          void maybeUpgradePlaceholder(Boolean(json.data.composing));
+          return;
+        }
+        if (!json.data.hasPages) return;
         // 成稿正在跑(刷新重进):不重弹选择卡,直接接回轮询等这一单成书。
         if (json.data.composing) {
           designOfferShown = true;
@@ -1734,6 +1771,85 @@ export function ChatPanel({
         if (!disposed) { restAwait(); scrollChat(); }
       }
     }
+
+    // 游客占位书 → 登录后自动补跑真 compose。占位成稿(copySource='placeholder')里
+    // 文字只是模板示例样稿;真实账号第一次打开这本书时,从落库的 designApplied 恢复
+    // 封面组,走 runApplyDesign 原路重发 POST /design —— 这次服务端按真成稿处理
+    // (precheck+hold 计费、Gemini 写真文案、回调升 copySource='ai')。
+    // 触发点两个:offerDesignCard 的 designed 分支(身份已知时),以及组件层
+    // upgradeTriggerRef(/user/me 比聊天引擎晚就绪时补触发)。
+    let placeholderUpgradeStarted = false;
+    async function maybeUpgradePlaceholder(composingHint?: boolean) {
+      if (disposed || placeholderUpgradeStarted) return;
+      if (detail.album.copySource !== 'placeholder') return;
+      if (viewerAnonRef.current !== false) return; // 游客或身份未知:不触发
+      placeholderUpgradeStarted = true;
+      let composing = composingHint;
+      if (composing === undefined) {
+        try {
+          composing = Boolean((await fetchDesignState(albumId)).composing);
+        } catch {
+          placeholderUpgradeStarted = false;
+          return;
+        }
+      }
+      // 已有在途真 compose(比如另一个标签页触发过):接回轮询即可。
+      if (composing) {
+        const resuming = appendThinkingShell();
+        setThinkingLabel(resuming, 'Writing your book…');
+        void withWorkflowBusy(() => waitForComposeThenRefresh(resuming));
+        return;
+      }
+      // 从消息历史恢复封面组(applyPlaceholderDesign 落库的 designApplied 带全量字段)。
+      try {
+        const res = await fetch(`/api/v1/albums/${albumId}/messages?limit=100`);
+        const json = await res.json();
+        if (!json.ok) throw new Error('messages fetch failed');
+        const msgs = (json.data as Array<{ layoutPatch?: unknown }>) ?? [];
+        let applied: {
+          coverTemplateId: string;
+          coverPhotoId: string;
+          endingTemplateId: string;
+          endingPhotoId: string;
+          pageBackground?: string;
+        } | null = null;
+        for (const m of msgs) {
+          const patch = m.layoutPatch as { designApplied?: Record<string, unknown> } | null;
+          const a = patch?.designApplied;
+          if (
+            a &&
+            typeof a.coverTemplateId === 'string' &&
+            typeof a.coverPhotoId === 'string' &&
+            typeof a.endingTemplateId === 'string' &&
+            typeof a.endingPhotoId === 'string'
+          ) {
+            applied = {
+              coverTemplateId: a.coverTemplateId,
+              coverPhotoId: a.coverPhotoId,
+              endingTemplateId: a.endingTemplateId,
+              endingPhotoId: a.endingPhotoId,
+              ...(typeof a.pageBackground === 'string' && a.pageBackground
+                ? { pageBackground: a.pageBackground }
+                : {}),
+            };
+          }
+        }
+        if (!applied) {
+          console.warn('[placeholder-upgrade] no designApplied in history', { albumId });
+          return;
+        }
+        appendAiText(
+          aT(
+            '登录成功!现在照你讲的故事把真文案写进书里,稍等片刻。',
+            'Signed in — now writing your real story into the book, one moment.',
+          ),
+        );
+        await runApplyDesign(applied, applied.pageBackground);
+      } catch {
+        placeholderUpgradeStarted = false; // 网络抖动等,放过;下次进来再试
+      }
+    }
+    upgradeTriggerRef.current = () => void maybeUpgradePlaceholder();
 
     // 成稿是 Agent 异步跑的(按章并发调 Gemini),成书落进服务端 draft 后回调推 stage='ready'。
     // 轮询草稿骨架,封面页一出现就派发 `yujee:authoring-pages-ready` 原地刷画板 —— 与
@@ -2456,6 +2572,7 @@ export function ChatPanel({
 
     return () => {
       disposed = true;
+      upgradeTriggerRef.current = null;
       sendBtnEl?.removeEventListener('click', send);
       input?.removeEventListener('keydown', onKeydown);
       input?.removeEventListener('input', onInput);
