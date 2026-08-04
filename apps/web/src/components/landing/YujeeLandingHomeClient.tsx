@@ -137,10 +137,10 @@ const copies: Record<Locale, Copy> = {
       <>
         Turn your everyday snapshots
         <br />
-        into a book that&apos;s yours alone
+        into a memoir that&apos;s yours alone
       </>
     ),
-    heroSub: 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful magazine made just for you.',
+    heroSub: 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful memory book made just for you.',
     heroCta: 'Start creating',
     heroExamples: 'See examples',
     trust: ['No design skills needed', 'Fully editable', 'HD-ready export'],
@@ -150,36 +150,36 @@ const copies: Record<Locale, Copy> = {
     featuresLabel: 'What it does',
     featuresTitle: (
       <>
-        Spend less time sorting,
+        An AI photo book maker
         <br />
-        more time remembering
+        that does the sorting for you
       </>
     ),
     features: [
       {
-        title: 'Auto-layout into a book',
+        title: 'Auto-layout into a photo book',
         body:
           'Drop in a set of photos and the AI lays out spreads with rhythm — full bleeds, grids, white space — no dragging one by one.',
         icon: 'layout',
       },
       {
-        title: 'Smart groups + captions',
+        title: 'Smart photo grouping + captions',
         body:
           'It detects time and scenes to group your photos automatically, and drafts an editable title and description for each. You set the tone; it writes the first draft.',
         icon: 'spark',
       },
       {
-        title: 'Flip-book preview · HD export',
+        title: 'Flip-book preview · print-ready PDF export',
         body:
           'Flip through a 3D preview, page by page — what you see is what you get. Export a 300 DPI print-ready PDF you can print and bind anytime.',
         icon: 'book',
       },
     ],
-    ctaTitle: "Don't leave those photos in a folder",
+    ctaTitle: "Don't leave those photos in a folder — make them a keepsake book",
     ctaSub: 'Make your first book in minutes. Start free; think about export and print once you love it.',
     start: 'Start free',
     faqLabel: 'FAQ',
-    faqTitle: 'Still on the fence?',
+    faqTitle: 'AI photo book questions, answered',
     faq: buildFaq('en', 'See pricing'),
     footerTagline: 'Turn your photos into a beautifully designed album.',
     footerProduct: 'Product',
@@ -286,7 +286,7 @@ const copies: Record<Locale, Copy> = {
       <>
         把随手一拍的照片，
         <br />
-        整理成只属于你的书
+        整理成只属于你的回忆录
       </>
     ),
     heroSub: '你来讲故事，故事润色、排版、设计，通通交给 Yujee。',
@@ -299,33 +299,33 @@ const copies: Record<Locale, Copy> = {
     featuresLabel: '它能做什么',
     featuresTitle: (
       <>
-        把整理照片的力气，
+        AI 照片书自动排版，
         <br />
-        省下来给回忆
+        力气省下来给回忆
       </>
     ),
     features: [
       {
-        title: '自动排版成册',
+        title: '自动排版成照片书',
         body: '丢进一组照片，AI 按节奏排好跨页版式：大图、网格、留白，疏密有致，不用一张张拖。',
         icon: 'layout',
       },
       {
-        title: '智能分组 + 配文',
+        title: '智能识图分组 + 配文',
         body: '识别时间与场景自动分组，为每一组生成可编辑的标题和描述。文字你来定调，初稿它先写好。',
         icon: 'spark',
       },
       {
-        title: '翻书预览 · 高清导出',
+        title: '翻书预览 · 印刷级 PDF 导出',
         body: '3D 翻书逐页预览，所见即所得。导出 300DPI 印刷级 PDF，随时打印装订成实体相册。',
         icon: 'book',
       },
     ],
-    ctaTitle: '那些照片，别再躺在相册里了',
+    ctaTitle: '那些照片，别再躺在相册里了——做成一本纪念册',
     ctaSub: '几分钟，做出第一本。免费开始，满意了再导出打印。',
     start: '免费开始',
     faqLabel: '常见问题',
-    faqTitle: '还在犹豫？',
+    faqTitle: '关于 AI 照片书，你想问的',
     faq: buildFaq('zh', '查看定价'),
     footerTagline: '把照片做成一本设计好的相册。',
     footerProduct: '产品',

@@ -131,17 +131,19 @@ test('pricing best-value badge uses a colorful light background with purple text
 
 test('English landing moves the AI magazine line into the hero subtitle', () => {
   const client = component('YujeeLandingHomeClient.tsx');
-  const movedLine = 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful magazine made just for you.';
+  // "memory book", not "magazine": the magazine SERP is entertainment-intent
+  // (fake Vogue cover apps), while memoir/keepsake carries the buying intent.
+  const movedLine = 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful memory book made just for you.';
 
   assert.match(
     client,
-    /heroSub:\s*'YUJEE AI turns your photos, stories, memories and ideas into a beautiful magazine made just for you\.'/,
-    'the AI magazine line should be the English hero subtitle',
+    /heroSub:\s*'YUJEE AI turns your photos, stories, memories and ideas into a beautiful memory book made just for you\.'/,
+    'the AI memory-book line should be the English hero subtitle',
   );
   assert.doesNotMatch(
     client,
-    /createSub:\s*'YUJEE AI turns your photos, stories, memories and ideas into a beautiful magazine made just for you\.'/,
-    'the AI magazine line should no longer remain under the opening composer title',
+    /createSub:\s*'YUJEE AI turns your photos, stories, memories and ideas into a beautiful memory book made just for you\.'/,
+    'the AI memory-book line should no longer remain under the opening composer title',
   );
   assert.doesNotMatch(
     client,
