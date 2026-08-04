@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requireAuth } from '@/lib/auth/require-auth';
+import { requireRealUser } from '@/lib/auth/require-auth';
 import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
@@ -12,7 +12,7 @@ type RouteCtx = { params: Promise<{ uuid: string }> };
 
 export async function POST(req: Request, ctx: RouteCtx) {
   try {
-    const user = await requireAuth(req);
+    const user = await requireRealUser(req);
     const { uuid } = await ctx.params;
     const { locale } = await parseBody(Schema, req);
     return ok(await shareService.createShare(user.id, uuid, locale ?? 'zh'));
