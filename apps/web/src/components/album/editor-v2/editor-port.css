@@ -1730,7 +1730,10 @@
 .editor-port .eb-size-panel{ min-width:104px; }
 
 /* ── 自定义「填充」取色弹层 ── */
-.editor-port .eb-color-panel{ width:236px; padding:0; }
+/* 必须盖掉 .eb-panel 的 max-height:360px + overflow:hidden:拾色器内容
+   (SV 方块 + 色相/透明度条 + 多排预设 + 最近使用 + hex)远超 360px,
+   hidden 会把预设第二排起、最近使用、输入框整段无声裁掉(2026-08-05 线上实测)。 */
+.editor-port .eb-color-panel{ width:236px; padding:0; max-height:min(640px, 84vh); overflow-y:auto; }
 .editor-port .eb-color-grab{ display:none; } /* 顶部拖动手柄:仅移动端底部大弹窗显示 */
 .editor-port .eb-color-head{
   display:flex; align-items:center; justify-content:space-between;
@@ -2172,6 +2175,9 @@
   .editor-port .eb-color-panel.open{
     position:fixed; left:0; right:0; bottom:0; top:auto !important;
     width:100vw; max-width:100vw; max-height:88vh;
+    /* 小屏上内容(230px HSV + 多排预设 + 最近使用 + 无背景)可能超 88vh,
+       继承的 overflow:hidden 会裁掉底部按钮;SV/滑条自带 touch-action:none,滚动不抢拖拽。 */
+    overflow-y:auto;
     border-radius:22px 22px 0 0;
     padding:0 4px calc(14px + env(safe-area-inset-bottom));
     box-shadow:0 -14px 44px rgba(0,0,0,.20);
