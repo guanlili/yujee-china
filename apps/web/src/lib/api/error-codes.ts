@@ -15,6 +15,11 @@ export const ERRORS = {
   UNAUTHORIZED:          () => new AppError('UNAUTHORIZED',          'Login required',              401),
   FORBIDDEN:             () => new AppError('FORBIDDEN',             'Forbidden',                   403),
 
+  // 游客(匿名)账号的门禁:前端把这三个码统一映射成「弹登录」。
+  ANON_UPGRADE_REQUIRED: () => new AppError('ANON_UPGRADE_REQUIRED', 'Sign in to continue',         403),
+  ANON_ALBUM_LIMIT:      () => new AppError('ANON_ALBUM_LIMIT',      'Guest limit: one album — sign in for more', 403),
+  ANON_PHOTO_LIMIT:      () => new AppError('ANON_PHOTO_LIMIT',      'Guest limit: 20 photos — sign in for up to 100', 403),
+
   ALBUM_NOT_FOUND:       () => new AppError('ALBUM_NOT_FOUND',       'Album not found',             404),
   ALBUM_NOT_OWNED:       () => new AppError('ALBUM_NOT_OWNED',       'Album not owned by user',     403),
   JOB_NOT_FOUND:         () => new AppError('JOB_NOT_FOUND',         'Job not found',               404),
