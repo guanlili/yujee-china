@@ -74,11 +74,12 @@ test('AI 忙全程经 setSending;除声明与 setter 外无裸 sending 赋值', 
     ['let sending = false;'],
     '除 `let sending = false` 声明外不得有裸 sending = false 赋值',
   );
-  // 赋值点全部改成了 setSending(5 true + 7 false)。统一异常展示后,两处 select-layout catch
+  // 赋值点全部改成了 setSending(5 true + 9 false)。统一异常展示后,两处 select-layout catch
   // 的早返回 setSending(false) 删除了(finally 已兜底同一次),false 计数 8→6;追加范围
-  // 成稿(triggerAppendCompose)新增一对 true/false,4→5、6→7。
+  // 成稿(triggerAppendCompose)新增一对 true/false,4→5、6→7;游客模式两处打字门禁
+  // (对话改书/runEdit 前弹登录)各早返回一次 setSending(false),7→9。
   assert.equal((chat.match(/setSending\(true\)/g) ?? []).length, 5, '应有 5 处 setSending(true)');
-  assert.equal((chat.match(/setSending\(false\)/g) ?? []).length, 7, '应有 7 处 setSending(false)');
+  assert.equal((chat.match(/setSending\(false\)/g) ?? []).length, 9, '应有 9 处 setSending(false)');
 });
 
 test('缺积分不再直接摸 send.disabled;统一走 outOfCredits + refreshSendDisabled', () => {

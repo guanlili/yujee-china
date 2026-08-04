@@ -67,7 +67,10 @@ test('入口都接到真东西上', () => {
   // 导出/分享/更多 现在都是真功能,不再是 toast。
   assert.match(root, /onExport=\{openExport\}/, '导出接闸门 + 导出菜单');
   assert.match(root, /onMore=\{\(\) => setMoreOpen\(true\)\}/, '「更多」打开菜单(里面是照片备份)');
-  assert.match(root, /onShare=\{\(\) => \{[\s\S]{0,80}setShareOpen\(true\)/, '分享打开分享弹窗');
+  // 游客模式后 onShare 里多了 isGuest 门禁(先弹登录),窗口放宽到 200 字符,
+  // 但门禁与打开弹窗两个动作都必须在。
+  assert.match(root, /onShare=\{\(\) => \{[\s\S]{0,200}setShareOpen\(true\)/, '分享打开分享弹窗');
+  assert.match(root, /onShare=\{\(\) => \{[\s\S]{0,120}if \(isGuest\) \{ goLogin\(\); return; \}/, '分享必须先过游客门禁');
   assert.match(
     root,
     /onOpenChat=\{[\s\S]{0,240}classList\.remove\('chat-collapsed'\)/,
