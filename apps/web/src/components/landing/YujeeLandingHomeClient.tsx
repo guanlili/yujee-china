@@ -75,6 +75,9 @@ type Copy = {
   footerTagline: string;
   footerProduct: string;
   footerResources: string;
+  footerExampleTravel: string;
+  footerExampleLifeStory: string;
+  footerExamplesAll: string;
   footerCompany: string;
   footerAccount: string;
   footerPrivacy: string;
@@ -181,6 +184,9 @@ const copies: Record<Locale, Copy> = {
     footerTagline: 'Turn your photos into a beautifully designed album.',
     footerProduct: 'Product',
     footerResources: 'Resources',
+    footerExampleTravel: 'Travel photo book example',
+    footerExampleLifeStory: 'Life story book example',
+    footerExamplesAll: 'All memoir examples',
     footerCompany: 'About',
     footerAccount: 'Account',
     footerPrivacy: 'Privacy',
@@ -324,6 +330,9 @@ const copies: Record<Locale, Copy> = {
     footerTagline: '把照片做成一本设计好的相册。',
     footerProduct: '产品',
     footerResources: '资源',
+    footerExampleTravel: '旅行照片书示例',
+    footerExampleLifeStory: '人生故事纪念册示例',
+    footerExamplesAll: '全部作品示例',
     footerCompany: '关于',
     footerAccount: '账户',
     footerPrivacy: '隐私政策',
@@ -1147,15 +1156,20 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
               </div>
               <FooterColumn title={c.footerProduct} links={[
                 [c.featuresLabel, '#features'],
-                [c.navExamples, '#outputs'],
+                [c.navExamples, `/${locale}/examples`],
                 [c.heroCta, composerHref],
                 [c.navPricing, '#pricing'],
               ]} />
               {/* Only link to surfaces that exist. "使用指南" / "模板库" used to sit here
                   pointing at #features / #outputs — the pages were never built, so clicking
                   them just scrolled back to "它能做什么". Worse than a 404, which at least
-                  tells the truth. Re-add each label the day its page ships. */}
+                  tells the truth. Re-add each label the day its page ships. The example
+                  links below shipped with /examples; their labels double as the search
+                  terms those pages target. */}
               <FooterColumn title={c.footerResources} links={[
+                [c.footerExampleTravel, `/${locale}/examples/travel-journal`],
+                [c.footerExampleLifeStory, `/${locale}/examples/life-story`],
+                [c.footerExamplesAll, `/${locale}/examples`],
                 [c.navFaq, '#faq'],
               ]} />
               {/* "关于" is back, and this time it goes somewhere: the founder story
