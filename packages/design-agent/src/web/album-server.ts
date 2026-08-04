@@ -17,7 +17,7 @@ import {
 import { loadAlbumSkills } from "../core/album/skills-loader.ts";
 import { buildAlbumSystemPrompt } from "../core/album/system-prompt.ts";
 import { loadTemplateCatalog, type TemplateCatalog } from "../core/album/templates-catalog.ts";
-import { createAlbumTools } from "../core/album/tools.ts";
+import { catalogCategoryOf, catalogSpreadOf, createAlbumTools } from "../core/album/tools.ts";
 import { compactDesignContext } from "../core/context-compression.ts";
 import { createDesignAgentSession, type DesignAgentSession } from "../core/design-agent-session.ts";
 import { createDesignAgentModelRuntime } from "../core/models.ts";
@@ -420,6 +420,17 @@ export function composeChatTurn(
 	return `${parts.join("\n")}\n\n${message}`;
 }
 
+// 数组位置 → 用户口径称呼(封面/目录/封尾/第 N 页/双宽「第 L-R 页」),越界回 undefined
+// (composeChatTurn 退化为自然页序兜底)。双宽判定必须在场:标签口径 = 画布 folio。
+export function currentPageLabelFor(
+	book: AlbumBookState,
+	catalog: TemplateCatalog,
+	currentPageIndex: number,
+): string | undefined {
+	const ref = pageUserRefs(book, catalogCategoryOf(catalog), catalogSpreadOf(catalog))[currentPageIndex];
+	return ref === undefined ? undefined : formatPageUserRef(ref);
+}
+
 async function runAlbumChat(
 	runtime: AlbumRuntime,
 	message: string,
@@ -440,14 +451,7 @@ async function runAlbumChat(
 
 	try {
 		const currentPageLabel =
-			currentPageIndex != null
-				? (() => {
-						const ref = pageUserRefs(bookBefore, (templateId) => runtime.catalog.get(templateId)?.category)[
-							currentPageIndex
-						];
-						return ref === undefined ? undefined : formatPageUserRef(ref);
-					})()
-				: undefined;
+			currentPageIndex != null ? currentPageLabelFor(bookBefore, runtime.catalog, currentPageIndex) : undefined;
 		const assistantMessage = await runtime.session.prompt(
 			composeChatTurn(message, currentPageIndex, runtime.getBook().brief, currentPageLabel),
 		);

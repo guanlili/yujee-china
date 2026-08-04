@@ -36,12 +36,14 @@ const PAGE_REF_DESCRIPTION =
 	'用户口径页码,与用户画面上看到的页码一致:内页用数字(从 1 开始);封面传 "cover"、目录传 "toc"、封尾传 "ending"(这些页不占数字页码)。';
 const PageRefSchema = Type.Union([Type.Number(), Type.String()], { description: PAGE_REF_DESCRIPTION });
 
-function catalogCategoryOf(catalog: TemplateCatalog): (templateId: string) => string | undefined {
+export function catalogCategoryOf(catalog: TemplateCatalog): (templateId: string) => string | undefined {
 	return (templateId) => catalog.get(templateId)?.category;
 }
 
 // 双宽模板判定:用户口径页码里双宽页占两个号(与画布 folio 同语义,book-state 抬头)。
-function catalogSpreadOf(catalog: TemplateCatalog): (templateId: string) => boolean {
+// 凡把数组位置换算成用户口径的地方都必须传它 —— pageUserRefs 的 isSpread 缺省是
+// 「全不是双宽」,漏传的口径会比画布 folio 少号(album-server 的界面上下文标签栽过)。
+export function catalogSpreadOf(catalog: TemplateCatalog): (templateId: string) => boolean {
 	return (templateId) => catalog.get(templateId)?.spread === true;
 }
 
