@@ -39,12 +39,15 @@
 - middleware 不动(只查 cookie 存在性,匿名 session 天然通过);
   `/settings`、`/credits`、`/my-albums` 页面级「匿名则跳登录」
 
-## 占位成稿
+## 占位成稿(实施订正)
 
-匿名 `POST design`:照常写封面/底色,但不派发 compose agent job、不建 credit hold,
-Web 端确定性填充器把各页文案槽填上示例文案,相册标记 `copySource='placeholder'`,
-状态推进到 ready。添加照片的补文案同理走占位。讲故事回答照常存 chapter-context,
-留给登录后的真 compose 用。
+内页示例文案**不需要另造**:select-layout 落地时 engine 的 `fill_sample_texts` 已把
+模板 sample 填进每页 texts。匿名 `POST design` 走 `applyPlaceholderDesign`:复用真成稿
+同一条纯函数 `mergeComposeIntoDraft` 传**空 compose 载荷**(内页保留 sample、封面/封尾
+落模板 sample、字体按语言兜底、carrier+重烘+页序照旧),同步落库,不派 agent job、
+不建 hold,相册标记 `copySource='placeholder'`,stage 推进到 ready。添加照片的补文案
+同理(匿名 composeAppend 直接 `composed:false`,sample 已由追加排版填好)。讲故事回答
+照常存 chapter-context,留给登录后的真 compose 用。
 
 ## 登录后接续
 
@@ -58,8 +61,9 @@ compose(走现有积分/402 逻辑)→ 真文案落地 → 用户继续原操作
    `POST /api/v3/albums`
 2. **应用层硬上限**:匿名 20 张/本、1 本/账号、同账号同时仅 1 个进行中 init job
    (天然去重双击发送:重复请求返回已有相册)
-3. **IP 记账**(Postgres 滑动窗口,仿 feedback 服务先例):匿名建相册 + 匿名注册,
-   每 IP 每小时默认 5 次,超限 429 `RATE_LIMITED`
+3. **IP 记账**(实施订正:收敛到注册口):匿名注册 `/sign-in/anonymous` 每 IP 每小时
+   5 次(better-auth before-hook 数 `sessions.ip_address` join `is_anonymous`,429);
+   叠加「每匿名账号 1 本」后等效于匿名建相册 ≤5 本/IP/小时,无需再单独记账建相册口
 
 ## 匿名 session 创建时机
 
