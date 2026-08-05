@@ -75,6 +75,9 @@ type Copy = {
   footerTagline: string;
   footerProduct: string;
   footerResources: string;
+  footerExampleTravel: string;
+  footerExampleLifeStory: string;
+  footerExamplesAll: string;
   footerCompany: string;
   footerAccount: string;
   footerPrivacy: string;
@@ -124,8 +127,8 @@ const copies: Record<Locale, Copy> = {
     footerStory: 'Our story',
     login: 'Log in',
     menu: 'Menu',
-    createTitle: 'Turn your scattered photos into a magazine you can read, touch, and keep',
-    createSub: '',
+    createTitle: 'Turn your scattered photos into a photo book you can read, touch, and keep',
+    createSub: 'Upload your photos and the AI groups them, writes the story, and automatically lays out a magazine-style photo book — fully editable, ready to print.',
     sampleCta: 'See example',
     makeSame: 'Make one like this',
     samplesNote: 'Demo books made by the Yujee team to show what the product can do — fictional content, not customer work.',
@@ -134,53 +137,56 @@ const copies: Record<Locale, Copy> = {
       <>
         Turn your everyday snapshots
         <br />
-        into a book that&apos;s yours alone
+        into a memoir that&apos;s yours alone
       </>
     ),
-    heroSub: 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful magazine made just for you.',
+    heroSub: 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful memory book made just for you.',
     heroCta: 'Start creating',
     heroExamples: 'See examples',
-    trust: ['No design skills needed', 'Fully editable', 'HD-ready export'],
+    trust: ['No design skills needed', 'Fully editable layout', 'Print-ready PDF export'],
     workflowTitle: 'How it works',
-    workflow: ['Auto photo grouping', 'AI-assisted writing', 'Auto design'],
+    workflow: ['Automatic photo grouping', 'AI-assisted story writing', 'Automatic magazine-style layout'],
     polish: 'Polishing the text…',
     featuresLabel: 'What it does',
     featuresTitle: (
       <>
-        Spend less time sorting,
+        An AI photo book maker
         <br />
-        more time remembering
+        that does the sorting for you
       </>
     ),
     features: [
       {
-        title: 'Auto-layout into a book',
+        title: 'Auto-layout into a photo book',
         body:
-          'Drop in a set of photos and the AI lays out spreads with rhythm — full bleeds, grids, white space — no dragging one by one.',
+          'Drop in a set of photos and the AI automatically lays out magazine-style spreads — full bleeds, grids, white space — a finished photo book layout without dragging pictures one by one.',
         icon: 'layout',
       },
       {
-        title: 'Smart groups + captions',
+        title: 'Smart photo grouping + captions',
         body:
           'It detects time and scenes to group your photos automatically, and drafts an editable title and description for each. You set the tone; it writes the first draft.',
         icon: 'spark',
       },
       {
-        title: 'Flip-book preview · HD export',
+        title: 'Flip-book preview · print-ready PDF export',
         body:
           'Flip through a 3D preview, page by page — what you see is what you get. Export a 300 DPI print-ready PDF you can print and bind anytime.',
         icon: 'book',
       },
     ],
-    ctaTitle: "Don't leave those photos in a folder",
-    ctaSub: 'Make your first book in minutes. Start free; think about export and print once you love it.',
+    ctaTitle: "Don't leave those photos in a folder — make them a keepsake book",
+    ctaSub: 'Make your first photo book in minutes. Start free; think about export and print once you love it.',
     start: 'Start free',
     faqLabel: 'FAQ',
-    faqTitle: 'Still on the fence?',
+    faqTitle: 'AI photo book questions, answered',
     faq: buildFaq('en', 'See pricing'),
     footerTagline: 'Turn your photos into a beautifully designed album.',
     footerProduct: 'Product',
     footerResources: 'Resources',
+    footerExampleTravel: 'Travel photo book example',
+    footerExampleLifeStory: 'Life story book example',
+    footerExamplesAll: 'All memoir examples',
     footerCompany: 'About',
     footerAccount: 'Account',
     footerPrivacy: 'Privacy',
@@ -190,7 +196,7 @@ const copies: Record<Locale, Copy> = {
     samples: [
       {
         title: 'Year in a book',
-        brief: 'One book a year, bound each December',
+        brief: 'One photo book a year, bound each December',
         body:
           'Pack a whole year into one book. Holidays, trips, and everyday moments are laid out by month and continued year after year.',
         bullets: ['Grouped by month or event', 'One click for the year-end book', 'Same style, a matching set each year'],
@@ -199,7 +205,7 @@ const copies: Record<Locale, Copy> = {
       },
       {
         title: 'Life story',
-        brief: 'Your milestones, into a life story',
+        brief: 'Your milestones, into a life story book',
         body:
           'Lay milestones along a timeline: birth, school, people, and journeys. Each group gets editable short essays, bound like a biography.',
         bullets: ['Auto-grouped by life stage', 'Long-form text and pull quotes per group', 'Great as a birthday or memorial gift'],
@@ -208,7 +214,7 @@ const copies: Record<Locale, Copy> = {
       },
       {
         title: 'Travel',
-        brief: 'A trip, auto-bound into a journal',
+        brief: 'A trip, auto-bound into a travel photo book',
         body:
           'Auto-grouped by date, with places and order sorted for you. One spread per day, with room to breathe between photos.',
         bullets: ['Auto-split by timeline', 'Add map pages and route notes', 'Export a PDF to share with travel mates'],
@@ -270,8 +276,8 @@ const copies: Record<Locale, Copy> = {
     footerStory: '创始故事',
     login: '登录',
     menu: '菜单',
-    createTitle: '把散落的照片，做成一本能读、能摸、能留的杂志',
-    createSub: 'YUJEE AI 将您的照片、故事、回忆和想法变成一本专为您制作的精美杂志。',
+    createTitle: '把散落的照片，做成一本能读、能摸、能留的照片书',
+    createSub: 'YUJEE AI 将您的照片、故事、回忆和想法变成一本专为您制作的精美纪念册。',
     sampleCta: '查看示例',
     makeSame: '做同款',
     samplesNote: '以下样书均为遇己官方制作的演示作品（内容为虚构示例），非真实用户创作。',
@@ -280,7 +286,7 @@ const copies: Record<Locale, Copy> = {
       <>
         把随手一拍的照片，
         <br />
-        整理成只属于你的书
+        整理成只属于你的回忆录
       </>
     ),
     heroSub: '你来讲故事，故事润色、排版、设计，通通交给 Yujee。',
@@ -293,37 +299,40 @@ const copies: Record<Locale, Copy> = {
     featuresLabel: '它能做什么',
     featuresTitle: (
       <>
-        把整理照片的力气，
+        AI 照片书自动排版，
         <br />
-        省下来给回忆
+        力气省下来给回忆
       </>
     ),
     features: [
       {
-        title: '自动排版成册',
+        title: '自动排版成照片书',
         body: '丢进一组照片，AI 按节奏排好跨页版式：大图、网格、留白，疏密有致，不用一张张拖。',
         icon: 'layout',
       },
       {
-        title: '智能分组 + 配文',
+        title: '智能识图分组 + 配文',
         body: '识别时间与场景自动分组，为每一组生成可编辑的标题和描述。文字你来定调，初稿它先写好。',
         icon: 'spark',
       },
       {
-        title: '翻书预览 · 高清导出',
+        title: '翻书预览 · 印刷级 PDF 导出',
         body: '3D 翻书逐页预览，所见即所得。导出 300DPI 印刷级 PDF，随时打印装订成实体相册。',
         icon: 'book',
       },
     ],
-    ctaTitle: '那些照片，别再躺在相册里了',
+    ctaTitle: '那些照片，别再躺在相册里了——做成一本纪念册',
     ctaSub: '几分钟，做出第一本。免费开始，满意了再导出打印。',
     start: '免费开始',
     faqLabel: '常见问题',
-    faqTitle: '还在犹豫？',
+    faqTitle: '关于 AI 照片书，你想问的',
     faq: buildFaq('zh', '查看定价'),
     footerTagline: '把照片做成一本设计好的相册。',
     footerProduct: '产品',
     footerResources: '资源',
+    footerExampleTravel: '旅行照片书示例',
+    footerExampleLifeStory: '人生故事纪念册示例',
+    footerExamplesAll: '全部作品示例',
     footerCompany: '关于',
     footerAccount: '账户',
     footerPrivacy: '隐私政策',
@@ -1147,15 +1156,20 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
               </div>
               <FooterColumn title={c.footerProduct} links={[
                 [c.featuresLabel, '#features'],
-                [c.navExamples, '#outputs'],
+                [c.navExamples, `/${locale}/examples`],
                 [c.heroCta, composerHref],
                 [c.navPricing, '#pricing'],
               ]} />
               {/* Only link to surfaces that exist. "使用指南" / "模板库" used to sit here
                   pointing at #features / #outputs — the pages were never built, so clicking
                   them just scrolled back to "它能做什么". Worse than a 404, which at least
-                  tells the truth. Re-add each label the day its page ships. */}
+                  tells the truth. Re-add each label the day its page ships. The example
+                  links below shipped with /examples; their labels double as the search
+                  terms those pages target. */}
               <FooterColumn title={c.footerResources} links={[
+                [c.footerExampleTravel, `/${locale}/examples/travel-journal`],
+                [c.footerExampleLifeStory, `/${locale}/examples/life-story`],
+                [c.footerExamplesAll, `/${locale}/examples`],
                 [c.navFaq, '#faq'],
               ]} />
               {/* "关于" is back, and this time it goes somewhere: the founder story

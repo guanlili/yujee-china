@@ -7,6 +7,7 @@ export interface MarketingMessages {
     home: string;
     myProjects: string;
     howItWorks: string;
+    examples: string;
     pricing: string;
     about: string;
     menuToggle: string;
@@ -76,6 +77,24 @@ export interface MarketingMessages {
   // through untouched. Deliberately absent: a reciprocal "friend links" block —
   // Google treats link exchanges at scale as a link scheme, and there is no real
   // partner to exchange with yet.
+  // Chrome for the /examples hub + detail pages. The per-example CONTENT
+  // (titles, prose, captions) lives in lib/examples/examples.ts, not here.
+  examples: {
+    metaTitle: string;
+    metaDesc: string;
+    kicker: string;
+    hubTitle: string;
+    hubIntro: string;
+    moreComing: string;
+    insideHead: string;
+    madeWithHead: string;
+    galleryHead: string;
+    flipThrough: string;
+    makeSame: string;
+    breadcrumbHome: string;
+    breadcrumbExamples: string;
+    openLabel: string;
+  };
   footer: {
     tagline: string;
     groups: { head: string; items: { label: string; href: string }[] }[];
@@ -89,6 +108,7 @@ const en: MarketingMessages = {
     home: 'Home',
     myProjects: 'My Projects',
     howItWorks: 'How it works',
+    examples: 'Examples',
     pricing: 'Pricing',
     about: 'About',
     menuToggle: 'Toggle navigation menu',
@@ -97,9 +117,9 @@ const en: MarketingMessages = {
     languageLabel: 'English',
   },
   landing: {
-    metaTitle: 'Yujee — Turn your photos into an AI-crafted memoir',
+    metaTitle: 'Turn Your Photos into a Book — AI Photo Book & Memoir Maker | Yujee',
     metaDesc:
-      'Yujee turns your scattered photos and stories into a magazine-style keepsake. AI lays it out, you edit in chat, export to PDF.',
+      'Yujee’s AI turns your photos and stories into a magazine-style memory book. Chat to edit, export a print-ready PDF, or order a printed keepsake. Free to try.',
     composerUploadLabel: 'Upload photos',
     composerHints: [
       { label: 'Travel Album', fill: 'Make me a photo album of my trip to Bali last week — I have lots of beach and temple photos.' },
@@ -317,6 +337,24 @@ const en: MarketingMessages = {
     disclaimer:
       'Yujee is not a medical product and is not a replacement for therapy. If you are in danger right now, please reach out to a doctor or a crisis line first.',
   },
+  examples: {
+    metaTitle: 'Photo Book & Memoir Examples — Made with Yujee AI',
+    metaDesc:
+      'Real formats you can make with Yujee: travel journals, life stories, and more — each one grouped, captioned, and laid out by AI from a pile of photos, then exported as a print-ready PDF.',
+    kicker: 'Examples',
+    hubTitle: 'Examples',
+    hubIntro:
+      'Real formats you can make with Yujee. Each one started as a pile of photos and a few words — the AI grouped them, drafted the captions, and laid out every spread. Open one to see the flow, then make your own.',
+    moreComing: 'More formats — baby growth, pets, and love stories — are on the way.',
+    insideHead: 'What’s inside',
+    madeWithHead: 'Made with',
+    galleryHead: 'Inside the book',
+    flipThrough: 'Flip through',
+    makeSame: 'Make one like this',
+    breadcrumbHome: 'Home',
+    breadcrumbExamples: 'Examples',
+    openLabel: 'See example',
+  },
   footer: {
     tagline: 'Turn scattered photos into a magazine worth keeping.',
     groups: [
@@ -327,6 +365,14 @@ const en: MarketingMessages = {
           { label: 'How it works', href: '#features' },
           { label: 'What you get', href: '#outputs' },
           { label: 'Pricing', href: '#pricing' },
+        ],
+      },
+      {
+        head: 'Photo Books',
+        items: [
+          { label: 'Travel photo book example', href: '/examples/travel-journal' },
+          { label: 'Life story book example', href: '/examples/life-story' },
+          { label: 'All memoir examples', href: '/examples' },
         ],
       },
       {
@@ -358,6 +404,7 @@ const zh: MarketingMessages = {
     home: '主页',
     myProjects: '我的项目',
     howItWorks: '玩法',
+    examples: '作品示例',
     pricing: '定价',
     about: '关于',
     menuToggle: '打开导航菜单',
@@ -366,9 +413,9 @@ const zh: MarketingMessages = {
     languageLabel: '中文',
   },
   landing: {
-    metaTitle: 'Yujee — 用 AI 把照片做成纪念册',
+    metaTitle: '把照片做成一本书 —— AI 照片书·回忆录制作 | Yujee 遇己',
     metaDesc:
-      'Yujee 把你散落的照片和故事，做成可以收藏的杂志风格纪念册。AI 自动排版，你用对话编辑，一键导出 PDF。',
+      'Yujee 遇己用 AI 把你散落的照片和故事，排成杂志风格的照片书和回忆录。对话式编辑，导出可印刷 PDF，也能做成实体纪念册。免费试用。',
     composerUploadLabel: '上传照片',
     composerHints: [
       { label: '旅行纪念册', fill: '帮我做一本记录上周去大理旅行的影集，我有很多洱海和古城的照片。' },
@@ -585,6 +632,24 @@ const zh: MarketingMessages = {
     disclaimer:
       'Yujee 不是医疗产品，也不能替代心理治疗。如果你正处在危险的状态里，请先联系专业医生或者心理援助热线。',
   },
+  examples: {
+    metaTitle: '照片书·回忆录作品示例 —— Yujee AI 制作',
+    metaDesc:
+      '用 Yujee 能做出来的真实形式：旅行手记、人生故事，还有更多——每一本都由 AI 从一堆照片里自动分组、配文、排版，再导出可印刷的 PDF。',
+    kicker: '作品示例',
+    hubTitle: '作品示例',
+    hubIntro:
+      '用 Yujee 能做出来的真实形式。每一本都从一堆照片和几句话开始——AI 帮你分组、起草配文、排好每一个跨页。点开一本看看流程，然后做你自己的。',
+    moreComing: '更多形式——宝宝成长、宠物、爱情故事——正在路上。',
+    insideHead: '里面有什么',
+    madeWithHead: '用到的能力',
+    galleryHead: '翻开看看',
+    flipThrough: '翻阅',
+    makeSame: '做一本同款',
+    breadcrumbHome: '主页',
+    breadcrumbExamples: '作品示例',
+    openLabel: '看示例',
+  },
   footer: {
     tagline: '把散落的照片，变成一本可以收藏的杂志。',
     groups: [
@@ -595,6 +660,14 @@ const zh: MarketingMessages = {
           { label: '怎么用', href: '#features' },
           { label: '能做出什么', href: '#outputs' },
           { label: '定价', href: '#pricing' },
+        ],
+      },
+      {
+        head: '照片书示例',
+        items: [
+          { label: '旅行照片书示例', href: '/examples/travel-journal' },
+          { label: '人生故事纪念册示例', href: '/examples/life-story' },
+          { label: '全部作品示例', href: '/examples' },
         ],
       },
       {
