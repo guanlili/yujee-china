@@ -45,12 +45,22 @@ test('③ 桌面 EditorPort:原图对账补传只对真实账号开', () => {
   assert.doesNotMatch(src, /usePhotoOriginalSync\(\{[^}]*enabled: true/s);
 });
 
-test('④ ChatPanel:占位书登录后自动补跑真 compose + 游客打字门禁', () => {
+test('④ ChatPanel:占位书登录后自动补跑真 compose + 游客打字门禁(迷你横幅,不跳转)', () => {
   const src = read('./ChatPanel.tsx');
   assert.match(src, /maybeUpgradePlaceholder/);
   assert.match(src, /copySource !== 'placeholder'/);
   assert.match(src, /viewerAnonRef\.current === true/, '对话改书前必须有游客门禁');
   assert.match(src, /ANON_UPGRADE_REQUIRED/, 'design-chat 的 403 兜底映射不能丢');
+  // 游客打字 = 亮横幅,绝不 window.location 跳转 —— 硬跳转会把讲故事讲一半的游客
+  // 甩出编辑器、输入丢失(上线首日实测教训,用户拍板改小提示)。
+  assert.match(src, /setSending\(false\);\n\s+showGuestNudge\(\);/, '打字门禁必须走 showGuestNudge');
+  assert.match(src, /id="guestAlert"/, '迷你登录横幅 #guestAlert 必须存在');
+  assert.match(src, /showGuestNudge\(\{ auto: true \}\)/, '占位成书后要自动亮横幅');
+  assert.doesNotMatch(
+    src,
+    /viewerAnonRef\.current === true\) \{\n\s+setSending\(false\);\n\s+window\.location/,
+    '打字门禁不许回退成硬跳转',
+  );
 });
 
 test('⑤ UserMenu:游客渲染登录 CTA,不渲染账号菜单', () => {

@@ -315,17 +315,19 @@ export function ChatPanel({
         }
         // authoring 期、画板已有页:对话改书统一走设计 Agent。
         // 游客门禁:自由输入的对话改书是真实账号能力(采访答题/讲故事在上面早已分流,
-        // 匿名照常可用)。明确是游客才拦;身份未知放行,服务端 403 兜底。
+        // 匿名照常可用)。明确是游客 → 不跳转不打断,亮出输入框上方的迷你登录横幅
+        // (硬跳转会把正在讲故事的游客甩出编辑器,输入的字也丢 —— 上线首日实测教训)。
+        // 身份未知放行,服务端 403 兜底。
         if (viewerAnonRef.current === true) {
           setSending(false);
-          window.location.assign(localizePath(`/login?from=/album/${albumId}`, locale));
+          showGuestNudge();
           return;
         }
         await runDesignChatTurn(txt);
       } else {
         if (viewerAnonRef.current === true) {
           setSending(false);
-          window.location.assign(localizePath(`/login?from=/album/${albumId}`, locale));
+          showGuestNudge();
           return;
         }
         await runEdit(txt);
@@ -1600,9 +1602,14 @@ export function ChatPanel({
         const json = await res.json();
         if (!json.ok) return;
         if (json.data.designed) {
-          // 已设计:普通书到此为止;游客占位书(copySource='placeholder')登录后
-          // 从这里接住 —— 自动补跑真 compose(函数内部自判身份/在途状态)。
-          void maybeUpgradePlaceholder(Boolean(json.data.composing));
+          // 已设计:普通书到此为止;游客占位书(copySource='placeholder')两条接法 ——
+          // 还是游客:刷新回来自动亮迷你登录横幅(不打断);
+          // 已转正:自动补跑真 compose(函数内部自判身份/在途状态)。
+          if (viewerAnonRef.current === true && detail.album.copySource === 'placeholder') {
+            showGuestNudge({ auto: true });
+          } else {
+            void maybeUpgradePlaceholder(Boolean(json.data.composing));
+          }
           return;
         }
         if (!json.data.hasPages) return;
@@ -1758,7 +1765,11 @@ export function ChatPanel({
         if (!res.ok || !json.ok) throw new Error(json.error?.message ?? 'design failed');
         // compose 在 Agent 侧按章并发跑(几十秒起),完成回调才把成书落进服务端 draft。
         // 这里进轮询态:封面页一出现就原地刷画板(与排版同一套 waitFor… 机制)。
-        void withWorkflowBusy(() => waitForComposeThenRefresh(host, recap));
+        // 游客占位成稿是同步落库的,轮询立刻兑现;成书亮相后跟一条迷你登录横幅
+        // (不打断导出/加照片,只提示「登录解锁 AI 修改」)。
+        void withWorkflowBusy(() => waitForComposeThenRefresh(host, recap)).then(() => {
+          if (viewerAnonRef.current === true) showGuestNudge({ auto: true });
+        });
       } catch (e) {
         settleThinking(host, 'analyzedFeedback');
         if (e instanceof UnauthorizedError) return;
@@ -2165,6 +2176,18 @@ export function ChatPanel({
     }
 
 
+    // 游客迷你登录横幅(#guestAlert,balanceAlert 同款容器):固定在输入框正上方,
+    // 只切显隐、不进消息流、不锁输入 —— 采访/加照片/导出照常,点「登录」才离开。
+    // 手动关过(×)本次挂载内不再自动弹;游客再次打字仍会重新亮起(那是明确意图)。
+    let guestNudgeDismissed = false;
+    function showGuestNudge(opts?: { auto?: boolean }) {
+      if (opts?.auto && guestNudgeDismissed) return;
+      const card = byId('guestAlert');
+      if (!card) return;
+      card.style.display = '';
+      scrollChat();
+    }
+
     function showPurchaseCard() {
       // 横幅固定在 composer-group 内(输入框正上方),只切显隐、绝不搬进消息流;
       // 同时禁用发送按钮 —— 没积分就别让消息发出去再报错。
@@ -2248,6 +2271,15 @@ export function ChatPanel({
         if (alert) alert.style.display = 'none';
         outOfCredits = false;
         refreshSendDisabled();
+      },
+      // 游客横幅:登录带回跳(登录成功即转正过户 + 自动补跑真文案,回到本相册继续)。
+      guestLogin: () => {
+        window.location.assign(localizePath(`/login?from=/album/${albumId}`, locale));
+      },
+      dismissGuestAlert: () => {
+        const alert = byId('guestAlert');
+        if (alert) alert.style.display = 'none';
+        guestNudgeDismissed = true;
       },
       // 中途加图(spec §1):排版完成后可用;采访/发送/追加进行中不响应。
       pickAddPhotos: () => {
@@ -2636,6 +2668,19 @@ export function ChatPanel({
               <div className="buy-banner-title flex-1 min-w-0" data-i18n="bpLead">{locale === 'zh' ? '积分已用完，补充积分继续' : 'Out of credits. Top up to continue.'}</div>
               <button className="buy-banner-btn" data-action="buyShells" data-i18n="bpBuy">{locale === 'zh' ? '去购买' : 'Buy'}</button>
               <button className="buy-close" type="button" data-action="dismissBalanceAlert" aria-label={locale === 'zh' ? '关闭' : 'Close'}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+          </div>
+          {/* 游客迷你登录横幅:占位成书后提示「登录解锁 AI 修改」。showGuestNudge 切显隐,
+              不锁输入不进消息流;样式复用 buy-banner(与积分横幅同款,天然不突兀)。 */}
+          <div className="buy-banner" id="guestAlert" style={{ display: 'none' }}>
+            <div className="buy-banner-row">
+              <div className="buy-banner-title flex-1 min-w-0">
+                {locale === 'zh' ? '文字是示例样稿 · 登录后 AI 按你讲的故事写真文案、改设计' : 'Sample copy for now · sign in and AI writes your real story'}
+              </div>
+              <button className="buy-banner-btn" data-action="guestLogin">{locale === 'zh' ? '登录' : 'Sign in'}</button>
+              <button className="buy-close" type="button" data-action="dismissGuestAlert" aria-label={locale === 'zh' ? '关闭' : 'Close'}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
