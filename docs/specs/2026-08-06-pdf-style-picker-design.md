@@ -32,8 +32,9 @@ Live 图样式选择弹窗。
 - **导出管线零改动**:出血换算(extend-canvas-edges)、bleedMm
   参数、文件名后缀、出血版跳过云端上传,全部不动。本次纯 UI
   入口重组。
-- 移动端:ExportModals.tsx 新增 PdfStyleModal;use-export.ts 协调
-  器加 pdfStyle 弹窗状态与确认流转;MobileEditorRoot.tsx 接线。
+- 移动端:ExportModals.tsx 新增 PdfStyleModal;弹窗状态(pdfStyleOpen/
+  pdfStyle)与 Live 样式一样放 MobileEditorRoot,use-export.ts 零改动
+  (它只透传 bleedMm,出血值 3 仍只在确认分派层出现)。
 - 桌面端:EditorPort.tsx 导出菜单按钮 data-action 从 exportPdf 改为
   openPdfStyle;新增弹窗 markup(id=pdfStyleModal)与
   data-pdf-style / confirmPdfStyle 接线,确认后按选中版式分派到

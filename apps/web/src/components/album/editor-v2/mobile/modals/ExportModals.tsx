@@ -25,7 +25,6 @@ export function ExportMenuModal({
   onLive,
   onSinglePages,
   onPdf,
-  onPdfBleed,
 }: {
   open: boolean;
   zh: boolean;
@@ -35,8 +34,6 @@ export function ExportMenuModal({
   onLive: () => void;
   onSinglePages: () => void;
   onPdf: () => void;
-  /** 印刷版 PDF(含 3mm 出血)。必填 —— 可选 + 父层漏传 = 亮着的死按钮。 */
-  onPdfBleed: () => void;
 }) {
   return (
     <ModalHost
@@ -85,23 +82,6 @@ export function ExportMenuModal({
             <path d="M14 2v6h6" />
           </svg>
           <span>{zh ? '整本 PDF' : 'Full PDF'}</span>
-        </button>
-        <button
-          className="export-opt"
-          onClick={onPdfBleed}
-          data-testid="export-opt-pdf-bleed"
-          title={
-            zh
-              ? '四边各加 3mm 出血，供印刷厂裁切；页面尺寸相当于 216×303mm'
-              : 'Adds 3mm bleed on all sides for print trimming; page equals 216×303mm'
-          }
-        >
-          <svg {...stroke}>
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-            <path d="M14 2v6h6" />
-            <path d="M3 12h18" strokeDasharray="2 2" />
-          </svg>
-          <span>{zh ? '印刷版 PDF · 含 3mm 出血' : 'Print PDF · 3mm bleed'}</span>
         </button>
       </div>
       <div className="px-5 pb-5">
@@ -281,6 +261,94 @@ export function LiveStyleModal({
           disabled={style == null}
           onClick={onConfirm}
         >
+          {zh ? '继续导出' : 'Continue'}
+        </button>
+      </div>
+    </ModalHost>
+  );
+}
+
+/* ── PDF 版式:标准 / 印刷(3mm 出血)(2026-08-06 版式选择设计) ────────────
+   与 LiveStyleModal 同一副骨架(nine-grid-choice 两卡 + collage-confirm),
+   区别只有一条:打开时父层已预选标准版,确认键不置灰。 */
+export function PdfStyleModal({
+  open,
+  zh,
+  style,
+  onPickStyle,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  zh: boolean;
+  style: 'standard' | 'bleed';
+  onPickStyle: (s: 'standard' | 'bleed') => void;
+  /** 确认必填 —— 同 LiveStyleModal:可选 + 父层漏传 = 亮着的死按钮。 */
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const options: { id: 'standard' | 'bleed'; title: string; copy: string }[] = [
+    {
+      id: 'standard',
+      title: zh ? '标准版' : 'Standard',
+      copy: zh ? '屏幕查看、分享用' : 'For screens and sharing',
+    },
+    {
+      id: 'bleed',
+      title: zh ? '印刷版 · 3mm 出血' : 'Print · 3mm bleed',
+      copy: zh
+        ? '四边各加 3mm 出血，供印刷厂裁切；相当于 216×303mm'
+        : 'Adds 3mm bleed on all sides for print trimming; equals 216×303mm',
+    },
+  ];
+  return (
+    <ModalHost
+      open={open}
+      onClose={onClose}
+      cardClassName="collage-card"
+      labelledBy="mPdfStyleTitle"
+      testId="pdf-style-modal"
+    >
+      <button className="collage-close" onClick={onClose} aria-label="close">
+        <svg {...stroke}>
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+      <div className="px-6 pt-6 text-center">
+        <h3 id="mPdfStyleTitle" className="font-display text-[18px] font-bold">
+          {zh ? '整本 PDF' : 'Full PDF'}
+        </h3>
+        <p className="text-[13px] text-muted mt-1.5">
+          {zh ? '选一种版式导出整本 PDF。' : 'Pick a layout for the full PDF.'}
+        </p>
+      </div>
+      <div className="nine-grid-choice px-6 pt-5">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            className={style === o.id ? 'selected' : undefined}
+            data-testid={`pdf-style-${o.id}`}
+            aria-pressed={style === o.id}
+            onClick={() => onPickStyle(o.id)}
+          >
+            {/* 静态示意:标准=单页;印刷=单页外圈虚线出血框(裁切位)。 */}
+            <span className="motion-example" aria-hidden="true">
+              <svg width="72" height="92" viewBox="0 0 72 92" fill="none" stroke="#b9b9b9" strokeWidth="1.5">
+                {o.id === 'bleed' && (
+                  <rect x="3" y="3" width="66" height="86" rx="3" strokeDasharray="4 3" />
+                )}
+                <rect x="10" y="10" width="52" height="72" rx="2" fill="#dedede" stroke="#d1d1d1" />
+              </svg>
+            </span>
+            <span className="motion-option-title">{o.title}</span>
+            <span className="motion-option-copy">{o.copy}</span>
+          </button>
+        ))}
+      </div>
+      <div className="px-6 py-6">
+        <button className="collage-confirm" data-testid="pdf-style-confirm" onClick={onConfirm}>
           {zh ? '继续导出' : 'Continue'}
         </button>
       </div>

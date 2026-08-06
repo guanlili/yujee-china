@@ -39,6 +39,7 @@ import {
   ExportMenuModal,
   CollageModal,
   LiveStyleModal,
+  PdfStyleModal,
   ExportProgressModal,
   ExportReadyModal,
   ExportFailModal,
@@ -199,6 +200,10 @@ export function MobileEditorRoot({
   // Live 样式(翻页 / 九宫格):与桌面同一步骤 —— 菜单点「Live 图」先选样式再导出。
   const [liveStyleOpen, setLiveStyleOpen] = useState(false);
   const [liveStyle, setLiveStyle] = useState<'flip' | 'nine-grid' | null>(null);
+  // PDF 版式(标准 / 印刷 3mm 出血):同 Live 的两步走,但默认预选标准版 ——
+  // 大多数人要的就是标准版,少点一下(2026-08-06 版式选择设计)。
+  const [pdfStyleOpen, setPdfStyleOpen] = useState(false);
+  const [pdfStyle, setPdfStyle] = useState<'standard' | 'bleed'>('standard');
   const [shareOpen, setShareOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -930,11 +935,8 @@ export function MobileEditorRoot({
       }}
       onPdf={() => {
         setExportMenuOpen(false);
-        void exporter.exportPdf();
-      }}
-      onPdfBleed={() => {
-        setExportMenuOpen(false);
-        void exporter.exportPdf({ bleedMm: 3 });
+        setPdfStyle('standard'); // 每次打开都回到标准版,不带上次的残留
+        setPdfStyleOpen(true);
       }}
     />
     <CollageModal
@@ -962,6 +964,20 @@ export function MobileEditorRoot({
         setLiveStyleOpen(false);
         if (picked === 'nine-grid') void exporter.exportNineGrid();
         else if (picked === 'flip') void exporter.exportLive();
+      }}
+    />
+    <PdfStyleModal
+      open={pdfStyleOpen}
+      zh={zh}
+      style={pdfStyle}
+      onPickStyle={setPdfStyle}
+      onClose={() => setPdfStyleOpen(false)}
+      onConfirm={() => {
+        const picked = pdfStyle;
+        setPdfStyleOpen(false);
+        // 出血值 3 只在这一层出现;use-export 只透传(见 pdf-bleed-wiring.test)。
+        if (picked === 'bleed') void exporter.exportPdf({ bleedMm: 3 });
+        else void exporter.exportPdf();
       }}
     />
     <ExportProgressModal

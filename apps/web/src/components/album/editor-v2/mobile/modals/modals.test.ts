@@ -17,6 +17,7 @@ import { BoardBgSheet } from './BoardBgSheet';
 import { ShareLinkModal } from './ShareLinkModal';
 import {
   ExportMenuModal,
+  PdfStyleModal,
   CollageModal,
   ExportProgressModal,
   ExportReadyModal,
@@ -112,10 +113,21 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
       renderToStaticMarkup(
         createElement(ExportMenuModal, {
           open, zh: true, onClose: noop,
-          onCollage: noop, onLive: noop, onSinglePages: noop, onPdf: noop, onPdfBleed: noop,
+          onCollage: noop, onLive: noop, onSinglePages: noop, onPdf: noop,
         }),
       ),
     closeHint: /export-cancel/,
+  },
+  {
+    name: 'PdfStyleModal PDF 版式',
+    render: (open) =>
+      renderToStaticMarkup(
+        createElement(PdfStyleModal, {
+          open, zh: true, style: 'standard' as const,
+          onPickStyle: noop, onConfirm: noop, onClose: noop,
+        }),
+      ),
+    closeHint: /collage-close/,
   },
   {
     name: 'CollageModal 拼图密度',

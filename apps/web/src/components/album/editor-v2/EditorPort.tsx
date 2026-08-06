@@ -959,14 +959,10 @@ function EditorModals({ locale }: { locale: Locale }) {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L9 20" /></svg>
               <span>{zh ? '单页 JPG' : 'Single pages · JPG'}</span>
             </button>
-            <button className="export-opt" data-action="exportPdf" data-testid="export-opt-pdf">
+            {/* PDF 只留一个入口(2026-08-06 版式选择设计):点开先选标准/印刷版式。 */}
+            <button className="export-opt" data-action="openPdfStyle" data-testid="export-opt-pdf">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /></svg>
               <span>{zh ? '整本 PDF' : 'Full PDF'}</span>
-            </button>
-            {/* 印刷版(2026-08-03 出血设计):默认无出血,此入口固定 3mm 边缘延伸出血。 */}
-            <button className="export-opt" data-action="exportPdfBleed" data-testid="export-opt-pdf-bleed" title={zh ? '四边各加 3mm 出血，供印刷厂裁切；页面尺寸相当于 216×303mm' : 'Adds 3mm bleed on all sides for print trimming; page equals 216×303mm'}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /><path d="M3 12h18" strokeDasharray="2 2" /></svg>
-              <span>{zh ? '印刷版 PDF · 含 3mm 出血' : 'Print PDF · 3mm bleed'}</span>
             </button>
           </div>
           <div className="px-5 pb-5">
@@ -1071,6 +1067,51 @@ function EditorModals({ locale }: { locale: Locale }) {
           </div>
           <div className="nine-grid-actions px-6 py-6">
             <button className="collage-confirm" data-action="confirmLiveStyle" data-testid="live-style-confirm">{zh ? '继续导出' : 'Continue'}</button>
+          </div>
+        </div>
+      </div>
+
+      {/* PDF 版式:标准 / 印刷(3mm 出血)共用一个出口(2026-08-06 版式选择设计)。
+          与 Live 图弹窗同一副骨架;区别只有一条:打开时预选标准版,确认键不置灰。 */}
+      <div className="modal-overlay" id="pdfStyleModal" data-overlay-close>
+        <div className="modal-card collage-card" role="dialog" aria-modal="true" aria-labelledby="pdfStyleTitle" data-testid="pdf-style-modal">
+          <button className="collage-close" data-action="closePdfStyle" aria-label="close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+          <div className="px-6 pt-6">
+            <h3 id="pdfStyleTitle" className="font-display text-[18px] font-bold">{zh ? '整本 PDF' : 'Full PDF'}</h3>
+            <p className="text-[13px] text-muted mt-1.5">{zh ? '选一种版式导出整本 PDF。' : 'Pick a layout for the full PDF.'}</p>
+          </div>
+          <div className="nine-grid-options px-6 pt-5">
+            <fieldset>
+              <legend>{zh ? 'PDF 版式' : 'PDF layout'}</legend>
+              <div className="nine-grid-choice">
+                <button className="selected" data-pdf-style="standard" data-testid="pdf-style-standard" aria-pressed="true">
+                  {/* 静态示意:标准=单页。 */}
+                  <span className="motion-example" aria-hidden="true">
+                    <svg width="72" height="92" viewBox="0 0 72 92" fill="none" stroke="#b9b9b9" strokeWidth="1.5">
+                      <rect x="10" y="10" width="52" height="72" rx="2" fill="#dedede" stroke="#d1d1d1" />
+                    </svg>
+                  </span>
+                  <span className="motion-option-title">{zh ? '标准版' : 'Standard'}</span>
+                  <span className="motion-option-copy">{zh ? '屏幕查看、分享用' : 'For screens and sharing'}</span>
+                </button>
+                <button data-pdf-style="bleed" data-testid="pdf-style-bleed" aria-pressed="false">
+                  {/* 静态示意:印刷=单页外圈虚线出血框(裁切位)。 */}
+                  <span className="motion-example" aria-hidden="true">
+                    <svg width="72" height="92" viewBox="0 0 72 92" fill="none" stroke="#b9b9b9" strokeWidth="1.5">
+                      <rect x="3" y="3" width="66" height="86" rx="3" strokeDasharray="4 3" />
+                      <rect x="10" y="10" width="52" height="72" rx="2" fill="#dedede" stroke="#d1d1d1" />
+                    </svg>
+                  </span>
+                  <span className="motion-option-title">{zh ? '印刷版 · 3mm 出血' : 'Print · 3mm bleed'}</span>
+                  <span className="motion-option-copy">{zh ? '四边各加 3mm 出血，供印刷厂裁切；相当于 216×303mm' : 'Adds 3mm bleed on all sides for print trimming; equals 216×303mm'}</span>
+                </button>
+              </div>
+            </fieldset>
+          </div>
+          <div className="nine-grid-actions px-6 py-6">
+            <button className="collage-confirm" data-action="confirmPdfStyle" data-testid="pdf-style-confirm">{zh ? '继续导出' : 'Continue'}</button>
           </div>
         </div>
       </div>
@@ -1509,8 +1550,8 @@ function EditorBook({
     let exportGateLocked = isAuthoring;
     function setExportGateUi(locked: boolean) {
       exportGateLocked = locked;
-      // 印刷版入口与标准 PDF 同一把闸(出血只是渲染参数,不改导出门槛)。
-      for (const selector of ['[data-action="exportPdf"]', '[data-action="exportPdfBleed"]']) {
+      // 菜单里的 PDF 入口只剩一个(版式在弹窗里选;出血只是渲染参数,不改导出门槛)。
+      for (const selector of ['[data-action="openPdfStyle"]']) {
         const exportBtn = $(selector) as HTMLButtonElement | null;
         if (exportBtn && isAuthoring) {
           exportBtn.disabled = locked;
@@ -5096,6 +5137,21 @@ function EditorBook({
       byId('nineGridModal')?.classList.add('open');
     }
     function closeNineGridModal() { byId('nineGridModal')?.classList.remove('open'); }
+    // PDF 版式(2026-08-06 版式选择设计):与 Live 同一副骨架,但默认预选标准版 ——
+    // 大多数人要的就是标准版,少点一下。
+    let pdfStyle: 'standard' | 'bleed' = 'standard';
+    function openPdfStyleModal() {
+      if (exportGateLocked) return; // 与 openExportMenu 同一道防线(chat 也可能开闸前触发)
+      closeExportMenu();
+      pdfStyle = 'standard';
+      $$('[data-pdf-style]').forEach((el) => {
+        const selected = el.getAttribute('data-pdf-style') === 'standard';
+        el.classList.toggle('selected', selected);
+        el.setAttribute('aria-pressed', String(selected));
+      });
+      byId('pdfStyleModal')?.classList.add('open');
+    }
+    function closePdfStyleModal() { byId('pdfStyleModal')?.classList.remove('open'); }
     function showExportProgress(title: string) {
       const t = byId('expTitle'); if (t) t.textContent = title;
       setExportProgress(0, 0);
@@ -5757,9 +5813,6 @@ function EditorBook({
        modals) so it never double-binds the chat-owned actions that ChatPanel binds
        inside its aside (buyShells / pickAddPhotos / toggleChat-collapse). */
     const actions: Record<string, () => void> = {
-      exportPdf,
-      // 印刷版(3mm 出血):同一条导出流程,只是带 bleedMm(2026-08-03 出血设计)。
-      exportPdfBleed: () => void exportPdf(3),
       backupPhotos,
       // .chat-fold-expand lives in the shell (canvas scope) and toggles the shared
       // body class; the .chat-fold-collapse button in the aside is
@@ -5792,6 +5845,10 @@ function EditorBook({
       openNineGrid: openNineGridModal,
       closeNineGrid: closeNineGridModal,
       confirmLiveStyle: () => void (liveStyle === 'flip' ? exportLive() : exportNineGrid()),
+      // PDF 版式弹窗:确认时才分派;出血值 3 只在这一层出现(2026-08-03 出血设计)。
+      openPdfStyle: openPdfStyleModal,
+      closePdfStyle: closePdfStyleModal,
+      confirmPdfStyle: () => { closePdfStyleModal(); void exportPdf(pdfStyle === 'bleed' ? 3 : 0); },
       exportSinglePages: () => void exportSinglePages(),
       openBoardBg: openBoardBgModal,
       closeBoardBg: closeBoardBgModal,
@@ -5850,6 +5907,18 @@ function EditorBook({
       const fn = () => {
         liveStyle = el.getAttribute('data-live-style') as 'flip' | 'nine-grid';
         root.querySelectorAll('[data-live-style]').forEach((option) => {
+          const selected = option === el;
+          option.classList.toggle('selected', selected);
+          option.setAttribute('aria-pressed', String(selected));
+        });
+      };
+      el.addEventListener('click', fn);
+      actionHandlers.push({ el, fn });
+    });
+    root.querySelectorAll('[data-pdf-style]').forEach((el) => {
+      const fn = () => {
+        pdfStyle = el.getAttribute('data-pdf-style') as 'standard' | 'bleed';
+        root.querySelectorAll('[data-pdf-style]').forEach((option) => {
           const selected = option === el;
           option.classList.toggle('selected', selected);
           option.setAttribute('aria-pressed', String(selected));
