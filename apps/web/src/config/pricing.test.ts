@@ -14,21 +14,23 @@ import {
   PLANS,
   buildCheckoutReturnUrls,
   creditsForPhotos,
+  WAFFO_PRODUCT_ENV_BY_PACK_ID,
 } from './pricing';
 
-test('credit checkout routes through Creem only', () => {
-  assert.equal(ACTIVE_CHECKOUT_PROVIDER, 'creem');
-  assert.deepEqual(CHECKOUT_PROVIDERS, ['creem']);
+test('credit checkout routes through Waffo (active) with Creem fallback', () => {
+  assert.equal(ACTIVE_CHECKOUT_PROVIDER, 'waffo');
+  assert.ok(CHECKOUT_PROVIDERS.includes('waffo'));
+  assert.ok(CHECKOUT_PROVIDERS.includes('creem'));
 
   const urls = buildCheckoutReturnUrls(
     'https://app.yujee.test',
-    'creem',
+    'waffo',
     { locale: 'en', from: 'create' },
   );
 
   assert.equal(
     urls.successUrl,
-    'https://app.yujee.test/en/credits?checkout=success&provider=creem&from=create',
+    'https://app.yujee.test/en/credits?checkout=success&provider=waffo&from=create',
   );
 });
 
@@ -179,4 +181,21 @@ test('pricing copy makes no operational promises — only states what a credit b
 test('pricing copy states the typical page range from the constant', () => {
   assert.equal(PAGES_PER_CREDIT_LABEL, `${PAGES_PER_CREDIT.min}-${PAGES_PER_CREDIT.max}`);
   assert.ok(PAGES_PER_CREDIT.min < PAGES_PER_CREDIT.max, 'page range must be a real range');
+});
+
+test('waffo is the active checkout provider', () => {
+  assert.equal(ACTIVE_CHECKOUT_PROVIDER, 'waffo');
+  assert.ok(CHECKOUT_PROVIDERS.includes('waffo'));
+  assert.ok(CHECKOUT_PROVIDERS.includes('creem')); // Phase 1 保留
+});
+
+test('every pack has a waffo product env key', () => {
+  for (const pack of ADDON_PACKS) {
+    assert.match(WAFFO_PRODUCT_ENV_BY_PACK_ID[pack.id], /^WAFFO_PRODUCT_ID_PACK_/);
+  }
+});
+
+test('buildCheckoutReturnUrls carries provider=waffo', () => {
+  const { successUrl } = buildCheckoutReturnUrls('https://app.yujee.test', 'waffo', { locale: 'zh', from: 'create' });
+  assert.equal(successUrl, 'https://app.yujee.test/zh/credits?checkout=success&provider=waffo&from=create');
 });
