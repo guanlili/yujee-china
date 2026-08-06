@@ -256,6 +256,22 @@ test('waffo webhook: 验签后 payload 形状畸形(缺 data)不抛也不落账'
   assert.equal(errorLogs.length, 1);
 });
 
+// 毒丸保护(上一条测试)绝不能变成"任何非 AppError 异常都 ack"。幂等查询是真实 DB
+// 读,DB 瞬时故障(连接重置/超时/死锁)必须照常向上抛,让路由层变 500、Waffo 重试
+// (幂等索引保证重试不会重复入账)。如果这里被误吞成 ack,真实付款的积分会永久丢失
+// 且只留一行日志,没人知道要去查。
+test('waffo webhook: 幂等查询抛基础设施错误(非 AppError)必须向上抛,不能 ack', async (t) => {
+  useWebhookKey(t);
+  const applied: unknown[] = [];
+  t.mock.method(creditService, 'applyDelta', (async (...a: unknown[]) => { applied.push(a); }) as any);
+  t.mock.method(creditLedgerRepo, 'findByExternalEventId', async () => {
+    throw new Error('ECONNRESET: connection reset by peer');
+  });
+  const body = waffoEvent();
+  await assert.rejects(waffoService.handleWebhook(body, signWaffo(body)), /ECONNRESET/);
+  assert.equal(applied.length, 0);
+});
+
 test('waffo webhook: order.completed 落账 + 重放幂等(需 DB)', async (t) => {
   if (!(await isDbReachable())) { t.skip('db unreachable'); return; }
   useWebhookKey(t);
