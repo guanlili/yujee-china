@@ -275,6 +275,12 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 自托管)才回落到 `NODE_ENV`。本地 dev/test 完全不受影响,零配置仍然起得来。
 实现与测试:`src/lib/env.ts` 的 `assertProductionEnv` / `src/lib/env.test.ts`。
 
+另有一条条件性守卫,不在上面那七个的无条件清单里:真生产一旦配了
+`WAFFO_MERCHANT_ID`(代表 Waffo 已启用),`WAFFO_ENV` 就必须显式设成 `'prod'`,否则
+同样当场抛。`WAFFO_ENV` 在 schema 里默认 `'test'`,而 webhook 的环境隔离门
+(`event.mode !== env.WAFFO_ENV`)会把 mode 不符的事件当错环境静默 ack 忽略——漏配
+这一项不会像其它变量那样连错服务,而是真实付款 webhook 被悄悄丢弃、不发积分。
+
 ## Change Notes
 
 - Keep browser-only photo/GPS logic out of server services.
@@ -287,5 +293,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: fcd8e215
+checked-at: b7e82525
 -->
