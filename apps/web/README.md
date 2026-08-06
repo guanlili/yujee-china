@@ -279,11 +279,23 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 自托管)才回落到 `NODE_ENV`。本地 dev/test 完全不受影响,零配置仍然起得来。
 实现与测试:`src/lib/env.ts` 的 `assertProductionEnv` / `src/lib/env.test.ts`。
 
-另有一条条件性守卫,不在上面那七个的无条件清单里:真生产一旦配了
-`WAFFO_MERCHANT_ID`(代表 Waffo 已启用),`WAFFO_ENV` 就必须显式设成 `'prod'`,否则
-同样当场抛。`WAFFO_ENV` 在 schema 里默认 `'test'`,而 webhook 的环境隔离门
-(`event.mode !== env.WAFFO_ENV`)会把 mode 不符的事件当错环境静默 ack 忽略——漏配
-这一项不会像其它变量那样连错服务,而是真实付款 webhook 被悄悄丢弃、不发积分。
+另有两条条件性守卫,不在上面那七个的无条件清单里:
+
+真生产一旦配了 `WAFFO_MERCHANT_ID`(代表 Waffo 已启用),`WAFFO_ENV` 就必须显式设成
+`'prod'`,否则当场抛。`WAFFO_ENV` 在 schema 里默认 `'test'`;真实的漏配现场**不是**
+"mode 门静默 ack"——`handleWebhook` 调 `verifyWebhook` 时显式传
+`{ environment: env.WAFFO_ENV }`,SDK 只会用该环境对应的公钥验签,不会像省略
+`environment` 时那样自动兼容试另一把。live 事件是拿 prod 私钥签的,拿 test 公钥验会
+直接签名失败,返回 `400` + 一行 `'waffo webhook signature failed'` warn 日志——根本
+走不到 mode 门那步比较。Waffo 那头对非 2xx 只指数退避重试 3 次,之后整条 delivery
+标记 `failed`:买家扣了钱却拿不到积分,而且只能去 Waffo dashboard 的 webhook 日志
+里才看得到这条失败记录。
+
+同样地,真生产配了 `WAFFO_MERCHANT_ID` 且 `WAFFO_ENV='prod'` 时,还必须配
+`WAFFO_STORE_ID`,否则同样当场抛。`WAFFO_STORE_ID` 是 webhook 的租户边界安全控制——
+`waffo-service.handleWebhook` 的 store 门是 fail-closed(未配置或配置了却不匹配,都
+拒收并各自 error 日志),漏配不会像其它变量那样连错服务,而是所有 webhook 事件被
+拒收、不发积分。
 
 ## Change Notes
 
@@ -297,5 +309,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 1ad91f7e
+checked-at: aa846cb9
 -->

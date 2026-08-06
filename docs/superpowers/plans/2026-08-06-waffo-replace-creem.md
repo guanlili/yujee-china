@@ -655,7 +655,15 @@ pnpm --filter @yujee/web test
 
 1. Waffo 正式商户开通（KYC 如有）→ live 私钥。
 2. 后台建 3 个 live 产品并 publish（$3/20、$10/80、$20/200，taxCategory 按 Waffo 后台对 SaaS/数字商品的分类选择）。
-3. Vercel 生产环境变量：`WAFFO_MERCHANT_ID / WAFFO_STORE_ID / WAFFO_PRIVATE_KEY / WAFFO_ENV=prod / WAFFO_PRODUCT_ID_PACK_1/_4/_10`。**`WAFFO_ENV=prod` 必须设**（默认 test 会静默忽略 live 事件）。
+3. Vercel 生产环境变量：`WAFFO_MERCHANT_ID / WAFFO_STORE_ID / WAFFO_PRIVATE_KEY / WAFFO_ENV=prod / WAFFO_PRODUCT_ID_PACK_1/_4/_10`。**`WAFFO_ENV=prod` 必须设**（默认 test 会导致 verifyWebhook 拿 test 公钥验 prod 签名，直接签名失败返回 400，而非静默忽略——见下条重试机制）。
 4. Waffo dashboard 配 prod webhook：`https://yujeeai.com/api/webhooks/waffo`。
-5. 上线后真实小额买一单 pack-1 验证全链路，然后申请退款验证（退款事件 Phase 1 不处理积分回收——与 Creem 现状一致，人工 admin 扣回）。
+5. 上线后真实小额买一单 pack-1 验证全链路，验证要验到**积分到账**（credits 页余额真的加了），不是只看到跳转成功页——跳转成功不代表 webhook 已经处理完。然后申请退款验证（退款事件 Phase 1 不处理积分回收——与 Creem 现状一致，人工 admin 扣回）。
 6. Creem：不动任何配置；余额提干净后通知 Claude 做 Phase 2 删除。
+7. Webhook 投递失败是静默的，不会主动通知：Waffo 对非 2xx 响应只走指数退避重试 3 次，之后把该条 delivery 标记 `failed`，不再重试、也不报警。Waffo dashboard 的 Webhook 日志是失败投递的唯一真相源——出现"买家反馈没收到积分"类故障时，第一步永远是去 dashboard 查那条 delivery 的状态和响应码，不是先猜代码。确认是投递失败（而非我们这边逻辑拒收）后，dashboard 里手动重发即可——`credit_ledger` 的 `external_event_id` 幂等索引保证重发不会重复入账。
+8. `WAFFO_STORE_ID` 必须与 `WAFFO_MERCHANT_ID` 同批配置、且取自同一个店——两者不匹配（比如误粘了另一个商户/店铺的值）会让 `waffo-service.handleWebhook` 的 store 门把所有真实付款事件当"店不符"拒收（fail-closed，见 `apps/web/src/services/billing/waffo-service.ts`）。`assertProductionEnv` 只能拦"完全没配"，拦不住"配错了但两个变量都非空"这种笔误，上线前手动核对一遍这两个值确实来自同一个 Waffo store。
+
+## 回滚路径
+
+切回 Creem = 改 `apps/web/src/config/pricing.ts` 的 `ACTIVE_CHECKOUT_PROVIDER` 常量（`'waffo'` → `'creem'`）+ 重新部署。
+
+这是一次构建时间的操作，**不是** env 变量秒级开关——`ACTIVE_CHECKOUT_PROVIDER` 是编译期常量，改它必须走一次 Vercel 构建才能生效。这是有意为之：checkout provider 切换不该是运维在事故现场手抖一个环境变量就能瞬间改变资金流向的操作。事故现场找"秒级开关"是走错方向——正确动作是改常量、提交、等一次正常部署。Creem webhook 路由（`/api/webhooks/creem`）本次全程未删，回滚后立即可用，不需要额外操作。
