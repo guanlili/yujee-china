@@ -61,6 +61,17 @@ const EnvSchema = z.object({
   CREEM_PRODUCT_ID_PACK_4: z.string().optional(),
   CREEM_PRODUCT_ID_PACK_10: z.string().optional(),
 
+  // Payment · Waffo Pancake (海外主通道,2026-08 起替换 Creem;Creem 变量留作在途订单兜底)
+  // WAFFO_ENV 决定 webhook 验签用哪把官方公钥 + 拒收错环境事件。
+  // 生产必须显式设 'prod',否则 live 事件会被当错环境静默忽略(只扣钱不发积分)。
+  WAFFO_MERCHANT_ID: z.string().optional(),
+  WAFFO_STORE_ID: z.string().optional(),
+  WAFFO_PRIVATE_KEY: z.string().optional(),
+  WAFFO_ENV: z.enum(['test', 'prod']).default('test'),
+  WAFFO_PRODUCT_ID_PACK_1: z.string().optional(),
+  WAFFO_PRODUCT_ID_PACK_4: z.string().optional(),
+  WAFFO_PRODUCT_ID_PACK_10: z.string().optional(),
+
   // Cloudflare R2 (S3-compatible). PDF upload-url uses presigned PUT.
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
