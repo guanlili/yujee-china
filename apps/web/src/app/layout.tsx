@@ -15,7 +15,11 @@ export const metadata: Metadata = {
   // deployment host.
   metadataBase: new URL(SITE_URL),
   title: 'Yujee — Your AI Memoir',
-  description: 'Turn your photos and stories into a printable keepsake magazine.',
+  // Fallback for pages that don't set their own (auth, app surfaces). Kept
+  // 120–160 chars — Bing flags shorter ones — and deliberately different from
+  // the landing page's metaDesc so inheriting pages never duplicate it.
+  description:
+    'Yujee is an AI memoir studio: upload your photos, tell your story in chat, and turn them into a magazine-style keepsake you can export as a print-ready PDF.',
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
