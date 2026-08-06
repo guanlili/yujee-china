@@ -74,58 +74,79 @@ export const waffoService = {
       throw ERRORS.WEBHOOK_SIGNATURE_INVALID();
     }
 
-    // 环境隔离:test 事件打到 prod(或反向)必须拒发积分。签名层通常已按环境公钥
-    // 拦住,这里是密钥配置错误时的兜底。ack(不抛)以免 Waffo 无限重试。
-    if (event.mode !== env.WAFFO_ENV) {
-      logger.error({ eventMode: event.mode, expected: env.WAFFO_ENV, eventId: event.eventId }, 'waffo webhook env mismatch, ignored');
-      return;
-    }
-    if (env.WAFFO_STORE_ID && event.storeId !== env.WAFFO_STORE_ID) {
-      logger.error({ storeId: event.storeId, eventId: event.eventId }, 'waffo webhook store mismatch, ignored');
-      return;
-    }
+    // 验签之后 payload 的形状不再受我们控制(Waffo 那头发错包 / 改版)。下面这段全靠
+    // 属性访问和字符串比较,非 AppError 异常(比如 event.data 缺失导致的 TypeError)
+    // 一律当"畸形毒丸包"处理:吞掉 ack,避免 Waffo 对同一坏包无限重试,只留一行
+    // error 日志排查。真正的业务错误(AppError,比如 applyDelta 里的 UNAUTHORIZED)
+    // 照常向上抛,不在这里被吞。
+    try {
+      // eventId 缺失时幂等键会退化成 `waffo:${undefined}`——第一单入账后,所有后续
+      // 事件都会被当成同一条重复记录静默吞掉。必须在算出幂等键之前拦住。
+      if (!event.eventId) {
+        logger.error({ storeId: event.storeId, eventType: event.eventType }, 'waffo webhook missing eventId, ignored');
+        return;
+      }
 
-    const externalEventId = `waffo:${event.eventId}`;
-    const existing = await creditLedgerRepo.findByExternalEventId(externalEventId);
-    if (existing) {
-      logger.info({ eventId: event.eventId, type: event.eventType }, 'waffo webhook duplicate, skipped');
-      return;
-    }
+      // 环境隔离:test 事件打到 prod(或反向)必须拒发积分。签名层通常已按环境公钥
+      // 拦住,这里是密钥配置错误时的兜底。ack(不抛)以免 Waffo 无限重试。
+      if (event.mode !== env.WAFFO_ENV) {
+        logger.error({ eventMode: event.mode, expected: env.WAFFO_ENV, eventId: event.eventId }, 'waffo webhook env mismatch, ignored');
+        return;
+      }
+      if (env.WAFFO_STORE_ID && event.storeId !== env.WAFFO_STORE_ID) {
+        logger.error({ storeId: event.storeId, eventId: event.eventId }, 'waffo webhook store mismatch, ignored');
+        return;
+      }
 
-    if (event.eventType !== 'order.completed') {
-      logger.info({ type: event.eventType, eventId: event.eventId }, 'waffo webhook ignored');
-      return;
-    }
+      const externalEventId = `waffo:${event.eventId}`;
+      const existing = await creditLedgerRepo.findByExternalEventId(externalEventId);
+      if (existing) {
+        logger.info({ eventId: event.eventId, type: event.eventType }, 'waffo webhook duplicate, skipped');
+        return;
+      }
 
-    const meta = event.data.orderMetadata ?? {};
-    const userId = meta.userId;
-    const packId = meta.packId;
-    if (!userId || meta.kind !== 'pack' || !packId) {
-      logger.warn({ eventId: event.eventId }, 'waffo order metadata incomplete');
-      return;
-    }
-    const pack = ADDON_PACKS.find((p) => p.id === packId);
-    if (!pack) {
-      logger.warn({ eventId: event.eventId, packId }, 'waffo pack unknown');
-      return;
-    }
+      if (event.eventType !== 'order.completed') {
+        logger.info({ type: event.eventType, eventId: event.eventId }, 'waffo webhook ignored');
+        return;
+      }
 
-    const amountCents = Number.isFinite(Number(event.data.amount))
-      ? Math.round(Number(event.data.amount) * 100)
-      : Math.round(pack.priceUsd * 100);
+      const meta = event.data.orderMetadata ?? {};
+      const userId = meta.userId;
+      const packId = meta.packId;
+      if (!userId || meta.kind !== 'pack' || !packId) {
+        logger.warn({ eventId: event.eventId }, 'waffo order metadata incomplete');
+        return;
+      }
+      const pack = ADDON_PACKS.find((p) => p.id === packId);
+      if (!pack) {
+        logger.warn({ eventId: event.eventId, packId }, 'waffo pack unknown');
+        return;
+      }
 
-    await db.transaction(async (tx) => {
-      await creditService.applyDelta(tx, userId, pack.books, 'PURCHASE', {
-        externalEventId,
-        meta: {
-          provider: 'waffo',
-          order_id: event.data.orderId ?? null,
-          pack_id: pack.id,
-          amount_cents: amountCents,
-        },
+      const amountCents = Number.isFinite(Number(event.data.amount))
+        ? Math.round(Number(event.data.amount) * 100)
+        : Math.round(pack.priceUsd * 100);
+
+      await db.transaction(async (tx) => {
+        await creditService.applyDelta(tx, userId, pack.books, 'PURCHASE', {
+          externalEventId,
+          meta: {
+            provider: 'waffo',
+            order_id: event.data.orderId ?? null,
+            pack_id: pack.id,
+            amount_cents: amountCents,
+          },
+        });
       });
-    });
 
-    logger.info({ userId, packId, books: pack.books, eventId: event.eventId }, 'waffo purchase credited');
+      logger.info({ userId, packId, books: pack.books, eventId: event.eventId }, 'waffo purchase credited');
+    } catch (e) {
+      if (e instanceof AppError) throw e;
+      logger.error(
+        { err: String(e), eventId: (event as { eventId?: unknown })?.eventId },
+        'waffo webhook payload malformed after verification, acked to avoid poison-payload retry storm',
+      );
+      return;
+    }
   },
 };
