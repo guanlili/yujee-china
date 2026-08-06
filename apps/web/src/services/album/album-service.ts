@@ -1167,13 +1167,16 @@ export const albumService = {
   // (幂等重入信号,ChatPanel 据此不再重复弹选择卡)。
   async listCoverSets(userId: string, albumId: string) {
     const album = await this.findOwned(userId, albumId);
-    const root = album.draftJson as { tree?: { chapters?: unknown }; pages?: unknown } | null;
-    const chapters = Array.isArray((root?.tree as { chapters?: unknown })?.chapters)
-      ? ((root!.tree as { chapters: unknown[] }).chapters as Array<{
+    // 页/树源走 loadStoryDraft 行读(applyDesign/composeAppend 同款修法):draft_pages 拆表后
+    // envelopeJson 从不把 pages 写回 draftJson,裸读 draftJson.pages 对行存书必空 ——
+    // hasPages:false 让前端静默不弹封面选择卡,书永远选不了封面、导不了出。
+    const draft = await loadStoryDraft(album, { bake: false });
+    const chapters = Array.isArray((draft?.tree as { chapters?: unknown } | undefined)?.chapters)
+      ? ((draft!.tree as { chapters: unknown[] }).chapters as Array<{
           photos?: Array<{ photoId: string; composition?: string | null }>;
         }>)
       : [];
-    const rawPages = Array.isArray(root?.pages) ? (root!.pages as Page[]) : [];
+    const rawPages: Page[] = draft?.pages ?? [];
     const designed = rawPages.some((page) => templateCategory(page.templateId) === 'cover');
     const latestCompose = await agentJobRepo.findLatestComposeByAlbum(albumId);
     // COMPLETED 不等于「真写出来了」:整章掉队时 pagesTexts 全空也是 COMPLETED(回调回执
