@@ -25,13 +25,18 @@ test('② EditorPort:保存/分享挂 guestGate,PDF 云上传对游客短路', (
   assert.match(src, /function guestGate\(\)/);
   assert.match(src, /async function backupPhotos\(\) \{\n      if \(guestGate\(\)\) return;/);
   assert.match(src, /function shareLink\(\) \{\n      if \(guestGate\(\)\) return;/);
-  assert.match(src, /if \(viewerAnonRef\.current === true\) return;\n\s+await runExportWithRetry\(\(\) => uploadPdfOnce/);
+  // 游客先 return,再轮到出血版跳过判断(2026-08-03 出血设计与游客门禁合流)。
+  assert.match(
+    src,
+    /if \(viewerAnonRef\.current === true\) return;[\s\S]{0,200}if \(bleedMm === 0\) \{\n\s+await runExportWithRetry\(\(\) => uploadPdfOnce/,
+  );
 });
 
 test('②③ 移动端:use-export 支持 skipCloudUpload,MobileEditorRoot 游客态接线齐全', () => {
   const exportSrc = read('./mobile/use-export.ts');
   assert.match(exportSrc, /skipCloudUpload/);
-  assert.match(exportSrc, /if \(!skipCloudUpload\) \{/);
+  // 游客与出血版共用同一道跳过条件(出血版云端 PDF 保持标准版)。
+  assert.match(exportSrc, /if \(!skipCloudUpload && !opts\?\.bleedMm\) \{/);
 
   const rootSrc = read('./mobile/MobileEditorRoot.tsx');
   assert.match(rootSrc, /skipCloudUpload: isGuest/);
