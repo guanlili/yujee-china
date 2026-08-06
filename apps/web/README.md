@@ -6,7 +6,8 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
 
 - User-facing pages and editor shell.
 - Auth through `better-auth`.
-- Billing/credits through Creem and the credit ledger.
+- Billing/credits through Waffo Pancake(主通道,2026-08 起替换 Creem;Creem 变量
+  留作在途订单 webhook 兜底,不再是发起 checkout 的通道)and the credit ledger.
 - 游客模式(匿名影子账号,anonymous 插件):落地页点「发送」即静默建号,免登录走完
   建相册 → CLIP 分组 → 讲故事 → 选版 → 确认封面(**占位成稿**:模板 sample 文案,
   `albums.copy_source='placeholder'`,零 AI/零积分/零 R2)→ 本地导出。只有三件事要
@@ -259,7 +260,8 @@ Defaults live in `src/lib/env.ts`. Common fields:
 | `DESIGN_AGENT_SHARED_SECRET` | Bearer secret shared with 设计 Agent(未设则不带鉴权头) |
 | `WEB_BASE_URL` | Web origin used in callbacks |
 | `BETTER_AUTH_SECRET` | Auth signing secret |
-| `CREEM_*` | Billing |
+| `WAFFO_*` | Billing(主通道,2026-08 起) |
+| `CREEM_*` | Billing(仅在途订单 webhook 兜底) |
 | `R2_*` | PDF/thumbnail storage |
 
 **真生产**下,这七个变量必须显式提供,缺任何一个当场抛(一次报全):
@@ -285,5 +287,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 7ac70f84
+checked-at: 121e0661
 -->
