@@ -18,7 +18,10 @@ export default async function AdminSettingsPage({
 
   const t = getMessages(locale).admin.settings;
 
-  const providers = [{ name: 'Creem', on: Boolean(env.CREEM_API_KEY) }];
+  const providers = [
+    { name: 'Waffo', on: Boolean(env.WAFFO_MERCHANT_ID) },
+    { name: 'Creem(兜底)', on: Boolean(env.CREEM_API_KEY) },
+  ];
 
   return (
     <main className="min-h-screen max-w-3xl mx-auto px-6 py-12">
