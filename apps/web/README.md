@@ -6,8 +6,10 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
 
 - User-facing pages and editor shell.
 - Auth through `better-auth`.
-- Billing/credits through Waffo Pancake(主通道,2026-08 起替换 Creem;Creem 变量
-  留作在途订单 webhook 兜底,不再是发起 checkout 的通道)and the credit ledger.
+- Billing/credits through Waffo Pancake(`@waffo/pancake-ts` SDK,RSA 验签,主通道,
+  2026-08 起替换 Creem;`POST /api/v1/billing/checkout` 统一发起,webhook 落
+  `POST /api/webhooks/waffo`;Creem 及其 `POST /api/webhooks/creem` 留作 Phase 1
+  在途订单兜底,不再是发起 checkout 的通道)and the credit ledger.
 - 游客模式(匿名影子账号,anonymous 插件):落地页点「发送」即静默建号,免登录走完
   建相册 → CLIP 分组 → 讲故事 → 选版 → 确认封面(**占位成稿**:模板 sample 文案,
   `albums.copy_source='placeholder'`,零 AI/零积分/零 R2)→ 本地导出。只有三件事要
@@ -220,7 +222,9 @@ Core tables:
   必须与 0020 **分批部署**:0020 先单独跑完提交,下一批再跑用到 `'compose'` 的迁移。
 - `credit_holds` / `credit_ledger`: generation credit accounting.
 - `users`, `sessions`, `accounts`, `verifications`: better-auth tables.
-- `customers`, `subscriptions`: billing provider mapping.
+- `customers`, `subscriptions`: billing provider mapping(Creem/Stripe 用;Waffo 无
+  customer id 概念,checkout/webhook 只有 `buyerEmail`,不读写这两张表,`customer_provider`
+  枚举也未追加 `'waffo'`)。
 
 Routes should stay thin: auth, parse body, call a service, return `ok()` or `fromException()`. Business rules belong in `src/services/*`; direct DB access belongs in repos.
 
@@ -293,5 +297,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 86fec9fb
+checked-at: 1ad91f7e
 -->

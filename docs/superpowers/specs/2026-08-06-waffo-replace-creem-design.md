@@ -34,7 +34,16 @@
 ## 开放技术问题（实现期用 SDK 类型定案）
 
 - **webhook payload 是否回传 `metadata`**：官方文档 payload 示例只有 `{orderId, buyerEmail, currency, amount, taxAmount, productName}`，未见 metadata。装包后读 `node_modules/@waffo/pancake-ts` 的 TS 类型确认；若不回传 → 用 `client.orders.get(orderId)`（或等价 API）反查订单 metadata；再不通 → 以 productId→packId 映射 + buyerEmail→userId 兜底（须评估买家改邮箱的错配风险并在测试覆盖）。
+  - **结论（已实现核实）✓**：`WebhookEventData.orderMetadata?: Record<string, string>` 确实回传（`dist/index.d.ts` 注释："Order-level metadata from checkout session (flat key-value pairs)"）。`waffo-service.ts` 的 `resolveOrderTarget` 直接读 `event.data.orderMetadata`，不需要 `client.orders.get` 反查兜底，也不需要 buyerEmail→userId 兜底路径。
 - **`verifyWebhook` 的密钥来源**（示例未传 key：环境变量？dashboard webhook secret？）——同样以 SDK 类型/源码为准。
+  - **结论（已实现核实）✓**：SDK 内置解析链（`dist/index.d.ts` `VerifyWebhookOptions.publicKeys` 注释），按顺序：
+    1. `publicKey`（per-call 覆盖）
+    2. `publicKeys[env]` 或 `publicKeys`（config 级，`WaffoPancakeConfig.webhookPublicKey` 自动带入）
+    3. `WAFFO_WEBHOOK_{TEST|PROD}_PUBLIC_KEY`（环境变量）
+    4. `WAFFO_WEBHOOK_PUBLIC_KEY`（环境变量）
+    5. 内置官方公钥（硬编码兜底）
+    `waffo-service.ts` 只传 `{ environment: env.WAFFO_ENV }`，不显式传公钥,落到第 5 级内置官方 key,符合 Waffo 官方 RSA 验签的默认预期,不需要额外配置公钥类 env。
+- **Waffo 无 customer id 概念 → 取消原计划的 0025 枚举迁移**：设计阶段第 6 点计划的 `customers.provider` 枚举加 `'waffo'` 迁移未执行,也不需要执行。`waffo-service.ts` 顶部注释明确了原因："与 Creem 的关键差异:Waffo 无 customer id 概念(checkout/webhook 都只有 buyerEmail),因此不读写 customers 表"——`handleWebhook` 全程没有 `customers` 表的 upsert/查询,只落 `credit_ledger`。`db/schema.ts` 的 `customerProviderEnum` 仍是 `['stripe', 'creem']`,未追加 `'waffo'`。实际 DB 迁移序号 `0025` 已被同批次另一功能(`0025_anon_guest_flow.sql`)占用,与 Waffo 无关——**本次 Waffo 切换是零 DB schema 改动**,与最初设计假设不同。
 
 ## 测试
 
