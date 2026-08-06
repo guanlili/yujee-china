@@ -109,23 +109,39 @@ export const waffoService = {
       logger.error({ eventMode: event.mode, expected: env.WAFFO_ENV, eventId: event.eventId }, 'waffo webhook env mismatch, ignored');
       return;
     }
-    if (env.WAFFO_STORE_ID && event.storeId !== env.WAFFO_STORE_ID) {
-      logger.error({ storeId: event.storeId, eventId: event.eventId }, 'waffo webhook store mismatch, ignored');
+    // store 门是 webhook 的租户边界安全控制,fail-closed:未配置 WAFFO_STORE_ID 与
+    // 配置了却不匹配,都必须拒收——不是"配了才校验"的可选项。旧版
+    // `env.WAFFO_STORE_ID && event.storeId !== env.WAFFO_STORE_ID` 在漏配时直接放行
+    // 任何店的事件,等同于关掉这道门。两个分支分别 error 日志,方便区分"忘配"和
+    // "配错"。
+    if (!env.WAFFO_STORE_ID) {
+      logger.error({ eventId: event.eventId }, 'waffo webhook WAFFO_STORE_ID not configured, rejecting all events (fail-closed)');
+      return;
+    }
+    if (event.storeId !== env.WAFFO_STORE_ID) {
+      logger.error({ storeId: event.storeId, expected: env.WAFFO_STORE_ID, eventId: event.eventId }, 'waffo webhook store mismatch, ignored');
       return;
     }
 
-    const externalEventId = `waffo:${event.eventId}`;
+    if (event.eventType !== 'order.completed') {
+      logger.info({ type: event.eventType, eventId: event.eventId }, 'waffo webhook ignored');
+      return;
+    }
+
+    // 幂等键含 eventType:SDK 随包 docs/webhook-guide.md「Retry Mechanism」小节明确
+    // 唯一性是 eventType+eventId 的组合("The same business event (same eventType +
+    // eventId) creates only one delivery record"),eventId 单独不保证跨事件类型唯一
+    // (比如 refund 事件继承订单侧 ID)。eventType 过滤挪到这行之前,同时也省掉了非
+    // order.completed 事件本不需要的一次幂等 DB 读。格式从 `waffo:${eventId}` 改成
+    // 三段式不需要迁移:Waffo 是这条分支第一次上线的通道,main 上不存在任何用旧格式
+    // 写过的 credit_ledger 行。
+    const externalEventId = `waffo:${event.eventType}:${event.eventId}`;
     // 幂等探测是真实的 DB 读。它抛出的非 AppError 异常(连接重置/超时等基础设施
     // 故障)必须照常向上抛——路由层会变成 500,Waffo 收到后重试,幂等索引保证重试
     // 不会重复入账。绝不能在这里吞成 ack,否则一次 DB 瞬断就会让真实付款永久丢单。
     const existing = await creditLedgerRepo.findByExternalEventId(externalEventId);
     if (existing) {
       logger.info({ eventId: event.eventId, type: event.eventType }, 'waffo webhook duplicate, skipped');
-      return;
-    }
-
-    if (event.eventType !== 'order.completed') {
-      logger.info({ type: event.eventType, eventId: event.eventId }, 'waffo webhook ignored');
       return;
     }
 

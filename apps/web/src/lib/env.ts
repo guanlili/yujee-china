@@ -117,15 +117,33 @@ export function assertProductionEnv(raw: RawEnv): void {
   }
 
   // Waffo 已配置(WAFFO_MERCHANT_ID 非空)却没把 WAFFO_ENV 显式设成 'prod':schema 里
-  // WAFFO_ENV 默认 'test',waffo-service.handleWebhook 的环境隔离门
-  // (event.mode !== env.WAFFO_ENV)会把真实付款事件当"错环境"直接 ack 丢弃 ——
-  // 不报错、不重试,买家扣了钱却拿不到积分,只留一行 error 日志。上线前必须显式
-  // 设 WAFFO_ENV=prod,不能靠默认值。
+  // WAFFO_ENV 默认 'test'。真实的漏配现场**不是**"mode 门静默 ack"——
+  // waffo-service.handleWebhook 调 verifyWebhook 时显式传 { environment: env.WAFFO_ENV },
+  // SDK 只会用该环境对应的公钥验签,不会像省略 environment 时那样自动兼容试另一把
+  // (见 @waffo/pancake-ts dist/index.js verifyWebhook)。live 事件是拿 prod 私钥签的,
+  // 拿 test 公钥验会直接签名失败,waffo-service 捕获后返回 400 + 一行
+  // 'waffo webhook signature failed' warn 日志——根本走不到 mode 门那步比较。Waffo
+  // 那头对非 2xx 只指数退避重试 3 次,之后整条 delivery 标记 failed:买家扣了钱却
+  // 拿不到积分,而且只能去 Waffo dashboard 的 webhook 日志里才看得到这条失败记录。
+  // 上线前必须显式设 WAFFO_ENV=prod,不能靠默认值。
   if (raw.WAFFO_MERCHANT_ID?.trim() && raw.WAFFO_ENV !== 'prod') {
     throw new Error(
       '生产环境已配置 WAFFO_MERCHANT_ID 但 WAFFO_ENV 不是 "prod"' +
         `(当前: ${raw.WAFFO_ENV?.trim() ? raw.WAFFO_ENV : '未设置,默认落到 "test"'})。` +
-        'webhook 的环境隔离门会把真实付款事件当错环境静默 ack 丢弃 —— 必须显式设 WAFFO_ENV=prod。',
+        'verifyWebhook 会用错环境的公钥验签,真实付款 webhook 会签名失败返回 400(而非静默 ack)—— ' +
+        'Waffo 重试耗尽后标记 delivery failed,必须显式设 WAFFO_ENV=prod。',
+    );
+  }
+
+  // WAFFO_STORE_ID 是 webhook 的租户边界安全控制(waffo-service.handleWebhook 的 store
+  // 门 fail-closed:未配置就拒收全部事件,不是"配了才校验"的可选项)。真生产已经显式
+  // 设对了 WAFFO_ENV=prod,却漏配 WAFFO_STORE_ID:上线后 store 门会把所有付款 webhook
+  // 当"未配置"整体拒收,同样不发积分——且不像其它变量那样连错服务,没有明显信号。
+  if (raw.WAFFO_MERCHANT_ID?.trim() && raw.WAFFO_ENV === 'prod' && !raw.WAFFO_STORE_ID?.trim()) {
+    throw new Error(
+      '生产环境已配置 WAFFO_MERCHANT_ID 且 WAFFO_ENV=prod 但缺少 WAFFO_STORE_ID。' +
+        'webhook 的 store 门是 fail-closed 安全控制,未配置会拒收所有付款 webhook(不发积分)—— ' +
+        '必须显式设置 WAFFO_STORE_ID。',
     );
   }
 }
