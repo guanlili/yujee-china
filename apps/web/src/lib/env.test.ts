@@ -72,3 +72,58 @@ test('assertProductionEnv: 一次报全部缺失项,不用逐个试', () => {
     return true;
   });
 });
+
+// WAFFO_ENV 默认 'test',webhook 的环境隔离门(event.mode !== env.WAFFO_ENV)会把真实
+// 付款事件当"错环境"静默 ack 丢弃——不报错、Waffo 不再重试,买家扣了钱却拿不到积分。
+// 生产一旦配了 WAFFO_MERCHANT_ID(代表 Waffo 已启用),就必须显式把 WAFFO_ENV 设成 'prod'。
+test('assertProductionEnv: 真生产配了 WAFFO_MERCHANT_ID 但 WAFFO_ENV 不是 prod → 当场抛', () => {
+  assert.throws(
+    () =>
+      assertProductionEnv({
+        ...FULL_PROD,
+        NODE_ENV: 'production',
+        VERCEL_ENV: 'production',
+        WAFFO_MERCHANT_ID: 'MER_live1234567890123456',
+        WAFFO_ENV: 'test',
+      }),
+    /WAFFO_ENV/,
+    '漏配 WAFFO_ENV=prod 应当 fail-fast,而不是带着默认 test 环境静默丢单',
+  );
+});
+
+test('assertProductionEnv: 真生产配了 WAFFO_MERCHANT_ID 且未设 WAFFO_ENV(落到默认 test)→ 同样当场抛', () => {
+  assert.throws(
+    () =>
+      assertProductionEnv({
+        ...FULL_PROD,
+        NODE_ENV: 'production',
+        VERCEL_ENV: 'production',
+        WAFFO_MERCHANT_ID: 'MER_live1234567890123456',
+      }),
+    /WAFFO_ENV/,
+  );
+});
+
+test('assertProductionEnv: 真生产配了 WAFFO_MERCHANT_ID 且显式 WAFFO_ENV=prod → 放行', () => {
+  assert.doesNotThrow(() =>
+    assertProductionEnv({
+      ...FULL_PROD,
+      NODE_ENV: 'production',
+      VERCEL_ENV: 'production',
+      WAFFO_MERCHANT_ID: 'MER_live1234567890123456',
+      WAFFO_ENV: 'prod',
+    }),
+  );
+});
+
+test('assertProductionEnv: 真生产没配 WAFFO_MERCHANT_ID(Waffo 未启用)→ 不因 WAFFO_ENV 抛', () => {
+  assert.doesNotThrow(() =>
+    assertProductionEnv({ ...FULL_PROD, NODE_ENV: 'production', VERCEL_ENV: 'production', WAFFO_ENV: 'test' }),
+  );
+});
+
+test('assertProductionEnv: 非生产环境即使配了 WAFFO_MERCHANT_ID 也不检查 WAFFO_ENV', () => {
+  assert.doesNotThrow(() =>
+    assertProductionEnv({ NODE_ENV: 'development', WAFFO_MERCHANT_ID: 'MER_live1234567890123456', WAFFO_ENV: 'test' }),
+  );
+});

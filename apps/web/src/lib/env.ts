@@ -115,6 +115,19 @@ export function assertProductionEnv(raw: RawEnv): void {
         '带着占位值启动会静默连错数据库/错服务。',
     );
   }
+
+  // Waffo 已配置(WAFFO_MERCHANT_ID 非空)却没把 WAFFO_ENV 显式设成 'prod':schema 里
+  // WAFFO_ENV 默认 'test',waffo-service.handleWebhook 的环境隔离门
+  // (event.mode !== env.WAFFO_ENV)会把真实付款事件当"错环境"直接 ack 丢弃 ——
+  // 不报错、不重试,买家扣了钱却拿不到积分,只留一行 error 日志。上线前必须显式
+  // 设 WAFFO_ENV=prod,不能靠默认值。
+  if (raw.WAFFO_MERCHANT_ID?.trim() && raw.WAFFO_ENV !== 'prod') {
+    throw new Error(
+      '生产环境已配置 WAFFO_MERCHANT_ID 但 WAFFO_ENV 不是 "prod"' +
+        `(当前: ${raw.WAFFO_ENV?.trim() ? raw.WAFFO_ENV : '未设置,默认落到 "test"'})。` +
+        'webhook 的环境隔离门会把真实付款事件当错环境静默 ack 丢弃 —— 必须显式设 WAFFO_ENV=prod。',
+    );
+  }
 }
 
 assertProductionEnv(process.env);
