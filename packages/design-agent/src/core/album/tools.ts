@@ -200,6 +200,32 @@ const readSkillSchema = Type.Object({
 	name: Type.String({ description: "需要读取完整内容的 skill 名称。" }),
 });
 
+// ── write_todos:复诵式长任务计划(2026-08-05 设计:docs/specs/2026-08-05-write-todos-design.md)──
+// 整表覆盖、无服务端状态、纯 no-op;计划的唯一载体是对话历史里的参数与回执。
+const TODO_STATUSES = ["pending", "in_progress", "completed"] as const;
+type AlbumTodoStatus = (typeof TODO_STATUSES)[number];
+
+interface AlbumTodo {
+	content: string;
+	status: AlbumTodoStatus;
+}
+
+const MAX_TODOS = 30;
+
+const writeTodosSchema = Type.Object({
+	todos: Type.Array(
+		Type.Object({
+			content: Type.String({ description: "任务内容，一句话，具体可执行（如「把第 3-5 页换成杂志模板」）。" }),
+			status: Type.Union([Type.Literal("pending"), Type.Literal("in_progress"), Type.Literal("completed")], {
+				description: "pending 未开始 / in_progress 进行中 / completed 已完成。",
+			}),
+		}),
+		{
+			description: "完整待办清单。整表覆盖：每次调用都传全部条目（含已完成的），不是增量。空数组 = 清空计划。",
+		},
+	),
+});
+
 type ReadPagesInput = Static<typeof readPagesSchema>;
 type SearchBookInput = Static<typeof searchBookSchema>;
 type UpdatePageTextsInput = Static<typeof updatePageTextsSchema>;
@@ -209,6 +235,7 @@ type SetTextColorsInput = Static<typeof setTextColorsSchema>;
 type SetTextFontsInput = Static<typeof setTextFontsSchema>;
 type ListTemplatesInput = Static<typeof listTemplatesSchema>;
 type ReadSkillInput = Static<typeof readSkillSchema>;
+type WriteTodosInput = Static<typeof writeTodosSchema>;
 
 const DEFAULT_SEARCH_LIMIT = 10;
 const MAX_SEARCH_LIMIT = 30;
@@ -227,6 +254,7 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 		createMovePagesTool(options),
 		createDeletePageTool(options),
 		createReadSkillTool(options),
+		createWriteTodosTool(),
 	];
 }
 
@@ -996,6 +1024,65 @@ function createReadSkillTool(options: AlbumToolsOptions): AgentTool<typeof readS
 			};
 		},
 	};
+}
+
+const TODO_SYMBOLS: Record<AlbumTodoStatus, string> = {
+	pending: "[ ]",
+	in_progress: "[→]",
+	completed: "[✓]",
+};
+
+// 计划工具不接 options:刻意无状态(书状态、会话都不碰),摘除时只删这一个函数与注册行。
+function createWriteTodosTool(): AgentTool<typeof writeTodosSchema, { todos: AlbumTodo[]; counts: Record<AlbumTodoStatus, number> }> {
+	return {
+		name: "write_todos",
+		label: "规划任务",
+		description:
+			"维护当前长任务的待办清单，整表覆盖（每次都传完整列表，空数组=清空）。仅当任务涉及 3 个以上独立步骤/页面时使用（如整本换模板、逐页批量调整）；简单任务直接做，不要用它。它只记录进度，不修改书。",
+		parameters: writeTodosSchema,
+		prepareArguments(args: unknown): WriteTodosInput {
+			// 原样透传(仅断言类型),execute 统一严格校验(非法输入要以带指引的报错打回给模型)。
+			return { todos: (isRecord(args) ? args.todos : undefined) as AlbumTodo[] };
+		},
+		async execute(
+			_toolCallId: string,
+			params: WriteTodosInput,
+		): Promise<AgentToolResult<{ todos: AlbumTodo[]; counts: Record<AlbumTodoStatus, number> }>> {
+			const todos = parseTodos(params.todos);
+			const counts: Record<AlbumTodoStatus, number> = { pending: 0, in_progress: 0, completed: 0 };
+			for (const todo of todos) counts[todo.status] += 1;
+			const text =
+				todos.length === 0
+					? "计划已清空。"
+					: [
+							`待办 ${counts.completed}/${todos.length} 完成：`,
+							...todos.map((todo) => `${TODO_SYMBOLS[todo.status]} ${todo.content}`),
+						].join("\n");
+			return {
+				content: [{ type: "text", text }],
+				details: { todos, counts },
+			};
+		},
+	};
+}
+
+function parseTodos(raw: unknown): AlbumTodo[] {
+	if (!Array.isArray(raw)) {
+		throw new Error("todos 必须是数组（整表覆盖：每次传完整清单；空数组=清空计划）");
+	}
+	if (raw.length > MAX_TODOS) {
+		throw new Error(`待办最多 ${MAX_TODOS} 条，收到 ${raw.length} 条；请合并同类步骤（如「逐页调整 1-12 页」记一条）`);
+	}
+	return raw.map((entry, index) => {
+		if (!isRecord(entry)) throw new Error(`第 ${index + 1} 条必须是 { content, status } 对象`);
+		const content = typeof entry.content === "string" ? entry.content.trim() : "";
+		if (!content) throw new Error(`第 ${index + 1} 条的 content 必须是非空字符串`);
+		const status = entry.status;
+		if (typeof status !== "string" || !(TODO_STATUSES as readonly string[]).includes(status)) {
+			throw new Error(`第 ${index + 1} 条的 status 非法：${JSON.stringify(status)}；只认 pending / in_progress / completed`);
+		}
+		return { content, status: status as AlbumTodoStatus };
+	});
 }
 
 // ───────────────────────── 内部工具函数 ─────────────────────────
