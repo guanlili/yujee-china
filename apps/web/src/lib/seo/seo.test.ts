@@ -169,6 +169,45 @@ test('FAQ entries exist for every locale and are plain text', () => {
   }
 });
 
+// The landing carries one deliberate keyword layer: "free" + "photo book
+// layout". It is the winnable half of the free-photo-book demand (the bare
+// "free photo book maker" head term belongs to Shutterfly/Canva and is not
+// contestable from a new domain), and it is honest — FREE_PLAN_CREDITS covers a
+// whole book. Copy rewrites drop keywords silently; these tests make that loud.
+test('the landing title and description carry the free + photo book keywords in both locales', () => {
+  const en = getMarketingMessages('en').landing;
+  assert.match(en.metaTitle, /free/i, 'en title dropped "free"');
+  assert.match(en.metaTitle, /photo book/i, 'en title dropped "photo book"');
+  assert.match(en.metaDesc, /free/i, 'en description dropped "free"');
+  assert.match(en.metaDesc, /photo book layout/i, 'en description dropped "photo book layout"');
+
+  const zh = getMarketingMessages('zh').landing;
+  assert.match(zh.metaTitle, /免费/, 'zh title dropped 免费');
+  assert.match(zh.metaTitle, /照片书/, 'zh title dropped 照片书');
+  assert.match(zh.metaDesc, /免费/, 'zh description dropped 免费');
+  assert.match(zh.metaDesc, /排版/, 'zh description dropped 排版');
+});
+
+test('the landing title and description stay inside what a SERP actually shows', () => {
+  // Past these lengths Google truncates mid-phrase and the keyword we just paid
+  // for never renders. Latin script only — the zh budget is pixel-width, not
+  // character count, so asserting a number there would be theatre.
+  const { metaTitle, metaDesc } = getMarketingMessages('en').landing;
+  assert.ok(metaTitle.length <= 65, `en title is ${metaTitle.length} chars, over the 65 SERP budget`);
+  assert.ok(metaDesc.length <= 165, `en description is ${metaDesc.length} chars, over the 165 SERP budget`);
+});
+
+test('the free-plan FAQ is phrased as the query people actually type', () => {
+  // This entry is the on-page anchor for the "free photo book" intent and feeds
+  // FAQPage JSON-LD verbatim. It must still state the real grant, not just the
+  // keyword — a "free" promise the product does not honour buys a bounce.
+  const entry = getFaqEntries('en').find((e) => /free/i.test(e.q));
+  assert.ok(entry, 'the free-plan FAQ entry disappeared');
+  assert.match(entry.q, /free/i);
+  assert.match(entry.q, /photo book/i, 'the free question no longer names photo books');
+  assert.match(entry.a, new RegExp(`${FREE_PLAN_CREDITS} free credits?\\b`), 'the answer stopped stating the real grant');
+});
+
 test('FAQ keeps the privacy answer — it is the top conversion blocker', () => {
   const en = getFaqEntries('en');
   const privacy = en.find((e) => e.q.toLowerCase().includes('safe'));

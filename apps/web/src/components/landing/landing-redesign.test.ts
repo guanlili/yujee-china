@@ -153,6 +153,20 @@ test('English landing moves the AI magazine line into the hero subtitle', () => 
   assert.equal(client.split(movedLine).length - 1, 1, 'the moved English line should render from only one copy slot');
 });
 
+test('the hero subtitle states the layout is free — the H1 sits above the fold and carries weight', () => {
+  // metaDesc is not a ranking input; on-page prose under the H1 is. So the
+  // "free photo book layout" claim has to appear here too, not only in <head>.
+  const client = component('YujeeLandingHomeClient.tsx');
+  const createSubs = [...client.matchAll(/createSub:\s*'([^']*)'/g)].map((m) => m[1]);
+
+  assert.equal(createSubs.length, 2, 'expected exactly one createSub per locale');
+  const [en, zh] = createSubs;
+  assert.match(en, /free/i, 'the English hero subtitle dropped the free claim');
+  assert.match(en, /lays out|layout/i, 'the English hero subtitle dropped the layout claim');
+  assert.match(zh, /免费/, 'the Chinese hero subtitle dropped the free claim');
+  assert.match(zh, /排版/, 'the Chinese hero subtitle dropped the layout claim');
+});
+
 test('footer color accent is anchored to the page bottom on desktop and mobile', () => {
   const client = component('YujeeLandingHomeClient.tsx');
   const footerGlowRule = client.match(/\.footer-glow \{(?<rule>[^}]*)\}/s)?.groups?.rule ?? '';

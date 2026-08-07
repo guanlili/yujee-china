@@ -117,9 +117,13 @@ const en: MarketingMessages = {
     languageLabel: 'English',
   },
   landing: {
-    metaTitle: 'Turn Your Photos into a Book — AI Photo Book & Memoir Maker | Yujee',
+    // "Free" leads because the free grant is real (FREE_PLAN_CREDITS covers a
+    // whole book) and because "layout" is the winnable half of that demand —
+    // bare "free photo book maker" is Shutterfly/Canva territory. "Memoir"
+    // stays: it is the higher-intent term and the one this site can rank for.
+    metaTitle: 'Free AI Photo Book & Memoir Maker — Auto Layout to PDF | Yujee',
     metaDesc:
-      'Yujee’s AI turns your photos and stories into a magazine-style memory book. Chat to edit, export a print-ready PDF, or order a printed keepsake. Free to try.',
+      'Free photo book layout online — Yujee’s AI groups your photos, writes the story, and lays out a magazine-style book. Chat to edit, export a print-ready PDF.',
     composerUploadLabel: 'Upload photos',
     composerHints: [
       { label: 'Travel Album', fill: 'Make me a photo album of my trip to Bali last week — I have lots of beach and temple photos.' },
@@ -413,9 +417,10 @@ const zh: MarketingMessages = {
     languageLabel: '中文',
   },
   landing: {
-    metaTitle: '把照片做成一本书 —— AI 照片书·回忆录制作 | Yujee 遇己',
+    // 中文页不做 Google SEO，这里跟英文改只为口径一致（对外都说「免费排版」）。
+    metaTitle: '免费照片书排版 —— AI 照片书·回忆录制作 | Yujee 遇己',
     metaDesc:
-      'Yujee 遇己用 AI 把你散落的照片和故事，排成杂志风格的照片书和回忆录。对话式编辑，导出可印刷 PDF，也能做成实体纪念册。免费试用。',
+      'Yujee 遇己是免费的照片书排版网站：上传照片，AI 自动分组、写文案，排成杂志风格的照片书和回忆录。对话式编辑，导出可印刷 PDF，也能做成实体纪念册。',
     composerUploadLabel: '上传照片',
     composerHints: [
       { label: '旅行纪念册', fill: '帮我做一本记录上周去大理旅行的影集，我有很多洱海和古城的照片。' },

@@ -46,8 +46,11 @@ const EN: readonly FaqEntry[] = [
     a: 'Yes. Every page layout is editable and you can add new photos anytime — memory books like a baby growth album are built to keep updating.',
   },
   {
-    q: 'Is there a free plan?',
-    a: `Sign-up comes with ${FREE_PLAN_CREDITS} free credits. 1 credit = ${PHOTOS_PER_CREDIT} photo${PHOTOS_PER_CREDIT === 1 ? '' : 's'}, and a photo book is usually ${PAGES_PER_CREDIT_LABEL} pages. No subscription.`,
+    // Reworded, not added: an "Is Yujee free to use?" entry alongside this one
+    // would be two questions with one answer. The grant is interpolated so the
+    // claim can never outlive the constant.
+    q: 'Is Yujee a free photo book maker?',
+    a: `Yes, to start. Sign-up comes with ${FREE_PLAN_CREDITS} free credits — enough to lay out a whole photo book. 1 credit = ${PHOTOS_PER_CREDIT} photo${PHOTOS_PER_CREDIT === 1 ? '' : 's'}, and a photo book is usually ${PAGES_PER_CREDIT_LABEL} pages. No subscription.`,
   },
 ];
 
@@ -73,8 +76,8 @@ const ZH: readonly FaqEntry[] = [
     a: '可以。每一页都能手动调整，也能随时加入新照片。',
   },
   {
-    q: '免费吗？',
-    a: `注册即送 ${FREE_PLAN_CREDITS} 积分。1 积分 = ${PHOTOS_PER_CREDIT} 张照片，一本约 ${PAGES_PER_CREDIT_LABEL} 页。没有订阅。`,
+    q: '照片书排版免费吗？',
+    a: `可以先免费用。注册即送 ${FREE_PLAN_CREDITS} 积分，够排完一本。1 积分 = ${PHOTOS_PER_CREDIT} 张照片，一本约 ${PAGES_PER_CREDIT_LABEL} 页。没有订阅。`,
   },
 ];
 
