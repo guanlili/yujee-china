@@ -50,6 +50,8 @@ export const TEMPLATE_IDS = [
   "mag-57",
   "mag-58",
   "mag-59",
+  "mag-60",
+  "mag-61",
   "p01"
 ] as const;
 
@@ -1731,6 +1733,66 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "explain",
         "lang": "user",
         "sample": "Editor Swimmer Six in the Morning"
+      }
+    ]
+  },
+  "mag-60": {
+    "id": "mag-60",
+    "category": "interior",
+    "images": [
+      {
+        "id": "image1"
+      },
+      {
+        "id": "image2"
+      }
+    ],
+    "texts": [
+      {
+        "id": "title",
+        "role": "title",
+        "lang": "user",
+        "variableDecor": true,
+        "sample": "The first User feedback"
+      },
+      {
+        "id": "body",
+        "role": "body",
+        "lang": "user",
+        "sample": "Four or five months in, the day the first piece of feedback arrived was an ordinary one. I opened the dashboard and saw that someone had actually finished the whole thing. It was better than I expected. The parts I assumed nobody would bother filling in, they filled in, with far more honesty than the sample text I had written. That was when it landed on me. Someone had used this to say things they had been carrying for years."
+      },
+      {
+        "id": "label",
+        "role": "decoration",
+        "lang": "en",
+        "variableDecor": true,
+        "sample": "2026 Jun.25"
+      }
+    ]
+  },
+  "mag-61": {
+    "id": "mag-61",
+    "category": "interior",
+    "images": [
+      {
+        "id": "image1"
+      },
+      {
+        "id": "image2"
+      }
+    ],
+    "texts": [
+      {
+        "id": "body",
+        "role": "body",
+        "lang": "user",
+        "sample": "Four or five months in, the day the first piece of feedback arrived was an ordinary one. I opened the dashboard and saw that someone had actually finished the whole thing. It was better than I expected. The parts I assumed nobody would bother filling in, they filled in, with far more honesty than the sample text I had written. That was when it landed on me."
+      },
+      {
+        "id": "body2",
+        "role": "body",
+        "lang": "user",
+        "sample": "I read it three times standing at the kitchen counter, coffee going cold. Then I closed the laptop and walked around the block, because I did not know where to put it. All those months of guessing in the dark, and here was one person saying: it reached me. That was enough to keep going."
       }
     ]
   },
