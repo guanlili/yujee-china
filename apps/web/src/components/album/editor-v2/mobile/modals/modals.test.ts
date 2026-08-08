@@ -10,6 +10,9 @@ import { renderToStaticMarkup } from 'react-dom/server';
 // tsx classic JSX transform → 组件产物引用全局 React(同 mag-02-toc-render.test.ts)。
 (globalThis as { React?: typeof React }).React = React;
 
+// 组件不再收 zh: boolean,收的是绑好 locale 的 zh/en 取词器;这些断言全是中文口径。
+const zhAT = (zh: string) => zh;
+
 import { ModalHost } from './ModalHost';
 import { ElementSheet } from './ElementSheet';
 import { PhotoPickerSheet } from './PhotoPickerSheet';
@@ -67,7 +70,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
       renderToStaticMarkup(
         createElement(PhotoPickerSheet, {
           open,
-          zh: true,
+          aT: zhAT,
           photoIds: ['photo-1', 'photo-2'],
           urls: { 'photo-1': 'blob:x' },
           currentPhotoId: 'photo-1',
@@ -83,7 +86,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
       renderToStaticMarkup(
         createElement(BoardBgSheet, {
           open,
-          zh: true,
+          aT: zhAT,
           current: null,
           onClose: noop,
           onPick: noop,
@@ -98,7 +101,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
       renderToStaticMarkup(
         createElement(ShareLinkModal, {
           open,
-          zh: true,
+          aT: zhAT,
           link: null,
           onConfirm: noop,
           onCopy: noop,
@@ -112,7 +115,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
     render: (open) =>
       renderToStaticMarkup(
         createElement(ExportMenuModal, {
-          open, zh: true, onClose: noop,
+          open, aT: zhAT, onClose: noop,
           onCollage: noop, onLive: noop, onSinglePages: noop, onPdf: noop,
         }),
       ),
@@ -123,7 +126,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
     render: (open) =>
       renderToStaticMarkup(
         createElement(PdfStyleModal, {
-          open, zh: true, style: 'standard' as const,
+          open, aT: zhAT, style: 'standard' as const,
           onPickStyle: noop, onConfirm: noop, onClose: noop,
         }),
       ),
@@ -135,7 +138,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
       renderToStaticMarkup(
         createElement(CollageModal, {
           open,
-          zh: true,
+          aT: zhAT,
           spreadCount: 4,
           density: null,
           onPickDensity: noop,
@@ -151,7 +154,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
       renderToStaticMarkup(
         createElement(ExportReadyModal, {
           open,
-          zh: true,
+          aT: zhAT,
           label: 'PDF',
           manualFiles: null,
           onClose: noop,
@@ -165,7 +168,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
     name: 'ExportFailModal 导出失败',
     render: (open) =>
       renderToStaticMarkup(
-        createElement(ExportFailModal, { open, zh: true, onClose: noop, onRetry: noop }),
+        createElement(ExportFailModal, { open, aT: zhAT, onClose: noop, onRetry: noop }),
       ),
     closeHint: /知道了/,
   },
@@ -175,7 +178,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
       renderToStaticMarkup(
         createElement(ReorderSheet, {
           open,
-          zh: true,
+          aT: zhAT,
           pages: [],
           resolve: () => undefined,
           onClose: noop,
@@ -190,7 +193,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
       renderToStaticMarkup(
         createElement(MoreSheet, {
           open,
-          zh: true,
+          aT: zhAT,
           backupState: 'idle' as const,
           backupProgress: null,
           lutSupported: true,
@@ -209,7 +212,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
       renderToStaticMarkup(
         createElement(NoticeModal, {
           open,
-          zh: true,
+          aT: zhAT,
           title: '标题',
           message: '一句话',
           onClose: noop,
@@ -223,7 +226,7 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
       renderToStaticMarkup(
         createElement(ElementSheet, {
           open,
-          zh: true,
+          aT: zhAT,
           title: '文字',
           onCancel: noop,
           onDone: noop,
@@ -327,7 +330,7 @@ test('底部抽屉规则必须压过后加载的桌面居中弹窗规则', () =>
 
 test('导出进度弹窗:渲染中不可关是有意为之,但必须显示进度', () => {
   const html = renderToStaticMarkup(
-    createElement(ExportProgressModal, { open: true, zh: true, label: '3 / 8', percent: 40 }),
+    createElement(ExportProgressModal, { open: true, aT: zhAT, label: '3 / 8', percent: 40 }),
   );
   assert.match(html, /exp-bar-fill/);
   assert.match(html, /40%/, '进度条要反映百分比');

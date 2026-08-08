@@ -26,6 +26,7 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 import { useEffect, useRef, useState, type RefObject } from 'react';
+import { pick } from '@/lib/i18n/pick';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { useChromeSession } from '@/components/app/useChromeSession';
 import { CreditsPurchaseModal } from './CreditsPurchaseModal';
@@ -177,10 +178,12 @@ export function ChatPanel({
     // Language switch does a full window navigation (see the shell's user menu), so
     // per-mount locale is constant — no live setLang is needed in ChatPanel. Derive
     // t/aT from the module-level dictionary directly.
-    const currentLang = locale === 'zh' ? 'zh' : 'en';
-    const t = (key: string) =>
-      (chatI18n[currentLang] && chatI18n[currentLang][key]) || chatI18n.zh[key] || key;
-    const aT = (zh: string, en: string) => (currentLang === 'zh' ? zh : en);
+    // wire language for the agent stays zh|en (V3Language); es/ja/fr users generate
+    // in English on purpose (see the i18n plan). UI copy is a separate axis: it goes
+    // through pick(), which overlays es/ja/fr on the English string.
+    const currentLang: 'zh' | 'en' = locale === 'zh' ? 'zh' : 'en';
+    const aT = (zh: string, en: string) => pick(locale, { zh, en });
+    const t = (key: string) => aT(chatI18n.zh[key] ?? key, chatI18n.en[key] ?? chatI18n.zh[key] ?? key);
 
     const albumId = detail.album.id;
     const isAuthoring = mode === 'authoring';
@@ -2175,10 +2178,7 @@ export function ChatPanel({
       } catch {
         // 原图取不到 / 计算失败 => 空输入(neither,全问),不阻断。
       }
-      const messages = interviewMessages(
-        classifyInterviewCase(input),
-        currentLang === 'zh' ? 'zh' : 'en',
-      );
+      const messages = interviewMessages(classifyInterviewCase(input), locale);
       if (disposed) return;
       pendingInterview = { chapterId, input, questions: messages };
       if (!(await typeInterviewMessages(messages))) return;
@@ -2740,7 +2740,7 @@ export function ChatPanel({
       <aside className="pane pane-right chat-card relative flex flex-col overflow-hidden bg-surface md:flex-1">
         <div className="chat-drag hidden md:flex items-center gap-2 px-3.5 h-11 border-b border-bdsoft flex-shrink-0" id="chatDrag">
           <span className="chat-grip"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></svg></span>
-          <span className="text-[13px] font-semibold text-fg2">{locale === 'zh' ? '对话' : 'Chat'}</span>
+          <span className="text-[13px] font-semibold text-fg2">{pick(locale, { zh: '对话', en: 'Chat' })}</span>
           <button type="button" className="chat-fold-btn chat-fold-collapse ml-auto" data-action="toggleChat" data-i18n-title="collapseChat" title="折叠对话" aria-label="折叠对话">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="15 18 9 12 15 6" /></svg>
           </button>
@@ -2752,7 +2752,7 @@ export function ChatPanel({
         <div className="chat-body flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-6" id="chatBody" style={{ gap: '24px' }}>
           <div className="await-user" id="awaitUser">
             <img className="await-jelly" src="/jellyfish-icon.png" alt="" style={{ width: '40px', height: '40px' }} />
-            <span className="await-label" data-i18n="awaitUser">{locale === 'zh' ? '在听，随时和我说～' : "I'm listening - talk to me anytime"}</span>
+            <span className="await-label" data-i18n="awaitUser">{pick(locale, { zh: '在听，随时和我说～', en: "I'm listening - talk to me anytime" })}</span>
           </div>
         </div>
 
@@ -2763,9 +2763,9 @@ export function ChatPanel({
           <div className="interview-skips" id="interviewSkips" style={{ display: 'none' }} />
           <div className="buy-banner" id="balanceAlert">
             <div className="buy-banner-row">
-              <div className="buy-banner-title flex-1 min-w-0" data-i18n="bpLead">{locale === 'zh' ? '积分已用完，补充积分继续' : 'Out of credits. Top up to continue.'}</div>
-              <button className="buy-banner-btn" data-action="buyShells" data-i18n="bpBuy">{locale === 'zh' ? '去购买' : 'Buy'}</button>
-              <button className="buy-close" type="button" data-action="dismissBalanceAlert" aria-label={locale === 'zh' ? '关闭' : 'Close'}>
+              <div className="buy-banner-title flex-1 min-w-0" data-i18n="bpLead">{pick(locale, { zh: '积分已用完，补充积分继续', en: 'Out of credits. Top up to continue.' })}</div>
+              <button className="buy-banner-btn" data-action="buyShells" data-i18n="bpBuy">{pick(locale, { zh: '去购买', en: 'Buy' })}</button>
+              <button className="buy-close" type="button" data-action="dismissBalanceAlert" aria-label={pick(locale, { zh: '关闭', en: 'Close' })}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
@@ -2775,10 +2775,10 @@ export function ChatPanel({
           <div className="buy-banner" id="guestAlert" style={{ display: 'none' }}>
             <div className="buy-banner-row">
               <div className="buy-banner-title flex-1 min-w-0">
-                {locale === 'zh' ? '文字是示例样稿 · 登录后 AI 按你讲的故事写真文案、改设计' : 'Sample copy for now · sign in and AI writes your real story'}
+                {pick(locale, { zh: '文字是示例样稿 · 登录后 AI 按你讲的故事写真文案、改设计', en: 'Sample copy for now · sign in and AI writes your real story' })}
               </div>
-              <button className="buy-banner-btn" data-action="guestLogin">{locale === 'zh' ? '登录' : 'Sign in'}</button>
-              <button className="buy-close" type="button" data-action="dismissGuestAlert" aria-label={locale === 'zh' ? '关闭' : 'Close'}>
+              <button className="buy-banner-btn" data-action="guestLogin">{pick(locale, { zh: '登录', en: 'Sign in' })}</button>
+              <button className="buy-close" type="button" data-action="dismissGuestAlert" aria-label={pick(locale, { zh: '关闭', en: 'Close' })}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>

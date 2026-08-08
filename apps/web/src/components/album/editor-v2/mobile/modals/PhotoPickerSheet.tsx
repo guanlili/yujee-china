@@ -7,10 +7,11 @@
    照片来源是本册已传的那些(photoStore 本地已有缩略图,不走上传链路)。 */
 
 import type { ReactNode } from 'react';
+import type { AT } from '@/lib/i18n/pick';
 
 export type PhotoPickerSheetProps = {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   /** 本册全部照片 id(顺序即展示顺序)。 */
   photoIds: readonly string[];
   /** photoId → 缩略图 URL。取不到的那张仍然渲染占位格,不静默消失。 */
@@ -23,7 +24,7 @@ export type PhotoPickerSheetProps = {
 
 export function PhotoPickerSheet({
   open,
-  zh,
+  aT,
   photoIds,
   urls,
   currentPhotoId,
@@ -43,16 +44,16 @@ export function PhotoPickerSheet({
           </div>
           <div className="mes-head">
             <button type="button" className="mes-cancel" onClick={onClose}>
-              {zh ? '取消' : 'Cancel'}
+              {aT('取消', 'Cancel')}
             </button>
-            <div className="mes-title">{zh ? '换一张' : 'Replace photo'}</div>
+            <div className="mes-title">{aT('换一张', 'Replace photo')}</div>
             {/* 右侧留空占位:头部是三栏栅格,少一栏标题就不居中了。 */}
             <span className="mes-hbtn" aria-hidden="true" />
           </div>
           <div className="mes-body">
             {photoIds.length === 0 ? (
               <div className="mpick-empty">
-                {zh ? '这本相册还没有照片' : 'No photos in this album yet'}
+                {aT('这本相册还没有照片', 'No photos in this album yet')}
               </div>
             ) : (
               <div className="mpick-grid">
@@ -62,7 +63,7 @@ export function PhotoPickerSheet({
                     type="button"
                     className="mpick-cell"
                     data-active={id === currentPhotoId ? '1' : undefined}
-                    aria-label={zh ? '用这张' : 'Use this photo'}
+                    aria-label={aT('用这张', 'Use this photo')}
                     onClick={() => onPick(id)}
                   >
                     {urls[id] ? (

@@ -20,6 +20,7 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { AT } from '@/lib/i18n/pick';
 
 import type { EditorPage } from '../../types';
 import { buildSpreads, isSoloSpread, pageSlot, spreadPageIndices, spreadRenderKind } from '../../spreads';
@@ -68,7 +69,7 @@ export type MobileEditorProps = {
   /** 垫底画板背景的 CSS background 值(相册级),无则走网页端默认底(--bg)。 */
   boardBackground?: string | null;
   title: string;
-  zh: boolean;
+  aT: AT;
   onBack?: () => void;
   /** 正在编辑的页(null = 浏览态)。**由父层持有** —— 弹窗与落库都住在
      MobileEditorRoot,它必须知道用户在编哪一页,否则任何页级改动无处可落。 */
@@ -135,7 +136,7 @@ export function MobileEditor({
   resolveThumb,
   boardBackground,
   title,
-  zh,
+  aT,
   onBack,
   editPage,
   onEnterEdit,
@@ -399,7 +400,7 @@ export function MobileEditor({
         fontsReady={fontsReady}
         resolve={resolve}
         boardBackground={boardBackground}
-        zh={zh}
+        aT={aT}
         editPage={editPage}
         selection={selection}
         imagePos={imagePos}
@@ -462,9 +463,9 @@ export function MobileEditor({
     >
       <MobileTopbar
         title={title}
-        zh={zh}
+        aT={aT}
         onBack={onBack ?? (() => {})}
-        backLabel={zh ? '返回' : 'Back'}
+        backLabel={aT('返回', 'Back')}
         onSave={onSave}
         backupState={backupState}
         backupProgress={backupProgress}
@@ -624,7 +625,7 @@ export function MobileEditor({
           <button
             type="button"
             className="mfab"
-            aria-label={zh ? '画板背景' : 'Board background'}
+            aria-label={aT('画板背景', 'Board background')}
             onClick={onBoardBg}
           >
             <IconBoardBg className="mfab-ic" />
@@ -635,7 +636,7 @@ export function MobileEditor({
         <button
           type="button"
           className="mai"
-          aria-label={zh ? '展开对话' : 'Expand chat'}
+          aria-label={aT('展开对话', 'Expand chat')}
           onClick={onOpenChat}
         >
           <img className="mai-jelly" src="/jellyfish-icon.png" alt="" />
@@ -657,7 +658,7 @@ export function MobileEditor({
       <MobileStrip
         pages={pages}
         units={stripUnits}
-        zh={zh}
+        aT={aT}
         // 翻纸一开始就把预览栏的高亮挪到目标页 —— 导航状态跟着「要去哪」走,
         // 不等 900ms 动画结束(同桌面 goToSpread 里先 syncSelectionToSpread)。
         currentPage={anim ? anim.toStart : startPage}

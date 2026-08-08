@@ -19,6 +19,7 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 import { useCallback, useRef, useState } from 'react';
+import type { AT } from '@/lib/i18n/pick';
 
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
 import { collectPhotoIds } from '../../adapt-layout';
@@ -58,7 +59,7 @@ type ExportReadyAsset =
 export type ExportDeps = {
   albumId: string;
   title: string;
-  zh: boolean;
+  aT: AT;
   pages: EditorPage[];
   /** 画板垫底背景(**BoardBackground 原对象**,不是 CSS 字符串)——
    *  拼图/Live 的渲染器自己按 kind 解析,与画布同一份视觉。 */
@@ -75,7 +76,7 @@ export type ExportDeps = {
 export function useExport({
   albumId,
   title,
-  zh,
+  aT,
   pages,
   background,
   photoFilter,
@@ -89,7 +90,7 @@ export function useExport({
    *  新一轮导出必须先清掉,否则新产物的弹窗会挂着上一轮的旧文件名。 */
   const [manualFiles, setManualFiles] = useState<NamedBlob[] | null>(null);
   const busy = useRef(false);
-  const t = useCallback((cn: string, en: string) => (zh ? cn : en), [zh]);
+  const t = aT;
 
   /** 三条导出路径共用的输入:适配页 + **原图**解析器(喂高分辨率原图,防放大糊)。 */
   const buildInput = useCallback(async () => {

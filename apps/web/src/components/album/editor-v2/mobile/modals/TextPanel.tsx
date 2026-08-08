@@ -13,11 +13,12 @@ import { EDITOR_FONTS } from '../../editor-fonts';
 import { ColorPicker } from './ColorPicker';
 // 面板状态的定义住在 page-edit(改动怎么落到页面上的那一层)—— 面板只是它的一张脸。
 import type { TextStyleState } from '../page-edit';
+import type { AT } from '@/lib/i18n/pick';
 
 export type { TextStyleState };
 
 export type TextPanelProps = {
-  zh: boolean;
+  aT: AT;
   view: 'main' | 'font' | 'color';
   state: TextStyleState;
   onChange: (patch: Partial<TextStyleState>) => void;
@@ -60,7 +61,7 @@ const ALIGN_ICONS = {
 };
 
 export function TextPanel({
-  zh,
+  aT,
   view,
   state,
   onChange,
@@ -72,9 +73,9 @@ export function TextPanel({
     return (
       <>
         <button type="button" className="mes-back" onClick={onBackToMain}>
-          ‹ {zh ? '返回' : 'Back'}
+          ‹ {aT('返回', 'Back')}
         </button>
-        <ColorPicker zh={zh} value={state.color} onChange={(css) => onChange({ color: css })} />
+        <ColorPicker aT={aT} value={state.color} onChange={(css) => onChange({ color: css })} />
       </>
     );
   }
@@ -107,11 +108,11 @@ export function TextPanel({
     return (
       <>
         <button type="button" className="mes-back" onClick={onBackToMain}>
-          ‹ {zh ? '返回' : 'Back'}
+          ‹ {aT('返回', 'Back')}
         </button>
         <div className="mes-font-list">
-          {group(zh ? '中文' : 'Chinese', 'cjk')}
-          {group(zh ? '英文' : 'Latin', 'latin')}
+          {group(aT('中文', 'Chinese'), 'cjk')}
+          {group(aT('英文', 'Latin'), 'latin')}
         </div>
       </>
     );
@@ -124,7 +125,7 @@ export function TextPanel({
     <>
       <textarea
         className="mes-textarea"
-        placeholder={zh ? '输入文字…' : 'Enter text…'}
+        placeholder={aT('输入文字…', 'Enter text…')}
         value={state.text}
         onChange={(e) => onChange({ text: e.target.value })}
       />
@@ -135,7 +136,7 @@ export function TextPanel({
           <button
             type="button"
             className="mes-tb mes-tb-step"
-            aria-label={zh ? '减小字号' : 'Smaller'}
+            aria-label={aT('减小字号', 'Smaller')}
             onClick={() => onChange({ fontSize: Math.max(6, (size ?? 14) - 1) })}
           >
             −
@@ -144,7 +145,7 @@ export function TextPanel({
             className="mes-tb-size"
             inputMode="numeric"
             placeholder="--"
-            aria-label={zh ? '字号' : 'Font size'}
+            aria-label={aT('字号', 'Font size')}
             value={size == null ? '' : String(size)}
             onChange={(e) => {
               const n = parseInt(e.target.value, 10);
@@ -154,7 +155,7 @@ export function TextPanel({
           <button
             type="button"
             className="mes-tb mes-tb-step"
-            aria-label={zh ? '增大字号' : 'Larger'}
+            aria-label={aT('增大字号', 'Larger')}
             onClick={() => onChange({ fontSize: Math.min(200, (size ?? 14) + 1) })}
           >
             +
@@ -166,7 +167,7 @@ export function TextPanel({
             type="button"
             className="mes-tb"
             data-active={state.bold ? '1' : undefined}
-            aria-label={zh ? '加粗' : 'Bold'}
+            aria-label={aT('加粗', 'Bold')}
             onClick={() => onChange({ bold: !state.bold })}
           >
             <b>B</b>
@@ -175,7 +176,7 @@ export function TextPanel({
             type="button"
             className="mes-tb"
             data-active={state.italic ? '1' : undefined}
-            aria-label={zh ? '斜体' : 'Italic'}
+            aria-label={aT('斜体', 'Italic')}
             onClick={() => onChange({ italic: !state.italic })}
           >
             <i style={{ fontFamily: 'Georgia,serif' }}>I</i>
@@ -189,11 +190,10 @@ export function TextPanel({
               key={a}
               className="mes-tb"
               data-active={state.align === a ? '1' : undefined}
-              aria-label={
-                zh
-                  ? { left: '左对齐', center: '居中', right: '右对齐' }[a]
-                  : { left: 'Align left', center: 'Center', right: 'Align right' }[a]
-              }
+              aria-label={aT(
+                { left: '左对齐', center: '居中', right: '右对齐' }[a],
+                { left: 'Align left', center: 'Center', right: 'Align right' }[a],
+              )}
               onClick={() => onChange({ align: a })}
             >
               {ALIGN_ICONS[a]}
@@ -203,7 +203,7 @@ export function TextPanel({
       </div>
 
       {/* 颜色:漏出 8 个常用基础色 + 彩虹「更多」 */}
-      <div className="mes-label">{zh ? '颜色' : 'Color'}</div>
+      <div className="mes-label">{aT('颜色', 'Color')}</div>
       <div className="mes-sw-row">
         {COLOR_PRESETS.slice(0, 8).map((c) => (
           <button
@@ -218,13 +218,13 @@ export function TextPanel({
         <button
           type="button"
           className="mes-sw mes-sw-more"
-          aria-label={zh ? '更多颜色' : 'More colors'}
+          aria-label={aT('更多颜色', 'More colors')}
           onClick={onMoreColors}
         />
       </div>
 
       {/* 字体:漏出常用中文字体 chips + 「更多」进完整列表 */}
-      <div className="mes-label">{zh ? '字体' : 'Font'}</div>
+      <div className="mes-label">{aT('字体', 'Font')}</div>
       <div className="mes-fontchip-row">
         {quickFonts.map((f) => (
           <button
@@ -242,7 +242,7 @@ export function TextPanel({
           className="mes-fontchip mes-fontchip-more"
           onClick={onOpenFontList}
         >
-          {zh ? '更多' : 'More'}
+          {aT('更多', 'More')}
         </button>
       </div>
     </>

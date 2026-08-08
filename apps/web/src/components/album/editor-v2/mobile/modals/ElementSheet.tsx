@@ -9,10 +9,11 @@
    body 是插槽 —— 文字/图片各自的控件由调用方塞进来。 */
 
 import type { ReactNode } from 'react';
+import type { AT } from '@/lib/i18n/pick';
 
 export type ElementSheetProps = {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   title: string;
   children: ReactNode;
   /** 卡片以上的区域是否放行手势(默认不放行 = 普通模态)。
@@ -30,7 +31,7 @@ export type ElementSheetProps = {
 
 export function ElementSheet({
   open,
-  zh,
+  aT,
   title,
   children,
   passThrough,
@@ -55,18 +56,18 @@ export function ElementSheet({
           className="mes-card"
           role="dialog"
           aria-modal="true"
-          aria-label={zh ? '编辑' : 'Edit'}
+          aria-label={aT('编辑', 'Edit')}
         >
           <div className="mes-grab" aria-hidden="true">
             <span />
           </div>
           <div className="mes-head">
             <button type="button" className="mes-hbtn mes-cancel" onClick={onCancel}>
-              {zh ? '取消' : 'Cancel'}
+              {aT('取消', 'Cancel')}
             </button>
             <span className="mes-title">{title}</span>
             <button type="button" className="mes-hbtn mes-done" onClick={onDone}>
-              {zh ? '完成' : 'Done'}
+              {aT('完成', 'Done')}
             </button>
           </div>
           <div className="mes-body">{children}</div>

@@ -5,17 +5,14 @@ import { FlipBook } from './FlipBook';
 import type { ResolveImage } from './adapt-layout';
 import type { EditorPage } from './types';
 import { presetImageUrl } from '@/lib/board-bg/presets';
+import { boundPick } from '@/lib/i18n/pick';
+import { defaultLocale, isLocale } from '@/lib/i18n/routing';
 
 export type SharedBoardBackground =
   | { kind: 'color'; color: string }
   | { kind: 'preset'; presetId: string }
   | { kind: 'upload'; key: string }
   | null;
-
-const STRINGS = {
-  zh: { prevPage: '上一页', nextPage: '下一页', noPages: '暂无内容', editPage: '' },
-  en: { prevPage: 'Previous', nextPage: 'Next', noPages: 'Nothing to show', editPage: '' },
-} as const;
 
 // 免登只读分享视图:复用编辑器的 FlipBook 翻书;不传 onEditPage => 铅笔按钮不渲染,纯只读。
 // 图片走冻结的公开快照 URL(photoUrls),不碰本地 IndexedDB —— 别人浏览器也能看。
@@ -34,7 +31,15 @@ export function SharedAlbum({
 }) {
   const [selected, setSelected] = useState(0);
   const resolveImage: ResolveImage = (id: string) => photoUrls[id];
-  const t = STRINGS[locale === 'en' ? 'en' : 'zh'];
+  // The snapshot stores whatever locale the sharer was on; anything we no longer
+  // ship degrades to the default rather than to Chinese.
+  const aT = boundPick(isLocale(locale) ? locale : defaultLocale);
+  const t = {
+    prevPage: aT('上一页', 'Previous'),
+    nextPage: aT('下一页', 'Next'),
+    noPages: aT('暂无内容', 'Nothing to show'),
+    editPage: '',
+  };
 
   // 画板底:纯色 / 内置预设图(公开)可复现;上传图是本地引用,分享环境取不到 → 退中性底。
   const bgStyle: React.CSSProperties = {};

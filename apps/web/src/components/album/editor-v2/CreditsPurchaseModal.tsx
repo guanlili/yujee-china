@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ADDON_PACKS, PHOTOS_PER_CREDIT } from '@/config/pricing';
+import { boundPick } from '@/lib/i18n/pick';
 import type { Locale } from '@/lib/i18n/routing';
 
 // Poll cadence + hard cap for the "waiting for payment" balance watcher.
@@ -43,7 +44,7 @@ export function CreditsPurchaseModal({
   onClose: () => void;
   onToppedUp: () => void;
 }) {
-  const zh = locale === 'zh';
+  const aT = boundPick(locale);
   const [mounted, setMounted] = useState(false);
   const [selectedId, setSelectedId] = useState<string>(DEFAULT_PACK_ID);
   const [phase, setPhase] = useState<Phase>('select');
@@ -152,13 +153,13 @@ export function CreditsPurchaseModal({
         setPhase('waiting');
         return;
       }
-      setError(json?.error?.message ?? (zh ? '发起支付失败，请重试。' : 'Couldn’t start checkout — please try again.'));
+      setError(json?.error?.message ?? (aT('发起支付失败，请重试。', 'Couldn’t start checkout — please try again.')));
     } catch {
-      setError(zh ? '发起支付失败，请重试。' : 'Couldn’t start checkout — please try again.');
+      setError(aT('发起支付失败，请重试。', 'Couldn’t start checkout — please try again.'));
     } finally {
       setCheckingOut(false);
     }
-  }, [checkingOut, selectedId, locale, zh]);
+  }, [checkingOut, selectedId, locale, aT]);
 
   // "I've paid — refresh": one immediate balance check; hands off if credited, else nudges.
   const manualRefresh = useCallback(async () => {
@@ -168,8 +169,8 @@ export function CreditsPurchaseModal({
       onToppedUpRef.current();
       return;
     }
-    setError(zh ? '还没检测到积分到账，稍等片刻再刷新～' : 'No credits detected yet — give it a moment and refresh.');
-  }, [fetchBalance, zh]);
+    setError(aT('还没检测到积分到账，稍等片刻再刷新～', 'No credits detected yet — give it a moment and refresh.'));
+  }, [fetchBalance, aT]);
 
   if (!mounted) return null;
 
@@ -192,7 +193,7 @@ export function CreditsPurchaseModal({
             type="button"
             className="credits-modal-close"
             onClick={onClose}
-            aria-label={zh ? '关闭' : 'Close'}
+            aria-label={aT('关闭', 'Close')}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M6 6l12 12M18 6L6 18" />
@@ -200,18 +201,19 @@ export function CreditsPurchaseModal({
           </button>
 
           <h2 className="credits-modal-title" id={titleId}>
-            {zh ? '购买积分' : 'Buy credits'}
+            {aT('购买积分', 'Buy credits')}
           </h2>
 
           {phase === 'select' && (
             <>
               <p className="credits-modal-sub">
-                {zh
-                  ? `积分用于 AI 排版与文案生成，1 积分 = ${PHOTOS_PER_CREDIT} 张照片。买得越多越划算，永久有效。`
-                  : `Credits power AI layout and writing — 1 credit = ${PHOTOS_PER_CREDIT} photo${PHOTOS_PER_CREDIT === 1 ? '' : 's'}. Buy more to save; they never expire.`}
+                {aT(
+                  `积分用于 AI 排版与文案生成，1 积分 = ${PHOTOS_PER_CREDIT} 张照片。买得越多越划算，永久有效。`,
+                  `Credits power AI layout and writing — 1 credit = ${PHOTOS_PER_CREDIT} photo${PHOTOS_PER_CREDIT === 1 ? '' : 's'}. Buy more to save; they never expire.`,
+                )}
               </p>
 
-              <div className="credits-pack-list" role="radiogroup" aria-label={zh ? '选择积分包' : 'Choose a credit pack'}>
+              <div className="credits-pack-list" role="radiogroup" aria-label={aT('选择积分包', 'Choose a credit pack')}>
                 {ADDON_PACKS.map((pack) => {
                   const isSel = pack.id === selectedId;
                   const photos = pack.books * PHOTOS_PER_CREDIT; // derived — never hardcode
@@ -226,15 +228,15 @@ export function CreditsPurchaseModal({
                       onClick={() => setSelectedId(pack.id)}
                     >
                       {popular && (
-                        <span className="credits-pack-badge">{zh ? '最受欢迎' : 'Most popular'}</span>
+                        <span className="credits-pack-badge">{aT('最受欢迎', 'Most popular')}</span>
                       )}
                       <span className="credits-pack-radio" aria-hidden="true" />
                       <span className="credits-pack-info">
                         <span className="credits-pack-cred">
-                          {zh ? `${pack.books} 积分` : `${pack.books} credit${pack.books > 1 ? 's' : ''}`}
+                          {aT(`${pack.books} 积分`, `${pack.books} credit${pack.books > 1 ? 's' : ''}`)}
                         </span>
                         <span className="credits-pack-cap">
-                          {zh ? `可处理约 ${photos} 张照片` : `About ${photos} photos`}
+                          {aT(`可处理约 ${photos} 张照片`, `About ${photos} photos`)}
                         </span>
                       </span>
                       <span className="credits-pack-price">
@@ -250,17 +252,17 @@ export function CreditsPurchaseModal({
 
               <button type="button" className="credits-modal-cta" onClick={startCheckout} disabled={checkingOut}>
                 <span>
-                  {checkingOut ? (zh ? '正在跳转…' : 'Starting…') : zh ? '立即购买' : 'Buy now'}
+                  {checkingOut ? (aT('正在跳转…', 'Starting…')) : aT('立即购买', 'Buy now')}
                 </span>
                 <span className="credits-modal-cta-amt">${selected.priceUsd}</span>
               </button>
 
               <div className="credits-modal-foot">
-                {zh ? '安全支付，买完自动回到这里继续' : 'Secure checkout — you’ll return here automatically.'}
+                {aT('安全支付，买完自动回到这里继续', 'Secure checkout — you’ll return here automatically.')}
                 <span className="credits-modal-foot-sep">·</span>
-                {zh ? '购买即同意' : 'By buying you agree to the '}
+                {aT('购买即同意', 'By buying you agree to the ')}
                 <a href={`/${locale}/terms`} target="_blank" rel="noreferrer">
-                  {zh ? '《服务条款》' : 'Terms'}
+                  {aT('《服务条款》', 'Terms')}
                 </a>
               </div>
             </>
@@ -270,18 +272,19 @@ export function CreditsPurchaseModal({
             <div className="credits-modal-waiting">
               <span className="credits-modal-spinner" aria-hidden="true" />
               <p className="credits-modal-waiting-text">
-                {zh
-                  ? '已在新标签页打开支付，完成后会自动返回这里继续。'
-                  : 'Payment opened in a new tab — you’ll return here automatically once it’s done.'}
+                {aT(
+                  '已在新标签页打开支付，完成后会自动返回这里继续。',
+                  'Payment opened in a new tab — you’ll return here automatically once it’s done.',
+                )}
               </p>
               {manualPayUrl && (
                 <a className="credits-modal-paylink" href={manualPayUrl} target="_blank" rel="noreferrer">
-                  {zh ? '弹窗被拦截了？点此打开支付页' : 'Popup blocked? Open the payment page'}
+                  {aT('弹窗被拦截了？点此打开支付页', 'Popup blocked? Open the payment page')}
                 </a>
               )}
               {error && <p className="credits-modal-error">{error}</p>}
               <button type="button" className="credits-modal-refresh" onClick={manualRefresh}>
-                {zh ? '我已付款，刷新' : 'I’ve paid — refresh'}
+                {aT('我已付款，刷新', 'I’ve paid — refresh')}
               </button>
             </div>
           )}

@@ -35,7 +35,7 @@ function render(pages = BOOK, zh = true) {
       fontsReady: true,
       resolve: () => undefined,
       title: '厦门三日游',
-      zh,
+      aT: zh ? (cn: string) => cn : (_cn: string, en: string) => en,
       // 编辑焦点由父层持有(见 MobileEditorRoot):浏览态 = null。
       editPage: null,
       onEnterEdit: noop, onExitEdit: noop,
