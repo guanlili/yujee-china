@@ -14,10 +14,7 @@ export function YujeeLandingHome({ locale, resumeGeneration = false }: Props) {
   const marketing = getMarketingMessages(locale);
   const createMessages = getMessages(locale).dashboard.create;
   const composerCopy = {
-    placeholder: pick(locale, {
-      zh: '写点文案（可选）：想要的风格、主题、要避免的内容…',
-      en: 'Add a note (optional): style, theme, things to avoid...',
-    }),
+    placeholder: '',
     submit: pick(locale, { zh: '提交', en: 'Submit' }),
   };
 

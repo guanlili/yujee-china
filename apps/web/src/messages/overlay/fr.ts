@@ -18,7 +18,6 @@ export const fr: Record<string, string> = {
   'Accept': 'Accepter',
   'Accepted! The copy has been updated in the magazine preview.': 'C’est accepté ! Le texte est mis à jour dans l’aperçu du magazine.',
   'Actually it got windy that afternoon and I almost lost my hat — can you add that?': 'En fait, il y a eu du vent cet après-midi-là et j’ai failli perdre mon chapeau — tu peux l’ajouter ?',
-  'Add a note (optional): style, theme, things to avoid...': 'Ajoutez une note (facultatif) : style, thème, choses à éviter...',
   'Add background for this group': 'Ajouter du contexte à ce groupe',
   'Add photos': 'Ajouter des photos',
   'Adds 3mm bleed on all sides for print trimming; equals 216×303mm': 'Ajoute 3 mm de fond perdu sur tous les côtés pour la coupe ; soit 216×303 mm',

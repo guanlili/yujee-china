@@ -18,7 +18,6 @@ export const ja: Record<string, string> = {
   'Accept': '採用する',
   'Accepted! The copy has been updated in the magazine preview.': '採用しました。文章を雑誌プレビューに反映しています。',
   'Actually it got windy that afternoon and I almost lost my hat — can you add that?': 'その日の午後は風が強くて、帽子を飛ばされそうになったんです。それも入れてもらえますか？',
-  'Add a note (optional): style, theme, things to avoid...': 'メモを書く（任意）：好みの雰囲気、テーマ、避けたいこと…',
   'Add background for this group': 'このグループの背景を書き足す',
   'Add photos': '写真を追加',
   'Adds 3mm bleed on all sides for print trimming; equals 216×303mm': '印刷所の裁ち落とし用に四辺へ 3mm の塗り足しを追加します。仕上がりは 216×303mm です',
