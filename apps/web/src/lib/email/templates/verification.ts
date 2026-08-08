@@ -1,3 +1,4 @@
+import { getEmailCopy } from './copy';
 import { escapeHtml, renderButton, renderShell, type EmailLocale, type RenderedEmail } from './shared';
 
 type VerificationEmailInput = {
@@ -6,31 +7,8 @@ type VerificationEmailInput = {
   actionUrl: string;
 };
 
-const copy = {
-  en: {
-    subject: 'Verify your Yujee email',
-    title: 'Verify your email',
-    greeting: (name: string) => `Hi ${name},`,
-    body: 'Welcome to Yujee. Confirm your email address to finish setting up your account.',
-    button: 'Verify email',
-    validity: 'This link expires soon and can only be used once.',
-    fallback: 'If the button does not work, paste this link into your browser:',
-    ignore: 'If you did not create a Yujee account, you can ignore this email.',
-  },
-  zh: {
-    subject: '验证你的 Yujee 邮箱',
-    title: '验证你的邮箱',
-    greeting: (name: string) => `你好 ${name}，`,
-    body: '欢迎使用 Yujee。请确认你的邮箱地址以完成账户设置。',
-    button: '验证邮箱',
-    validity: '此链接即将过期，且只能使用一次。',
-    fallback: '如果按钮无法打开，请复制以下链接到浏览器：',
-    ignore: '如果你没有注册 Yujee，可以忽略这封邮件。',
-  },
-} as const;
-
 export function renderVerificationEmail(input: VerificationEmailInput): RenderedEmail {
-  const t = copy[input.locale];
+  const t = getEmailCopy(input.locale).verification;
   const name = input.name?.trim() || 'there';
   const html = renderShell(
     t.title,

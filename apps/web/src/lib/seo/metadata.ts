@@ -5,6 +5,9 @@ import { absoluteUrl } from './site';
 const OG_LOCALE: Record<Locale, string> = {
   en: 'en_US',
   zh: 'zh_CN',
+  es: 'es_ES',
+  ja: 'ja_JP',
+  fr: 'fr_FR',
 };
 
 export const OG_IMAGE = {

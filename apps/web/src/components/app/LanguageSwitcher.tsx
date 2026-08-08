@@ -3,14 +3,12 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { type Locale, locales, localizePath } from '@/lib/i18n/routing';
+import { LOCALE_LABELS, type Locale, locales, localizePath } from '@/lib/i18n/routing';
 
 interface Props {
   locale: Locale;
   className?: string;
 }
-
-const LABELS: Record<Locale, string> = { en: 'English', zh: '中文' };
 
 export function LanguageSwitcher({ locale, className = '' }: Props) {
   const pathname = usePathname();
@@ -38,7 +36,7 @@ export function LanguageSwitcher({ locale, className = '' }: Props) {
           <line x1="2" y1="12" x2="22" y2="12" />
           <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
         </svg>
-        <span>{LABELS[locale]}</span>
+        <span>{LOCALE_LABELS[locale]}</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`}>
           <polyline points="6 9 12 15 18 9" />
         </svg>
@@ -54,7 +52,7 @@ export function LanguageSwitcher({ locale, className = '' }: Props) {
                 l === locale ? 'text-[var(--fg)]' : 'text-[var(--fg-2)] hover:bg-[var(--bg)]'
               }`}
             >
-              <span>{LABELS[l]}</span>
+              <span>{LOCALE_LABELS[l]}</span>
               {l === locale && <span className="w-4 h-4 text-[var(--fg)]">✓</span>}
             </Link>
           ))}

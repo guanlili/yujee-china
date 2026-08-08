@@ -130,7 +130,7 @@ test('pricing best-value badge uses a colorful light background with purple text
 });
 
 test('English landing moves the AI magazine line into the hero subtitle', () => {
-  const client = component('YujeeLandingHomeClient.tsx');
+  const client = component('copy/en.tsx');
   // "memory book", not "magazine": the magazine SERP is entertainment-intent
   // (fake Vogue cover apps), while memoir/keepsake carries the buying intent.
   const movedLine = 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful memory book made just for you.';
@@ -156,11 +156,13 @@ test('English landing moves the AI magazine line into the hero subtitle', () => 
 test('the hero subtitle states the layout is free — the H1 sits above the fold and carries weight', () => {
   // metaDesc is not a ranking input; on-page prose under the H1 is. So the
   // "free photo book layout" claim has to appear here too, not only in <head>.
-  const client = component('YujeeLandingHomeClient.tsx');
-  const createSubs = [...client.matchAll(/createSub:\s*'([^']*)'/g)].map((m) => m[1]);
-
-  assert.equal(createSubs.length, 2, 'expected exactly one createSub per locale');
-  const [en, zh] = createSubs;
+  const createSub = (locale: 'en' | 'zh') => {
+    const matches = [...component(`copy/${locale}.tsx`).matchAll(/createSub:\s*'([^']*)'/g)];
+    assert.equal(matches.length, 1, `expected exactly one createSub in the ${locale} copy`);
+    return matches[0][1];
+  };
+  const en = createSub('en');
+  const zh = createSub('zh');
   assert.match(en, /free/i, 'the English hero subtitle dropped the free claim');
   assert.match(en, /lays out|layout/i, 'the English hero subtitle dropped the layout claim');
   assert.match(zh, /免费/, 'the Chinese hero subtitle dropped the free claim');
@@ -172,11 +174,7 @@ test('the landing body carries the generic photobook terms, both spellings', () 
   // spellings that Google only partly reconciles. Both appear in the body so
   // neither side of the demand is left on the table. These are the GENERIC
   // terms only — per-format terms belong to /examples (see seo.test.ts).
-  const client = component('YujeeLandingHomeClient.tsx');
-  const start = client.indexOf('\n  en: {');
-  const end = client.indexOf('\n  zh: {');
-  assert.ok(start > 0 && end > start, 'could not isolate the English copy block');
-  const en = client.slice(start, end);
+  const en = component('copy/en.tsx');
 
   assert.match(en, /\bphoto book\b/i, 'the landing dropped the spaced "photo book" spelling');
   assert.match(en, /\bphotobooks?\b/i, 'the landing dropped the joined "photobook" spelling');
@@ -218,7 +216,11 @@ test('the hero subtitle states the layout is free — the H1 sits above the fold
 });
 
 test('landing redesign uses local optimized assets from the supplied design folder', () => {
-  const home = component('YujeeLandingHomeClient.tsx');
+  // Asset paths live with the copy, one file per locale — the English file is the
+  // reference set every translation is generated from.
+  // Photo/video paths sit with the copy (one file per locale); the decorative
+  // shell art stays in the client component.
+  const home = component('copy/en.tsx') + component('YujeeLandingHomeClient.tsx');
   for (const asset of landingAssets) {
     assert.match(home, new RegExp(asset.replaceAll('/', '\\/')), `${asset} should be referenced`);
     const file = join(webRoot, 'public', asset);

@@ -9,6 +9,8 @@
  *
  * Prices are USD (海外市场, yujeeai.com).
  */
+import type { Locale } from '@/lib/i18n/routing';
+
 
 export type PlanId = 'free';
 
@@ -31,7 +33,10 @@ export interface CreditPack {
 export type CheckoutProvider = 'creem';
 export const CHECKOUT_PROVIDERS = ['creem'] as const satisfies readonly CheckoutProvider[];
 export const ACTIVE_CHECKOUT_PROVIDER = 'creem' satisfies CheckoutProvider;
-export type CheckoutLocale = 'en' | 'zh';
+// The UI locale the buyer came from — it only ever decides which /{locale}/credits
+// URL the provider returns them to, so it tracks the full locale set (never the
+// zh|en generation language).
+export type CheckoutLocale = Locale;
 export type CheckoutSource = 'album' | 'create' | 'home';
 export type CheckoutReturnContext = {
   locale?: CheckoutLocale;

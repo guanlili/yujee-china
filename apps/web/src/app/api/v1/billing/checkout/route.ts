@@ -3,6 +3,7 @@ import { requireRealUser } from '@/lib/auth/require-auth';
 import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
+import { defaultLocale, locales } from '@/lib/i18n/routing';
 import { creemService } from '@/services/billing/creem-service';
 
 // Billing checkout entry. Server-only because provider API keys must never reach
@@ -10,7 +11,7 @@ import { creemService } from '@/services/billing/creem-service';
 // changes happen later via signed webhooks. Per-book billing (#97): packs only.
 const schema = z.object({
   packId: z.string().min(1),
-  locale: z.enum(['en', 'zh']).default('en'),
+  locale: z.enum(locales).default(defaultLocale),
   from: z.enum(['album', 'create', 'home']).optional(),
 });
 
