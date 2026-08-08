@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import { localizePath, type Locale } from '@/lib/i18n/routing';
+import { LOCALE_LABELS, locales, localizePath, type Locale } from '@/lib/i18n/routing';
 import { getMessages } from '@/lib/i18n/messages';
 import { signOut } from '@/lib/auth/client';
 import type { ChromeUser } from './useChromeSession';
@@ -108,8 +108,8 @@ export function UserMenu({ user, locale, onSignOut, showLangSwitch = false }: Pr
             <div className="mt-0.5 text-[var(--text-xs)] text-[var(--meta)]">{user?.email ?? ''}</div>
           </div>
           {showLangSwitch && (
-            <div className="mb-1 flex gap-1 px-3 py-2">
-              {(['en', 'zh'] as const).map((l) => (
+            <div className="mb-1 flex flex-wrap gap-1 px-3 py-2">
+              {locales.map((l) => (
                 <Link
                   key={l}
                   href={localizePath(pathname, l)}
@@ -120,7 +120,7 @@ export function UserMenu({ user, locale, onSignOut, showLangSwitch = false }: Pr
                       : 'text-[var(--fg-2)] hover:bg-[var(--bg)]'
                   }`}
                 >
-                  {l === 'zh' ? '中文' : 'EN'}
+                  {LOCALE_LABELS[l]}
                 </Link>
               ))}
             </div>

@@ -145,6 +145,7 @@ test('pricing copy makes no operational promises — only states what a credit b
   const { fileURLToPath } = await import('node:url');
   const { getFaqEntries } = await import('../lib/seo/faq');
   const { buildLlmsTxt } = await import('../lib/seo/llms');
+  const { locales } = await import('../lib/i18n/routing');
 
   const FORBIDDEN = [
     /排版成功后才扣/,
@@ -158,7 +159,7 @@ test('pricing copy makes no operational promises — only states what a credit b
   // Only the copy a user actually reads — not the file source, which contains
   // unrelated prose (and the very comments explaining this rule).
   const surfaces: string[] = [buildLlmsTxt()];
-  for (const locale of ['zh', 'en'] as const) {
+  for (const locale of locales) {
     const path = fileURLToPath(new URL(`../messages/${locale}.json`, import.meta.url));
     const m = JSON.parse(readFileSync(path, 'utf8'));
     surfaces.push(m.pricing.subtitle, m.dashboard.credits.rechargeSub);

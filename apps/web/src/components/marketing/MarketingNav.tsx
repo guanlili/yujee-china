@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { locales, localizePath, type Locale } from '@/lib/i18n/routing';
+import { LOCALE_LABELS, locales, localizePath, type Locale } from '@/lib/i18n/routing';
 import type { MarketingMessages } from '@/messages/marketing';
 import { Brand } from '@/components/app/Brand';
 import { ChromeStatusBar } from '@/components/app/ChromeStatusBar';
@@ -129,7 +129,7 @@ export function MarketingNav({ locale, m }: Props) {
                   l === locale ? 'bg-[var(--fg)] text-white' : 'bg-[var(--bg)] text-[var(--fg-2)]'
                 }`}
               >
-                {l === 'zh' ? '中文' : 'English'}
+                {LOCALE_LABELS[l]}
               </Link>
             ))}
           </div>
