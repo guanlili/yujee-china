@@ -1,25 +1,24 @@
-// TODO(i18n-translate): placeholder copy of en, to be replaced
 import type { EmailCopy } from './types';
 
 export const fr: EmailCopy = {
   verification: {
-    subject: 'Verify your Yujee email',
-    title: 'Verify your email',
-    greeting: (name: string) => `Hi ${name},`,
-    body: 'Welcome to Yujee. Confirm your email address to finish setting up your account.',
-    button: 'Verify email',
-    validity: 'This link expires soon and can only be used once.',
-    fallback: 'If the button does not work, paste this link into your browser:',
-    ignore: 'If you did not create a Yujee account, you can ignore this email.',
+    subject: 'Vérifiez votre adresse e-mail Yujee',
+    title: 'Vérifiez votre adresse e-mail',
+    greeting: (name: string) => `Bonjour ${name},`,
+    body: 'Bienvenue sur Yujee. Confirmez votre adresse e-mail pour finaliser la création de votre compte.',
+    button: 'Vérifier l’e-mail',
+    validity: 'Ce lien expire bientôt et ne peut être utilisé qu’une seule fois.',
+    fallback: 'Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :',
+    ignore: 'Si vous n’avez pas créé de compte Yujee, vous pouvez ignorer cet e-mail.',
   },
   order: {
-    subject: 'Yujee order confirmation',
-    title: 'Order confirmed',
-    body: 'Your Yujee order is paid and ready.',
-    orderId: 'Order ID',
-    amount: 'Amount',
+    subject: 'Confirmation de commande Yujee',
+    title: 'Commande confirmée',
+    body: 'Votre commande Yujee est payée et prête.',
+    orderId: 'N° de commande',
+    amount: 'Montant',
     album: 'Album',
-    button: 'View album',
-    footer: 'Keep this email as your receipt.',
+    button: 'Voir l’album',
+    footer: 'Conservez cet e-mail, il vous sert de reçu.',
   },
 };

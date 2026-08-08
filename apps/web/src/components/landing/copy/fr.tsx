@@ -1,151 +1,150 @@
-// TODO(i18n-translate): placeholder copy of en, to be replaced
 import { buildFaq } from './faq';
 import type { Copy } from './types';
 
 export const fr: Copy = {
-  sideHome: 'Home',
-  sideProjects: 'My projects',
-  navExamples: 'Examples',
-  navPricing: 'Pricing',
+  sideHome: 'Accueil',
+  sideProjects: 'Mes projets',
+  navExamples: 'Exemples',
+  navPricing: 'Tarifs',
   navFaq: 'FAQ',
-  footerStory: 'Our story',
-  login: 'Log in',
+  footerStory: 'Notre histoire',
+  login: 'Se connecter',
   menu: 'Menu',
-  createTitle: 'Turn your scattered photos into a photo book you can read, touch, and keep',
-  createSub: 'Upload your photos and the AI groups them, writes the story, and automatically lays out a magazine-style photo book — free to start, fully editable, ready to print.',
-  sampleCta: 'See example',
-  makeSame: 'Make one like this',
-  samplesNote: 'Demo books made by the Yujee team to show what the product can do — fictional content, not customer work.',
-  heroEyebrow: 'AI photobooks & memoir books · from shots to bound book',
+  createTitle: 'Vos photos éparpillées deviennent un livre photo à lire, à toucher, à garder',
+  createSub: 'Importez vos photos : l’IA les regroupe, écrit le récit et met automatiquement en page un livre photo façon magazine — gratuit pour commencer, entièrement modifiable, prêt à imprimer.',
+  sampleCta: 'Voir l’exemple',
+  makeSame: 'En créer un comme ça',
+  samplesNote: 'Livres de démonstration réalisés par l’équipe Yujee pour montrer ce que le produit sait faire — contenu fictif, pas des créations de clients.',
+  heroEyebrow: 'Livres photo et mémoires par IA · de la photo au livre relié',
   heroTitle: (
     <>
-      Turn your everyday snapshots
+      Vos photos du quotidien deviennent
       <br />
-      into a memoir that&apos;s yours alone
+      des mémoires qui n&apos;appartiennent qu&apos;à vous
     </>
   ),
-  heroSub: 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful memory book made just for you.',
-  heroCta: 'Start creating',
-  heroExamples: 'See examples',
-  trust: ['No design skills needed', 'Fully editable layout', 'Print-ready PDF export'],
-  workflowTitle: 'How it works',
-  workflow: ['Automatic photo grouping', 'AI-assisted story writing', 'Automatic magazine-style layout'],
-  polish: 'Polishing the text…',
-  featuresLabel: 'What it does',
+  heroSub: 'YUJEE AI transforme vos photos, vos histoires, vos souvenirs et vos idées en un beau livre souvenir fait pour vous seul.',
+  heroCta: 'Commencer à créer',
+  heroExamples: 'Voir les exemples',
+  trust: ['Aucune compétence en design', 'Mise en page modifiable', 'Export PDF prêt à imprimer'],
+  workflowTitle: 'Comment ça marche',
+  workflow: ['Regroupement automatique des photos', 'Écriture assistée par l’IA', 'Mise en page automatique façon magazine'],
+  polish: 'Peaufinage du texte…',
+  featuresLabel: 'Ce qu’il fait',
   featuresTitle: (
     <>
-      An AI photo book maker
+      Un créateur de livre photo par IA
       <br />
-      that does the sorting for you
+      qui fait le tri à votre place
     </>
   ),
   features: [
     {
-      title: 'Auto-layout into a photo book',
+      title: 'Mise en page automatique en livre photo',
       body:
-        'Drop in a set of photos and the AI automatically lays out magazine-style spreads — full bleeds, grids, white space. It is photobook design without the design work, and a finished photo book layout without dragging pictures one by one.',
+        'Déposez une série de photos : l’IA compose automatiquement des doubles pages façon magazine — pleines pages, grilles, respiration. C’est du design de livre photo sans le travail de design, et une mise en page finie sans déplacer les images une par une.',
       icon: 'layout',
     },
     {
-      title: 'Smart photo grouping + captions',
+      title: 'Regroupement intelligent + légendes',
       body:
-        'It detects time and scenes to group your photos automatically, and drafts an editable title and description for each. You set the tone; it writes the first draft.',
+        'Elle repère les moments et les scènes pour regrouper vos photos toute seule, et rédige pour chaque groupe un titre et une description modifiables. Vous donnez le ton, elle écrit le premier jet.',
       icon: 'spark',
     },
     {
-      title: 'Flip-book preview · print-ready PDF export',
+      title: 'Aperçu feuilletable · export PDF prêt à imprimer',
       body:
-        'Flip through a 3D preview, page by page — what you see is what you get. Keep it as a digital photobook, or export a 300 DPI print-ready PDF you can print and bind anytime.',
+        'Feuilletez un aperçu en 3D, page après page — ce que vous voyez est ce que vous obtenez. Gardez-le en livre photo numérique, ou exportez un PDF 300 DPI prêt à imprimer et à relier quand vous voulez.',
       icon: 'book',
     },
   ],
-  ctaTitle: "Don't leave those photos in a folder — make them a keepsake book",
-  ctaSub: 'Make your first photo book in minutes. Start free; think about export and print once you love it.',
-  start: 'Start free',
+  ctaTitle: 'Ne laissez pas ces photos au fond d’un dossier — faites-en un livre à garder',
+  ctaSub: 'Créez votre premier livre photo en quelques minutes. Commencez gratuitement ; vous penserez à l’export et à l’impression quand il vous plaira vraiment.',
+  start: 'Commencer gratuitement',
   faqLabel: 'FAQ',
-  faqTitle: 'AI photo book questions, answered',
-  faq: buildFaq('fr', 'See pricing'),
-  footerTagline: 'Turn your photos into a beautifully designed album.',
-  footerProduct: 'Product',
-  footerResources: 'Resources',
-  footerExampleTravel: 'Travel photo book example',
-  footerExampleLifeStory: 'Life story book example',
-  footerExamplesAll: 'All memoir examples',
-  footerCompany: 'About',
-  footerAccount: 'Account',
-  footerPrivacy: 'Privacy',
-  footerTerms: 'Terms',
-  signup: 'Sign up free',
-  copyright: '© 2026 Yujee · Memories, beautifully laid out',
+  faqTitle: 'Vos questions sur le livre photo par IA',
+  faq: buildFaq('fr', 'Voir les tarifs'),
+  footerTagline: 'Vos photos deviennent un album au design soigné.',
+  footerProduct: 'Produit',
+  footerResources: 'Ressources',
+  footerExampleTravel: 'Exemple de livre photo de voyage',
+  footerExampleLifeStory: 'Exemple de livre de récit de vie',
+  footerExamplesAll: 'Tous les exemples',
+  footerCompany: 'À propos',
+  footerAccount: 'Compte',
+  footerPrivacy: 'Confidentialité',
+  footerTerms: 'Conditions',
+  signup: 'Inscription gratuite',
+  copyright: '© 2026 Yujee · Vos souvenirs, joliment mis en page',
   samples: [
     {
-      title: 'Year in a book',
-      brief: 'One photo book a year, bound each December',
+      title: 'Une année en un livre',
+      brief: 'Un livre photo par an, relié chaque décembre',
       body:
-        'Pack a whole year into one book. Holidays, trips, and everyday moments are laid out by month and continued year after year.',
-      bullets: ['Grouped by month or event', 'One click for the year-end book', 'Same style, a matching set each year'],
+        'Toute une année dans un seul livre. Fêtes, voyages et instants ordinaires sont mis en page mois par mois, et l’histoire continue d’année en année.',
+      bullets: ['Regroupé par mois ou par événement', 'Le livre de fin d’année en un clic', 'Même style, une collection assortie chaque année'],
       image: '/landing-redesign/cards/03-year-record.png',
       video: '/landing-redesign/cards/03-year-record.mp4',
     },
     {
-      title: 'Life story',
-      brief: 'Your milestones, into a life story book',
+      title: 'Récit de vie',
+      brief: 'Vos grandes étapes, réunies en un livre de vie',
       body:
-        'Lay milestones along a timeline: birth, school, people, and journeys. Each group gets editable short essays, bound like a biography.',
-      bullets: ['Auto-grouped by life stage', 'Long-form text and pull quotes per group', 'Great as a birthday or memorial gift'],
+        'Déroulez les grandes étapes sur une ligne du temps : la naissance, l’école, les rencontres, les départs. Chaque groupe reçoit un court texte modifiable, relié comme une biographie.',
+      bullets: ['Regroupement automatique par étape de vie', 'Textes longs et citations par groupe', 'Parfait comme cadeau d’anniversaire ou de commémoration'],
       image: '/landing-redesign/cards/02-life-story.png',
       video: '/landing-redesign/cards/02-life-story.mp4',
     },
     {
-      title: 'Travel',
-      brief: 'A trip, auto-bound into a travel photo book',
+      title: 'Voyage',
+      brief: 'Un voyage, relié tout seul en carnet de voyage',
       body:
-        'Auto-grouped by date, with places and order sorted for you. One spread per day, with room to breathe between photos.',
-      bullets: ['Auto-split by timeline', 'Add map pages and route notes', 'Export a PDF to share with travel mates'],
+        'Regroupé automatiquement par date, les lieux et l’ordre du trajet remis d’aplomb pour vous. Une double page par journée, avec de l’air entre les photos.',
+      bullets: ['Découpage automatique par ligne du temps', 'Ajoutez des pages de carte et des notes d’itinéraire', 'Exportez un PDF à partager avec vos compagnons de route'],
       image: '/landing-redesign/cards/01-travel.png',
       video: '/landing-redesign/cards/01-travel.mp4',
     },
     {
       title: 'Portfolio',
-      brief: 'Your work, lined up quietly',
+      brief: 'Vos travaux, alignés en toute sobriété',
       body:
-        'Photography, illustration, design: aligned to a grid with consistent margins so the work stays the star.',
-      bullets: ['Strict grid and uniform margins', 'Title, medium, and year per page', 'Export a submittable PDF portfolio'],
+        'Photographie, illustration, design : alignés sur une grille avec des marges régulières, pour que le travail reste la vedette.',
+      bullets: ['Grille stricte et marges uniformes', 'Titre, technique et année sur chaque page', 'Exportez un portfolio PDF prêt à envoyer'],
       image: '/landing-redesign/cards/06-portfolio.png',
       video: '/landing-redesign/cards/06-portfolio.mp4',
     },
     {
       title: 'Magazine',
-      brief: 'Lay content out like a real magazine',
+      brief: 'Une mise en page de vrai magazine',
       body:
-        'More than an album: cover, contents, features, and pull quotes on a magazine skeleton. Turn life into an issue.',
-      bullets: ['Cover, contents, and feature templates', 'Editorial layout with headlines and quotes', 'Print-ready export for a physical issue'],
+        'Plus qu’un album : couverture, sommaire, dossiers et citations sur un squelette de magazine. Votre vie devient un numéro.',
+      bullets: ['Modèles de couverture, sommaire et dossier', 'Mise en page éditoriale avec titres et citations', 'Export prêt à imprimer pour un numéro papier'],
       image: '/landing-redesign/cards/05-magazine.png',
       video: '/landing-redesign/cards/05-magazine.mp4',
     },
     {
-      title: 'Growth story',
-      brief: 'A page a month, every change',
+      title: 'Album de croissance',
+      brief: 'Une page par mois, chaque changement',
       body:
-        'Filed by month into a growth timeline. Quick notes like height, weight, and firsts land on the right page.',
-      bullets: ['Auto-grouped by month or milestone', 'Add little data cards', 'Keep adding; the album grows over time'],
+        'Classé par mois en une ligne du temps de la croissance. Les petites notes — taille, poids, premières fois — atterrissent sur la bonne page.',
+      bullets: ['Regroupement automatique par mois ou par étape', 'Ajoutez de petites fiches de repères', 'Continuez d’ajouter : l’album grandit avec le temps'],
       image: '/landing-redesign/cards/04-growth-story.png',
       video: '/landing-redesign/cards/04-growth-story.mp4',
     },
   ],
   previewChapters: [
     {
-      title: 'Morning departure',
+      title: 'Départ au matin',
       left: '/landing-redesign/photos/bamboo-grove-path.jpg',
       right: '/landing-redesign/photos/riverside-walk.jpg',
     },
     {
-      title: 'Summer Coastline',
+      title: 'Littoral d’été',
       left: '/landing-redesign/photos/kamakura-coastal-street.jpg',
       right: '/landing-redesign/photos/seto-inland-sea-pier.jpg',
     },
     {
-      title: 'The way back',
+      title: 'Le chemin du retour',
       left: '/landing-redesign/photos/rainy-kyoto-lane.jpg',
       right: '/landing-redesign/photos/riverside-before-fireworks.jpg',
     },
