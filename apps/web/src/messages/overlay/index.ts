@@ -9,7 +9,7 @@ import { ja } from './ja';
  *
  * Why keyed by English: the editor lives in two very large, very active files
  * (ChatPanel.tsx ~2.7k lines, EditorPort.tsx ~6.3k lines) whose copy is written
- * inline as `aT('中文', 'English')` / `pick(locale, { zh, en })` pairs. Key-ifying
+ * inline as `aT(zh, en)` / `pick(locale, { zh, en })` pairs. Key-ifying
  * every one of those call sites would rewrite most of both files and collide with
  * every other branch touching them. Overlays let a translator add a language by
  * writing one new file and touching nothing else.

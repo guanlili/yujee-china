@@ -23,7 +23,7 @@ export const es: Copy = {
       en unas memorias que son solo tuyas
     </>
   ),
-  heroSub: 'YUJEE AI convierte tus fotos, tus historias, tus recuerdos y tus ideas en un libro de memoria hecho para ti.',
+  heroSub: 'YUJEE AI convierte tus fotos, tus historias, tus recuerdos y tus ideas en un libro de recuerdos hecho para ti.',
   heroCta: 'Empezar a crear',
   heroExamples: 'Ver ejemplos',
   trust: ['Sin saber diseñar', 'Maquetación editable', 'PDF listo para imprimir'],
@@ -54,7 +54,7 @@ export const es: Copy = {
     {
       title: 'Vista previa hojeable · PDF listo para imprimir',
       body:
-        'Hojea una vista previa en 3D, página a página: lo que ves es lo que te llevas. Guárdalo como fotolibro digital o exporta un PDF a 300 ppp listo para imprimir y encuadernar cuando quieras.',
+        'Hojea una vista previa en 3D, página a página: lo que ves es lo que te llevas. Guárdalo como fotolibro digital o exporta un PDF a 300 DPI listo para imprimir y encuadernar cuando quieras.',
       icon: 'book',
     },
   ],
@@ -91,16 +91,16 @@ export const es: Copy = {
       brief: 'Tus momentos clave, en un libro de historia de vida',
       body:
         'Coloca los momentos clave sobre una línea de tiempo: el nacimiento, los estudios, la gente y los viajes. Cada grupo lleva textos breves editables, encuadernados como una biografía.',
-      bullets: ['Agrupado solo por etapa de la vida', 'Texto largo y citas destacadas en cada grupo', 'Un gran regalo de cumpleaños o de recuerdo'],
+      bullets: ['Agrupación automática por etapa de la vida', 'Texto largo y citas destacadas en cada grupo', 'Un gran regalo de cumpleaños o de recuerdo'],
       image: '/landing-redesign/cards/02-life-story.png',
       video: '/landing-redesign/cards/02-life-story.mp4',
     },
     {
       title: 'Viajes',
-      brief: 'Un viaje, encuadernado solo en un fotolibro de viaje',
+      brief: 'Un viaje, encuadernado por sí solo en un fotolibro de viaje',
       body:
-        'Se agrupa solo por fecha, con los lugares y el orden ya resueltos. Una página doble por día, con aire entre las fotos.',
-      bullets: ['Se separa solo por la línea de tiempo', 'Añade páginas de mapa y notas de ruta', 'Exporta un PDF para compartir con tus compañeros de viaje'],
+        'Se agrupa por sí solo según la fecha, con los lugares y el orden ya resueltos. Una página doble por día, con aire entre las fotos.',
+      bullets: ['División automática por línea de tiempo', 'Añade páginas de mapa y notas de ruta', 'Exporta un PDF para compartir con tus compañeros de viaje'],
       image: '/landing-redesign/cards/01-travel.png',
       video: '/landing-redesign/cards/01-travel.mp4',
     },
@@ -127,7 +127,7 @@ export const es: Copy = {
       brief: 'Una página al mes, todos los cambios',
       body:
         'Se archiva por meses en una línea de tiempo del crecimiento. Los apuntes rápidos, como la altura, el peso y las primeras veces, caen en la página que les toca.',
-      bullets: ['Agrupado solo por mes o por hito', 'Añade pequeñas fichas de datos', 'Sigue añadiendo: el álbum crece con el tiempo'],
+      bullets: ['Agrupación automática por mes o por hito', 'Añade pequeñas fichas de datos', 'Sigue añadiendo: el álbum crece con el tiempo'],
       image: '/landing-redesign/cards/04-growth-story.png',
       video: '/landing-redesign/cards/04-growth-story.mp4',
     },

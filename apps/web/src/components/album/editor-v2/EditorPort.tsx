@@ -792,7 +792,7 @@ function EditorTopbar({
   return (
     <div className="topbar nav-shell sticky top-0 z-50 h-14 flex items-center justify-between px-3 sm:px-6 shrink-0">
       <div className="top-left flex items-center gap-2 sm:gap-3 min-w-0">
-        <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-9 h-9 rounded-pill text-fg2 no-underline transition-colors hover:bg-black/[.05] shrink-0" data-i18n-title="backToDetail" title={pick(locale, { zh: '返回书本明细', en: 'Back to albums' })}>
+        <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-9 h-9 rounded-pill text-fg2 no-underline transition-colors hover:bg-black/[.05] shrink-0" data-i18n-title="backToDetail" title={pick(locale, { zh: '返回作品列表', en: 'Back to albums' })}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><polyline points="15 18 9 12 15 6" /></svg>
         </a>
         <a href={`/${locale}`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '26px', width: 'auto', display: 'block' }} /></a>
@@ -1173,7 +1173,7 @@ function EditorModals({ locale }: { locale: Locale }) {
               </div>
             </div>
             <div className="bbg-color-view">
-              <button type="button" className="bbg-back" data-bbg-back>‹ {aT('返回', 'Back')}</button>
+              <button type="button" className="bbg-back" data-bbg-back>‹ {aT('返回', 'Go back')}</button>
               <div className="bbg-color-slot" data-bbg-color-slot />
             </div>
           </div>
@@ -1226,7 +1226,7 @@ function StaticEditorShell({
       <div className="page-glow" aria-hidden="true" />
       <div className="topbar nav-shell sticky top-0 z-50 h-14 flex items-center justify-between px-3 sm:px-6 shrink-0">
         <div className="top-left flex items-center gap-2 sm:gap-3 min-w-0">
-          <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-9 h-9 rounded-pill text-fg2 no-underline transition-colors hover:bg-black/[.05] shrink-0" title={pick(locale, { zh: '返回书本明细', en: 'Back to albums' })}>
+          <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-9 h-9 rounded-pill text-fg2 no-underline transition-colors hover:bg-black/[.05] shrink-0" title={pick(locale, { zh: '返回作品列表', en: 'Back to albums' })}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><polyline points="15 18 9 12 15 6" /></svg>
           </a>
           <a href={`/${locale}`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '26px', width: 'auto', display: 'block' }} /></a>
@@ -4481,7 +4481,7 @@ function EditorBook({
       const item = (f: EditorFont) => `<button type="button" class="mes-font-item" data-mes-font="${f.id}" style="font-family:${mesEsc(f.stack)}">${f.name}</button>`;
       const group = (label: string, list: EditorFont[]) => (list.length ? `<div class="mes-font-grp">${label}</div>${list.map(item).join('')}` : '');
       return (
-        `<button type="button" class="mes-back" data-mes-back>‹ ${aT('返回', 'Back')}</button>` +
+        `<button type="button" class="mes-back" data-mes-back>‹ ${aT('返回', 'Go back')}</button>` +
         `<div class="mes-font-list">` +
         group(aT('中文', 'Chinese'), EDITOR_FONTS.filter((f) => f.script === 'cjk')) +
         group(aT('英文', 'Latin'), EDITOR_FONTS.filter((f) => f.script === 'latin')) +
@@ -4534,7 +4534,7 @@ function EditorBook({
       if (title) title.textContent = mesViewTitle();
       // 颜色视图(文字)/主视图(书页背景)= 内联共享 Fill 取色器(色板 + 拾色器两模式)。
       if (mesState.mode === 'text' && mesState.view === 'color') {
-        body.innerHTML = `<button type="button" class="mes-back" data-mes-back>‹ ${aT('返回', 'Back')}</button><div class="mes-color-slot" data-mes-color-slot></div>`;
+        body.innerHTML = `<button type="button" class="mes-back" data-mes-back>‹ ${aT('返回', 'Go back')}</button><div class="mes-color-slot" data-mes-color-slot></div>`;
         const slot = body.querySelector<HTMLElement>('[data-mes-color-slot]');
         if (slot) mountSharedColorPicker(slot, textColorContext);
         return;

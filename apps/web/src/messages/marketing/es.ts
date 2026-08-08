@@ -27,7 +27,7 @@ export const es: MarketingMessages = {
     composerHints: [
       { label: 'Álbum de viaje', fill: 'Hazme un álbum de fotos de mi viaje a Bali la semana pasada; tengo muchas fotos de playas y de templos.' },
       { label: 'Momentos del bebé', fill: 'Quiero un diario de crecimiento de mi hija, con fotos desde que nació hasta su primer cumpleaños.' },
-      { label: 'Graduación', fill: 'Un anuario de graduación del instituto con las fotos de clase y las despedidas de todo el mundo.' },
+      { label: 'Graduación', fill: 'Un anuario de graduación de la secundaria con las fotos de clase y las despedidas de todo el mundo.' },
       { label: 'Diario gastronómico', fill: 'Reúne las fotos de restaurantes de los últimos seis meses en una revista de comida.' },
     ],
     casesTitle: 'Inspiración',
@@ -37,7 +37,7 @@ export const es: MarketingMessages = {
       { title: 'Recuerdo de boda', desc: 'Guarda los votos, las felicitaciones y cada detalle bonito del día en que dijiste que sí.' },
       { title: 'Momentos del bebé', desc: 'Del nacimiento al primer cumpleaños, recoge cada avance en fotos y en palabras.' },
       { title: 'Memorias de viaje', desc: 'Ordena los momentos sueltos del viaje en una historia con línea de tiempo.' },
-      { title: 'Viaje de amigas', desc: 'Convierte el sol, las bromas y las fotos del finde en un número luminoso sobre la amistad.' },
+      { title: 'Viaje de amigas', desc: 'Convierte el sol, las bromas y las fotos del fin de semana en un número luminoso sobre la amistad.' },
       { title: 'Diario de mascotas', desc: 'Haz un fotolibro solo para tu peludo, con su día a día y sus mejores caras.' },
       { title: 'Recuerdos de una vida', desc: 'Digitaliza las fotos antiguas y conserva las historias de familia que merecen durar.' },
       { title: 'Notas gastronómicas', desc: 'Organiza las fotos de restaurantes en una guía de comida con historia.' },

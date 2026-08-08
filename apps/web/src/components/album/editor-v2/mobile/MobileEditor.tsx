@@ -465,7 +465,7 @@ export function MobileEditor({
         title={title}
         aT={aT}
         onBack={onBack ?? (() => {})}
-        backLabel={aT('返回', 'Back')}
+        backLabel={aT('返回', 'Go back')}
         onSave={onSave}
         backupState={backupState}
         backupProgress={backupProgress}

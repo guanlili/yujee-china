@@ -15,7 +15,7 @@ export const ES: readonly FaqEntry[] = [
   },
   {
     q: '¿En qué formato se exporta mi fotolibro?',
-    a: 'En un PDF a 300 ppp listo para imprimir: descárgalo, compártelo o mándalo directamente a una imprenta para imprimir y encuadernar tu fotolibro.',
+    a: 'En un PDF a 300 DPI listo para imprimir: descárgalo, compártelo o mándalo directamente a una imprenta para imprimir y encuadernar tu fotolibro.',
   },
   {
     q: '¿Mis fotos están seguras y son privadas?',

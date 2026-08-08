@@ -73,7 +73,7 @@ export function TextPanel({
     return (
       <>
         <button type="button" className="mes-back" onClick={onBackToMain}>
-          ‹ {aT('返回', 'Back')}
+          ‹ {aT('返回', 'Go back')}
         </button>
         <ColorPicker aT={aT} value={state.color} onChange={(css) => onChange({ color: css })} />
       </>
@@ -108,7 +108,7 @@ export function TextPanel({
     return (
       <>
         <button type="button" className="mes-back" onClick={onBackToMain}>
-          ‹ {aT('返回', 'Back')}
+          ‹ {aT('返回', 'Go back')}
         </button>
         <div className="mes-font-list">
           {group(aT('中文', 'Chinese'), 'cjk')}

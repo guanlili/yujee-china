@@ -25,7 +25,7 @@ export function PageBgPanel({ aT, value, view, onChange, onOpenPicker, onBackToM
     return (
       <>
         <button type="button" className="mes-back" onClick={onBackToMain}>
-          ‹ {aT('返回', 'Back')}
+          ‹ {aT('返回', 'Go back')}
         </button>
         <ColorPicker aT={aT} value={value} onChange={onChange} />
       </>

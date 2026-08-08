@@ -90,7 +90,7 @@ export const fr: Copy = {
       title: 'Récit de vie',
       brief: 'Vos grandes étapes, réunies en un livre de vie',
       body:
-        'Déroulez les grandes étapes sur une ligne du temps : la naissance, l’école, les rencontres, les départs. Chaque groupe reçoit un court texte modifiable, relié comme une biographie.',
+        'Déroulez les grandes étapes sur une ligne du temps : la naissance, l’école, les rencontres, les voyages. Chaque groupe reçoit un court texte modifiable, relié comme une biographie.',
       bullets: ['Regroupement automatique par étape de vie', 'Textes longs et citations par groupe', 'Parfait comme cadeau d’anniversaire ou de commémoration'],
       image: '/landing-redesign/cards/02-life-story.png',
       video: '/landing-redesign/cards/02-life-story.mp4',
@@ -99,7 +99,7 @@ export const fr: Copy = {
       title: 'Voyage',
       brief: 'Un voyage, relié tout seul en carnet de voyage',
       body:
-        'Regroupé automatiquement par date, les lieux et l’ordre du trajet remis d’aplomb pour vous. Une double page par journée, avec de l’air entre les photos.',
+        'Regroupement automatique par date, avec les lieux et l’ordre du trajet remis dans l’ordre pour vous. Une double page par journée, avec de l’air entre les photos.',
       bullets: ['Découpage automatique par ligne du temps', 'Ajoutez des pages de carte et des notes d’itinéraire', 'Exportez un PDF à partager avec vos compagnons de route'],
       image: '/landing-redesign/cards/01-travel.png',
       video: '/landing-redesign/cards/01-travel.mp4',

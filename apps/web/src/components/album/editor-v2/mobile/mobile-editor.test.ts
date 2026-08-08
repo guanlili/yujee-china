@@ -89,7 +89,7 @@ test('AI 气泡在画板右下角(两态同一位置)', () => {
 
 test('i18n:英文 locale 下 chrome 不留中文(硬编码中文 = 英文用户看到中英混排)', () => {
   const html = render(BOOK, false);
-  assert.match(html, /aria-label="Back"/);
+  assert.match(html, /aria-label="Go back"/);
   assert.match(html, /aria-label="Share"/);
   assert.match(html, /aria-label="Board background"/);
   assert.doesNotMatch(html, /aria-label="Pages per screen"/);

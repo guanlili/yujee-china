@@ -8,8 +8,8 @@ export const es: Record<string, ExampleContent> = {
     metaDesc:
       'Mira cómo Yujee convierte las fotos sueltas de un viaje entero en un fotolibro de viaje con estilo de revista: agrupado por lugar, con pies de foto escritos por IA y exportado en PDF listo para imprimir.',
     intro: [
-      'Este es un ejemplo de unas memorias de viaje hechas con Yujee. Cogimos las fotos de un solo viaje (paisajes, calles, retratos y los momentos tranquilos de en medio) y dejamos que la IA las agrupara por lugar y por fecha, redactara los pies de foto y los títulos de capítulo, y maquetara cada página doble como una revista que puedes tener en las manos. Aquí no hay nada diseñado a mano.',
-      'Úsalo como referencia para tu propio fotolibro de viaje. Da igual que sea una semana en Kioto o un año entero de escapadas de fin de semana: el proceso es el mismo. Subes tus fotos, dejas que Yujee las ordene y monte un primer borrador, cambias lo que quieras conversando y exportas un PDF a 300 ppp para imprimir y encuadernar.',
+      'Este es un ejemplo de unas memorias de viaje hechas con Yujee. Tomamos las fotos de un solo viaje (paisajes, calles, retratos y los momentos tranquilos de en medio) y dejamos que la IA las agrupara por lugar y por fecha, redactara los pies de foto y los títulos de capítulo, y maquetara cada página doble como una revista que puedes tener en las manos. Aquí no hay nada diseñado a mano.',
+      'Úsalo como referencia para tu propio fotolibro de viaje. Da igual que sea una semana en Kioto o un año entero de escapadas de fin de semana: el proceso es el mismo. Subes tus fotos, dejas que Yujee las ordene y monte un primer borrador, cambias lo que quieras conversando y exportas un PDF a 300 DPI para imprimir y encuadernar.',
     ],
     inside: [
       'Una portada y una portadilla hechas con tu mejor foto',
@@ -22,7 +22,7 @@ export const es: Record<string, ExampleContent> = {
       'Pies de foto escritos por IA',
       'Maquetación automática tipo revista',
       'Edición conversando',
-      'PDF a 300 ppp listo para imprimir',
+      'PDF a 300 DPI listo para imprimir',
     ],
     galleryAlt: [
       'Portada del Diario de viaje con una foto de banderas de oración junto a un lago',
@@ -44,7 +44,7 @@ export const es: Record<string, ExampleContent> = {
       'Un libro de memorias de una vida hecho con Yujee: los momentos clave y los días de siempre sobre una línea de tiempo, maquetados por IA. Haz tu propia biografía y exporta un PDF para imprimir.',
     intro: [
       'Este es un ejemplo de un libro de memorias de una vida hecho con Yujee. Reúne los momentos de los que está hecha una vida de verdad (una mesa junto a la ventana, una tarde en casa, esos pequeños rincones con los que convivimos) y los ordena a lo largo de una línea de tiempo tranquila. La IA escribió un primer borrador de los títulos de capítulo y de los pies de foto; todas las palabras siguen siendo editables.',
-      'Es un formato que no deja de crecer. Añade un capítulo cada año, o digitaliza las fotos antiguas y deja que Yujee las hilvane en una sola historia continua; luego exporta un PDF a 300 ppp para imprimir y guardar. Es la forma más sencilla de escribir tu propia biografía sin escribir ni una palabra primero: la IA redacta y tú corriges.',
+      'Es un formato que no deja de crecer. Añade un capítulo cada año, o digitaliza las fotos antiguas y deja que Yujee las hilvane en una sola historia continua; luego exporta un PDF a 300 DPI para imprimir y guardar. Es la forma más sencilla de escribir tu propia biografía sin escribir ni una palabra primero: la IA redacta y tú corriges.',
     ],
     inside: [
       'Una línea de tiempo que va de los primeros años hasta hoy',
@@ -57,7 +57,7 @@ export const es: Record<string, ExampleContent> = {
       'Texto de capítulo escrito por IA',
       'Maquetación automática tipo revista',
       'Edición conversando',
-      'PDF a 300 ppp listo para imprimir',
+      'PDF a 300 DPI listo para imprimir',
     ],
     galleryAlt: [
       'Una página doble de historia de vida titulada “Mesa de tarde” con fotos del interior de una casa',
