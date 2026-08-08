@@ -91,7 +91,7 @@ memoir-agent-rebuild/
 - **页面真相 = HTML**:每页 draft 存完整 794×1123 HTML(`Page.html`),画板/PDF/设计对话
   都消费它;锚点契约 `data-text-key`/`data-image-slot`,图片 src 一律 `{{IMG_SRC:slotId}}`
   token(渲染时解析,base64 绝不落库)。槽位字段(templateId/images/texts)保留:photo
-  引用、换排版重生成、装书校验的依据;texts 由 html 派生。渲染簇与 47 个 HTML 模板在
+  引用、换排版重生成、装书校验的依据;texts 由 html 派生。渲染簇与全部 HTML 模板在
   `packages/contracts/src/render/`(模板数以 `packages/contracts/templates/*.json` 为准,
   别在文档里手抄计数)。
 - 模板 JSON 在 `packages/contracts/templates/*.json`;生成文件不要手改。
@@ -183,5 +183,5 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 33a790c8
+checked-at: 55bdc43f
 -->

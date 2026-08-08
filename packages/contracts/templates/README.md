@@ -21,6 +21,8 @@ technical context lives in the root `README.md`.
 4. 同目录 `registry.ts` 登记
 5. `apps/web/src/components/album/templates/<id>/` —— React 渲染组件
 6. `apps/web/src/components/album/web-registry.ts` 登记(**渲染注册表的唯一真相**)
+7. `packages/contracts/src/templates.test.ts` 的 `EXPECTED_TEMPLATE_IDS`
+   硬编码清单 —— 不加新 id 该测试直接红
 
 `registry-parity.test.ts` 和 `templates:check` 只挡得住其中一部分,提交前跑
 `pnpm typecheck && pnpm --filter @yujee/contracts test`。
@@ -83,5 +85,5 @@ under `packages/contracts/fixtures/skeleton/`.
 
 <!-- doc-scope
 paths: packages/contracts/templates/*.json, packages/contracts/src/templates.ts, packages/contracts/src/render/html-templates/**, apps/web/src/components/album/web-registry.ts
-checked-at: 2d0f870d
+checked-at: 55bdc43f
 -->
