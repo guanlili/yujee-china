@@ -1,70 +1,69 @@
-// TODO(i18n-translate): placeholder copy of en, to be replaced
 import type { ExampleContent } from './types';
 
 export const es: Record<string, ExampleContent> = {
   'travel-journal': {
-    title: 'Travel Journal',
-    tagline: 'A trip laid out as a story of place and time.',
-    metaTitle: 'Travel Photo Book Example — A Yujee AI Memoir',
+    title: 'Diario de viaje',
+    tagline: 'Un viaje maquetado como una historia de lugares y de tiempo.',
+    metaTitle: 'Ejemplo de fotolibro de viaje — Unas memorias hechas con Yujee AI',
     metaDesc:
-      'See how Yujee turns a whole trip of scattered photos into a magazine-style travel photobook — grouped by place, captioned by AI, exported as a print-ready PDF.',
+      'Mira cómo Yujee convierte las fotos sueltas de un viaje entero en un fotolibro de viaje con estilo de revista: agrupado por lugar, con pies de foto escritos por IA y exportado en PDF listo para imprimir.',
     intro: [
-      'This is an example of a travel memoir made with Yujee. We took a single trip’s photos — landscapes, streets, portraits, and the quiet moments in between — and let the AI group them by place and time, draft the captions and chapter titles, and lay every spread out as a magazine you can hold. Nothing here was designed by hand.',
-      'Use it as a reference for your own travel photobook. Whether it’s a week in Kyoto or a year of weekend escapes, the flow is the same: upload your photos, let Yujee sort and lay out a first draft, edit anything in chat, then export a 300 DPI PDF to print and bind.',
+      'Este es un ejemplo de unas memorias de viaje hechas con Yujee. Cogimos las fotos de un solo viaje (paisajes, calles, retratos y los momentos tranquilos de en medio) y dejamos que la IA las agrupara por lugar y por fecha, redactara los pies de foto y los títulos de capítulo, y maquetara cada página doble como una revista que puedes tener en las manos. Aquí no hay nada diseñado a mano.',
+      'Úsalo como referencia para tu propio fotolibro de viaje. Da igual que sea una semana en Kioto o un año entero de escapadas de fin de semana: el proceso es el mismo. Subes tus fotos, dejas que Yujee las ordene y monte un primer borrador, cambias lo que quieras conversando y exportas un PDF a 300 ppp para imprimir y encuadernar.',
     ],
     inside: [
-      'A cover and title page built from your strongest shot',
-      'Chapters grouped by place and by day',
-      'AI-drafted captions and short chapter text, all editable',
-      'Full-bleed landscapes next to quiet detail shots',
+      'Una portada y una portadilla hechas con tu mejor foto',
+      'Capítulos agrupados por lugar y por día',
+      'Pies de foto y textos de capítulo redactados por la IA, todos editables',
+      'Paisajes a sangre junto a primeros planos de detalles tranquilos',
     ],
     madeWith: [
-      'AI photo grouping',
-      'AI-written captions',
-      'Magazine-style auto layout',
-      'Chat-based editing',
-      '300 DPI print-ready PDF',
+      'Agrupación de fotos con IA',
+      'Pies de foto escritos por IA',
+      'Maquetación automática tipo revista',
+      'Edición conversando',
+      'PDF a 300 ppp listo para imprimir',
     ],
     galleryAlt: [
-      'Travel Journal cover page with a lakeside prayer-flag photo',
-      'A two-page travel spread pairing a portrait with a mountain landscape',
-      'A travel spread titled “The Quiet Between Moments” with a light-ray photo',
-      'A travel spread of horses on a snowfield beside a portrait',
+      'Portada del Diario de viaje con una foto de banderas de oración junto a un lago',
+      'Una página doble de viaje que combina un retrato con un paisaje de montaña',
+      'Una página doble de viaje titulada “La calma entre momentos” con una foto de rayos de luz',
+      'Una página doble de viaje con caballos en un campo nevado junto a un retrato',
     ],
   },
   'life-story': {
-    title: 'Life Story',
-    tagline: 'A life told along a timeline — milestones and the ordinary days between.',
+    title: 'Historia de vida',
+    tagline: 'Una vida contada en una línea de tiempo: los momentos clave y los días corrientes de en medio.',
     // This page owns the memoir/biography demand. Deliberately NOT the bare
     // terms "best memoir" or "biography": those SERPs are book recommendations
     // and celebrity lookups (Goodreads, Wikipedia, IMDb) — reader and
     // reference intent, not "I want to make one". "memoir book" and
     // "biography book" are the make-intent forms of the same demand.
-    metaTitle: 'Life Story & Biography Book Example — Yujee AI Memoir Maker',
+    metaTitle: 'Ejemplo de libro de historia de vida y biografía — Yujee AI',
     metaDesc:
-      'A life-story memoir book made with Yujee: milestones and everyday moments along a timeline, laid out by AI. Make your own biography book and export a print PDF.',
+      'Un libro de memorias de una vida hecho con Yujee: los momentos clave y los días de siempre sobre una línea de tiempo, maquetados por IA. Haz tu propia biografía y exporta un PDF para imprimir.',
     intro: [
-      'This is an example of a life-story memoir book made with Yujee. It gathers the moments a life is actually made of — a table by the window, an afternoon at home, the small still-life corners we live around — and arranges them along a gentle timeline. The AI wrote a first draft of the chapter titles and captions; every word stays editable.',
-      'It’s a format that keeps growing. Add a chapter each year, or digitize old photos and let Yujee thread them into one continuous story, then export a 300 DPI PDF to print and keep. It’s the simplest way to write your own biography without writing a word first — the AI drafts, you edit.',
+      'Este es un ejemplo de un libro de memorias de una vida hecho con Yujee. Reúne los momentos de los que está hecha una vida de verdad (una mesa junto a la ventana, una tarde en casa, esos pequeños rincones con los que convivimos) y los ordena a lo largo de una línea de tiempo tranquila. La IA escribió un primer borrador de los títulos de capítulo y de los pies de foto; todas las palabras siguen siendo editables.',
+      'Es un formato que no deja de crecer. Añade un capítulo cada año, o digitaliza las fotos antiguas y deja que Yujee las hilvane en una sola historia continua; luego exporta un PDF a 300 ppp para imprimir y guardar. Es la forma más sencilla de escribir tu propia biografía sin escribir ni una palabra primero: la IA redacta y tú corriges.',
     ],
     inside: [
-      'A timeline that runs from the early days to now',
-      'Chapters for milestones, homes, and everyday corners',
-      'AI-drafted titles and captions you can rewrite',
-      'Room to add a new chapter every year',
+      'Una línea de tiempo que va de los primeros años hasta hoy',
+      'Capítulos para los momentos clave, las casas y los rincones de siempre',
+      'Títulos y pies de foto redactados por la IA que puedes reescribir',
+      'Sitio para añadir un capítulo nuevo cada año',
     ],
     madeWith: [
-      'AI photo grouping',
-      'AI-written chapter text',
-      'Magazine-style auto layout',
-      'Chat-based editing',
-      '300 DPI print-ready PDF',
+      'Agrupación de fotos con IA',
+      'Texto de capítulo escrito por IA',
+      'Maquetación automática tipo revista',
+      'Edición conversando',
+      'PDF a 300 ppp listo para imprimir',
     ],
     galleryAlt: [
-      'A life-story spread titled “Afternoon Table” with home interior photos',
-      'A spread pairing “Afternoon Table” with a “Still Life” vase photo',
-      'A “Decorative Corner / Still Life” spread with branches in a vase',
-      'A “Decorative Corner / Personal Lounge” spread of a lived-in room',
+      'Una página doble de historia de vida titulada “Mesa de tarde” con fotos del interior de una casa',
+      'Una página doble que combina “Mesa de tarde” con una foto de un jarrón, “Naturaleza muerta”',
+      'Una página doble “Rincón decorado / Naturaleza muerta” con ramas en un jarrón',
+      'Una página doble “Rincón decorado / Salón personal” de una habitación vivida',
     ],
   },
 };

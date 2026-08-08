@@ -1,25 +1,24 @@
-// TODO(i18n-translate): placeholder copy of en, to be replaced
 import type { InterviewCase } from '../interview';
 
 export const es: Record<InterviewCase, readonly [string, string, string]> = {
   timeAndPlace: [
-    "I've grouped these photos for you.",
-    'I’d love to know a little more — who were you with that day?',
-    'Any special people, moments, or feelings you’d like woven into this book?',
+    'Ya te he agrupado estas fotos.',
+    'Me encantaría saber un poco más: ¿con quién estabas ese día?',
+    '¿Hay alguna persona, algún momento o alguna sensación especial que quieras dejar dentro de este libro?',
   ],
   timeOnly: [
-    'These photos have a lovely feel to them.',
-    'Where were they taken, and who were you with?',
-    'Tell me any memory or mood you’d like to keep.',
+    'Estas fotos tienen algo muy bonito.',
+    '¿Dónde las hiciste y con quién estabas?',
+    'Cuéntame cualquier recuerdo o estado de ánimo que quieras guardar.',
   ],
   placeOnly: [
-    "I've looked through these photos.",
-    'Roughly when were they taken, and who were you with?',
-    'Any story or feeling you especially want to record?',
+    'Ya he mirado estas fotos.',
+    '¿Más o menos cuándo las hiciste y con quién estabas?',
+    '¿Hay alguna historia o alguna sensación que quieras dejar escrita?',
   ],
   neither: [
-    'I’d love to understand these photos a little more.',
-    'Roughly when, where, and with whom were they taken?',
-    'What happened, how did it feel — tell me anything you like.',
+    'Me gustaría entender un poco mejor estas fotos.',
+    '¿Más o menos cuándo, dónde y con quién las hiciste?',
+    'Qué pasó, cómo te sentiste… cuéntame lo que quieras.',
   ],
 };

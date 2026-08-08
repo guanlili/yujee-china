@@ -1,331 +1,330 @@
-// TODO(i18n-translate): placeholder copy of en, to be replaced
 import { SUPPORT_EMAIL } from '@/config/social';
 import type { MarketingMessages } from './types';
 
 export const es: MarketingMessages = {
   nav: {
     brand: 'Yujee',
-    home: 'Home',
-    myProjects: 'My Projects',
-    howItWorks: 'How it works',
-    examples: 'Examples',
-    pricing: 'Pricing',
-    about: 'About',
-    menuToggle: 'Toggle navigation menu',
-    login: 'Log in',
-    getStarted: 'Get started',
-    languageLabel: 'English',
+    home: 'Inicio',
+    myProjects: 'Mis proyectos',
+    howItWorks: 'Cómo funciona',
+    examples: 'Ejemplos',
+    pricing: 'Precios',
+    about: 'Sobre nosotros',
+    menuToggle: 'Abrir el menú de navegación',
+    login: 'Iniciar sesión',
+    getStarted: 'Empezar',
+    languageLabel: 'Español',
   },
   landing: {
     // "Free" leads because the free grant is real (FREE_PLAN_CREDITS covers a
     // whole book) and because "layout" is the winnable half of that demand —
     // bare "free photo book maker" is Shutterfly/Canva territory. "Memoir"
     // stays: it is the higher-intent term and the one this site can rank for.
-    metaTitle: 'Free AI Photo Book & Memoir Maker — Auto Layout to PDF | Yujee',
+    metaTitle: 'Fotolibro y memorias con IA gratis — Maquetación automática a PDF | Yujee',
     metaDesc:
-      'Free photo book layout online — Yujee’s AI groups your photos, writes the story, and lays out a magazine-style book. Chat to edit, export a print-ready PDF.',
-    composerUploadLabel: 'Upload photos',
+      'Maquetación gratuita de fotolibros online: la IA de Yujee agrupa tus fotos, escribe la historia y monta un libro con estilo de revista. Edita conversando y exporta un PDF listo para imprimir.',
+    composerUploadLabel: 'Subir fotos',
     composerHints: [
-      { label: 'Travel Album', fill: 'Make me a photo album of my trip to Bali last week — I have lots of beach and temple photos.' },
-      { label: 'Baby Milestones', fill: 'I want a growth journal for my daughter, with photos from birth to her first birthday.' },
-      { label: 'Graduation', fill: 'A high school graduation yearbook with class photos and everyone’s farewell messages.' },
-      { label: 'Food Journal', fill: 'Compile my restaurant photos from the past six months into a food magazine.' },
+      { label: 'Álbum de viaje', fill: 'Hazme un álbum de fotos de mi viaje a Bali la semana pasada; tengo muchas fotos de playas y de templos.' },
+      { label: 'Momentos del bebé', fill: 'Quiero un diario de crecimiento de mi hija, con fotos desde que nació hasta su primer cumpleaños.' },
+      { label: 'Graduación', fill: 'Un anuario de graduación del instituto con las fotos de clase y las despedidas de todo el mundo.' },
+      { label: 'Diario gastronómico', fill: 'Reúne las fotos de restaurantes de los últimos seis meses en una revista de comida.' },
     ],
-    casesTitle: 'Inspiration',
-    casesMore: 'View more',
+    casesTitle: 'Inspiración',
+    casesMore: 'Ver más',
     cases: [
-      { title: 'Graduation', desc: 'Turn four years of group photos, ticket stubs, and chats into a yearbook.' },
-      { title: 'Wedding Memory', desc: 'Save vows, blessings, and every beautiful detail from the day you said yes.' },
-      { title: 'Baby Milestones', desc: 'From birth to first birthday, capture every milestone in photos and words.' },
-      { title: 'Travel Memoir', desc: 'Arrange scattered travel moments into a story with a timeline.' },
-      { title: 'Girls Trip', desc: 'Turn sun, jokes, and weekend photos into a bright friendship issue.' },
-      { title: 'Pet Diary', desc: 'Make a dedicated photo book for your furry friend, capturing daily life and funny moments.' },
-      { title: 'Life Memories', desc: 'Digitize old photos and preserve family stories that deserve to last.' },
-      { title: 'Food Notes', desc: 'Organize restaurant photos into a story-driven food guide.' },
-      { title: 'Love Diary', desc: 'Collect quiet dates, small notes, and everyday romance in one keepsake.' },
+      { title: 'Graduación', desc: 'Convierte cuatro años de fotos de grupo, entradas y conversaciones en un anuario.' },
+      { title: 'Recuerdo de boda', desc: 'Guarda los votos, las felicitaciones y cada detalle bonito del día en que dijiste que sí.' },
+      { title: 'Momentos del bebé', desc: 'Del nacimiento al primer cumpleaños, recoge cada avance en fotos y en palabras.' },
+      { title: 'Memorias de viaje', desc: 'Ordena los momentos sueltos del viaje en una historia con línea de tiempo.' },
+      { title: 'Viaje de amigas', desc: 'Convierte el sol, las bromas y las fotos del finde en un número luminoso sobre la amistad.' },
+      { title: 'Diario de mascotas', desc: 'Haz un fotolibro solo para tu peludo, con su día a día y sus mejores caras.' },
+      { title: 'Recuerdos de una vida', desc: 'Digitaliza las fotos antiguas y conserva las historias de familia que merecen durar.' },
+      { title: 'Notas gastronómicas', desc: 'Organiza las fotos de restaurantes en una guía de comida con historia.' },
+      { title: 'Diario de amor', desc: 'Reúne las citas tranquilas, las notas pequeñas y el romance de cada día en un solo recuerdo.' },
     ],
   },
   privacy: {
-    metaTitle: 'Yujee — Privacy Policy',
+    metaTitle: 'Yujee — Política de privacidad',
     metaDesc:
-      'How Yujee handles your photos and personal data. Original photos are never uploaded — only compressed previews go to the AI for layout planning, and your albums stay private to you.',
-    title: 'Privacy Policy',
-    effective: 'Effective Date: May 27, 2026',
+      'Cómo trata Yujee tus fotos y tus datos personales. Las fotos originales nunca se suben: a la IA solo llegan vistas previas comprimidas para planificar la maquetación, y tus álbumes siguen siendo privados.',
+    title: 'Política de privacidad',
+    effective: 'Fecha de entrada en vigor: 27 de mayo de 2026',
     sections: [
       {
-        h: '1. Introduction',
-        body: 'Yujee ("we") values your privacy. This Privacy Policy explains how we collect, use, disclose, and protect your information when you use yujeeai.com.',
+        h: '1. Introducción',
+        body: 'Yujee ("nosotros") valora tu privacidad. Esta Política de privacidad explica cómo recopilamos, usamos, divulgamos y protegemos tu información cuando utilizas yujeeai.com.',
       },
       {
-        h: '2. Information We Collect',
-        body: 'We collect: (a) account information (email, name) when you register; (b) usage data about how you interact with Yujee; (c) text and prompts you submit to generate memoirs; (d) the memoirs you produce — layout data, exported PDF files, and cover thumbnails — stored on our cloud storage so you can reopen and download them anytime. We do not store the original photos you upload: they stay in your browser, and only compressed previews are sent to our AI provider for layout planning. Note that photos you place in a memoir are embedded in the PDF you export and save.',
+        h: '2. Información que recopilamos',
+        body: 'Recopilamos: (a) información de la cuenta (correo electrónico, nombre) cuando te registras; (b) datos de uso sobre cómo interactúas con Yujee; (c) los textos e indicaciones que envías para generar unas memorias; (d) las memorias que produces, es decir, los datos de maquetación, los archivos PDF exportados y las miniaturas de portada, guardados en nuestro almacenamiento en la nube para que puedas volver a abrirlos y descargarlos cuando quieras. No guardamos las fotos originales que subes: se quedan en tu navegador, y a nuestro proveedor de IA solo se envían vistas previas comprimidas para planificar la maquetación. Ten en cuenta que las fotos que coloques en unas memorias quedan incrustadas en el PDF que exportas y guardas.',
       },
       {
-        h: '3. How We Use Your Information',
-        body: 'We use the information to provide and improve Yujee, to process payments and manage credits, to send service-related notifications, to monitor usage trends, and to detect or prevent fraud and abuse.',
+        h: '3. Cómo usamos tu información',
+        body: 'Usamos la información para ofrecer y mejorar Yujee, procesar los pagos y gestionar los créditos, enviar avisos relacionados con el servicio, seguir las tendencias de uso y detectar o evitar fraudes y abusos.',
       },
       {
-        h: '4. Information Sharing',
-        body: 'We do not sell your personal information. We share data only with service providers operating the product on our behalf (cloud hosting, payment processing, email delivery, AI inference) and when required by law.',
+        h: '4. Cesión de información',
+        body: 'No vendemos tu información personal. Solo compartimos datos con los proveedores que operan el producto en nuestro nombre (alojamiento en la nube, procesamiento de pagos, envío de correo e inferencia de IA) y cuando la ley lo exige.',
       },
       {
-        h: '5. Data Security',
-        body: 'We apply reasonable technical and organizational measures to protect your data. No internet transmission or electronic storage is 100% secure; we cannot guarantee absolute security.',
+        h: '5. Seguridad de los datos',
+        body: 'Aplicamos medidas técnicas y organizativas razonables para proteger tus datos. Ninguna transmisión por internet ni ningún almacenamiento electrónico es seguro al 100 %; no podemos garantizar una seguridad absoluta.',
       },
       {
-        h: '6. Your Rights',
-        body: 'Depending on your jurisdiction, you may access, correct, delete, or restrict the processing of your personal data. Contact us to exercise these rights.',
+        h: '6. Tus derechos',
+        body: 'Según la jurisdicción en la que te encuentres, puedes acceder a tus datos personales, corregirlos, eliminarlos o limitar su tratamiento. Escríbenos para ejercer estos derechos.',
       },
       {
-        h: '7. Children’s Privacy',
-        body: 'Yujee is not directed to children under 13 (or the equivalent age in your jurisdiction). If we learn we collected personal data from a child, we will delete it promptly.',
+        h: '7. Privacidad de los menores',
+        body: 'Yujee no se dirige a menores de 13 años (o la edad equivalente en tu jurisdicción). Si descubrimos que hemos recopilado datos personales de un menor, los eliminaremos sin demora.',
       },
       {
-        h: '8. Changes to this Policy',
-        body: 'We may update this Privacy Policy at any time. Material changes will be announced in-product or by email.',
+        h: '8. Cambios en esta política',
+        body: 'Podemos actualizar esta Política de privacidad en cualquier momento. Los cambios importantes se anunciarán dentro del producto o por correo electrónico.',
       },
       {
-        h: '9. Contact',
+        h: '9. Contacto',
         body: '',
       },
     ],
-    contactLine: 'Questions? Email privacy@yujeeai.com.',
+    contactLine: '¿Tienes dudas? Escribe a privacy@yujeeai.com.',
   },
   terms: {
-    metaTitle: 'Yujee — Terms of Service',
+    metaTitle: 'Yujee — Términos del servicio',
     metaDesc:
-      'The terms you agree to when using Yujee to turn your photos into an AI-laid-out memoir: accounts, credits, exports, and the rights you keep over your own content.',
-    title: 'Terms of Service',
-    effective: 'Effective Date: August 8, 2026',
+      'Los términos que aceptas al usar Yujee para convertir tus fotos en unas memorias maquetadas por IA: cuentas, créditos, exportaciones y los derechos que conservas sobre tu propio contenido.',
+    title: 'Términos del servicio',
+    effective: 'Fecha de entrada en vigor: 8 de agosto de 2026',
     sections: [
       {
-        h: '1. Acceptance of Terms',
-        body: 'By accessing or using Yujee (yujeeai.com), you agree to be bound by these Terms of Service. If you do not agree, do not use the service.',
+        h: '1. Aceptación de los términos',
+        body: 'Al acceder a Yujee (yujeeai.com) o utilizarlo, aceptas quedar vinculado por estos Términos del servicio. Si no estás de acuerdo, no uses el servicio.',
       },
       {
-        h: '2. Description of Service',
-        body: 'Yujee is an AI-powered memoir generator. You provide photos and prompts; we lay out a magazine-style memoir and let you export it as a PDF. We do not guarantee a specific creative outcome.',
+        h: '2. Descripción del servicio',
+        body: 'Yujee es un generador de memorias con IA. Tú aportas fotos e indicaciones; nosotros maquetamos unas memorias con estilo de revista y te dejamos exportarlas en PDF. No garantizamos un resultado creativo concreto.',
       },
       {
-        h: '3. User Accounts',
-        body: 'You are responsible for the confidentiality of your account credentials and for all activity that happens under your account. You must provide accurate registration details.',
+        h: '3. Cuentas de usuario',
+        body: 'Eres responsable de la confidencialidad de las credenciales de tu cuenta y de toda la actividad que ocurra en ella. Debes facilitar datos de registro exactos.',
       },
       {
-        h: '4. Acceptable Use',
-        body: 'You agree not to use Yujee to generate content that is illegal, harmful, defamatory, obscene, or that infringes the rights of others; nor to disrupt the service, abuse rate limits, or attempt unauthorized access.',
+        h: '4. Uso aceptable',
+        body: 'Te comprometes a no usar Yujee para generar contenido ilegal, dañino, difamatorio u obsceno, ni que vulnere los derechos de terceros; tampoco a interrumpir el servicio, abusar de los límites de uso o intentar accesos no autorizados.',
       },
       {
-        h: '5. Breach and Account Termination',
+        h: '5. Incumplimiento y cierre de la cuenta',
         body:
-          'If you breach these Terms, in particular Section 4, or if we have reasonable grounds to believe your use of Yujee is unlawful, infringing, fraudulent, or harmful to other users or to the security of the service, we may take one or more of the following measures, depending on the severity of the breach:\n' +
-          '• warn you and ask you to fix the problem within a stated period;\n' +
-          '• restrict or disable specific features, such as generation, export, or sharing;\n' +
-          '• remove or disable access to the content concerned and any share links to it;\n' +
-          '• suspend your account;\n' +
-          '• terminate your account and refuse further service.\n' +
+          'Si incumples estos Términos, en particular la sección 4, o si tenemos motivos razonables para creer que tu uso de Yujee es ilícito, infractor, fraudulento o perjudicial para otras personas usuarias o para la seguridad del servicio, podremos adoptar una o varias de las siguientes medidas, según la gravedad del incumplimiento:\n' +
+          '• avisarte y pedirte que soluciones el problema en un plazo determinado;\n' +
+          '• restringir o desactivar funciones concretas, como generar, exportar o compartir;\n' +
+          '• retirar o bloquear el acceso al contenido afectado y a cualquier enlace para compartirlo;\n' +
+          '• suspender tu cuenta;\n' +
+          '• cerrar tu cuenta y negarnos a seguir prestando el servicio.\n' +
           '\n' +
-          'For serious breaches, for repeated breaches after a warning, or where the law or a competent authority requires it, we may suspend or terminate immediately without prior notice. Except where urgency or the law requires otherwise, we will make reasonable efforts to tell you the reason when we act or shortly afterwards. If you believe a decision was wrong, you may appeal to the contact address at the end of these Terms and we will review it again.\n' +
+          'En caso de incumplimientos graves, de incumplimientos reiterados tras un aviso, o cuando la ley o una autoridad competente lo exija, podremos suspender o cerrar la cuenta de inmediato y sin aviso previo. Salvo que la urgencia o la ley exijan otra cosa, haremos un esfuerzo razonable por explicarte el motivo en el momento de actuar o poco después. Si crees que la decisión fue equivocada, puedes recurrir escribiendo a la dirección de contacto que figura al final de estos Términos y la revisaremos de nuevo.\n' +
           '\n' +
-          'If your account is terminated because you breached these Terms, unused credits are not refunded, and we are not liable for any loss arising from the termination. Nothing here limits our right to pursue other remedies available at law. You may stop using Yujee or ask us to delete your account at any time; after deletion your data is handled as described in the Privacy Policy. Sections 6, 8, 9, and 11, together with any provision that by its nature should survive, remain in effect after termination.',
+          'Si tu cuenta se cierra por haber incumplido estos Términos, los créditos no utilizados no se reembolsan y no respondemos de las pérdidas derivadas del cierre. Nada de lo dispuesto aquí limita nuestro derecho a ejercer las demás acciones que la ley nos reconozca. Puedes dejar de usar Yujee o pedirnos que eliminemos tu cuenta cuando quieras; tras la eliminación, tus datos se tratan según lo descrito en la Política de privacidad. Las secciones 6, 8, 9 y 11, junto con cualquier disposición que por su naturaleza deba seguir vigente, continúan en vigor tras la extinción.',
       },
       {
-        h: '6. Intellectual Property',
-        body: 'You retain ownership of the photos and text you input. As between you and Yujee, the generated memoir output belongs to you — you may use, reproduce, and distribute it freely. We process your content solely to provide the service.',
+        h: '6. Propiedad intelectual',
+        body: 'Conservas la titularidad de las fotos y los textos que aportas. En la relación entre tú y Yujee, las memorias generadas te pertenecen: puedes usarlas, reproducirlas y distribuirlas libremente. Nosotros tratamos tu contenido únicamente para prestar el servicio.',
       },
       {
-        h: '7. Credits and Payments',
+        h: '7. Créditos y pagos',
         body:
-          'Generating a memoir consumes credits on a per-photo basis: one credit covers one photo. When you start a generation we place a hold on the corresponding credits; they are debited once the layout succeeds, and the hold is released with no charge if the generation fails. Credits are obtained through one-time credit packs — there is no subscription and no monthly fee, and credits currently have no expiry date. Current prices and pack sizes are those shown on the pricing page.\n' +
+          'Generar unas memorias consume créditos foto a foto: un crédito cubre una foto. Cuando inicias una generación retenemos los créditos correspondientes; se cobran en cuanto la maquetación se completa, y la retención se libera sin ningún cargo si la generación falla. Los créditos se obtienen mediante paquetes de pago único: no hay suscripción ni cuota mensual, y por ahora los créditos no caducan. Los precios y los tamaños de paquete vigentes son los que aparecen en la página de precios.\n' +
           '\n' +
-          'Once credits have been debited for a successful layout they are not refundable, including where you are unhappy with the result. Except as required by law, fees paid and credit packs purchased are non-refundable. Where you purchased through a third-party payment provider, that provider’s own refund rules also apply, and nothing in this section affects consumer rights that the law of your country or region does not permit us to exclude.\n' +
+          'Una vez cobrados los créditos por una maquetación completada, no son reembolsables, tampoco si el resultado no te convence. Salvo que la ley exija otra cosa, los importes pagados y los paquetes de créditos comprados no admiten devolución. Si compraste a través de una pasarela de pago externa, también se aplican sus propias normas de reembolso, y nada de esta sección afecta a los derechos de consumo que la ley de tu país o región no nos permita excluir.\n' +
           '\n' +
-          'We may change prices, pack sizes, and billing models at any time. Changes take effect for new purchases when published and do not affect credits you have already purchased.',
+          'Podemos cambiar los precios, los tamaños de paquete y los modelos de facturación en cualquier momento. Los cambios se aplican a las compras nuevas desde su publicación y no afectan a los créditos que ya hayas comprado.',
       },
       {
-        h: '8. Disclaimer',
-        body: 'The service is provided "as is" and "as available", without warranties of any kind. We do not warrant that Yujee will be uninterrupted, secure, or error-free.',
+        h: '8. Exención de garantías',
+        body: 'El servicio se presta "tal cual" y "según disponibilidad", sin garantías de ningún tipo. No garantizamos que Yujee funcione sin interrupciones, de forma segura o sin errores.',
       },
       {
-        h: '9. Limitation of Liability',
-        body: 'To the maximum extent permitted by law, Yujee shall not be liable for any indirect, incidental, special, consequential, or punitive damages — including lost profits, data loss, or loss of goodwill.',
+        h: '9. Limitación de responsabilidad',
+        body: 'En la máxima medida permitida por la ley, Yujee no responderá de ningún daño indirecto, incidental, especial, consecuente o punitivo, incluidos el lucro cesante, la pérdida de datos o el daño a la reputación.',
       },
       {
-        h: '10. Changes to Terms',
-        body: 'We may modify these Terms at any time; the updated version takes effect on posting. Continued use after changes constitutes acceptance.',
+        h: '10. Cambios en los Términos',
+        body: 'Podemos modificar estos Términos en cualquier momento; la versión actualizada entra en vigor al publicarse. Seguir usando el servicio después de los cambios equivale a aceptarlos.',
       },
       {
-        h: '11. Governing Law and Disputes',
+        h: '11. Ley aplicable y controversias',
         body:
-          'These Terms — their formation, validity, and interpretation, and any dispute arising out of or relating to them — are governed by the laws of the People’s Republic of China (excluding the Hong Kong and Macao Special Administrative Regions and Taiwan).\n' +
+          'Estos Términos —su formación, su validez y su interpretación, así como cualquier controversia que surja de ellos o guarde relación con ellos— se rigen por las leyes de la República Popular China (excluidas las Regiones Administrativas Especiales de Hong Kong y Macao y la región de Taiwán).\n' +
           '\n' +
-          'If a dispute arises, the parties will first try to resolve it through good-faith negotiation. If negotiation does not succeed, either party may bring proceedings before a court of competent jurisdiction at the place where the operator of Yujee is located.\n' +
+          'Si surge una controversia, las partes intentarán primero resolverla mediante una negociación de buena fe. Si la negociación no prospera, cualquiera de las partes podrá acudir al tribunal competente del lugar donde se encuentre el operador de Yujee.\n' +
           '\n' +
-          'If the law of your country or region grants you consumer rights that cannot be excluded, this section does not affect those rights.',
+          'Si la ley de tu país o región te reconoce derechos de consumo que no pueden excluirse, esta sección no afecta a esos derechos.',
       },
       {
-        h: '12. Contact',
+        h: '12. Contacto',
         body: '',
       },
     ],
-    contactLine: 'Questions? Email support@yujeeai.com.',
+    contactLine: '¿Tienes dudas? Escribe a support@yujeeai.com.',
   },
   story: {
-    metaTitle: 'Our Story — Why I built Yujee',
+    metaTitle: 'Nuestra historia — Por qué hice Yujee',
     metaDesc:
-      'I lived with depression for more than a decade, worked as an astrology counselor, then spent a year building an AI counselor. Here is what I learned, and why Yujee turns your life into a book instead.',
-    title: 'After Getting Out of Depression, I Built a Tool Just for Myself',
+      'Viví con depresión más de una década, trabajé como consejera astrológica y después pasé un año convirtiendo una IA en consejera. Esto es lo que aprendí, y por qué Yujee prefiere convertir tu vida en un libro.',
+    title: 'Después de salir de la depresión, hice una herramienta solo para mí',
     lede: [
-      'My name is yvaine.',
-      'I lived with depression for more than a decade. I have worked as a software product designer, then as an astrology counselor. Now I build Yujee.',
-      'Yujee is a tool that helps you understand yourself, and turn that into a book.',
-      'Here is why it exists.',
+      'Me llamo yvaine.',
+      'Viví con depresión más de diez años. He trabajado como diseñadora de producto de software y después como consejera astrológica. Ahora hago Yujee.',
+      'Yujee es una herramienta que te ayuda a entenderte y a convertir eso en un libro.',
+      'Esto es por qué existe.',
     ],
     sections: [
       {
-        h: 'More than ten years in the dark',
+        h: 'Más de diez años a oscuras',
         paras: [
-          'I had severe depression and bipolar disorder.',
-          'From primary school into adulthood, because of things at home, I was the withdrawn kid, the isolated one, the one with no confidence.',
-          'The light only started coming in after I finished college.',
-          'After graduation I moved into software product design, and for the first time I felt the pleasure of solving something with logic and design together. But one question stayed with me the whole time. What is a person actually living for.',
+          'Tuve depresión grave y trastorno bipolar.',
+          'Desde la escuela primaria hasta la edad adulta, por cosas de casa, fui la niña retraída, la que estaba aparte, la que no tenía ninguna confianza en sí misma.',
+          'La luz solo empezó a entrar cuando terminé la universidad.',
+          'Al graduarme pasé al diseño de producto de software y por primera vez sentí el gusto de resolver algo juntando lógica y diseño. Pero hubo una pregunta que me acompañó todo ese tiempo. Para qué vive una persona, en realidad.',
         ],
-        pull: 'More than ten years without daylight. I stood at that edge more times than I can count.',
+        pull: 'Más de diez años sin luz. Me asomé a ese borde más veces de las que puedo contar.',
       },
       {
-        h: 'Astrology gave me somewhere to stand',
+        h: 'La astrología me dio un punto de apoyo',
         paras: [
-          'I had done plenty of therapy and counseling. Almost none of it worked on me.',
-          'Later I got into divination. I asked astrologers, BaZi readers, Zi Wei readers. Not one of them could answer that question.',
-          'Curiosity pushed me to go learn astrology myself. I learned it while using it, and somewhere along the way I became an astrology counselor.',
-          'The deeper I went, the more I understood where my own depression came from. I made peace with a childhood that was poor and miserable.',
-          'I am not here to sell you astrology. What actually helped me was that it gave me somewhere to stand, an angle from which I could look at myself from the outside. The North Node is what that means to me.',
-          'Later I used astrology and psychology together to help people around me, and it worked better than I expected. Give a person somewhere to stand, and they can move their own life.',
-        ],
-      },
-      {
-        h: 'The 13-year-old girl',
-        paras: [
-          'I met a 13-year-old girl. Her parents had worked far from home for years, she had been left behind with relatives, and she had stopped going to school.',
-          'I wanted to help her. I grew up the same way.',
-          'I did not take the case. Pulling someone out of that takes an enormous amount of time and energy. I was buried in work, I had my own bills, and I could not do it.',
-          'That one stayed with me. Most kids like her cannot afford a counselor, and cannot bring themselves to open up to a real person anyway.',
+          'Había hecho bastante terapia y bastante consulta psicológica. Casi nada de aquello me sirvió.',
+          'Después me metí en la adivinación. Pregunté a astrólogos, a lectores de BaZi, a lectores de Zi Wei. Ninguno supo responder a esa pregunta.',
+          'La curiosidad me empujó a aprender astrología por mi cuenta. La aprendí usándola y, en algún punto del camino, me convertí en consejera astrológica.',
+          'Cuanto más entraba, mejor entendía de dónde venía mi propia depresión. Hice las paces con una infancia pobre y desdichada.',
+          'No vengo a venderte astrología. Lo que de verdad me ayudó es que me dio un punto de apoyo, un ángulo desde el que podía mirarme desde fuera. Eso es lo que significa para mí el Nodo Norte.',
+          'Más adelante usé la astrología junto con la psicología para ayudar a la gente de mi entorno, y funcionó mejor de lo que esperaba. Dale a alguien un punto de apoyo y podrá mover su propia vida.',
         ],
       },
       {
-        h: 'I built an AI counselor',
+        h: 'La niña de trece años',
         paras: [
-          'Those were the years ChatGPT and Claude arrived. I found that with careful tuning, an AI could work as a junior to intermediate astrology counselor, with both counseling and astrology skills. Everything I had learned in software design finally had somewhere to go.',
-          'In 2024 I met CC, who was building AI tarot, through social media. In 2025 I joined the team and spent a full year tuning an AI into a counselor that was cheap enough, patient enough to stay for the long run, and free of personal bias.',
-          'We shipped it.',
-          'But after watching closely for a year how people and that AI counselor treated each other, I saw something else.',
-          'A beautiful imagined future gives the brain its dopamine. But if nothing lands, if nothing moves forward, you end up carrying water in a basket. The emptiness after that hurts more than before.',
-          'So it has to land somewhere.',
-        ],
-        pull: 'Counseling is not the answer, and it is not the destination. When someone stays lost long enough, counseling can turn into another drug. The kind you slowly get hooked on.',
-      },
-      {
-        h: 'Why a book',
-        paras: [
-          'I went through a lot of research on psychological treatment. Art therapy and expressive writing have a clear effect on depression and on feeling lost. Writing and drawing with your hands pull you out of the loop your thoughts keep spinning in, and put you back into your body.',
-          'In plain words, making things helps with pain, and it does real work for rebuilding a sense of self.',
-          'Across all those consultations I saw something else. A lot of people stay with someone they do not like, doing work they do not like, lost and hurting for years, and underneath it they do not know who they actually are. What they want, what they cannot stand, what they are good at, what they value. None of it is clear to them.',
-          'That kind of knowing does not arrive in a flash one afternoon. It takes rounds of shaping, finding, tearing down, and testing again.',
-          'And when it comes to making something, I cannot think of anything more compelling than a book that belongs only to you.',
-          'It makes your life visible. And years from now you open it and find that along the way there were so many moments that mattered. Good ones, ones you grew from, ones that hurt.',
-          'What you actually lived through is the most valuable fruit on the tree of your life.',
+          'Conocí a una niña de trece años. Sus padres llevaban años trabajando lejos de casa, ella se había quedado con unos parientes y había dejado de ir a la escuela.',
+          'Quería ayudarla. Yo crecí igual que ella.',
+          'No acepté el caso. Sacar a alguien de ahí exige una cantidad enorme de tiempo y de energía. Yo estaba enterrada en trabajo, tenía mis propias facturas y no podía.',
+          'Aquello se me quedó dentro. La mayoría de los niños como ella no puede pagarse una consulta y, además, tampoco se atreve a abrirse delante de una persona real.',
         ],
       },
       {
-        h: 'What Yujee is',
+        h: 'Hice una consejera de IA',
         paras: [
-          'By 2026 I could not sit on it anymore.',
-          'I wanted to build a product that was genuinely for the person using it. No retention games, no hooks. One job. Help someone know themselves, and keep it.',
-          'That is where Yujee came from. In Chinese it means meeting yourself, and also steering yourself.',
-          'The way it works is concrete. It turns your scattered photos and words into a book you can open. And in the act of choosing and arranging your own life, you see who you are again.',
-          'What Yujee does today:',
+          'Fueron los años en que llegaron ChatGPT y Claude. Descubrí que, con un ajuste cuidadoso, una IA podía trabajar como consejera astrológica de nivel inicial o intermedio, con conocimientos de psicología y de astrología a la vez. Todo lo que había aprendido diseñando software por fin tenía adónde ir.',
+          'En 2024 conocí por redes sociales a CC, que estaba haciendo tarot con IA. En 2025 me uní a su equipo y pasé un año entero afinando una IA hasta convertirla en una consejera lo bastante barata, lo bastante paciente para quedarse a largo plazo y libre de sesgos personales.',
+          'La sacamos.',
+          'Pero después de mirar de cerca durante un año cómo se trataban las personas y esa consejera de IA, vi otra cosa.',
+          'Un futuro imaginado y bonito le da al cerebro su dopamina. Pero si nada aterriza, si nada avanza, acabas cargando agua en un cesto. El vacío que viene después duele más que antes.',
+          'Así que tiene que aterrizar en algún sitio.',
+        ],
+        pull: 'La consulta no es la respuesta, y tampoco es el destino. Cuando alguien lleva perdido el tiempo suficiente, la consulta puede convertirse en otra droga. De esas que enganchan poco a poco.',
+      },
+      {
+        h: 'Por qué un libro',
+        paras: [
+          'Me leí mucha investigación sobre tratamiento psicológico. La arteterapia y la escritura expresiva tienen un efecto claro sobre la depresión y sobre esa sensación de estar perdido. Escribir y dibujar con las manos te sacan del bucle en el que giran tus pensamientos y te devuelven al cuerpo.',
+          'Dicho en claro: crear alivia el dolor y hace un trabajo real a la hora de reconstruir el sentido de uno mismo.',
+          'En todas aquellas consultas vi algo más. Mucha gente sigue con una persona que no le gusta, en un trabajo que no le gusta, perdida y dolida durante años, y por debajo de todo eso no sabe quién es en realidad. Qué quiere, qué no soporta, en qué es buena, qué le importa. Nada de eso lo tiene claro.',
+          'Ese saber no llega de golpe una tarde cualquiera. Necesita rondas de dar forma, de encontrar, de derribar y de volver a comprobar.',
+          'Y en esto de crear algo, no se me ocurre nada más atractivo que un libro que solo te pertenece a ti.',
+          'Hace visible tu vida. Y dentro de unos años lo abres y descubres que por el camino hubo muchísimos momentos que importaron. Buenos, otros que te hicieron crecer, otros que dolieron.',
+          'Lo que de verdad has vivido es el fruto más valioso del árbol de tu vida.',
+        ],
+      },
+      {
+        h: 'Qué es Yujee',
+        paras: [
+          'En 2026 ya no pude seguir aguantándolo.',
+          'Quería hacer un producto que fuera de verdad para quien lo usa. Sin juegos de retención, sin anzuelos. Un solo trabajo. Ayudar a alguien a conocerse y a guardarlo.',
+          'De ahí salió Yujee. En chino significa encontrarte contigo mismo y también gobernarte a ti mismo.',
+          'La forma de hacerlo es concreta. Convierte tus fotos y tus palabras dispersas en un libro que puedes abrir. Y en el acto de elegir y ordenar tu propia vida, vuelves a ver quién eres.',
+          'Lo que Yujee hace hoy:',
         ],
         bullets: [
-          'Sorts your photos automatically and groups the similar ones',
-          'Lays out the book for you, no dragging things around',
-          'Helps you write, turning fragments into a story that holds together',
-          'Shares in one click, so the people who matter can read it',
+          'Ordena tus fotos automáticamente y agrupa las que se parecen',
+          'Maqueta el libro por ti, sin arrastrar nada a mano',
+          'Te ayuda a escribir y convierte los fragmentos en una historia que se sostiene',
+          'Comparte con un clic, para que lo lea la gente que te importa',
         ],
       },
       {
-        h: 'Built by one person',
+        h: 'Hecho por una sola persona',
         paras: [
-          'Yujee was built entirely by me working with Claude Code, learning and shipping at the same time. The systems architecture I picked up years ago doing system integration still holds up. Ask me again later.',
-          'For two months I barely slept, and put out the first demo I considered usable. In July, 20 early users sent feedback, and I kept going.',
-          'Doing the whole thing alone is not easy. But I wanted to get this one thing right, badly.',
-          'What Yujee is today is still a very small version. It may not change anything for you right away. I still want to put this stubbornness into it.',
+          'Yujee lo construí yo entera trabajando con Claude Code, aprendiendo y publicando a la vez. La arquitectura de sistemas que aprendí hace años haciendo integración todavía aguanta. Pregúntame otra vez más adelante.',
+          'Durante dos meses apenas dormí y saqué la primera demo que me pareció utilizable. En julio, 20 usuarios pioneros me mandaron sus comentarios, y seguí.',
+          'Hacerlo todo sola no es fácil. Pero quería hacer bien esta cosa, y lo quería con muchas ganas.',
+          'Lo que Yujee es hoy sigue siendo una versión muy pequeña. Puede que no te cambie nada de inmediato. Aun así quiero poner esta terquedad dentro.',
         ],
       },
     ],
-    closing: 'And I hope you get to hold on to your own tree of life, and find the self that sits deepest inside you.',
-    dateline: 'yvaine, July 31, 2026',
-    byline: { author: 'yvaine', date: 'July 31, 2026', readingTime: '8 min read' },
-    tocHead: 'Contents',
-    ctaLabel: 'Start your own book',
+    closing: 'Y ojalá tú también llegues a sostener tu propio árbol de la vida, y a encontrar el yo que vive más adentro.',
+    dateline: 'yvaine, 31 de julio de 2026',
+    byline: { author: 'yvaine', date: '31 de julio de 2026', readingTime: '8 min de lectura' },
+    tocHead: 'Índice',
+    ctaLabel: 'Empieza tu propio libro',
     disclaimer:
-      'Yujee is not a medical product and is not a replacement for therapy. If you are in danger right now, please reach out to a doctor or a crisis line first.',
+      'Yujee no es un producto médico y no sustituye a la terapia. Si ahora mismo estás en peligro, contacta antes con un médico o con una línea de ayuda.',
   },
   examples: {
-    metaTitle: 'Photo Book & Memoir Examples — Made with Yujee AI',
+    metaTitle: 'Ejemplos de fotolibros y memorias — Hechos con Yujee AI',
     metaDesc:
-      'Real formats you can make with Yujee: travel journals, life stories, and more — each one grouped, captioned, and laid out by AI from a pile of photos, then exported as a print-ready PDF.',
-    kicker: 'Examples',
-    hubTitle: 'Examples',
+      'Formatos reales que puedes hacer con Yujee: diarios de viaje, historias de vida y mucho más. La IA agrupa, escribe los pies de foto y maqueta cada uno a partir de un montón de fotos, y después lo exportas en PDF listo para imprimir.',
+    kicker: 'Ejemplos',
+    hubTitle: 'Ejemplos',
     hubIntro:
-      'Real formats you can make with Yujee. Each one started as a pile of photos and a few words — the AI grouped them, drafted the captions, and laid out every spread. Open one to see the flow, then make your own.',
-    moreComing: 'More formats — baby growth, pets, and love stories — are on the way.',
-    insideHead: 'What’s inside',
-    madeWithHead: 'Made with',
-    galleryHead: 'Inside the book',
-    flipThrough: 'Flip through',
-    makeSame: 'Make one like this',
-    breadcrumbHome: 'Home',
-    breadcrumbExamples: 'Examples',
-    openLabel: 'See example',
+      'Formatos reales que puedes hacer con Yujee. Cada uno empezó como un montón de fotos y unas pocas palabras: la IA los agrupó, redactó los pies de foto y maquetó todas las páginas dobles. Abre uno para ver cómo va y luego haz el tuyo.',
+    moreComing: 'Ya vienen más formatos: crecimiento del bebé, mascotas e historias de amor.',
+    insideHead: 'Qué hay dentro',
+    madeWithHead: 'Hecho con',
+    galleryHead: 'Por dentro',
+    flipThrough: 'Hojear',
+    makeSame: 'Hacer uno así',
+    breadcrumbHome: 'Inicio',
+    breadcrumbExamples: 'Ejemplos',
+    openLabel: 'Ver el ejemplo',
   },
   footer: {
-    tagline: 'Turn scattered photos into a magazine worth keeping.',
+    tagline: 'Convierte las fotos dispersas en una revista que merece guardarse.',
     groups: [
       {
-        head: 'Product',
+        head: 'Producto',
         items: [
-          { label: 'Create a photo book', href: '#homepage-composer' },
-          { label: 'How it works', href: '#features' },
-          { label: 'What you get', href: '#outputs' },
-          { label: 'Pricing', href: '#pricing' },
+          { label: 'Crear un fotolibro', href: '#homepage-composer' },
+          { label: 'Cómo funciona', href: '#features' },
+          { label: 'Qué te llevas', href: '#outputs' },
+          { label: 'Precios', href: '#pricing' },
         ],
       },
       {
-        head: 'Photo Books',
+        head: 'Fotolibros',
         items: [
-          { label: 'Travel photo book example', href: '/examples/travel-journal' },
-          { label: 'Life story book example', href: '/examples/life-story' },
-          { label: 'All memoir examples', href: '/examples' },
+          { label: 'Ejemplo de fotolibro de viaje', href: '/examples/travel-journal' },
+          { label: 'Ejemplo de libro de historia de vida', href: '/examples/life-story' },
+          { label: 'Todos los ejemplos de memorias', href: '/examples' },
         ],
       },
       {
-        head: 'Support',
+        head: 'Soporte',
         items: [
-          { label: 'FAQ', href: '#faq' },
-          { label: 'Contact us', href: `mailto:${SUPPORT_EMAIL}` },
+          { label: 'Preguntas frecuentes', href: '#faq' },
+          { label: 'Contacto', href: `mailto:${SUPPORT_EMAIL}` },
         ],
       },
       {
-        head: 'About',
-        items: [{ label: 'Our story', href: '/about/story' }],
+        head: 'Sobre nosotros',
+        items: [{ label: 'Nuestra historia', href: '/about/story' }],
       },
       {
         head: 'Legal',
         items: [
-          { label: 'Privacy', href: '/privacy' },
-          { label: 'Terms', href: '/terms' },
+          { label: 'Privacidad', href: '/privacy' },
+          { label: 'Términos', href: '/terms' },
         ],
       },
     ],
-    copy: '© 2026 Yujee. All rights reserved.',
+    copy: '© 2026 Yujee. Todos los derechos reservados.',
   },
 };
