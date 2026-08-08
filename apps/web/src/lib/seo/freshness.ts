@@ -52,21 +52,25 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/': {
     sources: [MARKETING, 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq.ts'],
     updatedAt: '2026-08-08',
-    reviewedAt: 'c99f0b01',
+    reviewedAt: '802fc61a',
   },
   '/about/story': {
     sources: [MARKETING, 'apps/web/src/app/[locale]/about/story/page.tsx'],
     updatedAt: '2026-08-01',
-    reviewedAt: 'c99f0b01',
+    reviewedAt: '802fc61a',
   },
-  // Last real revision was the pre-launch pass that aligned the terms with what
-  // the product actually does (b69eb438). Marketing copy has moved several times
-  // since; the legal prose has not.
-  '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: 'c99f0b01' },
-  '/terms': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: 'c99f0b01' },
-  // The hub renders each example's `title`, not its meta — today's keyword pass
+  // Privacy prose last moved in the pre-launch pass that aligned it with what the
+  // product actually does (b69eb438). marketing.ts has moved several times since —
+  // including b3d095bc, which rewrote the TERMS sections next door and left this
+  // page untouched. That is exactly the case the reviewedAt/updatedAt split exists
+  // for: reviewed again, still 2026-07-12.
+  '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: '802fc61a' },
+  // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
+  // refund rule) in both locales — a genuine content change, so this one moves.
+  '/terms': { sources: [MARKETING], updatedAt: '2026-08-08', reviewedAt: '802fc61a' },
+  // The hub renders each example's `title`, not its meta — the keyword pass
   // rewrote titles/descriptions on the detail pages only, so the hub is unchanged.
-  '/examples': { sources: [EXAMPLES, MARKETING], updatedAt: '2026-08-04', reviewedAt: 'c99f0b01' },
+  '/examples': { sources: [EXAMPLES, MARKETING], updatedAt: '2026-08-04', reviewedAt: '802fc61a' },
   ...exampleDetailFreshness,
 };
 
