@@ -37,40 +37,42 @@ export interface RouteFreshness {
   reviewedAt: string;
 }
 
-const MARKETING = 'apps/web/src/messages/marketing.ts';
-const EXAMPLES = 'apps/web/src/lib/examples/examples.ts';
+// 五语拆分后营销/示例文案按语言一文件放在目录里;目录整个作 pathspec,
+// 任何语言的译文改动都会把对应路由拽进这道闸门。
+const MARKETING = 'apps/web/src/messages/marketing';
+const EXAMPLES = ['apps/web/src/lib/examples/examples.ts', 'apps/web/src/lib/examples/content'] as const;
 
 /** Every example detail page is one row of the same array, so they share sources. */
 const exampleDetailFreshness: Record<string, RouteFreshness> = Object.fromEntries(
   EXAMPLE_SLUGS.map((slug) => [
     `/examples/${slug}`,
-    { sources: [EXAMPLES], updatedAt: '2026-08-08', reviewedAt: 'c99f0b01' },
+    { sources: [...EXAMPLES], updatedAt: '2026-08-08', reviewedAt: '0a7e4291' },
   ]),
 );
 
 export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/': {
-    sources: [MARKETING, 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq.ts'],
+    sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
     updatedAt: '2026-08-08',
-    reviewedAt: '802fc61a',
+    reviewedAt: '0a7e4291',
   },
   '/about/story': {
     sources: [MARKETING, 'apps/web/src/app/[locale]/about/story/page.tsx'],
     updatedAt: '2026-08-01',
-    reviewedAt: '802fc61a',
+    reviewedAt: '0a7e4291',
   },
   // Privacy prose last moved in the pre-launch pass that aligned it with what the
   // product actually does (b69eb438). marketing.ts has moved several times since —
   // including b3d095bc, which rewrote the TERMS sections next door and left this
   // page untouched. That is exactly the case the reviewedAt/updatedAt split exists
   // for: reviewed again, still 2026-07-12.
-  '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: '802fc61a' },
+  '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: '0a7e4291' },
   // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
   // refund rule) in both locales — a genuine content change, so this one moves.
-  '/terms': { sources: [MARKETING], updatedAt: '2026-08-08', reviewedAt: '802fc61a' },
+  '/terms': { sources: [MARKETING], updatedAt: '2026-08-08', reviewedAt: '0a7e4291' },
   // The hub renders each example's `title`, not its meta — the keyword pass
   // rewrote titles/descriptions on the detail pages only, so the hub is unchanged.
-  '/examples': { sources: [EXAMPLES, MARKETING], updatedAt: '2026-08-04', reviewedAt: '802fc61a' },
+  '/examples': { sources: [...EXAMPLES, MARKETING], updatedAt: '2026-08-04', reviewedAt: '0a7e4291' },
   ...exampleDetailFreshness,
 };
 
