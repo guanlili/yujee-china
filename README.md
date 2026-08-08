@@ -116,9 +116,10 @@ pnpm design:album # 8787  ← 生产同款 album-server;漏了它 = design-chat 
 验证:
 
 ```bash
-pnpm typecheck    # 含 contracts + web,不含 engine
-pnpm docs:check   # 文档时效(已挂进 typecheck)
-pnpm test         # 见下方陷阱
+pnpm typecheck     # 含 contracts + web,不含 engine
+pnpm docs:check    # 文档时效(已挂进 typecheck)
+pnpm sitemap:check # sitemap lastmod 时效(已挂进 typecheck)
+pnpm test          # 见下方陷阱
 ```
 
 Agent(Python)测试单独跑:

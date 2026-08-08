@@ -228,6 +228,7 @@ Routes should stay thin: auth, parse body, call a service, return `ok()` or `fro
 ```bash
 pnpm --filter @yujee/web dev
 pnpm --filter @yujee/web typecheck
+pnpm --filter @yujee/web sitemap:check   # sitemap lastmod 时效,见 src/lib/seo/freshness.ts
 pnpm --filter @yujee/web db:generate
 pnpm --filter @yujee/web db:migrate
 ```

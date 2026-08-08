@@ -3,10 +3,11 @@ import { test } from 'node:test';
 import robots from '@/app/robots';
 import sitemap from '@/app/sitemap';
 import { ADDON_PACKS, FREE_PLAN_CREDITS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config/pricing';
-import { locales } from '@/lib/i18n/routing';
+import { locales, localizePath } from '@/lib/i18n/routing';
 import { SOCIAL_LINKS } from '@/config/social';
 import { EXAMPLES, exampleContent, getExample } from '@/lib/examples/examples';
 import { getFaqEntries } from './faq';
+import { ROUTE_FRESHNESS } from './freshness';
 import { buildLlmsTxt } from './llms';
 import { INDEXABLE_ROUTES, NOINDEX_ROUTES } from './routes';
 import { articleSchema, faqPageSchema, organizationSchema, softwareApplicationSchema } from './schema';
@@ -342,9 +343,47 @@ test('every sitemap entry carries the full hreflang cluster including x-default'
   }
 });
 
-test('sitemap omits lastModified rather than claiming every page changed on every deploy', () => {
+// lastmod used to be omitted entirely, because the only date available was the
+// build timestamp — which claims every page changed on every deploy, and Google
+// learns to ignore a lastmod that always says "just now". It is back now that
+// it is tied to hand-declared content dates (see freshness.ts), which is the
+// condition the old comment set for adding it.
+test('every indexable route declares when its content last changed, and nothing else does', () => {
+  const declared = Object.keys(ROUTE_FRESHNESS).sort();
+  assert.deepEqual(declared, [...INDEXABLE_ROUTES].sort(), 'freshness map and sitemap routes disagree');
+});
+
+test('content dates are real calendar dates, never in the future', () => {
+  // A future lastmod is the other way to get the signal distrusted.
+  const today = new Date().toISOString().slice(0, 10);
+  for (const [route, { updatedAt }] of Object.entries(ROUTE_FRESHNESS)) {
+    assert.match(updatedAt, /^\d{4}-\d{2}-\d{2}$/, `${route} updatedAt "${updatedAt}" is not YYYY-MM-DD`);
+    assert.equal(
+      new Date(`${updatedAt}T00:00:00Z`).toISOString().slice(0, 10),
+      updatedAt,
+      `${route} updatedAt "${updatedAt}" is not a real date`,
+    );
+    assert.ok(updatedAt <= today, `${route} claims it was updated in the future (${updatedAt})`);
+  }
+});
+
+test('sitemap emits each route content date as lastModified, both locales', () => {
   for (const entry of sitemap()) {
-    assert.equal(entry.lastModified, undefined);
+    const route = Object.keys(ROUTE_FRESHNESS).find((r) =>
+      locales.some((l) => entry.url === absoluteUrl(localizePath(r, l))),
+    );
+    assert.ok(route, `${entry.url} maps to no declared route`);
+    assert.equal(entry.lastModified, ROUTE_FRESHNESS[route].updatedAt, `${entry.url} has the wrong lastmod`);
+  }
+});
+
+test('sitemap is deterministic — no build clock leaks into lastmod', () => {
+  // The regression that made lastmod untrustworthy in the first place. If any
+  // date is computed from `new Date()`, two calls a moment apart can differ and
+  // every deploy republishes "everything changed".
+  assert.deepEqual(sitemap(), sitemap());
+  for (const entry of sitemap()) {
+    assert.equal(typeof entry.lastModified, 'string', `${entry.url} lastmod is not a fixed date string`);
   }
 });
 
