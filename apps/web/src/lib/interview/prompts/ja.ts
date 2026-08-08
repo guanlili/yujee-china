@@ -1,25 +1,24 @@
-// TODO(i18n-translate): placeholder copy of en, to be replaced
 import type { InterviewCase } from '../interview';
 
 export const ja: Record<InterviewCase, readonly [string, string, string]> = {
   timeAndPlace: [
-    "I've grouped these photos for you.",
-    'I’d love to know a little more — who were you with that day?',
-    'Any special people, moments, or feelings you’d like woven into this book?',
+    'この写真、だいたい整理できました。',
+    'もう少しだけ教えてください。その日は、どなたと一緒でしたか？',
+    'この本に残しておきたい人や出来事、そのときの気持ちはありますか？',
   ],
   timeOnly: [
-    'These photos have a lovely feel to them.',
-    'Where were they taken, and who were you with?',
-    'Tell me any memory or mood you’d like to keep.',
+    'この写真、とてもいい雰囲気ですね。',
+    'どちらで撮った一枚でしょう？そのときは、どなたとご一緒でしたか？',
+    '残しておきたい思い出や気持ちがあれば、なんでも聞かせてください。',
   ],
   placeOnly: [
-    "I've looked through these photos.",
-    'Roughly when were they taken, and who were you with?',
-    'Any story or feeling you especially want to record?',
+    'この写真、ひと通り拝見しました。',
+    'だいたいいつ頃の写真でしょう？そのときは、どなたと一緒でしたか？',
+    'とくに記録しておきたい出来事や気持ちはありますか？',
   ],
   neither: [
-    'I’d love to understand these photos a little more.',
-    'Roughly when, where, and with whom were they taken?',
-    'What happened, how did it feel — tell me anything you like.',
+    'この写真のこと、もう少しだけ知りたいです。',
+    'だいたいいつ、どこで、どなたと撮った一枚でしょう？',
+    'その日は何があって、どんな気持ちだったか。なんでも気軽に聞かせてください。',
   ],
 };

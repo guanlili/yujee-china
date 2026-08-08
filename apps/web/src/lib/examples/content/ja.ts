@@ -1,70 +1,64 @@
-// TODO(i18n-translate): placeholder copy of en, to be replaced
 import type { ExampleContent } from './types';
 
 export const ja: Record<string, ExampleContent> = {
   'travel-journal': {
-    title: 'Travel Journal',
-    tagline: 'A trip laid out as a story of place and time.',
-    metaTitle: 'Travel Photo Book Example — A Yujee AI Memoir',
+    title: '旅の記録',
+    tagline: '一度の旅を、場所と時間の物語として組み上げた一冊。',
+    metaTitle: '旅のフォトブック作例 — Yujee AI がつくった思い出の本',
     metaDesc:
-      'See how Yujee turns a whole trip of scattered photos into a magazine-style travel photobook — grouped by place, captioned by AI, exported as a print-ready PDF.',
+      '旅先で撮りためたばらばらの写真が、雑誌のような旅のフォトブックになるまで。場所ごとにグループ分けし、AI が文章を書き、印刷用 PDF に書き出しました。',
     intro: [
-      'This is an example of a travel memoir made with Yujee. We took a single trip’s photos — landscapes, streets, portraits, and the quiet moments in between — and let the AI group them by place and time, draft the captions and chapter titles, and lay every spread out as a magazine you can hold. Nothing here was designed by hand.',
-      'Use it as a reference for your own travel photobook. Whether it’s a week in Kyoto or a year of weekend escapes, the flow is the same: upload your photos, let Yujee sort and lay out a first draft, edit anything in chat, then export a 300 DPI PDF to print and bind.',
+      'これは Yujee でつくった旅の思い出の本の作例です。ひとつの旅の写真 —— 風景、街並み、人、そのあいだにある静かな瞬間 —— を、AI が場所と時間でグループ分けし、キャプションと章タイトルを下書きし、手にとれる雑誌としてすべての見開きを組み上げました。手作業でデザインしたページは一枚もありません。',
+      'あなたの旅のフォトブックの参考にしてください。京都で過ごした一週間でも、一年分の週末の小旅行でも、流れは同じです。写真をアップロードして、Yujee に仕分けと下書きのレイアウトを任せ、直したいところは会話で伝え、最後に 300 DPI の PDF を書き出して印刷・製本します。',
     ],
     inside: [
-      'A cover and title page built from your strongest shot',
-      'Chapters grouped by place and by day',
-      'AI-drafted captions and short chapter text, all editable',
-      'Full-bleed landscapes next to quiet detail shots',
+      'いちばんいい一枚から組んだ表紙と扉ページ',
+      '場所ごと、日ごとに分かれた章',
+      'AI が下書きしたキャプションと短い章の文章。すべて編集できます',
+      '断ち落としの風景と、静かな細部のカットを並べて',
     ],
     madeWith: [
-      'AI photo grouping',
-      'AI-written captions',
-      'Magazine-style auto layout',
-      'Chat-based editing',
-      '300 DPI print-ready PDF',
+      'AI による写真のグループ分け',
+      'AI が書くキャプション',
+      '雑誌のような自動レイアウト',
+      '会話しながらの編集',
+      '300 DPI の印刷用 PDF',
     ],
     galleryAlt: [
-      'Travel Journal cover page with a lakeside prayer-flag photo',
-      'A two-page travel spread pairing a portrait with a mountain landscape',
-      'A travel spread titled “The Quiet Between Moments” with a light-ray photo',
-      'A travel spread of horses on a snowfield beside a portrait',
+      '湖畔のタルチョの写真を使った「旅の記録」の表紙ページ',
+      '人物写真と山の風景を組み合わせた旅の見開き',
+      '「瞬間と瞬間のあいだの静けさ」と題した、光の筋の写真を配した旅の見開き',
+      '雪原の馬の群れと人物写真を並べた旅の見開き',
     ],
   },
   'life-story': {
-    title: 'Life Story',
-    tagline: 'A life told along a timeline — milestones and the ordinary days between.',
-    // This page owns the memoir/biography demand. Deliberately NOT the bare
-    // terms "best memoir" or "biography": those SERPs are book recommendations
-    // and celebrity lookups (Goodreads, Wikipedia, IMDb) — reader and
-    // reference intent, not "I want to make one". "memoir book" and
-    // "biography book" are the make-intent forms of the same demand.
-    metaTitle: 'Life Story & Biography Book Example — Yujee AI Memoir Maker',
+    title: '人生の物語',
+    tagline: '時間軸に沿って語る一生 —— 節目と、そのあいだにある何気ない日々。',
+    metaTitle: '人生の物語・自伝の作例 — Yujee AI 思い出の本メーカー',
     metaDesc:
-      'A life-story memoir book made with Yujee: milestones and everyday moments along a timeline, laid out by AI. Make your own biography book and export a print PDF.',
+      'Yujee でつくった人生の物語の一冊。節目と日常の瞬間を時間軸に沿って AI がレイアウトしました。同じように自分の自伝をつくって、印刷用 PDF まで書き出せます。',
     intro: [
-      'This is an example of a life-story memoir book made with Yujee. It gathers the moments a life is actually made of — a table by the window, an afternoon at home, the small still-life corners we live around — and arranges them along a gentle timeline. The AI wrote a first draft of the chapter titles and captions; every word stays editable.',
-      'It’s a format that keeps growing. Add a chapter each year, or digitize old photos and let Yujee thread them into one continuous story, then export a 300 DPI PDF to print and keep. It’s the simplest way to write your own biography without writing a word first — the AI drafts, you edit.',
+      'これは Yujee でつくった人生の物語の作例です。ひとつの人生が実際に何でできているのか —— 窓辺のテーブル、家で過ごした午後、いつもそばにあった小さな静物の一角 —— そうした瞬間を集めて、ゆるやかな時間軸に沿って並べています。章タイトルもキャプションも AI が書いた下書きで、どの一言も編集できます。',
+      'これは、ずっと育ちつづける形です。毎年ひと章ずつ足していくのも、古い写真をデジタル化して Yujee にひとつづきの物語へ縫い合わせてもらうのも自由です。書き上がったら 300 DPI の PDF に書き出して、印刷して残せます。まず一文字も書かずに自分の自伝をつくる、いちばん手軽な方法です。下書きは AI、直すのはあなた。',
     ],
     inside: [
-      'A timeline that runs from the early days to now',
-      'Chapters for milestones, homes, and everyday corners',
-      'AI-drafted titles and captions you can rewrite',
-      'Room to add a new chapter every year',
+      '幼い日から現在までを貫く時間軸',
+      '節目、住んだ家、日常の一角ごとの章',
+      'AI が下書きし、あなたが書き直せるタイトルとキャプション',
+      '毎年ひと章ずつ足していける余白',
     ],
     madeWith: [
-      'AI photo grouping',
-      'AI-written chapter text',
-      'Magazine-style auto layout',
-      'Chat-based editing',
-      '300 DPI print-ready PDF',
+      'AI による写真のグループ分け',
+      'AI が書く章の文章',
+      '雑誌のような自動レイアウト',
+      '会話しながらの編集',
+      '300 DPI の印刷用 PDF',
     ],
     galleryAlt: [
-      'A life-story spread titled “Afternoon Table” with home interior photos',
-      'A spread pairing “Afternoon Table” with a “Still Life” vase photo',
-      'A “Decorative Corner / Still Life” spread with branches in a vase',
-      'A “Decorative Corner / Personal Lounge” spread of a lived-in room',
+      '「午後のテーブル」と題した、室内の写真を配した人生の物語の見開き',
+      '「午後のテーブル」と花瓶の「静物」写真を組み合わせた見開き',
+      '枝を生けた花瓶の「飾りの一角 / 静物」の見開き',
+      '暮らしの気配が残る部屋の「飾りの一角 / くつろぎの場所」の見開き',
     ],
   },
 };

@@ -1,151 +1,150 @@
-// TODO(i18n-translate): placeholder copy of en, to be replaced
 import { buildFaq } from './faq';
 import type { Copy } from './types';
 
 export const ja: Copy = {
-  sideHome: 'Home',
-  sideProjects: 'My projects',
-  navExamples: 'Examples',
-  navPricing: 'Pricing',
-  navFaq: 'FAQ',
-  footerStory: 'Our story',
-  login: 'Log in',
-  menu: 'Menu',
-  createTitle: 'Turn your scattered photos into a photo book you can read, touch, and keep',
-  createSub: 'Upload your photos and the AI groups them, writes the story, and automatically lays out a magazine-style photo book — free to start, fully editable, ready to print.',
-  sampleCta: 'See example',
-  makeSame: 'Make one like this',
-  samplesNote: 'Demo books made by the Yujee team to show what the product can do — fictional content, not customer work.',
-  heroEyebrow: 'AI photobooks & memoir books · from shots to bound book',
+  sideHome: 'ホーム',
+  sideProjects: 'マイプロジェクト',
+  navExamples: '作例',
+  navPricing: '料金',
+  navFaq: 'よくある質問',
+  footerStory: '創業ストーリー',
+  login: 'ログイン',
+  menu: 'メニュー',
+  createTitle: 'ばらばらの写真を、読めて、手にとれて、ずっと残せるフォトブックに',
+  createSub: '写真をアップロードすると、AI がグループ分けして文章を書き、雑誌のようなフォトブックに自動で組み上げます。無料ではじめられて、どのページも編集でき、そのまま印刷できます。',
+  sampleCta: '作例を見る',
+  makeSame: '同じように作る',
+  samplesNote: 'こちらのサンプルは、Yujee チームが製品の機能をお見せするためにつくったデモです（内容はフィクションで、お客様の作品ではありません）。',
+  heroEyebrow: 'AI フォトブック・思い出の本 · 撮った写真から、一冊の本へ',
   heroTitle: (
     <>
-      Turn your everyday snapshots
+      何気ない日々のスナップを、
       <br />
-      into a memoir that&apos;s yours alone
+      あなただけの思い出の本に
     </>
   ),
-  heroSub: 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful memory book made just for you.',
-  heroCta: 'Start creating',
-  heroExamples: 'See examples',
-  trust: ['No design skills needed', 'Fully editable layout', 'Print-ready PDF export'],
-  workflowTitle: 'How it works',
-  workflow: ['Automatic photo grouping', 'AI-assisted story writing', 'Automatic magazine-style layout'],
-  polish: 'Polishing the text…',
-  featuresLabel: 'What it does',
+  heroSub: 'あなたは語るだけ。写真も物語も思い出もアイデアも、YUJEE AI があなただけの美しい一冊に仕上げます。',
+  heroCta: 'つくりはじめる',
+  heroExamples: '作例を見る',
+  trust: ['デザインの知識は不要', 'どのページも編集できる', '印刷用 PDF を書き出せる'],
+  workflowTitle: '制作の流れ',
+  workflow: ['写真を自動でグループ分け', 'AI が文章づくりをお手伝い', '雑誌のようなレイアウトを自動生成'],
+  polish: '文章を整えています…',
+  featuresLabel: 'できること',
   featuresTitle: (
     <>
-      An AI photo book maker
+      写真の仕分けまでやってくれる
       <br />
-      that does the sorting for you
+      AI フォトブックメーカー
     </>
   ),
   features: [
     {
-      title: 'Auto-layout into a photo book',
+      title: '自動でフォトブックに組版',
       body:
-        'Drop in a set of photos and the AI automatically lays out magazine-style spreads — full bleeds, grids, white space. It is photobook design without the design work, and a finished photo book layout without dragging pictures one by one.',
+        '写真をまとめて入れるだけで、AI が雑誌のような見開きを自動で組みます。断ち落としの大判、グリッド、余白まで。デザイン作業のいらないフォトブックデザインで、写真を一枚ずつドラッグする必要はありません。',
       icon: 'layout',
     },
     {
-      title: 'Smart photo grouping + captions',
+      title: '写真の自動グループ分け + 文章の下書き',
       body:
-        'It detects time and scenes to group your photos automatically, and drafts an editable title and description for each. You set the tone; it writes the first draft.',
+        '撮影時刻とシーンを見分けて写真を自動でまとめ、それぞれに編集できるタイトルと説明を下書きします。トーンはあなたが決め、最初の一稿は AI が書きます。',
       icon: 'spark',
     },
     {
-      title: 'Flip-book preview · print-ready PDF export',
+      title: 'めくって確認 · 印刷用 PDF 書き出し',
       body:
-        'Flip through a 3D preview, page by page — what you see is what you get. Keep it as a digital photobook, or export a 300 DPI print-ready PDF you can print and bind anytime.',
+        '3D のページめくりで一枚ずつ確認できます。見たままが仕上がりです。デジタルのフォトブックとして残すのも、300 DPI の印刷用 PDF に書き出して、いつでも印刷・製本するのも自由です。',
       icon: 'book',
     },
   ],
-  ctaTitle: "Don't leave those photos in a folder — make them a keepsake book",
-  ctaSub: 'Make your first photo book in minutes. Start free; think about export and print once you love it.',
-  start: 'Start free',
-  faqLabel: 'FAQ',
-  faqTitle: 'AI photo book questions, answered',
-  faq: buildFaq('ja', 'See pricing'),
-  footerTagline: 'Turn your photos into a beautifully designed album.',
-  footerProduct: 'Product',
-  footerResources: 'Resources',
-  footerExampleTravel: 'Travel photo book example',
-  footerExampleLifeStory: 'Life story book example',
-  footerExamplesAll: 'All memoir examples',
-  footerCompany: 'About',
-  footerAccount: 'Account',
-  footerPrivacy: 'Privacy',
-  footerTerms: 'Terms',
-  signup: 'Sign up free',
-  copyright: '© 2026 Yujee · Memories, beautifully laid out',
+  ctaTitle: '写真をフォルダに眠らせたままにしないで。一冊の本にしましょう',
+  ctaSub: '最初の一冊は数分でできます。まずは無料ではじめて、気に入ってから書き出しや印刷を考えてください。',
+  start: '無料ではじめる',
+  faqLabel: 'よくある質問',
+  faqTitle: 'AI フォトブックのよくある質問',
+  faq: buildFaq('ja', '料金を見る'),
+  footerTagline: '写真を、きちんとデザインされたアルバムに。',
+  footerProduct: '製品',
+  footerResources: '資料',
+  footerExampleTravel: '旅のフォトブックの作例',
+  footerExampleLifeStory: '人生の物語の作例',
+  footerExamplesAll: 'すべての作例',
+  footerCompany: 'Yujee について',
+  footerAccount: 'アカウント',
+  footerPrivacy: 'プライバシー',
+  footerTerms: '利用規約',
+  signup: '無料で登録',
+  copyright: '© 2026 Yujee · 思い出を、美しいレイアウトで',
   samples: [
     {
-      title: 'Year in a book',
-      brief: 'One photo book a year, bound each December',
+      title: '一年の記録',
+      brief: '一年に一冊、12 月に製本',
       body:
-        'Pack a whole year into one book. Holidays, trips, and everyday moments are laid out by month and continued year after year.',
-      bullets: ['Grouped by month or event', 'One click for the year-end book', 'Same style, a matching set each year'],
+        '一年まるごとを一冊に。祝日も、旅行も、何気ない一日も、月ごとに並べて、毎年つづけていけます。',
+      bullets: ['月ごと・出来事ごとに自動でまとめ', '年末の一冊はワンクリック', '同じ体裁で、年ごとに揃うシリーズに'],
       image: '/landing-redesign/cards/03-year-record.png',
       video: '/landing-redesign/cards/03-year-record.mp4',
     },
     {
-      title: 'Life story',
-      brief: 'Your milestones, into a life story book',
+      title: '人生の物語',
+      brief: '節目をつないで、一冊の人生の本に',
       body:
-        'Lay milestones along a timeline: birth, school, people, and journeys. Each group gets editable short essays, bound like a biography.',
-      bullets: ['Auto-grouped by life stage', 'Long-form text and pull quotes per group', 'Great as a birthday or memorial gift'],
+        '誕生、学び、出会い、旅。人生の節目を時間軸に沿って並べます。グループごとに編集できるエッセイがつき、伝記のように仕上がります。',
+      bullets: ['人生の段階ごとに自動でグループ分け', 'グループごとに長文と引用を添えられる', '誕生日や記念日の贈り物にも'],
       image: '/landing-redesign/cards/02-life-story.png',
       video: '/landing-redesign/cards/02-life-story.mp4',
     },
     {
-      title: 'Travel',
-      brief: 'A trip, auto-bound into a travel photo book',
+      title: '旅',
+      brief: '一度の旅が、そのまま旅のフォトブックに',
       body:
-        'Auto-grouped by date, with places and order sorted for you. One spread per day, with room to breathe between photos.',
-      bullets: ['Auto-split by timeline', 'Add map pages and route notes', 'Export a PDF to share with travel mates'],
+        '日付ごとに自動でまとめ、場所も順序も整えます。一日ひと見開き、写真のあいだにはゆとりを残して。',
+      bullets: ['時間軸に沿って日ごとに自動分割', '地図ページやルートのメモも追加できる', 'PDF に書き出して旅の仲間と共有'],
       image: '/landing-redesign/cards/01-travel.png',
       video: '/landing-redesign/cards/01-travel.mp4',
     },
     {
-      title: 'Portfolio',
-      brief: 'Your work, lined up quietly',
+      title: 'ポートフォリオ',
+      brief: '作品を、静かに並べる',
       body:
-        'Photography, illustration, design: aligned to a grid with consistent margins so the work stays the star.',
-      bullets: ['Strict grid and uniform margins', 'Title, medium, and year per page', 'Export a submittable PDF portfolio'],
+        '写真、イラスト、デザイン。グリッドに揃え、余白をそろえて、主役はあくまで作品のままに。',
+      bullets: ['厳密なグリッドと統一された余白', 'ページごとにタイトル・技法・制作年', '提出できる PDF ポートフォリオを書き出し'],
       image: '/landing-redesign/cards/06-portfolio.png',
       video: '/landing-redesign/cards/06-portfolio.mp4',
     },
     {
-      title: 'Magazine',
-      brief: 'Lay content out like a real magazine',
+      title: '雑誌',
+      brief: '本物の雑誌のように誌面を組む',
       body:
-        'More than an album: cover, contents, features, and pull quotes on a magazine skeleton. Turn life into an issue.',
-      bullets: ['Cover, contents, and feature templates', 'Editorial layout with headlines and quotes', 'Print-ready export for a physical issue'],
+        'アルバムの一歩先へ。表紙、目次、特集、引用まで、雑誌の骨組みで組みます。暮らしを一冊の号に。',
+      bullets: ['表紙・目次・特集のテンプレート', '大見出しと引用を効かせた編集的レイアウト', '印刷用に書き出して実物の一冊に'],
       image: '/landing-redesign/cards/05-magazine.png',
       video: '/landing-redesign/cards/05-magazine.mp4',
     },
     {
-      title: 'Growth story',
-      brief: 'A page a month, every change',
+      title: '成長の物語',
+      brief: 'ひと月ひとページ、変わっていく姿を',
       body:
-        'Filed by month into a growth timeline. Quick notes like height, weight, and firsts land on the right page.',
-      bullets: ['Auto-grouped by month or milestone', 'Add little data cards', 'Keep adding; the album grows over time'],
+        '月ごとに整理して、成長の時間軸を自動でつくります。身長や体重、はじめての瞬間も、ぴったりのページに収まります。',
+      bullets: ['月ごと・節目ごとに自動でグループ分け', '身長や体重の小さなデータカードも追加', '足していくほど、アルバムも育っていく'],
       image: '/landing-redesign/cards/04-growth-story.png',
       video: '/landing-redesign/cards/04-growth-story.mp4',
     },
   ],
   previewChapters: [
     {
-      title: 'Morning departure',
+      title: '出発の朝',
       left: '/landing-redesign/photos/bamboo-grove-path.jpg',
       right: '/landing-redesign/photos/riverside-walk.jpg',
     },
     {
-      title: 'Summer Coastline',
+      title: '夏の海岸線',
       left: '/landing-redesign/photos/kamakura-coastal-street.jpg',
       right: '/landing-redesign/photos/seto-inland-sea-pier.jpg',
     },
     {
-      title: 'The way back',
+      title: '帰り道',
       left: '/landing-redesign/photos/rainy-kyoto-lane.jpg',
       right: '/landing-redesign/photos/riverside-before-fireworks.jpg',
     },

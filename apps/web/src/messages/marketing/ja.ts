@@ -1,331 +1,329 @@
-// TODO(i18n-translate): placeholder copy of en, to be replaced
 import { SUPPORT_EMAIL } from '@/config/social';
 import type { MarketingMessages } from './types';
 
 export const ja: MarketingMessages = {
   nav: {
     brand: 'Yujee',
-    home: 'Home',
-    myProjects: 'My Projects',
-    howItWorks: 'How it works',
-    examples: 'Examples',
-    pricing: 'Pricing',
-    about: 'About',
-    menuToggle: 'Toggle navigation menu',
-    login: 'Log in',
-    getStarted: 'Get started',
-    languageLabel: 'English',
+    home: 'ホーム',
+    myProjects: 'マイプロジェクト',
+    howItWorks: '使い方',
+    examples: '作例',
+    pricing: '料金',
+    about: 'Yujee について',
+    menuToggle: 'ナビゲーションメニューを開閉',
+    login: 'ログイン',
+    getStarted: 'はじめる',
+    languageLabel: '日本語',
   },
   landing: {
-    // "Free" leads because the free grant is real (FREE_PLAN_CREDITS covers a
-    // whole book) and because "layout" is the winnable half of that demand —
-    // bare "free photo book maker" is Shutterfly/Canva territory. "Memoir"
-    // stays: it is the higher-intent term and the one this site can rank for.
-    metaTitle: 'Free AI Photo Book & Memoir Maker — Auto Layout to PDF | Yujee',
+    // 「無料」を先頭に置くのは英語版と同じ理由:無料クレジットは実在し(FREE_PLAN_CREDITS で
+    // 一冊まるごと作れる)、勝負できるのは「自動レイアウト」の側だから。日本語では
+    // 「フォトブック」が検索の入口、「思い出の本」がこのサイトの言い方。
+    metaTitle: '無料 AI フォトブック・思い出の本メーカー — 自動レイアウトで PDF に | Yujee',
     metaDesc:
-      'Free photo book layout online — Yujee’s AI groups your photos, writes the story, and lays out a magazine-style book. Chat to edit, export a print-ready PDF.',
-    composerUploadLabel: 'Upload photos',
+      '無料で使えるオンラインのフォトブック自動レイアウト。Yujee の AI が写真をグループ分けし、文章を書き、雑誌のような一冊に組み上げます。会話しながら編集して、印刷用 PDF まで書き出せます。',
+    composerUploadLabel: '写真をアップロード',
     composerHints: [
-      { label: 'Travel Album', fill: 'Make me a photo album of my trip to Bali last week — I have lots of beach and temple photos.' },
-      { label: 'Baby Milestones', fill: 'I want a growth journal for my daughter, with photos from birth to her first birthday.' },
-      { label: 'Graduation', fill: 'A high school graduation yearbook with class photos and everyone’s farewell messages.' },
-      { label: 'Food Journal', fill: 'Compile my restaurant photos from the past six months into a food magazine.' },
+      { label: '旅のアルバム', fill: '先週のバリ旅行のフォトブックをつくってください。ビーチと寺院の写真がたくさんあります。' },
+      { label: '成長の記録', fill: '娘の成長記録をつくりたいです。生まれた日から 1 歳の誕生日までの写真があります。' },
+      { label: '卒業', fill: '高校の卒業アルバム。クラス写真と、みんなの寄せ書きを入れたいです。' },
+      { label: '食の記録', fill: 'この半年に撮ったお店の料理写真を、グルメ雑誌のようにまとめてください。' },
     ],
-    casesTitle: 'Inspiration',
-    casesMore: 'View more',
+    casesTitle: 'インスピレーション',
+    casesMore: 'もっと見る',
     cases: [
-      { title: 'Graduation', desc: 'Turn four years of group photos, ticket stubs, and chats into a yearbook.' },
-      { title: 'Wedding Memory', desc: 'Save vows, blessings, and every beautiful detail from the day you said yes.' },
-      { title: 'Baby Milestones', desc: 'From birth to first birthday, capture every milestone in photos and words.' },
-      { title: 'Travel Memoir', desc: 'Arrange scattered travel moments into a story with a timeline.' },
-      { title: 'Girls Trip', desc: 'Turn sun, jokes, and weekend photos into a bright friendship issue.' },
-      { title: 'Pet Diary', desc: 'Make a dedicated photo book for your furry friend, capturing daily life and funny moments.' },
-      { title: 'Life Memories', desc: 'Digitize old photos and preserve family stories that deserve to last.' },
-      { title: 'Food Notes', desc: 'Organize restaurant photos into a story-driven food guide.' },
-      { title: 'Love Diary', desc: 'Collect quiet dates, small notes, and everyday romance in one keepsake.' },
+      { title: '卒業', desc: '4 年分の集合写真、チケットの半券、やりとりを、一冊の卒業アルバムに。' },
+      { title: '結婚の記念', desc: '誓いの言葉と祝福、そしてあの日の美しい細部を、まるごと残します。' },
+      { title: '成長の記録', desc: '生まれた日から 1 歳まで。すべての節目を写真と言葉で。' },
+      { title: '旅の思い出', desc: 'ばらばらの旅の瞬間を、時間の流れに沿った物語に並べ直します。' },
+      { title: '女子旅', desc: '陽ざしと笑い声と週末の写真を、明るい友情の特集号に。' },
+      { title: 'ペットの日記', desc: '毛むくじゃらの家族だけの写真集。日々の表情も、おかしな瞬間も。' },
+      { title: '人生の記憶', desc: '古い写真をデジタル化して、残しておきたい家族の物語を守ります。' },
+      { title: '食の記録', desc: 'お店の写真を、物語のあるグルメガイドにまとめます。' },
+      { title: '恋の日記', desc: '静かなデート、小さなメモ、日常のやさしさをひとつに。' },
     ],
   },
   privacy: {
-    metaTitle: 'Yujee — Privacy Policy',
+    metaTitle: 'Yujee — プライバシーポリシー',
     metaDesc:
-      'How Yujee handles your photos and personal data. Original photos are never uploaded — only compressed previews go to the AI for layout planning, and your albums stay private to you.',
-    title: 'Privacy Policy',
-    effective: 'Effective Date: May 27, 2026',
+      'Yujee がお客様の写真と個人データをどう扱うか。元の写真はアップロードせず、AI に送るのはレイアウト計画のための圧縮プレビューだけ。アルバムはお客様だけのものです。',
+    title: 'プライバシーポリシー',
+    effective: '発効日：2026 年 5 月 27 日',
     sections: [
       {
-        h: '1. Introduction',
-        body: 'Yujee ("we") values your privacy. This Privacy Policy explains how we collect, use, disclose, and protect your information when you use yujeeai.com.',
+        h: '1. はじめに',
+        body: 'Yujee（以下「当社」）は、お客様のプライバシーを尊重します。本プライバシーポリシーは、お客様が yujeeai.com をご利用になる際に、当社がどのように情報を収集、利用、開示、保護するかを説明するものです。',
       },
       {
-        h: '2. Information We Collect',
-        body: 'We collect: (a) account information (email, name) when you register; (b) usage data about how you interact with Yujee; (c) text and prompts you submit to generate memoirs; (d) the memoirs you produce — layout data, exported PDF files, and cover thumbnails — stored on our cloud storage so you can reopen and download them anytime. We do not store the original photos you upload: they stay in your browser, and only compressed previews are sent to our AI provider for layout planning. Note that photos you place in a memoir are embedded in the PDF you export and save.',
+        h: '2. 収集する情報',
+        body: '当社は次の情報を収集します。（a）ご登録時のアカウント情報（メールアドレス、お名前）、（b）Yujee のご利用状況に関するデータ、（c）思い出の本を生成するために入力されたテキストおよびプロンプト、（d）作成された作品 —— レイアウトデータ、書き出された PDF ファイル、表紙のサムネイル。これらは、いつでも開き直してダウンロードできるよう当社のクラウドストレージに保存されます。アップロードされた元の写真は保存しません。元の写真はお客様のブラウザに留まり、レイアウト計画のために AI 提供事業者へ送られるのは圧縮されたプレビューのみです。なお、思い出の本に配置した写真は、書き出して保存する PDF に埋め込まれます。',
       },
       {
-        h: '3. How We Use Your Information',
-        body: 'We use the information to provide and improve Yujee, to process payments and manage credits, to send service-related notifications, to monitor usage trends, and to detect or prevent fraud and abuse.',
+        h: '3. 情報の利用方法',
+        body: '当社は、Yujee の提供および改善、決済処理とクレジットの管理、サービスに関する通知の送信、利用動向の把握、不正行為や濫用の検知・防止のために、これらの情報を利用します。',
       },
       {
-        h: '4. Information Sharing',
-        body: 'We do not sell your personal information. We share data only with service providers operating the product on our behalf (cloud hosting, payment processing, email delivery, AI inference) and when required by law.',
+        h: '4. 情報の共有',
+        body: '当社はお客様の個人情報を販売しません。データを共有するのは、当社に代わって製品を運用するサービス提供者（クラウドホスティング、決済処理、メール配信、AI 推論）と、法令上必要とされる場合に限られます。',
       },
       {
-        h: '5. Data Security',
-        body: 'We apply reasonable technical and organizational measures to protect your data. No internet transmission or electronic storage is 100% secure; we cannot guarantee absolute security.',
+        h: '5. データの安全性',
+        body: '当社は、お客様のデータを保護するために合理的な技術的・組織的措置を講じています。ただし、インターネット上の通信や電子的な保存方法で 100% 安全なものはなく、絶対的な安全性を保証することはできません。',
       },
       {
-        h: '6. Your Rights',
-        body: 'Depending on your jurisdiction, you may access, correct, delete, or restrict the processing of your personal data. Contact us to exercise these rights.',
+        h: '6. お客様の権利',
+        body: 'お住まいの国や地域の法令に応じて、お客様は個人データへのアクセス、訂正、削除、または処理の制限を求めることができます。これらの権利を行使される場合は当社までご連絡ください。',
       },
       {
-        h: '7. Children’s Privacy',
-        body: 'Yujee is not directed to children under 13 (or the equivalent age in your jurisdiction). If we learn we collected personal data from a child, we will delete it promptly.',
+        h: '7. 児童のプライバシー',
+        body: 'Yujee は 13 歳未満（またはお住まいの地域で相当する年齢未満）の児童を対象としていません。児童から個人データを収集していたことが判明した場合、当社は速やかに削除します。',
       },
       {
-        h: '8. Changes to this Policy',
-        body: 'We may update this Privacy Policy at any time. Material changes will be announced in-product or by email.',
+        h: '8. 本ポリシーの変更',
+        body: '当社は本プライバシーポリシーをいつでも更新することがあります。重要な変更については、製品内またはメールでお知らせします。',
       },
       {
-        h: '9. Contact',
+        h: '9. お問い合わせ',
         body: '',
       },
     ],
-    contactLine: 'Questions? Email privacy@yujeeai.com.',
+    contactLine: 'ご不明な点は privacy@yujeeai.com までメールでお問い合わせください。',
   },
   terms: {
-    metaTitle: 'Yujee — Terms of Service',
+    metaTitle: 'Yujee — 利用規約',
     metaDesc:
-      'The terms you agree to when using Yujee to turn your photos into an AI-laid-out memoir: accounts, credits, exports, and the rights you keep over your own content.',
-    title: 'Terms of Service',
-    effective: 'Effective Date: August 8, 2026',
+      '写真を AI が組版した思い出の本に変える Yujee をご利用いただく際の規約です。アカウント、クレジット、書き出し、そしてご自身のコンテンツについてお客様が持ちつづける権利について定めています。',
+    title: '利用規約',
+    effective: '発効日：2026 年 8 月 8 日',
     sections: [
       {
-        h: '1. Acceptance of Terms',
-        body: 'By accessing or using Yujee (yujeeai.com), you agree to be bound by these Terms of Service. If you do not agree, do not use the service.',
+        h: '1. 規約への同意',
+        body: 'Yujee（yujeeai.com）にアクセスまたはご利用いただくことで、本利用規約に拘束されることに同意したものとみなされます。同意されない場合は、本サービスをご利用にならないでください。',
       },
       {
-        h: '2. Description of Service',
-        body: 'Yujee is an AI-powered memoir generator. You provide photos and prompts; we lay out a magazine-style memoir and let you export it as a PDF. We do not guarantee a specific creative outcome.',
+        h: '2. サービスの内容',
+        body: 'Yujee は AI による思い出の本の生成サービスです。お客様が写真とプロンプトをご提供いただき、当社が雑誌のような思い出の本に組版し、PDF として書き出せるようにします。特定の創作上の結果を保証するものではありません。',
       },
       {
-        h: '3. User Accounts',
-        body: 'You are responsible for the confidentiality of your account credentials and for all activity that happens under your account. You must provide accurate registration details.',
+        h: '3. ユーザーアカウント',
+        body: 'お客様は、アカウントの認証情報を秘密に保つ責任、およびアカウントのもとで行われるすべての活動について責任を負います。ご登録の際は正確な情報をご提供ください。',
       },
       {
-        h: '4. Acceptable Use',
-        body: 'You agree not to use Yujee to generate content that is illegal, harmful, defamatory, obscene, or that infringes the rights of others; nor to disrupt the service, abuse rate limits, or attempt unauthorized access.',
+        h: '4. 禁止事項',
+        body: 'お客様は、違法、有害、名誉を毀損する、わいせつな、または他者の権利を侵害するコンテンツの生成に Yujee を利用しないこと、ならびにサービスの妨害、レート制限の濫用、権限のないアクセスの試みを行わないことに同意するものとします。',
       },
       {
-        h: '5. Breach and Account Termination',
+        h: '5. 違反とアカウントの終了',
         body:
-          'If you breach these Terms, in particular Section 4, or if we have reasonable grounds to believe your use of Yujee is unlawful, infringing, fraudulent, or harmful to other users or to the security of the service, we may take one or more of the following measures, depending on the severity of the breach:\n' +
-          '• warn you and ask you to fix the problem within a stated period;\n' +
-          '• restrict or disable specific features, such as generation, export, or sharing;\n' +
-          '• remove or disable access to the content concerned and any share links to it;\n' +
-          '• suspend your account;\n' +
-          '• terminate your account and refuse further service.\n' +
+          'お客様が本規約、とりわけ第 4 条に違反した場合、または Yujee のご利用が違法、権利侵害、不正、もしくは他のユーザーやサービスの安全を害するものであると当社が合理的に判断した場合、当社は違反の程度に応じて次のいずれか一つ以上の措置を講じることがあります。\n' +
+          '• 警告を行い、期限を定めて是正を求める\n' +
+          '• 生成、書き出し、共有など特定の機能を制限または停止する\n' +
+          '• 該当するコンテンツおよびその共有リンクを削除またはアクセス不能にする\n' +
+          '• アカウントを一時停止する\n' +
+          '• アカウントを終了し、以後のサービス提供をお断りする\n' +
           '\n' +
-          'For serious breaches, for repeated breaches after a warning, or where the law or a competent authority requires it, we may suspend or terminate immediately without prior notice. Except where urgency or the law requires otherwise, we will make reasonable efforts to tell you the reason when we act or shortly afterwards. If you believe a decision was wrong, you may appeal to the contact address at the end of these Terms and we will review it again.\n' +
+          '重大な違反の場合、警告後に違反が繰り返された場合、または法令もしくは管轄当局から求められた場合には、事前の通知なく直ちに停止または終了することがあります。緊急の場合や法令上別途要請がある場合を除き、当社は措置を講じる際、またはその直後に、理由をお伝えするよう合理的に努めます。判断に誤りがあるとお考えの場合は、本規約末尾の連絡先までご異議を申し立てていただければ、あらためて確認します。\n' +
           '\n' +
-          'If your account is terminated because you breached these Terms, unused credits are not refunded, and we are not liable for any loss arising from the termination. Nothing here limits our right to pursue other remedies available at law. You may stop using Yujee or ask us to delete your account at any time; after deletion your data is handled as described in the Privacy Policy. Sections 6, 8, 9, and 11, together with any provision that by its nature should survive, remain in effect after termination.',
+          '本規約への違反によりアカウントが終了した場合、未使用のクレジットは返金されず、終了によって生じた損害について当社は責任を負いません。本条は、法令上認められた他の救済手段を当社が求める権利を制限するものではありません。お客様はいつでも Yujee のご利用を中止し、またはアカウントの削除をお申し出いただけます。削除後のデータはプライバシーポリシーの定めに従って取り扱われます。第 6 条、第 8 条、第 9 条、第 11 条、およびその性質上存続すべき条項は、終了後も有効に存続します。',
       },
       {
-        h: '6. Intellectual Property',
-        body: 'You retain ownership of the photos and text you input. As between you and Yujee, the generated memoir output belongs to you — you may use, reproduce, and distribute it freely. We process your content solely to provide the service.',
+        h: '6. 知的財産',
+        body: 'お客様が入力した写真とテキストの所有権はお客様に帰属します。お客様と Yujee との関係において、生成された思い出の本の成果物はお客様のものであり、自由に利用、複製、頒布していただけます。当社はサービスを提供する目的でのみ、お客様のコンテンツを処理します。',
       },
       {
-        h: '7. Credits and Payments',
+        h: '7. クレジットとお支払い',
         body:
-          'Generating a memoir consumes credits on a per-photo basis: one credit covers one photo. When you start a generation we place a hold on the corresponding credits; they are debited once the layout succeeds, and the hold is released with no charge if the generation fails. Credits are obtained through one-time credit packs — there is no subscription and no monthly fee, and credits currently have no expiry date. Current prices and pack sizes are those shown on the pricing page.\n' +
+          '思い出の本の生成では、写真 1 枚につき 1 クレジットを消費します。生成を開始すると、当社は該当する数のクレジットを一時的に確保します。組版が成功した時点で実際に引き落とされ、生成に失敗した場合は確保が解除され、料金は発生しません。クレジットは一回払いのクレジットパックで購入します。サブスクリプションや月額料金はなく、現時点でクレジットに有効期限はありません。現在の価格とパックの内容は、料金ページに表示されているものが適用されます。\n' +
           '\n' +
-          'Once credits have been debited for a successful layout they are not refundable, including where you are unhappy with the result. Except as required by law, fees paid and credit packs purchased are non-refundable. Where you purchased through a third-party payment provider, that provider’s own refund rules also apply, and nothing in this section affects consumer rights that the law of your country or region does not permit us to exclude.\n' +
+          '組版が成功してクレジットが引き落とされた後は、結果にご満足いただけなかった場合を含め、返金はいたしません。法令で義務づけられる場合を除き、お支払い済みの料金および購入済みのクレジットパックは返金の対象外です。第三者の決済事業者を通じて購入された場合は、その事業者の返金規定も併せて適用されます。また、本条は、お住まいの国または地域の法令が排除を認めない消費者の権利に影響を与えるものではありません。\n' +
           '\n' +
-          'We may change prices, pack sizes, and billing models at any time. Changes take effect for new purchases when published and do not affect credits you have already purchased.',
+          '当社は、価格、パックの内容、課金方式をいつでも変更することがあります。変更は公表の時点から新規のご購入に適用され、すでに購入済みのクレジットには影響しません。',
       },
       {
-        h: '8. Disclaimer',
-        body: 'The service is provided "as is" and "as available", without warranties of any kind. We do not warrant that Yujee will be uninterrupted, secure, or error-free.',
+        h: '8. 免責事項',
+        body: '本サービスは「現状有姿」かつ「提供可能な範囲」で提供され、いかなる種類の保証も伴いません。当社は、Yujee が中断しないこと、安全であること、エラーがないことを保証しません。',
       },
       {
-        h: '9. Limitation of Liability',
-        body: 'To the maximum extent permitted by law, Yujee shall not be liable for any indirect, incidental, special, consequential, or punitive damages — including lost profits, data loss, or loss of goodwill.',
+        h: '9. 責任の制限',
+        body: '法令で認められる最大限の範囲において、Yujee は、逸失利益、データの喪失、信用の毀損を含む、間接的、付随的、特別、結果的、または懲罰的な損害について責任を負いません。',
       },
       {
-        h: '10. Changes to Terms',
-        body: 'We may modify these Terms at any time; the updated version takes effect on posting. Continued use after changes constitutes acceptance.',
+        h: '10. 規約の変更',
+        body: '当社は本規約をいつでも変更することがあります。更新後の規約は掲載の時点で効力を生じます。変更後も継続してご利用いただくことで、変更に同意したものとみなされます。',
       },
       {
-        h: '11. Governing Law and Disputes',
+        h: '11. 準拠法と紛争解決',
         body:
-          'These Terms — their formation, validity, and interpretation, and any dispute arising out of or relating to them — are governed by the laws of the People’s Republic of China (excluding the Hong Kong and Macao Special Administrative Regions and Taiwan).\n' +
+          '本規約の成立、有効性および解釈、ならびに本規約に起因または関連する紛争は、中華人民共和国の法律（香港特別行政区、マカオ特別行政区および台湾地区を除く）に準拠します。\n' +
           '\n' +
-          'If a dispute arises, the parties will first try to resolve it through good-faith negotiation. If negotiation does not succeed, either party may bring proceedings before a court of competent jurisdiction at the place where the operator of Yujee is located.\n' +
+          '紛争が生じた場合、両当事者はまず誠実に協議して解決を図ります。協議が調わない場合、いずれの当事者も、Yujee の運営者の所在地を管轄する裁判所に訴えを提起することができます。\n' +
           '\n' +
-          'If the law of your country or region grants you consumer rights that cannot be excluded, this section does not affect those rights.',
+          'お住まいの国または地域の法令が、排除できない消費者の権利をお客様に認めている場合、本条はその権利に影響を与えません。',
       },
       {
-        h: '12. Contact',
+        h: '12. お問い合わせ',
         body: '',
       },
     ],
-    contactLine: 'Questions? Email support@yujeeai.com.',
+    contactLine: 'ご不明な点は support@yujeeai.com までメールでお問い合わせください。',
   },
   story: {
-    metaTitle: 'Our Story — Why I built Yujee',
+    metaTitle: '創業ストーリー — わたしが Yujee をつくった理由',
     metaDesc:
-      'I lived with depression for more than a decade, worked as an astrology counselor, then spent a year building an AI counselor. Here is what I learned, and why Yujee turns your life into a book instead.',
-    title: 'After Getting Out of Depression, I Built a Tool Just for Myself',
+      '十数年うつに閉じ込められ、その後は占星術カウンセラーになり、さらに一年かけて AI をカウンセラーに育てました。そこで見えたことと、Yujee が人生を一冊の本にする理由です。',
+    title: 'うつから這い上がったあと、自分のためだけの道具をつくりました',
     lede: [
-      'My name is yvaine.',
-      'I lived with depression for more than a decade. I have worked as a software product designer, then as an astrology counselor. Now I build Yujee.',
-      'Yujee is a tool that helps you understand yourself, and turn that into a book.',
-      'Here is why it exists.',
+      'yvaine といいます。',
+      '十数年うつと生き、ソフトウェアのプロダクトデザイナーをして、占星術のカウンセラーをして、いまは Yujee をつくっています。',
+      'Yujee は、自分を知り、その自分を一冊の本にするための道具です。',
+      'なぜこれが存在するのか、その話をさせてください。',
     ],
     sections: [
       {
-        h: 'More than ten years in the dark',
+        h: '十数年の暗闇',
         paras: [
-          'I had severe depression and bipolar disorder.',
-          'From primary school into adulthood, because of things at home, I was the withdrawn kid, the isolated one, the one with no confidence.',
-          'The light only started coming in after I finished college.',
-          'After graduation I moved into software product design, and for the first time I felt the pleasure of solving something with logic and design together. But one question stayed with me the whole time. What is a person actually living for.',
+          '重いうつと双極性障害がありました。',
+          '小学校から大人になるまで、家庭の事情で、ずっと殻に閉じこもった、孤立した、自信のない子どもでした。',
+          '光が差しはじめたのは、大学を出てからです。',
+          '卒業後はソフトウェアのプロダクトデザインに移り、ロジックとデザインで問題を解いていく面白さをはじめて知りました。それでも、どうしてもわからないことが一つだけ残りました。人は何のために生きているのか。',
         ],
-        pull: 'More than ten years without daylight. I stood at that edge more times than I can count.',
+        pull: '十数年、陽の当たらない日々。自分を終わらせる分かれ道に、数えきれないほど立ちました。',
       },
       {
-        h: 'Astrology gave me somewhere to stand',
+        h: '占星術が支点をくれた',
         paras: [
-          'I had done plenty of therapy and counseling. Almost none of it worked on me.',
-          'Later I got into divination. I asked astrologers, BaZi readers, Zi Wei readers. Not one of them could answer that question.',
-          'Curiosity pushed me to go learn astrology myself. I learned it while using it, and somewhere along the way I became an astrology counselor.',
-          'The deeper I went, the more I understood where my own depression came from. I made peace with a childhood that was poor and miserable.',
-          'I am not here to sell you astrology. What actually helped me was that it gave me somewhere to stand, an angle from which I could look at myself from the outside. The North Node is what that means to me.',
-          'Later I used astrology and psychology together to help people around me, and it worked better than I expected. Give a person somewhere to stand, and they can move their own life.',
-        ],
-      },
-      {
-        h: 'The 13-year-old girl',
-        paras: [
-          'I met a 13-year-old girl. Her parents had worked far from home for years, she had been left behind with relatives, and she had stopped going to school.',
-          'I wanted to help her. I grew up the same way.',
-          'I did not take the case. Pulling someone out of that takes an enormous amount of time and energy. I was buried in work, I had my own bills, and I could not do it.',
-          'That one stayed with me. Most kids like her cannot afford a counselor, and cannot bring themselves to open up to a real person anyway.',
+          'カウンセリングも治療もひと通り受けました。わたしにはほとんど効きませんでした。',
+          'そのうち占いに近づいていきました。西洋占星術、四柱推命、紫微斗数。どこへ行っても、あの問いに答えてくれる人はいませんでした。',
+          '好奇心に押されて、自分で占星術を学びはじめました。学びながら使い、使いながら学び、気がついたら占星術のカウンセラーになっていました。',
+          '深く入っていくほど、自分のうつがどこから来たのかが見えてきました。貧しくてみじめだった子ども時代とも、そこでようやく和解できました。',
+          '占星術を勧めたいわけではありません。わたしを本当に助けたのは、それが立つ場所をくれたことでした。自分を外側から眺められる角度です。ノースノードという言葉が、わたしにとって意味するのはそれです。',
+          'その後は占星術と心理学を合わせて、まわりの人を手伝うようになりました。思っていたより、ずっとよく効きました。立つ場所さえあれば、人は自分の人生を動かせます。',
         ],
       },
       {
-        h: 'I built an AI counselor',
+        h: '13 歳の女の子',
         paras: [
-          'Those were the years ChatGPT and Claude arrived. I found that with careful tuning, an AI could work as a junior to intermediate astrology counselor, with both counseling and astrology skills. Everything I had learned in software design finally had somewhere to go.',
-          'In 2024 I met CC, who was building AI tarot, through social media. In 2025 I joined the team and spent a full year tuning an AI into a counselor that was cheap enough, patient enough to stay for the long run, and free of personal bias.',
-          'We shipped it.',
-          'But after watching closely for a year how people and that AI counselor treated each other, I saw something else.',
-          'A beautiful imagined future gives the brain its dopamine. But if nothing lands, if nothing moves forward, you end up carrying water in a basket. The emptiness after that hurts more than before.',
-          'So it has to land somewhere.',
-        ],
-        pull: 'Counseling is not the answer, and it is not the destination. When someone stays lost long enough, counseling can turn into another drug. The kind you slowly get hooked on.',
-      },
-      {
-        h: 'Why a book',
-        paras: [
-          'I went through a lot of research on psychological treatment. Art therapy and expressive writing have a clear effect on depression and on feeling lost. Writing and drawing with your hands pull you out of the loop your thoughts keep spinning in, and put you back into your body.',
-          'In plain words, making things helps with pain, and it does real work for rebuilding a sense of self.',
-          'Across all those consultations I saw something else. A lot of people stay with someone they do not like, doing work they do not like, lost and hurting for years, and underneath it they do not know who they actually are. What they want, what they cannot stand, what they are good at, what they value. None of it is clear to them.',
-          'That kind of knowing does not arrive in a flash one afternoon. It takes rounds of shaping, finding, tearing down, and testing again.',
-          'And when it comes to making something, I cannot think of anything more compelling than a book that belongs only to you.',
-          'It makes your life visible. And years from now you open it and find that along the way there were so many moments that mattered. Good ones, ones you grew from, ones that hurt.',
-          'What you actually lived through is the most valuable fruit on the tree of your life.',
+          '13 歳の女の子に会ったことがあります。両親は何年も遠くで働いていて、彼女は親戚に預けられたまま、学校へ行かなくなっていました。',
+          'どうしても助けたいと思いました。わたし自身が、そうやって育ったからです。',
+          'けれど、その依頼は受けませんでした。人を泥のなかから引き上げるには、途方もない時間と気力がいります。当時のわたしは仕事に埋もれていて、自分の生活も抱えていて、できませんでした。',
+          'このことは、ずっと胸に残りました。彼女のような子のほとんどは、カウンセラーを頼めるお金がありません。そして、生身の人間に向かって口を開くことも、なかなかできないのです。',
         ],
       },
       {
-        h: 'What Yujee is',
+        h: 'AI のカウンセラーをつくりました',
         paras: [
-          'By 2026 I could not sit on it anymore.',
-          'I wanted to build a product that was genuinely for the person using it. No retention games, no hooks. One job. Help someone know themselves, and keep it.',
-          'That is where Yujee came from. In Chinese it means meeting yourself, and also steering yourself.',
-          'The way it works is concrete. It turns your scattered photos and words into a book you can open. And in the act of choosing and arranging your own life, you see who you are again.',
-          'What Yujee does today:',
+          'ちょうど ChatGPT と Claude が出てきた頃です。丁寧にチューニングすれば、AI は初級から中級の占星術カウンセラーとして働けることがわかりました。カウンセリングと占星術、その両方をこなせるのです。ソフトウェアデザインで積んできたものが、ようやく行き先を見つけました。',
+          '2024 年、SNS で AI タロットをつくっていた CC と出会いました。2025 年にそのチームに入り、まる一年をかけて、じゅうぶんに安く、長く寄り添えるほど辛抱強く、個人的な偏りのないカウンセラーへと AI を育てました。',
+          'それは、形になりました。',
+          'けれど、人とその AI カウンセラーがどう関わり合うのかを一年間まぢかで見ているうちに、別のものが見えてきました。',
+          '美しい想像は、脳にドーパミンをくれます。でも何も着地しなければ、何も前に進まなければ、結局はざるで水を汲んでいるのと同じです。そのあとに残る空っぽさは、前より痛い。',
+          'だから、どこかに着地しなければいけません。',
+        ],
+        pull: 'カウンセリングは答えではないし、終着点でもありません。自分を見つけられない時間が長く続けば、カウンセリングもまた一種の毒になりえます。じわじわ依存していく類いの毒に。',
+      },
+      {
+        h: 'なぜ「本」なのか',
+        paras: [
+          '心理療法の資料をずいぶん読みました。アートセラピーや表現的ライティングは、うつや迷いの状態にはっきり効きます。手を動かして書く、描く。それが、空回りしつづける思考のループから人を引きずり出して、身体のほうへ戻してくれます。',
+          'ありていに言えば、つくることは痛みをやわらげます。そして、自分をつくり直すのに本当に役立ちます。',
+          '数えきれない相談のなかで、もう一つ見えたことがあります。好きでもない人のそばにいて、好きでもない仕事をして、何年も迷いと痛みのなかにいる人がとても多い。その根っこにあるのは、ほんとうの自分を知らないことでした。何がほしいのか、何が耐えられないのか、何が得意で、何を大切にしているのか。どれもはっきりしていません。',
+          'そういう理解は、ある日の午後にひらめきとして降りてくるものではありません。磨いて、見つけて、壊して、また確かめる。それを何周も繰り返して、ようやく形になります。',
+          'そして「つくる」ということでいえば、自分だけの一冊の本より心を引くものを、わたしは思いつけませんでした。',
+          '本は、あなたの人生を見えるものにします。そして何年か経って開いたとき、ここまでの道のりに、意味のある瞬間がこんなにもあったのかと気づきます。よかったこと、そこで育ったこと、痛かったこと。',
+          '実際に生きてきたその中身こそ、あなたという木にみのった、いちばん高い果実です。',
+        ],
+      },
+      {
+        h: 'Yujee とは',
+        paras: [
+          '2026 年、その衝動をもう抑えられなくなりました。',
+          '使う人のためだけにある製品をつくりたかった。リテンションの駆け引きも、フックも要りません。仕事は一つだけ。自分を知る手伝いをして、それを残すこと。',
+          'Yujee はそこから生まれました。中国語の「遇己」は、自分に出会うこと、そして自分を御することを意味します。',
+          'やり方はとても具体的です。散らばった写真と言葉を、開くことのできる一冊の本にします。そして自分の人生を選び、並べていくうちに、自分が誰なのかがもう一度見えてきます。',
+          'いまの Yujee にできること：',
         ],
         bullets: [
-          'Sorts your photos automatically and groups the similar ones',
-          'Lays out the book for you, no dragging things around',
-          'Helps you write, turning fragments into a story that holds together',
-          'Shares in one click, so the people who matter can read it',
+          '写真を自動で整理し、似たものをまとめます',
+          'ドラッグ操作なしで、本のレイアウトまで仕上げます',
+          '文章を助けて、断片をひとつづきの物語にします',
+          'ワンクリックで共有でき、大切な人に読んでもらえます',
         ],
       },
       {
-        h: 'Built by one person',
+        h: 'ひとりでつくりました',
         paras: [
-          'Yujee was built entirely by me working with Claude Code, learning and shipping at the same time. The systems architecture I picked up years ago doing system integration still holds up. Ask me again later.',
-          'For two months I barely slept, and put out the first demo I considered usable. In July, 20 early users sent feedback, and I kept going.',
-          'Doing the whole thing alone is not easy. But I wanted to get this one thing right, badly.',
-          'What Yujee is today is still a very small version. It may not change anything for you right away. I still want to put this stubbornness into it.',
+          'Yujee は、Claude Code と組んで最初から最後までわたしが書きました。学びながら、つくりながらです。昔システムインテグレーションで身につけたアーキテクチャの知識は、いまのところまだ通用しています。この先はわかりません。',
+          '二か月ほとんど眠らずに、自分で使えると思える最初のデモを出しました。7 月には 20 人の初期ユーザーが感想をくれて、そのまま直しつづけています。',
+          'ひとりで全部やるのは、楽ではありません。それでも、この一つのことだけは、どうしてもちゃんとやりたかったのです。',
+          'いまの Yujee は、まだとても小さなバージョンです。あなたの何かをすぐに変えられるとは限りません。それでも、この頑固さを込めておきたいと思っています。',
         ],
       },
     ],
-    closing: 'And I hope you get to hold on to your own tree of life, and find the self that sits deepest inside you.',
-    dateline: 'yvaine, July 31, 2026',
-    byline: { author: 'yvaine', date: 'July 31, 2026', readingTime: '8 min read' },
-    tocHead: 'Contents',
-    ctaLabel: 'Start your own book',
+    closing: 'あなたも、自分の生命の樹をしっかり握って、心のいちばん奥にいる自分に出会えますように。',
+    dateline: 'yvaine 2026 年 7 月 31 日',
+    byline: { author: 'yvaine', date: '2026 年 7 月 31 日', readingTime: '約 8 分で読めます' },
+    tocHead: '目次',
+    ctaLabel: '自分の本をつくる',
     disclaimer:
-      'Yujee is not a medical product and is not a replacement for therapy. If you are in danger right now, please reach out to a doctor or a crisis line first.',
+      'Yujee は医療機器ではなく、心理療法の代わりにもなりません。いま危険な状態にある場合は、まず医師や相談窓口にご連絡ください。',
   },
   examples: {
-    metaTitle: 'Photo Book & Memoir Examples — Made with Yujee AI',
+    metaTitle: 'フォトブック・思い出の本の作例 — Yujee AI 制作',
     metaDesc:
-      'Real formats you can make with Yujee: travel journals, life stories, and more — each one grouped, captioned, and laid out by AI from a pile of photos, then exported as a print-ready PDF.',
-    kicker: 'Examples',
-    hubTitle: 'Examples',
+      'Yujee でつくれる実際の形。旅の記録、人生の物語など、どれも一山の写真から AI がグループ分けし、文章を書き、すべての見開きを組み上げ、印刷用 PDF に書き出したものです。',
+    kicker: '作例',
+    hubTitle: '作例',
     hubIntro:
-      'Real formats you can make with Yujee. Each one started as a pile of photos and a few words — the AI grouped them, drafted the captions, and laid out every spread. Open one to see the flow, then make your own.',
-    moreComing: 'More formats — baby growth, pets, and love stories — are on the way.',
-    insideHead: 'What’s inside',
-    madeWithHead: 'Made with',
-    galleryHead: 'Inside the book',
-    flipThrough: 'Flip through',
-    makeSame: 'Make one like this',
-    breadcrumbHome: 'Home',
-    breadcrumbExamples: 'Examples',
-    openLabel: 'See example',
+      'Yujee でつくれる実際の形です。どれも、一山の写真と数行の言葉から始まりました。AI が写真をまとめ、文章の下書きを書き、すべての見開きを組み上げています。一冊開いて流れを見てから、あなたの一冊をつくってみてください。',
+    moreComing: '赤ちゃんの成長、ペット、恋の物語など、ほかの形も準備中です。',
+    insideHead: '中身',
+    madeWithHead: '使った機能',
+    galleryHead: '本の中を見る',
+    flipThrough: 'めくって見る',
+    makeSame: '同じように作る',
+    breadcrumbHome: 'ホーム',
+    breadcrumbExamples: '作例',
+    openLabel: '作例を見る',
   },
   footer: {
-    tagline: 'Turn scattered photos into a magazine worth keeping.',
+    tagline: 'ばらばらの写真を、とっておきの一冊の雑誌に。',
     groups: [
       {
-        head: 'Product',
+        head: '製品',
         items: [
-          { label: 'Create a photo book', href: '#homepage-composer' },
-          { label: 'How it works', href: '#features' },
-          { label: 'What you get', href: '#outputs' },
-          { label: 'Pricing', href: '#pricing' },
+          { label: 'フォトブックをつくる', href: '#homepage-composer' },
+          { label: '使い方', href: '#features' },
+          { label: 'できあがるもの', href: '#outputs' },
+          { label: '料金', href: '#pricing' },
         ],
       },
       {
-        head: 'Photo Books',
+        head: 'フォトブック',
         items: [
-          { label: 'Travel photo book example', href: '/examples/travel-journal' },
-          { label: 'Life story book example', href: '/examples/life-story' },
-          { label: 'All memoir examples', href: '/examples' },
+          { label: '旅のフォトブックの作例', href: '/examples/travel-journal' },
+          { label: '人生の物語の作例', href: '/examples/life-story' },
+          { label: 'すべての作例', href: '/examples' },
         ],
       },
       {
-        head: 'Support',
+        head: 'サポート',
         items: [
-          { label: 'FAQ', href: '#faq' },
-          { label: 'Contact us', href: `mailto:${SUPPORT_EMAIL}` },
+          { label: 'よくある質問', href: '#faq' },
+          { label: 'お問い合わせ', href: `mailto:${SUPPORT_EMAIL}` },
         ],
       },
       {
-        head: 'About',
-        items: [{ label: 'Our story', href: '/about/story' }],
+        head: 'Yujee について',
+        items: [{ label: '創業ストーリー', href: '/about/story' }],
       },
       {
-        head: 'Legal',
+        head: '法的事項',
         items: [
-          { label: 'Privacy', href: '/privacy' },
-          { label: 'Terms', href: '/terms' },
+          { label: 'プライバシー', href: '/privacy' },
+          { label: '利用規約', href: '/terms' },
         ],
       },
     ],
-    copy: '© 2026 Yujee. All rights reserved.',
+    copy: '© 2026 Yujee. 無断転載を禁じます。',
   },
 };
