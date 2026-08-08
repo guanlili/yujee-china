@@ -132,7 +132,7 @@ const copies: Record<Locale, Copy> = {
     sampleCta: 'See example',
     makeSame: 'Make one like this',
     samplesNote: 'Demo books made by the Yujee team to show what the product can do — fictional content, not customer work.',
-    heroEyebrow: 'AI photo books · from shots to bound book',
+    heroEyebrow: 'AI photobooks & memoir books · from shots to bound book',
     heroTitle: (
       <>
         Turn your everyday snapshots
@@ -159,7 +159,7 @@ const copies: Record<Locale, Copy> = {
       {
         title: 'Auto-layout into a photo book',
         body:
-          'Drop in a set of photos and the AI automatically lays out magazine-style spreads — full bleeds, grids, white space — a finished photo book layout without dragging pictures one by one.',
+          'Drop in a set of photos and the AI automatically lays out magazine-style spreads — full bleeds, grids, white space. It is photobook design without the design work, and a finished photo book layout without dragging pictures one by one.',
         icon: 'layout',
       },
       {
@@ -171,7 +171,7 @@ const copies: Record<Locale, Copy> = {
       {
         title: 'Flip-book preview · print-ready PDF export',
         body:
-          'Flip through a 3D preview, page by page — what you see is what you get. Export a 300 DPI print-ready PDF you can print and bind anytime.',
+          'Flip through a 3D preview, page by page — what you see is what you get. Keep it as a digital photobook, or export a 300 DPI print-ready PDF you can print and bind anytime.',
         icon: 'book',
       },
     ],

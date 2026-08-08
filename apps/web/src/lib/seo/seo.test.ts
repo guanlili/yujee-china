@@ -5,6 +5,7 @@ import sitemap from '@/app/sitemap';
 import { ADDON_PACKS, FREE_PLAN_CREDITS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { locales } from '@/lib/i18n/routing';
 import { SOCIAL_LINKS } from '@/config/social';
+import { EXAMPLES, exampleContent, getExample } from '@/lib/examples/examples';
 import { getFaqEntries } from './faq';
 import { buildLlmsTxt } from './llms';
 import { INDEXABLE_ROUTES, NOINDEX_ROUTES } from './routes';
@@ -197,6 +198,42 @@ test('the landing title and description stay inside what a SERP actually shows',
   assert.ok(metaDesc.length <= 165, `en description is ${metaDesc.length} chars, over the 165 SERP budget`);
 });
 
+// Each target keyword lives on exactly ONE page. A single page cannot rank for
+// "travel photobook" and "biography book" at once, and trying is what keyword
+// stuffing looks like to Google. The landing keeps the generic terms; the
+// /examples detail pages each own their format's term.
+test('each example page owns its own format keyword — no two pages chase the same term', () => {
+  const owned: Record<string, RegExp[]> = {
+    'travel-journal': [/travel photobook/i],
+    'life-story': [/biography book/i, /memoir book/i],
+  };
+
+  for (const [slug, patterns] of Object.entries(owned)) {
+    const example = getExample(slug);
+    assert.ok(example, `${slug} example disappeared`);
+    const c = exampleContent(example, 'en');
+    const page = [c.title, c.tagline, c.metaTitle, c.metaDesc, ...c.intro, ...c.inside].join(' ');
+    for (const pattern of patterns) {
+      assert.match(page, pattern, `${slug} no longer carries ${pattern}`);
+    }
+  }
+
+  // The landing must NOT also chase the per-format terms, or the example pages
+  // compete with their own homepage for them.
+  const landing = getMarketingMessages('en').landing;
+  const landingMeta = `${landing.metaTitle} ${landing.metaDesc}`;
+  assert.doesNotMatch(landingMeta, /travel photobook/i, 'the landing is competing with /examples/travel-journal');
+  assert.doesNotMatch(landingMeta, /biography book/i, 'the landing is competing with /examples/life-story');
+});
+
+test('every example page title and description stays inside the SERP budget', () => {
+  for (const example of EXAMPLES) {
+    const { metaTitle, metaDesc } = exampleContent(example, 'en');
+    assert.ok(metaTitle.length <= 65, `${example.slug} title is ${metaTitle.length} chars, over the 65 budget`);
+    assert.ok(metaDesc.length <= 165, `${example.slug} description is ${metaDesc.length} chars, over the 165 budget`);
+  }
+});
+
 test('the free-plan FAQ is phrased as the query people actually type', () => {
   // This entry is the on-page anchor for the "free photo book" intent and feeds
   // FAQPage JSON-LD verbatim. It must still state the real grant, not just the
@@ -205,6 +242,7 @@ test('the free-plan FAQ is phrased as the query people actually type', () => {
   assert.ok(entry, 'the free-plan FAQ entry disappeared');
   assert.match(entry.q, /free/i);
   assert.match(entry.q, /photo book/i, 'the free question no longer names photo books');
+  assert.match(entry.a, /free photobook/i, 'the answer dropped the joined "free photobook" spelling');
   assert.match(entry.a, new RegExp(`${FREE_PLAN_CREDITS} free credits?\\b`), 'the answer stopped stating the real grant');
 });
 

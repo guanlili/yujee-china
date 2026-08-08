@@ -167,7 +167,25 @@ test('the hero subtitle states the layout is free — the H1 sits above the fold
   assert.match(zh, /排版/, 'the Chinese hero subtitle dropped the layout claim');
 });
 
-test('footer color accent is anchored to the page bottom on desktop and mobile', () => {
+test('the landing body carries the generic photobook terms, both spellings', () => {
+  // "photo book" (US-dominant) and "photobook" (UK/AU/Asia) are separate query
+  // spellings that Google only partly reconciles. Both appear in the body so
+  // neither side of the demand is left on the table. These are the GENERIC
+  // terms only — per-format terms belong to /examples (see seo.test.ts).
+  const client = component('YujeeLandingHomeClient.tsx');
+  const start = client.indexOf('\n  en: {');
+  const end = client.indexOf('\n  zh: {');
+  assert.ok(start > 0 && end > start, 'could not isolate the English copy block');
+  const en = client.slice(start, end);
+
+  assert.match(en, /\bphoto book\b/i, 'the landing dropped the spaced "photo book" spelling');
+  assert.match(en, /\bphotobooks?\b/i, 'the landing dropped the joined "photobook" spelling');
+  assert.match(en, /photobook design/i, 'the landing dropped "photobook design"');
+  assert.match(en, /digital photobook/i, 'the landing dropped "digital photobook"');
+  assert.match(en, /memoir books?\b/i, 'the landing dropped "memoir book"');
+});
+
+test('the hero subtitle states the layout is free — the H1 sits above the fold and carries weight', () => {
   const client = component('YujeeLandingHomeClient.tsx');
   const footerGlowRule = client.match(/\.footer-glow \{(?<rule>[^}]*)\}/s)?.groups?.rule ?? '';
   const desktopFooterGlowRule = client.match(/@media \(min-width: 768px\) \{ \.footer-glow \{(?<rule>[^}]*)\} \}/s)?.groups?.rule ?? '';

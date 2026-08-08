@@ -50,7 +50,7 @@ const EN: readonly FaqEntry[] = [
     // would be two questions with one answer. The grant is interpolated so the
     // claim can never outlive the constant.
     q: 'Is Yujee a free photo book maker?',
-    a: `Yes, to start. Sign-up comes with ${FREE_PLAN_CREDITS} free credits — enough to lay out a whole photo book. 1 credit = ${PHOTOS_PER_CREDIT} photo${PHOTOS_PER_CREDIT === 1 ? '' : 's'}, and a photo book is usually ${PAGES_PER_CREDIT_LABEL} pages. No subscription.`,
+    a: `Yes, to start. Sign-up comes with ${FREE_PLAN_CREDITS} free credits — a whole free photobook, cover to cover. 1 credit = ${PHOTOS_PER_CREDIT} photo${PHOTOS_PER_CREDIT === 1 ? '' : 's'}, and a photo book is usually ${PAGES_PER_CREDIT_LABEL} pages. No subscription.`,
   },
 ];
 

@@ -67,10 +67,10 @@ export const EXAMPLES: readonly Example[] = [
       tagline: 'A trip laid out as a story of place and time.',
       metaTitle: 'Travel Photo Book Example — A Yujee AI Memoir',
       metaDesc:
-        'See how Yujee turns a whole trip of scattered photos into a magazine-style travel photo book — grouped by place, captioned by AI, exported as a print-ready PDF.',
+        'See how Yujee turns a whole trip of scattered photos into a magazine-style travel photobook — grouped by place, captioned by AI, exported as a print-ready PDF.',
       intro: [
         'This is an example of a travel memoir made with Yujee. We took a single trip’s photos — landscapes, streets, portraits, and the quiet moments in between — and let the AI group them by place and time, draft the captions and chapter titles, and lay every spread out as a magazine you can hold. Nothing here was designed by hand.',
-        'Use it as a reference for your own trip. Whether it’s a week in Kyoto or a year of weekend escapes, the flow is the same: upload your photos, let Yujee sort and lay out a first draft, edit anything in chat, then export a 300 DPI PDF to print and bind.',
+        'Use it as a reference for your own travel photobook. Whether it’s a week in Kyoto or a year of weekend escapes, the flow is the same: upload your photos, let Yujee sort and lay out a first draft, edit anything in chat, then export a 300 DPI PDF to print and bind.',
       ],
       inside: [
         'A cover and title page built from your strongest shot',
@@ -137,12 +137,17 @@ export const EXAMPLES: readonly Example[] = [
     en: {
       title: 'Life Story',
       tagline: 'A life told along a timeline — milestones and the ordinary days between.',
-      metaTitle: 'Life Story Book Example — A Yujee AI Memoir',
+      // This page owns the memoir/biography demand. Deliberately NOT the bare
+      // terms "best memoir" or "biography": those SERPs are book recommendations
+      // and celebrity lookups (Goodreads, Wikipedia, IMDb) — reader and
+      // reference intent, not "I want to make one". "memoir book" and
+      // "biography book" are the make-intent forms of the same demand.
+      metaTitle: 'Life Story & Biography Book Example — Yujee AI Memoir Maker',
       metaDesc:
-        'An example life-story memoir made with Yujee: milestones and everyday moments arranged along a timeline, laid out by AI as a keepsake magazine and exported as a print-ready PDF.',
+        'A life-story memoir book made with Yujee: milestones and everyday moments along a timeline, laid out by AI. Make your own biography book and export a print PDF.',
       intro: [
-        'This is an example of a life-story memoir made with Yujee. It gathers the moments a life is actually made of — a table by the window, an afternoon at home, the small still-life corners we live around — and arranges them along a gentle timeline. The AI wrote a first draft of the chapter titles and captions; every word stays editable.',
-        'It’s a format that keeps growing. Add a chapter each year, or digitize old photos and let Yujee thread them into one continuous story, then export a 300 DPI PDF to print and keep.',
+        'This is an example of a life-story memoir book made with Yujee. It gathers the moments a life is actually made of — a table by the window, an afternoon at home, the small still-life corners we live around — and arranges them along a gentle timeline. The AI wrote a first draft of the chapter titles and captions; every word stays editable.',
+        'It’s a format that keeps growing. Add a chapter each year, or digitize old photos and let Yujee thread them into one continuous story, then export a 300 DPI PDF to print and keep. It’s the simplest way to write your own biography without writing a word first — the AI drafts, you edit.',
       ],
       inside: [
         'A timeline that runs from the early days to now',
@@ -167,12 +172,12 @@ export const EXAMPLES: readonly Example[] = [
     zh: {
       title: '人生故事',
       tagline: '沿时间线讲述的一生——里程碑，和之间那些平常的日子。',
-      metaTitle: '人生故事纪念册示例 —— Yujee AI 纪念册',
+      metaTitle: '人生故事·个人传记纪念册示例 —— Yujee AI 纪念册',
       metaDesc:
-        '一本用 Yujee 做的人生故事纪念册示例：把里程碑和日常瞬间沿时间线铺开，AI 排成收藏级杂志，导出可印刷 PDF。',
+        '一本用 Yujee 做的人生故事纪念册示例：把里程碑和日常瞬间沿时间线铺开，AI 排成收藏级杂志，导出可印刷 PDF。也可以照着给自己做一本个人传记。',
       intro: [
         '这是一本用 Yujee 做的人生故事纪念册示例。它收集的是一段人生真正由之构成的瞬间——窗边的一张桌子、在家的一个下午、我们日日相处的那些安静角落——沿着一条舒缓的时间线铺开。章节标题和配文都是 AI 起草的初稿，每个字都能改。',
-        '这是一种会一直生长的形式：每年添一章，或者翻拍老照片，让 Yujee 把它们串成一段连续的故事，再导出 300DPI 的 PDF 打印保存。',
+        '这是一种会一直生长的形式：每年添一章，或者翻拍老照片，让 Yujee 把它们串成一段连续的故事，再导出 300DPI 的 PDF 打印保存。想给自己或家里长辈写一本传记，这是最省力的起点——AI 起草，你来改。',
       ],
       inside: [
         '一条从早年一路到当下的时间线',
