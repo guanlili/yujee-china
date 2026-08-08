@@ -11,7 +11,7 @@ export const en: Copy = {
   login: 'Log in',
   menu: 'Menu',
   createTitle: 'Turn your scattered photos into a photo book you can read, touch, and keep',
-  createSub: 'Upload your photos and the AI groups them, writes the story, and automatically lays out a magazine-style photo book — free to start, fully editable, ready to print.',
+  createSub: 'No sign-in needed — free to use.',
   sampleCta: 'See example',
   makeSame: 'Make one like this',
   samplesNote: 'Demo books made by the Yujee team to show what the product can do — fictional content, not customer work.',

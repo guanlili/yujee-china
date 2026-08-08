@@ -11,7 +11,7 @@ export const fr: Copy = {
   login: 'Se connecter',
   menu: 'Menu',
   createTitle: 'Vos photos éparpillées deviennent un livre photo à lire, à toucher, à garder',
-  createSub: 'Importez vos photos : l’IA les regroupe, écrit le récit et met automatiquement en page un livre photo façon magazine — gratuit pour commencer, entièrement modifiable, prêt à imprimer.',
+  createSub: 'Gratuit, sans inscription.',
   sampleCta: 'Voir l’exemple',
   makeSame: 'En créer un comme ça',
   samplesNote: 'Livres de démonstration réalisés par l’équipe Yujee pour montrer ce que le produit sait faire — contenu fictif, pas des créations de clients.',

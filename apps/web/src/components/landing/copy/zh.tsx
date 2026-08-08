@@ -11,7 +11,7 @@ export const zh: Copy = {
   login: '登录',
   menu: '菜单',
   createTitle: '把散落的照片，做成一本能读、能摸、能留的照片书',
-  createSub: '上传照片，YUJEE AI 自动分组、写文案，免费排版成一本杂志风格的照片书 —— 每一页都能改，可导出印刷级 PDF。',
+  createSub: '不需要登录，免费使用。',
   sampleCta: '查看示例',
   makeSame: '做同款',
   samplesNote: '以下样书均为遇己官方制作的演示作品（内容为虚构示例），非真实用户创作。',

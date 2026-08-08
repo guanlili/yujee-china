@@ -153,20 +153,20 @@ test('English landing moves the AI magazine line into the hero subtitle', () => 
   assert.equal(client.split(movedLine).length - 1, 1, 'the moved English line should render from only one copy slot');
 });
 
-test('the hero subtitle states the layout is free — the H1 sits above the fold and carries weight', () => {
-  // metaDesc is not a ranking input; on-page prose under the H1 is. So the
-  // "free photo book layout" claim has to appear here too, not only in <head>.
+test('the hero line keeps the free claim; the layout keyword stays in body prose', () => {
+  // metaDesc is not a ranking input; on-page prose is. The line under the H1
+  // is a deliberately short conversion hook (free + no sign-in) — the "photo
+  // book layout" keyword must therefore survive elsewhere in the landing body,
+  // not only in <head>.
   const createSub = (locale: 'en' | 'zh') => {
     const matches = [...component(`copy/${locale}.tsx`).matchAll(/createSub:\s*'([^']*)'/g)];
     assert.equal(matches.length, 1, `expected exactly one createSub in the ${locale} copy`);
     return matches[0][1];
   };
-  const en = createSub('en');
-  const zh = createSub('zh');
-  assert.match(en, /free/i, 'the English hero subtitle dropped the free claim');
-  assert.match(en, /lays out|layout/i, 'the English hero subtitle dropped the layout claim');
-  assert.match(zh, /免费/, 'the Chinese hero subtitle dropped the free claim');
-  assert.match(zh, /排版/, 'the Chinese hero subtitle dropped the layout claim');
+  assert.match(createSub('en'), /free/i, 'the English hero subtitle dropped the free claim');
+  assert.match(createSub('zh'), /免费/, 'the Chinese hero subtitle dropped the free claim');
+  assert.match(component('copy/en.tsx'), /lays out|layout/i, 'the English landing body dropped the layout claim');
+  assert.match(component('copy/zh.tsx'), /排版/, 'the Chinese landing body dropped the layout claim');
 });
 
 test('the landing body carries the generic photobook terms, both spellings', () => {

@@ -11,7 +11,7 @@ export const es: Copy = {
   login: 'Iniciar sesión',
   menu: 'Menú',
   createTitle: 'Convierte tus fotos dispersas en un fotolibro que puedes leer, tocar y guardar',
-  createSub: 'Sube tus fotos y la IA las agrupa, escribe la historia y maqueta automáticamente un fotolibro con estilo de revista. Empiezas gratis, lo editas entero y queda listo para imprimir.',
+  createSub: 'Gratis y sin registro.',
   sampleCta: 'Ver el ejemplo',
   makeSame: 'Hacer uno así',
   samplesNote: 'Libros de demostración hechos por el equipo de Yujee para enseñar de qué es capaz el producto. El contenido es ficticio, no es trabajo de clientes.',
