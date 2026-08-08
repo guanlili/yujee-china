@@ -196,7 +196,7 @@ const en: MarketingMessages = {
     metaDesc:
       'The terms you agree to when using Yujee to turn your photos into an AI-laid-out memoir: accounts, credits, exports, and the rights you keep over your own content.',
     title: 'Terms of Service',
-    effective: 'Effective Date: May 27, 2026',
+    effective: 'Effective Date: August 8, 2026',
     sections: [
       {
         h: '1. Acceptance of Terms',
@@ -215,27 +215,55 @@ const en: MarketingMessages = {
         body: 'You agree not to use Yujee to generate content that is illegal, harmful, defamatory, obscene, or that infringes the rights of others; nor to disrupt the service, abuse rate limits, or attempt unauthorized access.',
       },
       {
-        h: '5. Intellectual Property',
+        h: '5. Breach and Account Termination',
+        body:
+          'If you breach these Terms, in particular Section 4, or if we have reasonable grounds to believe your use of Yujee is unlawful, infringing, fraudulent, or harmful to other users or to the security of the service, we may take one or more of the following measures, depending on the severity of the breach:\n' +
+          '• warn you and ask you to fix the problem within a stated period;\n' +
+          '• restrict or disable specific features, such as generation, export, or sharing;\n' +
+          '• remove or disable access to the content concerned and any share links to it;\n' +
+          '• suspend your account;\n' +
+          '• terminate your account and refuse further service.\n' +
+          '\n' +
+          'For serious breaches, for repeated breaches after a warning, or where the law or a competent authority requires it, we may suspend or terminate immediately without prior notice. Except where urgency or the law requires otherwise, we will make reasonable efforts to tell you the reason when we act or shortly afterwards. If you believe a decision was wrong, you may appeal to the contact address at the end of these Terms and we will review it again.\n' +
+          '\n' +
+          'If your account is terminated because you breached these Terms, unused credits are not refunded, and we are not liable for any loss arising from the termination. Nothing here limits our right to pursue other remedies available at law. You may stop using Yujee or ask us to delete your account at any time; after deletion your data is handled as described in the Privacy Policy. Sections 6, 8, 9, and 11, together with any provision that by its nature should survive, remain in effect after termination.',
+      },
+      {
+        h: '6. Intellectual Property',
         body: 'You retain ownership of the photos and text you input. As between you and Yujee, the generated memoir output belongs to you — you may use, reproduce, and distribute it freely. We process your content solely to provide the service.',
       },
       {
-        h: '6. Credits and Payments',
-        body: 'Generating a memoir consumes credits. Credits are obtained through one-time credit packs — there is no subscription. Except as required by law, paid fees and credit packs are non-refundable. We may change prices and billing models at any time; changes do not affect credits you have already purchased.',
+        h: '7. Credits and Payments',
+        body:
+          'Generating a memoir consumes credits on a per-photo basis: one credit covers one photo. When you start a generation we place a hold on the corresponding credits; they are debited once the layout succeeds, and the hold is released with no charge if the generation fails. Credits are obtained through one-time credit packs — there is no subscription and no monthly fee, and credits currently have no expiry date. Current prices and pack sizes are those shown on the pricing page.\n' +
+          '\n' +
+          'Once credits have been debited for a successful layout they are not refundable, including where you are unhappy with the result. Except as required by law, fees paid and credit packs purchased are non-refundable. Where you purchased through a third-party payment provider, that provider’s own refund rules also apply, and nothing in this section affects consumer rights that the law of your country or region does not permit us to exclude.\n' +
+          '\n' +
+          'We may change prices, pack sizes, and billing models at any time. Changes take effect for new purchases when published and do not affect credits you have already purchased.',
       },
       {
-        h: '7. Disclaimer',
+        h: '8. Disclaimer',
         body: 'The service is provided "as is" and "as available", without warranties of any kind. We do not warrant that Yujee will be uninterrupted, secure, or error-free.',
       },
       {
-        h: '8. Limitation of Liability',
+        h: '9. Limitation of Liability',
         body: 'To the maximum extent permitted by law, Yujee shall not be liable for any indirect, incidental, special, consequential, or punitive damages — including lost profits, data loss, or loss of goodwill.',
       },
       {
-        h: '9. Changes to Terms',
+        h: '10. Changes to Terms',
         body: 'We may modify these Terms at any time; the updated version takes effect on posting. Continued use after changes constitutes acceptance.',
       },
       {
-        h: '10. Contact',
+        h: '11. Governing Law and Disputes',
+        body:
+          'These Terms — their formation, validity, and interpretation, and any dispute arising out of or relating to them — are governed by the laws of the People’s Republic of China (excluding the Hong Kong and Macao Special Administrative Regions and Taiwan).\n' +
+          '\n' +
+          'If a dispute arises, the parties will first try to resolve it through good-faith negotiation. If negotiation does not succeed, either party may bring proceedings before a court of competent jurisdiction at the place where the operator of Yujee is located.\n' +
+          '\n' +
+          'If the law of your country or region grants you consumer rights that cannot be excluded, this section does not affect those rights.',
+      },
+      {
+        h: '12. Contact',
         body: '',
       },
     ],
@@ -493,7 +521,7 @@ const zh: MarketingMessages = {
     metaDesc:
       '使用 Yujee 把照片做成 AI 排版纪念册时你所同意的条款：账户、积分、导出，以及你对自己内容保留的权利。',
     title: '服务条款',
-    effective: '生效日期：2026 年 5 月 27 日',
+    effective: '生效日期：2026 年 8 月 8 日',
     sections: [
       {
         h: '1. 接受条款',
@@ -512,27 +540,55 @@ const zh: MarketingMessages = {
         body: '你同意不使用 Yujee 生成非法、有害、诽谤、淫秽或侵犯他人权利的内容；不干扰服务、滥用速率限制或试图未经授权访问。',
       },
       {
-        h: '5. 知识产权',
+        h: '5. 违约责任与账号终止',
+        body:
+          '你违反本条款、特别是第 4 条使用规范，或我们有合理理由认为你的使用存在违法、侵权、欺诈，或危害其他用户及服务安全的，我们可视违约情节采取以下一项或多项措施：\n' +
+          '• 向你发出警告，并要求你在限期内改正；\n' +
+          '• 限制或关闭部分功能，例如生成、导出、分享；\n' +
+          '• 删除、屏蔽违规内容及其分享链接；\n' +
+          '• 暂停你的账号；\n' +
+          '• 终止你的账号并拒绝继续提供服务。\n' +
+          '\n' +
+          '情节严重的、经警告后重复违约的，或法律法规及主管部门另有要求的，我们可不经事先通知立即暂停或终止。除情况紧急或法律另有要求外，我们会尽合理努力在采取措施时或之后及时告知你原因。你认为处理有误的，可通过本条款末尾的联系方式申诉，我们会重新核查。\n' +
+          '\n' +
+          '账号因你违约而被终止的，已购买但未使用的积分不予退还，我们亦不对由此产生的损失承担责任；我们依法追究其他责任的权利不受影响。你可以随时停止使用或申请注销账号，注销后你的数据按《隐私政策》的约定处理。本条款终止后，第 6 条、第 8 条、第 9 条、第 11 条以及性质上应当继续有效的条款继续有效。',
+      },
+      {
+        h: '6. 知识产权',
         body: '你保留对自己上传的照片和文字的所有权。生成的纪念册成品归你所有，你可以自由使用、复制和分发；我们仅为提供服务而处理你的内容。',
       },
       {
-        h: '6. 积分与支付',
-        body: '生成纪念册会消耗积分。积分通过一次性积分包购买获得，无订阅、无月费。除法律另有规定外，已付费用和积分包不可退款。我们保留随时调整价格和计费方式的权利；调整不影响你已购买的积分。',
+        h: '7. 积分与支付',
+        body:
+          '生成纪念册按张消耗积分：1 积分对应 1 张照片。发起生成时，我们冻结相应数量的积分；排版成功后实际扣除，生成失败的自动释放、不扣费。积分通过一次性积分包购买获得，无订阅、无月费，目前不设使用期限。当前价格与积分包规格以定价页面标注为准。\n' +
+          '\n' +
+          '积分因排版成功而扣除后不予退还，包括你对排版结果不满意的情形。除法律另有规定外，已支付的费用和已购买的积分包不可退款。你通过第三方支付平台完成购买的，该平台自身的退款规则同时适用；你所在国家或地区的法律赋予你不可排除的消费者权利，不受本条影响。\n' +
+          '\n' +
+          '我们保留随时调整价格、积分包规格和计费方式的权利。调整自公布时对新的购买生效，不影响你此前已购买的积分。',
       },
       {
-        h: '7. 免责声明',
+        h: '8. 免责声明',
         body: '服务按"现状"和"可用"基础提供，不附带任何明示或暗示保证。我们不保证服务不间断、安全或无错误。',
       },
       {
-        h: '8. 责任限制',
+        h: '9. 责任限制',
         body: '在法律允许的最大范围内，Yujee 不对任何间接、附带、特殊、后果性或惩罚性损害承担责任 —— 包括但不限于利润损失、数据丢失或商誉受损。',
       },
       {
-        h: '9. 条款变更',
+        h: '10. 条款变更',
         body: '我们可随时修改本条款，修改后的版本自发布起生效。变更后继续使用服务视为接受修改。',
       },
       {
-        h: '10. 联系',
+        h: '11. 适用法律与争议解决',
+        body:
+          '本条款的订立、效力、解释及争议解决，适用中华人民共和国法律（不含香港、澳门特别行政区及台湾地区）。\n' +
+          '\n' +
+          '因本条款产生或与之相关的争议，双方应先友好协商；协商不成的，任一方可向 Yujee 运营方所在地有管辖权的人民法院提起诉讼。\n' +
+          '\n' +
+          '若你所在国家或地区的法律赋予你不可排除的消费者权利，本条不影响该等权利。',
+      },
+      {
+        h: '12. 联系',
         body: '',
       },
     ],
