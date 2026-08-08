@@ -4,9 +4,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
-// 设计对话回合(runDesignChatTurn)的对话框展示锁成四段结构。ChatPanel 是一大坨命令式
-// DOM effect(无 jsdom harness),沿用本目录 *-wiring/capture-and-act 的源码断言风格:把
-// ChatPanel.tsx 当字符串,对四段的载重不变量下断言。
+// 设计对话回合(runDesignChatTurn)的对话框展示结构(2026-08-08 起为流式过程披露:
+// 步骤叙述逐条流出 + 逐工具人话步骤行 + write_todos 实时计划清单 + 更新条 + 终稿)。
+// ChatPanel 是一大坨命令式 DOM effect(无 jsdom harness),沿用本目录 *-wiring/
+// capture-and-act 的源码断言风格:把 ChatPanel.tsx 当字符串,对载重不变量下断言。
 const here = dirname(fileURLToPath(import.meta.url));
 const chatSrc = readFileSync(join(here, 'ChatPanel.tsx'), 'utf8');
 // 写工具→类别的映射 2026-07 搬进了 chat-history.ts:移动端 AiChatSheet 要用同一份口径,
@@ -17,25 +18,33 @@ const routeSrc = readFileSync(
   'utf8',
 );
 
-// ── 第一段:开场白气泡(AI 回合开头对用户说的话),消费 assistant_step,置顶 ──
-test('开场白:消费 assistant_step 事件,气泡插到进度条上方(置顶)', () => {
+// ── 第一段:步骤叙述(AI 边做边说的话),每条 assistant_step 逐条流进过程区 ──
+test('步骤叙述:逐条消费 assistant_step,不再只取第一条', () => {
   assert.match(chatSrc, /event\.type === 'assistant_step'/);
-  assert.match(chatSrc, /showOpening/);
-  // 开场白气泡 insertBefore 进度条 host —— 顶在整回合最上方。
-  assert.match(chatSrc, /insertBefore\([^)]*host\)/);
+  assert.match(chatSrc, /showStep/);
+  // 旧的「整回合只取第一条开场白」闸门保持拆除。
+  assert.doesNotMatch(chatSrc, /openingShown/);
+  assert.doesNotMatch(chatSrc, /showOpening/);
 });
 
-// ── 第二段:单条「使用工具中」进度条(不逐工具冒卡、不报工具名、结束即收) ──
-test('进度条:整回合一条笼统状态条,不逐工具冒 op-card、不报工具名', () => {
-  // 旧的逐工具富回执卡 builder 及其工具名 label 全部移除。
-  assert.doesNotMatch(chatSrc, /buildDesignOpCard/);
-  assert.doesNotMatch(chatSrc, /designToolLabel/);
-  assert.doesNotMatch(chatSrc, /designWriteDescription/);
-  assert.doesNotMatch(chatSrc, /DESIGN_TOOL_LABEL/);
-  // 一条笼统状态条:通用文案(不含具体工具名),工具跑完随水母收掉。
-  assert.match(chatSrc, /markToolRunning/);
-  assert.match(chatSrc, /正在使用工具|Using tools/);
+// ── 第二段:逐工具人话步骤行(动词+页码,运行中→✓),write_todos 渲染实时计划清单 ──
+test('过程披露:每个工具调用一行人话步骤,内部工具名/入参不外露,todos 实时清单', () => {
+  assert.match(chatSrc, /TOOL_STEP_LABEL/);
+  assert.match(chatSrc, /toolStart/);
+  assert.match(chatSrc, /toolDone/);
+  // 人话标签(抽查两例):步骤行说「翻看页面/更换版式」,不是 raw toolName 直出。
+  assert.match(chatSrc, /翻看页面/);
+  assert.match(chatSrc, /更换版式/);
+  // write_todos 不占步骤行,渲染成整表覆盖、原地重建的计划清单。
+  assert.match(chatSrc, /renderTodos/);
+  assert.match(chatSrc, /ep-step-todos/);
+  // 安全不变量:工具入参是模型可控内容,只走 textContent,绝不进 innerHTML。
+  assert.match(chatSrc, /textEl\.textContent/);
+  // 未知工具宁缺毋滥,不硬渲染。
+  assert.match(chatSrc, /if \(!label\) return/);
+  // 水母仍在回合结束收掉;旧的逐工具富回执卡(op-card 流)不回潮。
   assert.match(chatSrc, /jelly\.remove\(\)/);
+  assert.doesNotMatch(chatSrc, /buildDesignOpCard/);
 });
 
 // ── 第三段:一条彩色「更新了什么」条(按类别去重,只报真正改了的) ──

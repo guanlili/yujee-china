@@ -823,18 +823,69 @@ export function ChatPanel({
     }
     // 从落库的 layout_patch 里解析 design chat 写操作（{ designOps: [{toolName, input}] }）。
 
-    // 底部钉着水母的单条进度面板。整回合只一条笼统「使用工具中」状态条:不逐工具、不报工具名;
-    // 工具跑完随水母收掉(settle)。开场白气泡(showOpening)插在进度条上方,顶在整回合最上。
-    // host 收掉水母后承载「更新了什么」条与终稿回复。
+    // 底部钉着水母的流式过程面板。2026-08-08 起逐步披露(此前整回合只有一条笼统「使用工具中」、
+    // 中间步文本只放第一条,用户盯着水母转半天突然冒结果):
+    // ①每条步骤叙述(assistant_step,AI 边做边说的话)按时间流进过程区;
+    // ②每个工具调用一行人话步骤(「翻看页面 · 第 3 页」,运行中→✓),内部工具名/入参不外露;
+    // ③write_todos 不占步骤行,渲染成一块实时计划清单(整表覆盖,原地更新,✓/→/○);
+    // ④settle 收水母,过程区保留 —— 它就是本回合的操作披露;终稿回复与「已更新」条仍置最底。
+    // 安全:步骤文本走 renderMarkdownSafe;工具入参(模型可控)一律 textContent,绝不进 innerHTML。
+    const TOOL_STEP_LABEL: Record<string, [string, string]> = {
+      read_page: ['翻看页面', 'Reading pages'],
+      search_book: ['搜索全书', 'Searching the book'],
+      list_templates: ['挑选版式', 'Browsing layouts'],
+      read_skill: ['查阅设计规范', 'Consulting design notes'],
+      update_page_texts: ['修改文字', 'Editing text'],
+      write_page_html: ['重排版面', 'Rebuilding the layout'],
+      swap_page_template: ['更换版式', 'Swapping the layout'],
+      update_page_images: ['调整照片', 'Adjusting photos'],
+      set_text_colors: ['调整配色', 'Updating colors'],
+      set_text_fonts: ['更换字体', 'Changing fonts'],
+      move_pages: ['调整页序', 'Reordering pages'],
+      delete_page: ['删除页面', 'Removing a page'],
+    };
+    // 从工具入参里提取「对象」摘要(页码引用),给步骤行做人话后缀;取不到就不带后缀。
+    function stepPageDetail(input: unknown): string {
+      if (typeof input !== 'object' || input === null) return '';
+      const source = input as Record<string, unknown>;
+      const refs: unknown[] = [];
+      if (source.pageNo !== undefined) refs.push(source.pageNo);
+      if (Array.isArray(source.pageNos)) refs.push(...source.pageNos);
+      if (Array.isArray(source.updates)) {
+        for (const u of source.updates) {
+          if (typeof u === 'object' && u !== null && (u as Record<string, unknown>).pageNo !== undefined) {
+            refs.push((u as Record<string, unknown>).pageNo);
+          }
+        }
+      }
+      const label = (ref: unknown): string | null => {
+        if (typeof ref === 'number') return String(ref);
+        if (typeof ref !== 'string') return null;
+        if (ref === 'cover') return aT('封面', 'cover');
+        if (ref === 'toc') return aT('目录', 'contents');
+        if (ref === 'ending') return aT('封尾', 'back page');
+        return /^\d+(-\d+)?$/.test(ref) ? ref : null;
+      };
+      const parts = refs.map(label).filter((v): v is string => v !== null);
+      if (parts.length === 0) return '';
+      const shown = parts.slice(0, 4).join('、');
+      const more = parts.length > 4 ? aT(` 等 ${parts.length} 页`, ` +${parts.length - 4} more`) : '';
+      const numeric = parts.some((p) => /^\d/.test(p));
+      return numeric ? aT(`第 ${shown} 页${more}`, `p. ${shown}${more}`) : `${shown}${more}`;
+    }
     function createDesignStreamHost(): {
       host: HTMLElement;
-      showOpening: (text: string) => void;
-      markToolRunning: () => void;
+      showStep: (text: string) => void;
+      toolStart: (toolCallId: string, toolName: string, input: unknown) => void;
+      toolDone: (toolCallId: string, isError: boolean) => void;
       settle: () => void;
     } {
       hideAwait();
       const host = document.createElement('div');
       host.className = 'msg ai max-w-full';
+      const feed = document.createElement('div');
+      feed.className = 'ep-step-feed';
+      host.appendChild(feed);
       const jelly = document.createElement('div');
       jelly.className = 'thinking-block active ep-stream-jelly';
       jelly.innerHTML =
@@ -845,34 +896,79 @@ export function ChatPanel({
       chatBody!.appendChild(host);
       scrollChat();
 
-      const labelEl = jelly.querySelector('.thinking-label') as HTMLElement | null;
-      let openingShown = false;
-      let toolRunningShown = false;
+      const toolRows = new Map<string, HTMLElement>();
+      let todosBlock: HTMLElement | null = null;
+      // write_todos 整表覆盖 → 清单原地重建(块只一个);内容全部 textContent。
+      function renderTodos(input: unknown): void {
+        if (typeof input !== 'object' || input === null) return;
+        const todos = (input as Record<string, unknown>).todos;
+        if (!Array.isArray(todos)) return;
+        if (!todosBlock) {
+          todosBlock = document.createElement('div');
+          todosBlock.className = 'ep-step-todos';
+          feed.appendChild(todosBlock);
+        }
+        todosBlock.replaceChildren();
+        for (const todo of todos) {
+          if (typeof todo !== 'object' || todo === null) continue;
+          const { content, status } = todo as Record<string, unknown>;
+          if (typeof content !== 'string') continue;
+          const row = document.createElement('div');
+          row.className =
+            status === 'completed' ? 'todo-row todo-done' : status === 'in_progress' ? 'todo-row todo-active' : 'todo-row';
+          const mark = document.createElement('span');
+          mark.className = 'todo-mark';
+          mark.textContent = status === 'completed' ? '✓' : status === 'in_progress' ? '→' : '○';
+          const text = document.createElement('span');
+          text.textContent = content;
+          row.append(mark, text);
+          todosBlock.appendChild(row);
+        }
+        scrollChat();
+      }
       return {
         host,
-        // ①开场白气泡:AI 回合开头对用户说的那句话,插在进度条上方(置顶)。整回合只取第一条。
-        showOpening(text) {
+        // ①步骤叙述:AI 边做边说的话,逐条进过程区(不再只取第一条)。
+        showStep(text) {
           const trimmed = text.trim();
-          if (openingShown || !trimmed) return;
-          openingShown = true;
-          const bubble = document.createElement('div');
-          bubble.className = 'msg ai max-w-full';
-          const body = document.createElement('div');
-          body.className = 'ai-text';
-          body.innerHTML = renderMarkdownSafe(trimmed);
-          bubble.appendChild(body);
-          chatBody!.insertBefore(bubble, host);
+          if (!trimmed) return;
+          const row = document.createElement('div');
+          row.className = 'ep-step-text ai-text';
+          row.innerHTML = renderMarkdownSafe(trimmed);
+          feed.appendChild(row);
           scrollChat();
         },
-        // ②工具开跑:把笼统状态条切到「正在使用工具…」(不含具体工具名),整回合只切一次。
-        markToolRunning() {
-          if (toolRunningShown) return;
-          toolRunningShown = true;
-          if (labelEl) labelEl.textContent = aT('正在使用工具…', 'Using tools…');
+        // ②工具步骤行:人话动词 + 页码摘要,运行中带脉冲点;write_todos 走计划清单。
+        toolStart(toolCallId, toolName, input) {
+          if (toolName === 'write_todos') {
+            renderTodos(input);
+            return;
+          }
+          const label = TOOL_STEP_LABEL[toolName];
+          if (!label) return; // 未知工具不硬渲染,宁缺毋滥
+          const row = document.createElement('div');
+          row.className = 'ep-step-tool running';
+          const dot = document.createElement('span');
+          dot.className = 'ep-step-dot';
+          const textEl = document.createElement('span');
+          const detail = stepPageDetail(input);
+          textEl.textContent = detail ? `${aT(label[0], label[1])} · ${detail}` : aT(label[0], label[1]);
+          row.append(dot, textEl);
+          feed.appendChild(row);
+          if (toolCallId) toolRows.set(toolCallId, row);
           scrollChat();
+        },
+        toolDone(toolCallId, isError) {
+          const row = toolRows.get(toolCallId);
+          if (!row) return;
+          row.classList.remove('running');
+          row.classList.add(isError ? 'err' : 'done');
+          const dot = row.querySelector('.ep-step-dot');
+          if (dot) dot.textContent = isError ? '!' : '✓';
         },
         settle() {
-          jelly.remove(); // 收掉底部水母,进度条随之消失(工具跑完就收)
+          jelly.remove(); // 收水母;过程区保留,作为本回合做了什么的记录
+          for (const row of toolRows.values()) row.classList.remove('running'); // 兜底:不留悬空脉冲
         },
       };
     }
@@ -943,15 +1039,17 @@ export function ChatPanel({
         await readDesignChatStream(res, (event) => {
           const toolCallId = typeof event.toolCallId === 'string' ? event.toolCallId : '';
           if (event.type === 'assistant_step' && typeof event.text === 'string') {
-            // ①开场白:AI 回合开头对用户说的那句话,顶在最上(整回合只第一条生效)。
-            stream.showOpening(event.text);
+            // ①步骤叙述:AI 边做边说的话,逐条流进过程区。
+            stream.showStep(event.text);
           } else if (event.type === 'tool_call' && typeof event.toolName === 'string') {
-            // ②进度:整回合一条笼统状态条(不报工具名)。写类工具先记下待确认类别。
-            stream.markToolRunning();
+            // ②过程披露:每个工具调用渲染成人话步骤行(write_todos → 实时计划清单)。
+            // 写类工具同时记下待确认类别。
+            stream.toolStart(toolCallId, event.toolName, event.input);
             const cat = designChangeCategoryOf(event.toolName);
             if (cat && toolCallId) pendingWriteCat.set(toolCallId, cat);
           } else if (event.type === 'tool_result' && typeof event.toolName === 'string') {
-            // 写类工具成功执行(非 error)才算"真的改了",计入更新类别。
+            // 步骤行落 ✓/!;写类工具成功执行(非 error)才算"真的改了",计入更新类别。
+            stream.toolDone(toolCallId, event.isError === true);
             if (event.isError !== true) {
               const cat = pendingWriteCat.get(toolCallId);
               if (cat) changedCats.add(cat);
