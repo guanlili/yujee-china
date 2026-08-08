@@ -228,6 +228,7 @@ Routes should stay thin: auth, parse body, call a service, return `ok()` or `fro
 ```bash
 pnpm --filter @yujee/web dev
 pnpm --filter @yujee/web typecheck
+pnpm --filter @yujee/web sitemap:check   # sitemap lastmod 时效,见 src/lib/seo/freshness.ts
 pnpm --filter @yujee/web db:generate
 pnpm --filter @yujee/web db:migrate
 ```
@@ -285,5 +286,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 179cab13
+checked-at: 802fc61a
 -->

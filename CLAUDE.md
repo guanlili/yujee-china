@@ -85,6 +85,10 @@ Postgres + Cloudflare R2
 - 仓根 `pnpm test` 是 `pnpm -r test`,**撞到第一个失败的包就中断**,后面的包一个都不跑。
   只跑它然后看到红,不等于只有那一处坏;看到绿也要确认 scope 覆盖了你改的包。
 - `pnpm typecheck` **不含 engine**。改 Python 要单独跑 pytest。
+- `pnpm typecheck` 里挂着两道时效闸门:`docs:check`(文档)和 `sitemap:check`
+  (sitemap 的 `<lastmod>`)。后者报错时别把所有日期一起刷新 —— `updatedAt` 是
+  发给 Google 的,只有页面内容真变了才动;没变就只推进 `reviewedAt`。
+  理由写在 `apps/web/src/lib/seo/freshness.ts` 顶部。
 - Web 测试单跑:`cd apps/web && pnpm test`(或 `pnpm --filter @yujee/web test`)。
 - Agent 测试从仓根跑:`PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests`。
 - 本地起全流程要**三个**服务:web 3000 / agent 8001 / design-agent 8787。
@@ -112,5 +116,5 @@ Postgres + Cloudflare R2
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 179cab13
+checked-at: 802fc61a
 -->
