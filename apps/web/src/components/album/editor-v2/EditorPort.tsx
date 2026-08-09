@@ -26,6 +26,7 @@ import {
   type RefObject,
   type SetStateAction,
 } from 'react';
+import { boundPick, pick, type AT } from '@/lib/i18n/pick';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
@@ -313,27 +314,27 @@ function EditorLoadingState({ locale }: { locale: Locale }) {
 // null/unknown(第一个 progress 回调到达前的那几百毫秒)。Uses the same local
 // dictionary convention as the rest of EditorPort (no messages/*.json).
 function buildingStageLabel(stage: string | null | undefined, locale: Locale): string {
-  const zh = locale === 'zh';
+  const aT = boundPick(locale);
   switch (stage) {
     // V3 分析环节 (五环节状态机, WP1.5/#184): the /v3/analyze job streams these stage
     // labels via the progress callback. 识图砍掉后 analyze 只发 'group'(0→100),
     // 所以 'group' 就是用户导航后看到的第一个节拍 —— 它必须扛住整段等待的文案。
     // (stage 还没回来的头 ≤0.5s 由下面的 default 兜。)
     case 'group':
-      return zh ? '正在整理这些瞬间…' : 'Grouping your moments…';
+      return aT('正在整理这些瞬间…', 'Grouping your moments…');
     // V2 stage labels (kept until the v1/v2 teardown, #197).
     case 'vision':
-      return zh ? '正在看你的照片…' : 'Looking at your photos…';
+      return aT('正在看你的照片…', 'Looking at your photos…');
     case 'grouping':
-      return zh ? '正在整理这些瞬间…' : 'Grouping your moments…';
+      return aT('正在整理这些瞬间…', 'Grouping your moments…');
     case 'skeleton':
-      return zh ? '正在编排版式…' : 'Laying out the spreads…';
+      return aT('正在编排版式…', 'Laying out the spreads…');
     case 'writing':
-      return zh ? '正在撰写文案…' : 'Writing your story…';
+      return aT('正在撰写文案…', 'Writing your story…');
     case 'finalize':
-      return zh ? '正在生成终稿…' : 'Putting the final touches…';
+      return aT('正在生成终稿…', 'Putting the final touches…');
     default:
-      return zh ? '正在整理照片…' : 'Getting your photos ready…';
+      return aT('正在整理照片…', 'Getting your photos ready…');
   }
 }
 
@@ -346,7 +347,7 @@ function BuildingCanvasState({ locale }: { locale: Locale }) {
       role="status"
       aria-live="polite"
     >
-      {locale === 'zh' ? '加载中' : 'Loading'}
+      {pick(locale, { zh: '加载中', en: 'Loading' })}
     </div>
   );
 }
@@ -481,18 +482,18 @@ function EditorAuthoring({
   if (loadState === 'error' || loadState === 'gone') {
     // Don't sit on the "tidying up" screen forever — surface the real dead-end and
     // let the user refresh (a fresh load re-polls and re-derives the mode).
-    const zh = locale === 'zh';
+    const aT = boundPick(locale);
     return (
       <div className="editor-port flex h-screen flex-col items-center justify-center bg-bg text-center">
         <YujeeState
           variant="error"
-          title={zh ? '出错了' : 'Something went wrong'}
+          title={aT('出错了', 'Something went wrong')}
           message={loadState === 'gone'
-            ? zh ? '这本相册还没有草稿，或已经完成。' : 'This album has no draft yet, or it is already finished.'
-            : zh ? '草稿加载失败。' : 'Failed to load the draft.'}
+            ? aT('这本相册还没有草稿，或已经完成。', 'This album has no draft yet, or it is already finished.')
+            : aT('草稿加载失败。', 'Failed to load the draft.')}
         >
           <button onClick={() => window.location.reload()} className="text-accent underline underline-offset-2 text-[13px]">
-          {zh ? '刷新重试' : 'Refresh'}
+          {aT('刷新重试', 'Refresh')}
           </button>
         </YujeeState>
       </div>
@@ -700,7 +701,7 @@ function EditorShell({
           <button className="chat-fold-expand" data-action="toggleChat" data-i18n-title="expandChat" title="展开对话" aria-label="展开对话">
             <img className="fab-jelly" src="/jellyfish-icon.png" alt="" />
             <svg className="fab-chat-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-            <span>{locale === 'zh' ? '对话' : 'Chat'}</span>
+            <span>{pick(locale, { zh: '对话', en: 'Chat' })}</span>
           </button>
 
           {/* Canvas: keyed by pages.length so a layout completion (0→N) remounts ONLY
@@ -761,7 +762,7 @@ function EditorShell({
               filterSaver.retry();
             }}
           >
-            {locale === 'zh' ? '风格保存失败，点此重试' : 'Style failed to save. Click to retry.'}
+            {pick(locale, { zh: '风格保存失败，点此重试', en: 'Style failed to save. Click to retry.' })}
           </button>
         )}
       </div>
@@ -791,7 +792,7 @@ function EditorTopbar({
   return (
     <div className="topbar nav-shell sticky top-0 z-50 h-14 flex items-center justify-between px-3 sm:px-6 shrink-0">
       <div className="top-left flex items-center gap-2 sm:gap-3 min-w-0">
-        <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-9 h-9 rounded-pill text-fg2 no-underline transition-colors hover:bg-black/[.05] shrink-0" data-i18n-title="backToDetail" title={locale === 'zh' ? '返回书本明细' : 'Back to albums'}>
+        <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-9 h-9 rounded-pill text-fg2 no-underline transition-colors hover:bg-black/[.05] shrink-0" data-i18n-title="backToDetail" title={pick(locale, { zh: '返回作品列表', en: 'Back to albums' })}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><polyline points="15 18 9 12 15 6" /></svg>
         </a>
         <a href={`/${locale}`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '26px', width: 'auto', display: 'block' }} /></a>
@@ -814,7 +815,7 @@ function EditorTopbar({
           data-action="backupPhotos"
           data-testid="backup-photos-btn"
           data-backup-state="idle"
-          title={locale === 'zh' ? '保存到云端:备份照片,换设备也能看' : 'Save to cloud: back up photos so you can view on any device'}
+          title={pick(locale, { zh: '保存到云端:备份照片,换设备也能看', en: 'Save to cloud: back up photos so you can view on any device' })}
         >
           <span className="backup-dot" aria-hidden="true" />
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="save-ic w-4 h-4"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
@@ -826,7 +827,7 @@ function EditorTopbar({
           className="share-btn inline-flex items-center gap-1.5 px-4 py-2.5 rounded-pill text-[13px] font-semibold text-fg2 border border-bd"
           data-action="shareLink"
           data-testid="share-link-btn"
-          title={locale === 'zh' ? '分享链接:会先上传照片(压缩快照)到云端,对方才能看到' : 'Share link: uploads compressed photo snapshots first so viewers can see them'}
+          title={pick(locale, { zh: '分享链接:会先上传照片(压缩快照)到云端,对方才能看到', en: 'Share link: uploads compressed photo snapshots first so viewers can see them' })}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
         </button>
@@ -839,11 +840,11 @@ function EditorTopbar({
             data-i18n-title="exportPdf"
             disabled={!exportUnlocked}
             aria-disabled={!exportUnlocked}
-            title={exportUnlocked ? (locale === 'zh' ? '导出' : 'Export') : (locale === 'zh' ? '完成故事并选定封面后即可导出' : 'Finish the story and pick a cover to export')}
+            title={exportUnlocked ? (pick(locale, { zh: '导出', en: 'Export' })) : (pick(locale, { zh: '完成故事并选定封面后即可导出', en: 'Finish the story and pick a cover to export' }))}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
             {/* 图标按钮:文案隐藏但保留(i18n 同步 + 只读姿态换「下载 PDF」时改它的 textContent)。 */}
-            <span className="hidden" data-i18n="exportPdf">{locale === 'zh' ? '导出' : 'Export'}</span>
+            <span className="hidden" data-i18n="exportPdf">{pick(locale, { zh: '导出', en: 'Export' })}</span>
           </button>
         </span>
 
@@ -857,7 +858,7 @@ function EditorTopbar({
 // by the stable shell; their data-action nodes + backdrop-close are wired by
 // EditorBook's effect.
 function EditorModals({ locale }: { locale: Locale }) {
-  const zh = locale === 'zh';
+  const aT = boundPick(locale);
   return (
     <>
       <div className="modal-overlay" id="photoModal" data-overlay-close>
@@ -943,29 +944,30 @@ function EditorModals({ locale }: { locale: Locale }) {
       <div className="modal-overlay" id="exportMenuModal" data-overlay-close>
         <div className="modal-card export-sheet" role="dialog" aria-modal="true" aria-labelledby="exportMenuTitle" data-testid="export-menu-modal">
           <div className="px-6 pt-5 pb-1">
-            <h3 id="exportMenuTitle" className="font-display text-[18px] font-bold">{zh ? '导出' : 'Export'}</h3>
-            <p className="text-[13px] text-muted mt-1">{zh ? '选一种格式导出' : 'Pick a format to export'}</p>
+            <h3 id="exportMenuTitle" className="font-display text-[18px] font-bold">{aT('导出', 'Export')}</h3>
+            <p className="text-[13px] text-muted mt-1">{aT('选一种格式导出', 'Pick a format to export')}</p>
           </div>
           <div className="px-5 py-4 flex flex-col gap-2.5" data-export-opts>
             <button className="export-opt" data-action="openCollage" data-testid="export-opt-collage">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
-              <span>{zh ? '多跨页拼图 · JPG' : 'Spread collage · JPG'}</span>
+              <span>{aT('多跨页拼图 · JPG', 'Spread collage · JPG')}</span>
             </button>
             <button className="export-opt" data-action="openNineGrid" data-testid="export-opt-live">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="6" width="14" height="12" rx="2" /><path d="m22 8-6 4 6 4V8Z" /></svg>
-              <span>{zh ? 'Live 图' : 'Live video'}</span>
+              <span>{aT('Live 图', 'Live video')}</span>
             </button>
             <button className="export-opt" data-action="exportSinglePages" data-testid="export-opt-pages">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.5-3.5L9 20" /></svg>
-              <span>{zh ? '单页 JPG' : 'Single pages · JPG'}</span>
+              <span>{aT('单页 JPG', 'Single pages · JPG')}</span>
             </button>
-            <button className="export-opt" data-action="exportPdf" data-testid="export-opt-pdf">
+            {/* PDF 只留一个入口(2026-08-06 版式选择设计):点开先选标准/印刷版式。 */}
+            <button className="export-opt" data-action="openPdfStyle" data-testid="export-opt-pdf">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" /><path d="M14 2v6h6" /></svg>
-              <span>{zh ? '整本 PDF' : 'Full PDF'}</span>
+              <span>{aT('整本 PDF', 'Full PDF')}</span>
             </button>
           </div>
           <div className="px-5 pb-5">
-            <button className="export-cancel" data-action="closeExportMenu">{zh ? '取消' : 'Cancel'}</button>
+            <button className="export-cancel" data-action="closeExportMenu">{aT('取消', 'Cancel')}</button>
           </div>
         </div>
       </div>
@@ -975,24 +977,24 @@ function EditorModals({ locale }: { locale: Locale }) {
       <div className="modal-overlay" id="shareLinkModal" data-overlay-close>
         <div className="modal-card export-sheet" role="dialog" aria-modal="true" aria-labelledby="shareLinkTitle" data-testid="share-link-modal">
           <div className="px-6 pt-5 pb-1">
-            <h3 id="shareLinkTitle" className="font-display text-[18px] font-bold">{zh ? '分享链接' : 'Share link'}</h3>
-            <p className="text-[13px] text-muted mt-1">{zh ? '生成链接分享给朋友,免注册即可查看。' : 'Create a link to share with friends — no sign-up to view.'}</p>
+            <h3 id="shareLinkTitle" className="font-display text-[18px] font-bold">{aT('分享链接', 'Share link')}</h3>
+            <p className="text-[13px] text-muted mt-1">{aT('生成链接分享给朋友,免注册即可查看。', 'Create a link to share with friends — no sign-up to view.')}</p>
           </div>
           <div className="px-5 py-3">
             <div id="shareLinkConfirm">
-              <p className="text-[13px] leading-relaxed text-[var(--fg)]">{zh ? '生成链接会上传照片,朋友才能看到。' : 'Creating the link uploads your photos so friends can see them.'}</p>
-              <button className="mt-3 w-full rounded-lg bg-[var(--fg)] px-4 py-2.5 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45" data-action="confirmShareLink" data-testid="share-link-confirm">{zh ? '上传照片并生成链接' : 'Upload photos & create link'}</button>
+              <p className="text-[13px] leading-relaxed text-[var(--fg)]">{aT('生成链接会上传照片,朋友才能看到。', 'Creating the link uploads your photos so friends can see them.')}</p>
+              <button className="mt-3 w-full rounded-lg bg-[var(--fg)] px-4 py-2.5 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45" data-action="confirmShareLink" data-testid="share-link-confirm">{aT('上传照片并生成链接', 'Upload photos & create link')}</button>
             </div>
             <div id="shareLinkResult" className="hidden">
               <div className="flex items-center gap-2">
                 <input id="shareLinkInput" readOnly className="flex-1 rounded-lg border border-[var(--border-soft)] bg-[var(--bg)] px-3 py-2 text-[13px] text-[var(--fg)]" />
-                <button className="rounded-lg bg-[var(--fg)] px-4 py-2 text-[13px] font-semibold text-white" data-action="copyShareLink">{zh ? '复制' : 'Copy'}</button>
+                <button className="rounded-lg bg-[var(--fg)] px-4 py-2 text-[13px] font-semibold text-white" data-action="copyShareLink">{aT('复制', 'Copy')}</button>
               </div>
             </div>
             <p id="shareLinkHint" className="text-[12px] text-muted mt-2" />
           </div>
           <div className="px-5 pb-5">
-            <button className="export-cancel" data-action="closeShareLink">{zh ? '关闭' : 'Close'}</button>
+            <button className="export-cancel" data-action="closeShareLink">{aT('关闭', 'Close')}</button>
           </div>
         </div>
       </div>
@@ -1004,11 +1006,11 @@ function EditorModals({ locale }: { locale: Locale }) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
           <div className="px-6 pt-6 text-center">
-            <h3 id="collageTitle" className="font-display text-[18px] font-bold">{zh ? '一张图里放几个跨页?' : 'How many spreads per image?'}</h3>
+            <h3 id="collageTitle" className="font-display text-[18px] font-bold">{aT('一张图里放几个跨页?', 'How many spreads per image?')}</h3>
             <p className="text-[13px] text-muted mt-1.5">
-              {zh ? '只导出内页(当前 ' : 'Interior spreads only (currently '}
+              {aT('只导出内页(当前 ', 'Interior spreads only (currently ')}
               <span id="collageCount" className="font-semibold text-fg">0</span>
-              {zh ? ' 个跨页),按选择自动排版' : '), auto-arranged by your choice'}
+              {aT(' 个跨页),按选择自动排版', '), auto-arranged by your choice')}
             </p>
           </div>
           <div className="collage-density px-6 pt-5">
@@ -1017,12 +1019,12 @@ function EditorModals({ locale }: { locale: Locale }) {
                 <span className={`density-wire${n === 6 ? ' density-wire-grid' : ''}`} data-n={n}>
                   {Array.from({ length: n }).map((_, i) => <span key={i} className="density-cell" />)}
                 </span>
-                <span className="density-label">{n} {zh ? '个' : ''}</span>
+                <span className="density-label">{n} {aT('个', '')}</span>
               </button>
             ))}
           </div>
           <div className="px-6 py-6">
-            <button className="collage-confirm" data-action="confirmCollage" data-testid="collage-confirm" disabled>{zh ? '确认导出' : 'Export'}</button>
+            <button className="collage-confirm" data-action="confirmCollage" data-testid="collage-confirm" disabled>{aT('确认导出', 'Export')}</button>
           </div>
         </div>
       </div>
@@ -1034,12 +1036,12 @@ function EditorModals({ locale }: { locale: Locale }) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
           </button>
           <div className="px-6 pt-6">
-            <h3 id="nineGridTitle" className="font-display text-[18px] font-bold">{zh ? 'Live 图' : 'Live video'}</h3>
-            <p className="text-[13px] text-muted mt-1.5">{zh ? '选一种样式,导出一段 Live 视频,可直接发社交平台。' : 'Pick a style and export a Live video you can post anywhere.'}</p>
+            <h3 id="nineGridTitle" className="font-display text-[18px] font-bold">{aT('Live 图', 'Live video')}</h3>
+            <p className="text-[13px] text-muted mt-1.5">{aT('选一种样式,导出一段 Live 视频,可直接发社交平台。', 'Pick a style and export a Live video you can post anywhere.')}</p>
           </div>
           <div className="nine-grid-options px-6 pt-5">
             <fieldset>
-              <legend>{zh ? 'Live 样式' : 'Live style'}</legend>
+              <legend>{aT('Live 样式', 'Live style')}</legend>
               <div className="nine-grid-choice">
                 <button className="selected" data-live-style="flip" aria-pressed="true">
                   <span className="motion-example motion-example-flip" aria-hidden="true">
@@ -1049,8 +1051,8 @@ function EditorModals({ locale }: { locale: Locale }) {
                       <span className="motion-page motion-page-turn" />
                     </span>
                   </span>
-                  <span className="motion-option-title">{zh ? '翻页 Live' : 'Page-flip Live'}</span>
-                  <span className="motion-option-copy">{zh ? '像翻书一样逐页播放' : 'Pages turn like a physical book'}</span>
+                  <span className="motion-option-title">{aT('翻页 Live', 'Page-flip Live')}</span>
+                  <span className="motion-option-copy">{aT('像翻书一样逐页播放', 'Pages turn like a physical book')}</span>
                 </button>
                 <button data-live-style="nine-grid" aria-pressed="false">
                   <span className="motion-example motion-example-grid" aria-hidden="true">
@@ -1058,14 +1060,59 @@ function EditorModals({ locale }: { locale: Locale }) {
                       {Array.from({ length: 9 }).map((_, index) => <span key={index} />)}
                     </span>
                   </span>
-                  <span className="motion-option-title">{zh ? '九宫格 Live' : 'Nine-grid Live'}</span>
-                  <span className="motion-option-copy">{zh ? '每组 9 页整齐切换' : 'Nine pages switch as a neat grid'}</span>
+                  <span className="motion-option-title">{aT('九宫格 Live', 'Nine-grid Live')}</span>
+                  <span className="motion-option-copy">{aT('每组 9 页整齐切换', 'Nine pages switch as a neat grid')}</span>
                 </button>
               </div>
             </fieldset>
           </div>
           <div className="nine-grid-actions px-6 py-6">
-            <button className="collage-confirm" data-action="confirmLiveStyle" data-testid="live-style-confirm">{zh ? '继续导出' : 'Continue'}</button>
+            <button className="collage-confirm" data-action="confirmLiveStyle" data-testid="live-style-confirm">{aT('继续导出', 'Continue')}</button>
+          </div>
+        </div>
+      </div>
+
+      {/* PDF 版式:标准 / 印刷(3mm 出血)共用一个出口(2026-08-06 版式选择设计)。
+          与 Live 图弹窗同一副骨架;区别只有一条:打开时预选标准版,确认键不置灰。 */}
+      <div className="modal-overlay" id="pdfStyleModal" data-overlay-close>
+        <div className="modal-card collage-card" role="dialog" aria-modal="true" aria-labelledby="pdfStyleTitle" data-testid="pdf-style-modal">
+          <button className="collage-close" data-action="closePdfStyle" aria-label="close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+          </button>
+          <div className="px-6 pt-6">
+            <h3 id="pdfStyleTitle" className="font-display text-[18px] font-bold">{aT('整本 PDF', 'Full PDF')}</h3>
+            <p className="text-[13px] text-muted mt-1.5">{aT('选一种版式导出整本 PDF。', 'Pick a layout for the full PDF.')}</p>
+          </div>
+          <div className="nine-grid-options px-6 pt-5">
+            <fieldset>
+              <legend>{aT('PDF 版式', 'PDF layout')}</legend>
+              <div className="nine-grid-choice">
+                <button className="selected" data-pdf-style="standard" data-testid="pdf-style-standard" aria-pressed="true">
+                  {/* 静态示意:标准=单页。 */}
+                  <span className="motion-example" aria-hidden="true">
+                    <svg width="72" height="92" viewBox="0 0 72 92" fill="none" stroke="#b9b9b9" strokeWidth="1.5">
+                      <rect x="10" y="10" width="52" height="72" rx="2" fill="#dedede" stroke="#d1d1d1" />
+                    </svg>
+                  </span>
+                  <span className="motion-option-title">{aT('标准版', 'Standard')}</span>
+                  <span className="motion-option-copy">{aT('屏幕查看、分享用', 'For screens and sharing')}</span>
+                </button>
+                <button data-pdf-style="bleed" data-testid="pdf-style-bleed" aria-pressed="false">
+                  {/* 静态示意:印刷=单页外圈虚线出血框(裁切位)。 */}
+                  <span className="motion-example" aria-hidden="true">
+                    <svg width="72" height="92" viewBox="0 0 72 92" fill="none" stroke="#b9b9b9" strokeWidth="1.5">
+                      <rect x="3" y="3" width="66" height="86" rx="3" strokeDasharray="4 3" />
+                      <rect x="10" y="10" width="52" height="72" rx="2" fill="#dedede" stroke="#d1d1d1" />
+                    </svg>
+                  </span>
+                  <span className="motion-option-title">{aT('印刷版 · 3mm 出血', 'Print · 3mm bleed')}</span>
+                  <span className="motion-option-copy">{aT('四边各加 3mm 出血，供印刷厂裁切；相当于 216×303mm', 'Adds 3mm bleed on all sides for print trimming; equals 216×303mm')}</span>
+                </button>
+              </div>
+            </fieldset>
+          </div>
+          <div className="nine-grid-actions px-6 py-6">
+            <button className="collage-confirm" data-action="confirmPdfStyle" data-testid="pdf-style-confirm">{aT('继续导出', 'Continue')}</button>
           </div>
         </div>
       </div>
@@ -1075,11 +1122,11 @@ function EditorModals({ locale }: { locale: Locale }) {
         <div className="modal-card export-progress-card" role="alertdialog" aria-modal="true" aria-live="polite">
           <div className="px-6 py-6">
             <div className="flex items-center justify-between mb-3">
-              <h3 id="expTitle" className="font-display text-[15px] font-semibold">{zh ? '正在导出…' : 'Exporting…'}</h3>
+              <h3 id="expTitle" className="font-display text-[15px] font-semibold">{aT('正在导出…', 'Exporting…')}</h3>
               <span id="expLabel" className="text-[13px] text-muted tabular-nums">…</span>
             </div>
             <div className="exp-bar"><div className="exp-bar-fill" id="expBarFill" /></div>
-            <p className="text-[12px] text-muted mt-2.5">{zh ? '生成中,请稍候,别关闭页面' : 'Generating — please keep this page open'}</p>
+            <p className="text-[12px] text-muted mt-2.5">{aT('生成中,请稍候,别关闭页面', 'Generating — please keep this page open')}</p>
           </div>
         </div>
       </div>
@@ -1088,7 +1135,7 @@ function EditorModals({ locale }: { locale: Locale }) {
       <div className="modal-overlay" id="boardBgModal" data-overlay-close>
         <div className="modal-card board-bg-sheet" role="dialog" aria-modal="true" aria-labelledby="boardBgTitle" data-testid="board-bg-modal">
           <div className="board-bg-head">
-            <h3 id="boardBgTitle" className="font-display text-[17px] font-bold">{zh ? '垫底背景' : 'Board background'}</h3>
+            <h3 id="boardBgTitle" className="font-display text-[17px] font-bold">{aT('垫底背景', 'Board background')}</h3>
             <button className="board-bg-close" data-action="closeBoardBg" aria-label="close">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
             </button>
@@ -1098,16 +1145,16 @@ function EditorModals({ locale }: { locale: Locale }) {
           <div className="board-bg-body" data-bbg-view="main">
             <div className="bbg-main">
               <div className="bbg-swatches">
-                <button className="bbg-swatch bbg-none" data-board-none data-testid="bbg-none" title={zh ? '无背景' : 'None'} aria-label={zh ? '无背景' : 'None'} />
+                <button className="bbg-swatch bbg-none" data-board-none data-testid="bbg-none" title={aT('无背景', 'None')} aria-label={aT('无背景', 'None')} />
                 {COLOR_PRESETS.map((c) => (
                   <button key={c} className="bbg-swatch" data-board-color={c} style={{ background: c }} aria-label={c} title={c} />
                 ))}
                 {/* 更多颜色:展开统一 Fill 取色器(替代原来的原生系统取色器)。 */}
-                <button type="button" className="bbg-swatch bbg-more" data-bbg-more title={zh ? '更多颜色' : 'More colors'} aria-label={zh ? '更多颜色' : 'More colors'}>
+                <button type="button" className="bbg-swatch bbg-more" data-bbg-more title={aT('更多颜色', 'More colors')} aria-label={aT('更多颜色', 'More colors')}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="M12 3a9 9 0 0 0 0 18 3 3 0 0 0 0-6 1.5 1.5 0 0 1 0-3 3 3 0 0 0 0-6Z" /><circle cx="8.5" cy="9.5" r="1" fill="currentColor" stroke="none" /><circle cx="15.5" cy="9.5" r="1" fill="currentColor" stroke="none" /><circle cx="9" cy="14.5" r="1" fill="currentColor" stroke="none" /></svg>
                 </button>
               </div>
-              <p className="bbg-section-label">{zh ? '图片' : 'Images'}</p>
+              <p className="bbg-section-label">{aT('图片', 'Images')}</p>
               <div className="bbg-images">
                 {IMAGE_PRESETS.map((p) => (
                   <button
@@ -1119,14 +1166,14 @@ function EditorModals({ locale }: { locale: Locale }) {
                   />
                 ))}
                 {/* 上传自己的图当垫底背景(只存本地)。选中时格子显示这张图的缩略。 */}
-                <label className="bbg-image bbg-upload" data-board-upload title={zh ? '上传图片' : 'Upload image'}>
-                  <input type="file" accept={IMAGE_INPUT_ACCEPT} className="hidden" data-board-upload-input aria-label={zh ? '上传图片' : 'Upload image'} />
+                <label className="bbg-image bbg-upload" data-board-upload title={aT('上传图片', 'Upload image')}>
+                  <input type="file" accept={IMAGE_INPUT_ACCEPT} className="hidden" data-board-upload-input aria-label={aT('上传图片', 'Upload image')} />
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
                 </label>
               </div>
             </div>
             <div className="bbg-color-view">
-              <button type="button" className="bbg-back" data-bbg-back>‹ {zh ? '返回' : 'Back'}</button>
+              <button type="button" className="bbg-back" data-bbg-back>‹ {aT('返回', 'Go back')}</button>
               <div className="bbg-color-slot" data-bbg-color-slot />
             </div>
           </div>
@@ -1138,16 +1185,16 @@ function EditorModals({ locale }: { locale: Locale }) {
       <div className="modal-overlay" id="pageReorderModal" data-overlay-close>
         <div className="modal-card preorder-card" role="dialog" aria-modal="true" aria-labelledby="preorderTitle" data-testid="page-reorder-modal">
           <div className="preorder-head">
-            <h3 id="preorderTitle" className="font-display text-[17px] font-bold">{zh ? '调整页面顺序' : 'Reorder pages'}</h3>
-            <p className="preorder-hint">{zh ? '拖动页面到新位置。封面、目录与封尾固定不动。' : 'Drag pages to a new spot. Cover, contents and ending stay fixed.'}</p>
+            <h3 id="preorderTitle" className="font-display text-[17px] font-bold">{aT('调整页面顺序', 'Reorder pages')}</h3>
+            <p className="preorder-hint">{aT('拖动页面到新位置。封面、目录与封尾固定不动。', 'Drag pages to a new spot. Cover, contents and ending stay fixed.')}</p>
             <button className="board-bg-close" data-action="closePageReorder" aria-label="close">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
             </button>
           </div>
           <div className="preorder-grid" id="preorderGrid" />
           <div className="preorder-foot">
-            <button className="preorder-btn" data-action="closePageReorder" data-testid="preorder-cancel">{zh ? '取消' : 'Cancel'}</button>
-            <button className="preorder-btn preorder-btn-primary" data-action="confirmPageReorder" data-testid="preorder-done">{zh ? '完成' : 'Done'}</button>
+            <button className="preorder-btn" data-action="closePageReorder" data-testid="preorder-cancel">{aT('取消', 'Cancel')}</button>
+            <button className="preorder-btn preorder-btn-primary" data-action="confirmPageReorder" data-testid="preorder-done">{aT('完成', 'Done')}</button>
           </div>
         </div>
       </div>
@@ -1179,7 +1226,7 @@ function StaticEditorShell({
       <div className="page-glow" aria-hidden="true" />
       <div className="topbar nav-shell sticky top-0 z-50 h-14 flex items-center justify-between px-3 sm:px-6 shrink-0">
         <div className="top-left flex items-center gap-2 sm:gap-3 min-w-0">
-          <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-9 h-9 rounded-pill text-fg2 no-underline transition-colors hover:bg-black/[.05] shrink-0" title={locale === 'zh' ? '返回书本明细' : 'Back to albums'}>
+          <a href={`/${locale}/my-albums`} className="back-btn flex items-center justify-center w-9 h-9 rounded-pill text-fg2 no-underline transition-colors hover:bg-black/[.05] shrink-0" title={pick(locale, { zh: '返回作品列表', en: 'Back to albums' })}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><polyline points="15 18 9 12 15 6" /></svg>
           </a>
           <a href={`/${locale}`} className="brand no-underline text-inherit shrink-0"><img src="/logo-yujee.svg" alt="Yujee" style={{ height: '26px', width: 'auto', display: 'block' }} /></a>
@@ -1198,13 +1245,13 @@ function StaticEditorShell({
         <button
           type="button"
           className="chat-fold-expand"
-          title={locale === 'zh' ? '展开对话' : 'Expand chat'}
-          aria-label={locale === 'zh' ? '展开对话' : 'Expand chat'}
+          title={pick(locale, { zh: '展开对话', en: 'Expand chat' })}
+          aria-label={pick(locale, { zh: '展开对话', en: 'Expand chat' })}
           onClick={(e) => e.currentTarget.closest('.editor-port')?.classList.remove('chat-collapsed')}
         >
           <img className="fab-jelly" src="/jellyfish-icon.png" alt="" />
           <svg className="fab-chat-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-          <span>{locale === 'zh' ? '对话' : 'Chat'}</span>
+          <span>{pick(locale, { zh: '对话', en: 'Chat' })}</span>
         </button>
 
         <main className="pane pane-center flex flex-col overflow-hidden relative md:order-3 md:flex-1" id="paneCenter">
@@ -1217,12 +1264,12 @@ function StaticEditorShell({
           <aside className="pane pane-right chat-card relative flex flex-col overflow-hidden bg-surface md:flex-1">
             <div className="chat-drag hidden md:flex items-center gap-2 px-3.5 h-11 border-b border-bdsoft flex-shrink-0" id="chatDrag">
               <span className="chat-grip"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></svg></span>
-              <span className="text-[13px] font-semibold text-fg2">{locale === 'zh' ? '对话' : 'Chat'}</span>
+              <span className="text-[13px] font-semibold text-fg2">{pick(locale, { zh: '对话', en: 'Chat' })}</span>
               <button
                 type="button"
                 className="chat-fold-btn chat-fold-collapse ml-auto"
-                title={locale === 'zh' ? '折叠对话' : 'Collapse chat'}
-                aria-label={locale === 'zh' ? '折叠对话' : 'Collapse chat'}
+                title={pick(locale, { zh: '折叠对话', en: 'Collapse chat' })}
+                aria-label={pick(locale, { zh: '折叠对话', en: 'Collapse chat' })}
                 onClick={(e) => e.currentTarget.closest('.editor-port')?.classList.add('chat-collapsed')}
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="15 18 9 12 15 6" /></svg>
@@ -1240,12 +1287,12 @@ function StaticEditorShell({
               <div className="chat-input shrink-0 bg-surface border border-bdsoft flex flex-col transition-all" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)', opacity: 0.6 }}>
                 <textarea className="w-full outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none px-4 pt-3.5 pb-1 disabled:cursor-not-allowed" style={{ fontFamily: 'var(--font-body)' }} placeholder="" rows={1} disabled />
                 <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-0.5">
-                  <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted disabled:cursor-not-allowed disabled:opacity-40" title={locale === 'zh' ? '添加图片' : 'Add photos'} aria-label={locale === 'zh' ? '添加图片' : 'Add photos'} disabled>
+                  <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted disabled:cursor-not-allowed disabled:opacity-40" title={pick(locale, { zh: '添加图片', en: 'Add photos' })} aria-label={pick(locale, { zh: '添加图片', en: 'Add photos' })} disabled>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                   </button>
                   <span className="flex-1" />
                   <span className="btn-glow btn-glow-round shrink-0">
-                    <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center transition-transform disabled:cursor-not-allowed disabled:opacity-40" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} title={locale === 'zh' ? '发送' : 'Send'} disabled>
+                    <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center transition-transform disabled:cursor-not-allowed disabled:opacity-40" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} title={pick(locale, { zh: '发送', en: 'Send' })} disabled>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[17px] h-[17px]"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
                     </button>
                   </span>
@@ -1281,7 +1328,7 @@ function BuildingShell({
   return (
     <StaticEditorShell
       locale={locale}
-      status={{ label: locale === 'zh' ? '整理中' : 'Tidying up', tone: 'progress' }}
+      status={{ label: pick(locale, { zh: '整理中', en: 'Tidying up' }), tone: 'progress' }}
       canvas={<BuildingCanvasState locale={locale} />}
       chatBody={
         <div className="msg ai max-w-full">
@@ -1302,35 +1349,33 @@ function BuildingShell({
 // status=403 …") is NEVER shown — users don't need the internal diagnostic. `message`
 // only distinguishes a network drop from a slow run; the real error still lives in
 // album.errorMessage / server logs for debugging.
-function errorShellCopy(kind: EditorErrorKind, message: string | null, zh: boolean) {
+function errorShellCopy(kind: EditorErrorKind, message: string | null, aT: AT) {
   const isNetwork = /lost connection|network|连接/i.test(message ?? '');
   switch (kind) {
     case 'failed':
       return {
-        status: zh ? '出错了' : 'Something went wrong',
-        title: zh ? '出错了' : 'Something went wrong',
-        body: zh
-          ? '生成时出了点问题,可以再试一次。未扣除积分。'
-          : 'Something went wrong while generating. You can try again — no credit was charged.',
-        chat: zh ? '生成时遇到了点问题,可以再试一次。' : 'Something interrupted the generation — you can try again.',
+        status: aT('出错了', 'Something went wrong'),
+        title: aT('出错了', 'Something went wrong'),
+        body: aT('生成时出了点问题,可以再试一次。未扣除积分。', 'Something went wrong while generating. You can try again — no credit was charged.'),
+        chat: aT('生成时遇到了点问题,可以再试一次。', 'Something interrupted the generation — you can try again.'),
       };
     case 'gone':
       return {
-        status: zh ? '无法打开' : 'Unavailable',
-        title: zh ? '无法打开这本相册' : 'Couldn’t open this album',
-        body: zh ? '它可能已被删除,或不在当前账户下。' : 'It may have been removed, or it isn’t available on this account.',
-        chat: zh ? '我找不到这本相册了。' : 'I couldn’t find this memoir.',
+        status: aT('无法打开', 'Unavailable'),
+        title: aT('无法打开这本相册', 'Couldn’t open this album'),
+        body: aT('它可能已被删除,或不在当前账户下。', 'It may have been removed, or it isn’t available on this account.'),
+        chat: aT('我找不到这本相册了。', 'I couldn’t find this memoir.'),
       };
     default:
       return {
-        status: isNetwork ? (zh ? '连接中断' : 'Connection lost') : (zh ? '处理较慢' : 'Taking a while'),
-        title: zh ? '这比预期的时间长一些' : 'This is taking longer than expected',
+        status: isNetwork ? (aT('连接中断', 'Connection lost')) : (aT('处理较慢', 'Taking a while')),
+        title: aT('这比预期的时间长一些', 'This is taking longer than expected'),
         body: isNetwork
-          ? (zh ? '网络异常,检查网络后刷新。' : 'Network error. Check your connection and refresh.')
-          : (zh ? '仍在处理中 —— 刷新页面再看看。' : 'Still working on it — refresh to check back.'),
+          ? (aT('网络异常,检查网络后刷新。', 'Network error. Check your connection and refresh.'))
+          : (aT('仍在处理中 —— 刷新页面再看看。', 'Still working on it — refresh to check back.')),
         chat: isNetwork
-          ? (zh ? '连接好像断了,刷新一下就好。' : 'The connection dropped — a refresh should bring it back.')
-          : (zh ? '还在处理,稍后刷新看看。' : 'Still processing — refresh in a moment.'),
+          ? (aT('连接好像断了,刷新一下就好。', 'The connection dropped — a refresh should bring it back.'))
+          : (aT('还在处理,稍后刷新看看。', 'Still processing — refresh in a moment.')),
       };
   }
 }
@@ -1353,8 +1398,8 @@ function ErrorShell({
   kind: EditorErrorKind;
   message: string | null;
 }) {
-  const zh = locale === 'zh';
-  const copy = errorShellCopy(kind, message, zh);
+  const aT = boundPick(locale);
+  const copy = errorShellCopy(kind, message, aT);
   return (
     <StaticEditorShell
       locale={locale}
@@ -1372,14 +1417,14 @@ function ErrorShell({
               onClick={() => window.location.reload()}
               className="inline-flex items-center gap-2 rounded-full bg-fg px-8 py-3 text-[13px] font-semibold text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-transform hover:-translate-y-px"
             >
-              {zh ? '刷新' : 'Refresh'}
+              {aT('刷新', 'Refresh')}
             </button>
           )}
           <a
             href={`/${locale}/my-albums`}
             className="mt-6 inline-block text-[13px] text-accent underline underline-offset-2"
           >
-            {zh ? '返回我的项目' : 'Back to projects'}
+            {aT('返回我的项目', 'Back to projects')}
           </a>
         </YujeeState>
       }
@@ -1484,8 +1529,7 @@ function EditorBook({
     const i18n: Record<string, Record<string, string>> = chatI18n;
 
     let currentLang = locale === 'zh' ? 'zh' : 'en';
-    const t = (key: string) =>
-      (i18n[currentLang] && i18n[currentLang][key]) || i18n.zh[key] || key;
+    const t = (key: string) => aT(i18n.zh[key] ?? key, i18n.en[key] ?? i18n.zh[key] ?? key);
 
     // expose alert hooks (original uses inline onclick="alert(t('...'))")
     (root as unknown as { __t: (k: string) => string }).__t = t;
@@ -1497,18 +1541,21 @@ function EditorBook({
     // The draft skeleton (read-only render projection; invariant 12). Rendered on
     // entry; the agent persists draft_json server-side, so we don't refetch it.
     const draftSkel: DraftSkeleton | null = draftChapters;
-    const aT = (zh: string, en: string) => (currentLang === 'zh' ? zh : en);
+    const aT = (zh: string, en: string) => pick(locale, { zh, en });
     // §4.5a export gate: the topbar export button is prop-disabled by the shell when
     // locked; this mirror lets exportPdf() defend itself and lets the chat toggle the
     // live gate via coordinator.setExportGateUi.
     let exportGateLocked = isAuthoring;
     function setExportGateUi(locked: boolean) {
       exportGateLocked = locked;
-      const exportBtn = $('[data-action="exportPdf"]') as HTMLButtonElement | null;
-      if (exportBtn && isAuthoring) {
-        exportBtn.disabled = locked;
-        exportBtn.classList.toggle('is-disabled', locked);
-        exportBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
+      // 菜单里的 PDF 入口只剩一个(版式在弹窗里选;出血只是渲染参数,不改导出门槛)。
+      for (const selector of ['[data-action="openPdfStyle"]']) {
+        const exportBtn = $(selector) as HTMLButtonElement | null;
+        if (exportBtn && isAuthoring) {
+          exportBtn.disabled = locked;
+          exportBtn.classList.toggle('is-disabled', locked);
+          exportBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
+        }
       }
     }
     // Mutable working copy: chat and inline edits patch this in place and repaint
@@ -1580,13 +1627,12 @@ function EditorBook({
     // 封面 / 封底按页面类别判定;内页用展示层真实页码(封面/目录/封尾不计),
     // 双页跨页给出页码区间(第 X–Y 页)。folio 全缺(如残留目录页)回退跨页序号。
     const spreadLabel = (i: number) => {
-      const zh = currentLang === 'zh';
       // 双宽(#303)页也要出页码:它吃两个页号,pageFolioInfos 给的是 {left,right},
       // 这里把两个号都收进来 —— 于是标签自然落在「第 X–Y 页」分支。
       const present = spreadRealPages(i);
       const slots = present.map(pageSlot);
-      if (slots.includes('cover')) return zh ? '封面' : 'Cover';
-      if (slots.includes('ending')) return zh ? '封底' : 'Back cover';
+      if (slots.includes('cover')) return aT('封面', 'Cover');
+      if (slots.includes('ending')) return aT('封底', 'Back cover');
       const folioInfos = folioInfoOfBook();
       // 双宽页的 folio 是 {left,right}(它吃两个页号,两侧各贴一个),展开成两个数。
       const nums = present
@@ -1599,10 +1645,10 @@ function EditorBook({
       if (nums.length >= 2) {
         const lo = nums[0];
         const hi = nums[nums.length - 1];
-        return zh ? `第 ${lo}–${hi} 页` : `Pages ${lo}–${hi}`;
+        return aT(`第 ${lo}–${hi} 页`, `Pages ${lo}–${hi}`);
       }
-      if (nums.length === 1) return zh ? `第 ${nums[0]} 页` : `Page ${nums[0]}`;
-      return zh ? '跨页 ' + (i + 1) : 'Spread ' + (i + 1);
+      if (nums.length === 1) return aT(`第 ${nums[0]} 页`, `Page ${nums[0]}`);
+      return aT('跨页 ' + (i + 1), 'Spread ' + (i + 1));
     };
 
     // Photos live only in the browser (invariant 1). 屏显分级(性能):主画布/翻页叶
@@ -4127,7 +4173,6 @@ function EditorBook({
       const panel = byId('ebFontPanel');
       if (!panel || panel.dataset.built) return;
       panel.dataset.built = '1';
-      const zh = currentLang === 'zh';
       const esc = (s: string) => s.replace(/"/g, '&quot;');
       const item = (f: EditorFont) =>
         `<button type="button" class="eb-font-item" data-font-id="${f.id}" data-name="${esc(f.name.toLowerCase())}" style="font-family:${esc(f.stack)}">${f.name}</button>`;
@@ -4135,10 +4180,10 @@ function EditorBook({
         list.length ? `<div class="eb-panel-group">${label}</div>${list.map(item).join('')}` : '';
       panel.innerHTML =
         `<div class="eb-panel-search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>` +
-        `<input class="eb-font-search" type="text" placeholder="${zh ? '搜索字体' : 'Search fonts'}" /></div>` +
+        `<input class="eb-font-search" type="text" placeholder="${aT('搜索字体', 'Search fonts')}" /></div>` +
         `<div class="eb-panel-list">` +
-        group(zh ? '中文' : 'Chinese', EDITOR_FONTS.filter((f) => f.script === 'cjk')) +
-        group(zh ? '英文' : 'Latin', EDITOR_FONTS.filter((f) => f.script === 'latin')) +
+        group(aT('中文', 'Chinese'), EDITOR_FONTS.filter((f) => f.script === 'cjk')) +
+        group(aT('英文', 'Latin'), EDITOR_FONTS.filter((f) => f.script === 'latin')) +
         `</div>`;
     }
     function filterFontItems(q: string) {
@@ -4266,16 +4311,15 @@ function EditorBook({
       const p = byId('ebColorPanel');
       if (!p || p.dataset.built) return;
       p.dataset.built = '1';
-      const zh = currentLang === 'zh';
       p.innerHTML =
         // 移动端全宽底部弹窗顶部的拖动手柄(桌面 CSS 隐藏)。
         `<div class="eb-color-grab" aria-hidden="true"><span></span></div>` +
-        `<div class="eb-color-head"><span>${zh ? '填充' : 'Fill'}</span><button type="button" class="eb-color-close" data-color-close aria-label="close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>` +
+        `<div class="eb-color-head"><span>${aT('填充', 'Fill')}</span><button type="button" class="eb-color-close" data-color-close aria-label="close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>` +
         // 双模式段控件:色板(点选,默认)| 拾色器(HSV 精细)。切换只改 panel 的 data-mode,显隐交给 CSS。
-        `<div class="eb-color-seg"><button type="button" data-color-mode="grid">${zh ? '色板' : 'Palette'}</button><button type="button" data-color-mode="picker">${zh ? '拾色器' : 'Picker'}</button></div>` +
+        `<div class="eb-color-seg"><button type="button" data-color-mode="grid">${aT('色板', 'Palette')}</button><button type="button" data-color-mode="picker">${aT('拾色器', 'Picker')}</button></div>` +
         // 色板模式:63 色格子,点一下即选(复用 [data-swatch] 选色逻辑)。
         `<div class="eb-color-grid">${GRID_SWATCHES.map((c) => `<button type="button" class="eb-grid-cell" data-swatch="${c}" style="background:${c}"></button>`).join('')}</div>` +
-        `<div class="eb-grid-hint">${zh ? '点格子即选;想要精细色切「拾色器」' : 'Tap a cell to pick; switch to Picker for fine control'}</div>` +
+        `<div class="eb-grid-hint">${aT('点格子即选;想要精细色切「拾色器」', 'Tap a cell to pick; switch to Picker for fine control')}</div>` +
         // 拾色器模式:HSV 方块 + 色相/透明度条 + 快捷预设 + hex/透明度输入。
         `<div class="eb-color-picker-part">` +
           `<div class="eb-sv" data-sv><div class="eb-sv-bg" data-sv-bg></div><div class="eb-sv-cursor" data-sv-cursor></div></div>` +
@@ -4283,12 +4327,12 @@ function EditorBook({
           `<div class="eb-track eb-alpha" data-alpha><div class="eb-alpha-bg" data-alpha-bg></div><div class="eb-track-thumb" data-alpha-thumb></div></div>` +
           `<div class="eb-swatch-row">${COLOR_SWATCHES.map((c) => `<button type="button" class="eb-color-swatch" data-swatch="${c}" style="background:${c}"></button>`).join('')}</div>` +
           // 最近使用:预设一排的正下方(2026-08-03 用户拍板)。行内容由 renderRecentRow 填,空则整块隐藏。
-          `<div class="eb-recent-wrap" data-recent-wrap style="display:none"><div class="eb-recent-label">${zh ? '最近使用' : 'Recent'}</div><div class="eb-swatch-row eb-recent-row" data-recent-row></div></div>` +
+          `<div class="eb-recent-wrap" data-recent-wrap style="display:none"><div class="eb-recent-label">${aT('最近使用', 'Recent')}</div><div class="eb-swatch-row eb-recent-row" data-recent-row></div></div>` +
           `<div class="eb-color-fields"><span class="eb-hex-field"><b>#</b><input class="eb-hex-input" data-hex maxlength="6" spellcheck="false" /></span><span class="eb-alpha-field"><input class="eb-alpha-input" data-alpha-input inputmode="numeric" /><b>%</b></span></div>` +
         `</div>` +
         // 「无背景」:仅书页背景色场景显示(见 toggleColorPanel 按 colorContext.none 决定显隐),
         // 点击清除页背景 → 回落模板默认(白)。两模式共用,放最底。
-        `<button type="button" class="eb-color-none" data-color-none style="display:none">${zh ? '无背景' : 'No background'}</button>`;
+        `<button type="button" class="eb-color-none" data-color-none style="display:none">${aT('无背景', 'No background')}</button>`;
       p.dataset.mode = 'picker'; // 默认拾色器模式(2026-08-03 用户拍板,推翻早先的默认色板)
       // 顶部「填充」标题条 = 拖动手柄,整个气泡可挪。
       const head = p.querySelector<HTMLElement>('.eb-color-head');
@@ -4380,17 +4424,15 @@ function EditorBook({
     } = { open: false, mode: 'text', view: 'main', fontName: null, snap: null };
 
     function mesModeTitle(mode: MesMode): string {
-      const zh = currentLang === 'zh';
-      return mode === 'page' ? (zh ? '书页背景' : 'Page background') : (zh ? '文字' : 'Text');
+      return mode === 'page' ? (aT('书页背景', 'Page background')) : (aT('文字', 'Text'));
     }
     function mesViewTitle(): string {
-      const zh = currentLang === 'zh';
-      if (mesState.view === 'color') return zh ? '颜色' : 'Color';
-      if (mesState.view === 'font') return zh ? '字体' : 'Font';
+      if (mesState.view === 'color') return aT('颜色', 'Color');
+      if (mesState.view === 'font') return aT('字体', 'Font');
       return mesModeTitle(mesState.mode);
     }
     const mesEsc = (s: string) => s.replace(/"/g, '&quot;');
-    function mesTextMainHtml(zh: boolean): string {
+    function mesTextMainHtml(aT: AT): string {
       // 对齐图标:直接沿用 #elBar 的三个规范图标(避免自造坐标出错)。
       const svg = (inner: string) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">${inner}</svg>`;
       const alignSvg: Record<string, string> = {
@@ -4403,46 +4445,46 @@ function EditorBook({
       const toolbar =
         `<div class="mes-tools">` +
           `<div class="mes-tgroup">` +
-            `<button type="button" class="mes-tb mes-tb-step" data-mes-size="dec" aria-label="${zh ? '减小字号' : 'Smaller'}">−</button>` +
-            `<input class="mes-tb-size" data-mes-size-input inputmode="numeric" placeholder="--" aria-label="${zh ? '字号' : 'Font size'}" />` +
-            `<button type="button" class="mes-tb mes-tb-step" data-mes-size="inc" aria-label="${zh ? '增大字号' : 'Larger'}">+</button>` +
+            `<button type="button" class="mes-tb mes-tb-step" data-mes-size="dec" aria-label="${aT('减小字号', 'Smaller')}">−</button>` +
+            `<input class="mes-tb-size" data-mes-size-input inputmode="numeric" placeholder="--" aria-label="${aT('字号', 'Font size')}" />` +
+            `<button type="button" class="mes-tb mes-tb-step" data-mes-size="inc" aria-label="${aT('增大字号', 'Larger')}">+</button>` +
           `</div>` +
           `<div class="mes-tgroup">` +
-            tb('bold', zh ? '加粗' : 'Bold', '<b>B</b>') +
-            tb('italic', zh ? '斜体' : 'Italic', '<i style="font-family:Georgia,serif">I</i>') +
+            tb('bold', aT('加粗', 'Bold'), '<b>B</b>') +
+            tb('italic', aT('斜体', 'Italic'), '<i style="font-family:Georgia,serif">I</i>') +
           `</div>` +
           `<div class="mes-tgroup">` +
-            tb('align-left', zh ? '左对齐' : 'Align left', alignSvg['align-left']!) +
-            tb('align-center', zh ? '居中' : 'Center', alignSvg['align-center']!) +
-            tb('align-right', zh ? '右对齐' : 'Align right', alignSvg['align-right']!) +
+            tb('align-left', aT('左对齐', 'Align left'), alignSvg['align-left']!) +
+            tb('align-center', aT('居中', 'Center'), alignSvg['align-center']!) +
+            tb('align-right', aT('右对齐', 'Align right'), alignSvg['align-right']!) +
           `</div>` +
         `</div>`;
       // 颜色:主视图漏出一排常用基础色(8 个)+ 彩虹「更多」(展开完整 Fill 取色器:色板/拾色器)。
       const colorRow =
         COLOR_PRESETS.slice(0, 8).map((c) => `<button type="button" class="mes-sw" data-mes-color-quick="${c}" style="background:${c}" aria-label="${c}"></button>`).join('') +
-        `<button type="button" class="mes-sw mes-sw-more" data-mes-open="color" aria-label="${zh ? '更多颜色' : 'More colors'}"></button>`;
+        `<button type="button" class="mes-sw mes-sw-more" data-mes-open="color" aria-label="${aT('更多颜色', 'More colors')}"></button>`;
       // 字体:主视图多漏出几排常用中文字体 + 「更多」(展开完整字体列表,含英文)。
       const quickFonts = EDITOR_FONTS.filter((f) => f.script === 'cjk').slice(0, 8);
       const fontRow =
         quickFonts.map((f) => `<button type="button" class="mes-fontchip" data-mes-font-quick="${f.id}" style="font-family:${mesEsc(f.stack)}">${f.name}</button>`).join('') +
-        `<button type="button" class="mes-fontchip mes-fontchip-more" data-mes-open="font">${zh ? '更多' : 'More'}</button>`;
+        `<button type="button" class="mes-fontchip mes-fontchip-more" data-mes-open="font">${aT('更多', 'More')}</button>`;
       return (
-        `<textarea class="mes-textarea" data-mes-text placeholder="${zh ? '输入文字…' : 'Enter text…'}"></textarea>` +
+        `<textarea class="mes-textarea" data-mes-text placeholder="${aT('输入文字…', 'Enter text…')}"></textarea>` +
         toolbar +
-        `<div class="mes-label">${zh ? '颜色' : 'Color'}</div>` +
+        `<div class="mes-label">${aT('颜色', 'Color')}</div>` +
         `<div class="mes-sw-row">${colorRow}</div>` +
-        `<div class="mes-label">${zh ? '字体' : 'Font'}</div>` +
+        `<div class="mes-label">${aT('字体', 'Font')}</div>` +
         `<div class="mes-fontchip-row">${fontRow}</div>`
       );
     }
-    function mesFontListHtml(zh: boolean): string {
+    function mesFontListHtml(aT: AT): string {
       const item = (f: EditorFont) => `<button type="button" class="mes-font-item" data-mes-font="${f.id}" style="font-family:${mesEsc(f.stack)}">${f.name}</button>`;
       const group = (label: string, list: EditorFont[]) => (list.length ? `<div class="mes-font-grp">${label}</div>${list.map(item).join('')}` : '');
       return (
-        `<button type="button" class="mes-back" data-mes-back>‹ ${zh ? '返回' : 'Back'}</button>` +
+        `<button type="button" class="mes-back" data-mes-back>‹ ${aT('返回', 'Go back')}</button>` +
         `<div class="mes-font-list">` +
-        group(zh ? '中文' : 'Chinese', EDITOR_FONTS.filter((f) => f.script === 'cjk')) +
-        group(zh ? '英文' : 'Latin', EDITOR_FONTS.filter((f) => f.script === 'latin')) +
+        group(aT('中文', 'Chinese'), EDITOR_FONTS.filter((f) => f.script === 'cjk')) +
+        group(aT('英文', 'Latin'), EDITOR_FONTS.filter((f) => f.script === 'latin')) +
         `</div>`
       );
     }
@@ -4490,22 +4532,21 @@ function EditorBook({
       // 换内容前先把内联取色器移回 #elBar,免得 innerHTML 清空把这个共享节点一起销毁。
       unmountSharedColorPicker();
       if (title) title.textContent = mesViewTitle();
-      const zh = currentLang === 'zh';
       // 颜色视图(文字)/主视图(书页背景)= 内联共享 Fill 取色器(色板 + 拾色器两模式)。
       if (mesState.mode === 'text' && mesState.view === 'color') {
-        body.innerHTML = `<button type="button" class="mes-back" data-mes-back>‹ ${zh ? '返回' : 'Back'}</button><div class="mes-color-slot" data-mes-color-slot></div>`;
+        body.innerHTML = `<button type="button" class="mes-back" data-mes-back>‹ ${aT('返回', 'Go back')}</button><div class="mes-color-slot" data-mes-color-slot></div>`;
         const slot = body.querySelector<HTMLElement>('[data-mes-color-slot]');
         if (slot) mountSharedColorPicker(slot, textColorContext);
         return;
       }
-      if (mesState.mode === 'text' && mesState.view === 'font') { body.innerHTML = mesFontListHtml(zh); mesLoadFontPreviews(); return; }
+      if (mesState.mode === 'text' && mesState.view === 'font') { body.innerHTML = mesFontListHtml(aT); mesLoadFontPreviews(); return; }
       if (mesState.mode === 'page') {
         body.innerHTML = `<div class="mes-color-slot" data-mes-color-slot></div>`;
         const slot = body.querySelector<HTMLElement>('[data-mes-color-slot]');
         if (slot) mountSharedColorPicker(slot, pageColorContext);
         return;
       }
-      body.innerHTML = mesTextMainHtml(zh);
+      body.innerHTML = mesTextMainHtml(aT);
       mesSyncTextControls();
       mesLoadFontPreviews(); // 让主视图漏出的中文字体块显示真字形
     }
@@ -5088,6 +5129,21 @@ function EditorBook({
       byId('nineGridModal')?.classList.add('open');
     }
     function closeNineGridModal() { byId('nineGridModal')?.classList.remove('open'); }
+    // PDF 版式(2026-08-06 版式选择设计):与 Live 同一副骨架,但默认预选标准版 ——
+    // 大多数人要的就是标准版,少点一下。
+    let pdfStyle: 'standard' | 'bleed' = 'standard';
+    function openPdfStyleModal() {
+      if (exportGateLocked) return; // 与 openExportMenu 同一道防线(chat 也可能开闸前触发)
+      closeExportMenu();
+      pdfStyle = 'standard';
+      $$('[data-pdf-style]').forEach((el) => {
+        const selected = el.getAttribute('data-pdf-style') === 'standard';
+        el.classList.toggle('selected', selected);
+        el.setAttribute('aria-pressed', String(selected));
+      });
+      byId('pdfStyleModal')?.classList.add('open');
+    }
+    function closePdfStyleModal() { byId('pdfStyleModal')?.classList.remove('open'); }
     function showExportProgress(title: string) {
       const t = byId('expTitle'); if (t) t.textContent = title;
       setExportProgress(0, 0);
@@ -5384,13 +5440,14 @@ function EditorBook({
     // 任一环节失败都抛 ExportError(带 phase + 可选 status,供脱敏日志用,§3 隐私)。整段
     // 路径**零 creditService**:导出成功或失败都不碰积分(积分早在 init 成功时已实扣,§5)。
     let didLocalDownload = false;
-    async function renderPdfOnce(): Promise<Blob> {
+    async function renderPdfOnce(bleedMm = 0): Promise<Blob> {
       try {
         // C 方案:PDF 导出 = 栅格截屏幕渲染(存库 html 优先,与画布像素级一致)。
         // 矢量导出路径已退役(消费不了自由 HTML)。喂高分辨率原图,防放大糊。
+        // bleedMm:印刷版传 3(2026-08-03 出血设计),默认 0 走原路径。
         const { adaptable, resolveImage } = await buildExportInput();
         const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
-        return await renderAlbumPdfRaster(adaptable, resolveImage, { scale: 3, onProgress: setExportProgress });
+        return await renderAlbumPdfRaster(adaptable, resolveImage, { scale: 3, onProgress: setExportProgress, bleedMm });
       } catch (e) {
         throw new ExportError('render', e instanceof Error ? e.message : String(e));
       }
@@ -5404,7 +5461,7 @@ function EditorBook({
       const url = URL.createObjectURL(blob);
       const aEl = document.createElement('a');
       aEl.href = url;
-      aEl.download = (currentTitle || 'album') + '.pdf';
+      aEl.download = (currentTitle || 'album') + (exportBleedMm ? '-bleed3mm' : '') + '.pdf';
       document.body.appendChild(aEl);
       aEl.click();
       aEl.remove();
@@ -5440,12 +5497,15 @@ function EditorBook({
     }
 
     let exportingPdf = false;
-    async function exportPdf() {
+    // 当前这轮 PDF 导出的出血值(下载文件名后缀用);只在 exportPdf 入口赋值。
+    let exportBleedMm = 0;
+    async function exportPdf(bleedMm = 0) {
       // The topbar export button is prop-disabled when the gate is locked, and the
       // chat export-ready card only appears when unlocked — but defend anyway.
       if (exportGateLocked) return;
       if (exportingPdf || exportingImages) return;
       exportingPdf = true;
+      exportBleedMm = bleedMm;
       didLocalDownload = false;
       closeExportMenu();
       showExportProgress(aT('正在导出 PDF…', 'Exporting PDF…'));
@@ -5454,7 +5514,7 @@ function EditorBook({
         // 弹安抚框 + 落日志。计数全在前端(runExportWithRetry),**不动积分**(§5)。
         let blob: Blob | null = null;
         const rendered = await runExportWithRetry(
-          async () => { const b = await renderPdfOnce(); downloadPdfOnce(b); blob = b; },
+          async () => { const b = await renderPdfOnce(bleedMm); downloadPdfOnce(b); blob = b; },
           {
             onExhausted: (lastError, attempts) => {
               logger.error(buildExportFailureLog(lastError, { albumId, attempts }), 'pdf export failed');
@@ -5470,14 +5530,17 @@ function EditorBook({
         // (§4.5d):此处只 logger.error,不调任何飞书端点。
         // 游客:只本地下载,跳过云上传(零 R2/零 DB;服务端 pdf 路由对游客也是 403)。
         if (viewerAnonRef.current === true) return;
-        await runExportWithRetry(() => uploadPdfOnce(blob!), {
-          onExhausted: (lastError, attempts) => {
-            logger.error(
-              buildExportFailureLog(lastError, { albumId, attempts }),
-              'pdf cloud upload failed (silent — local download already succeeded)',
-            );
-          },
-        });
+        // 出血版跳过上传:云端 PDF 保持标准版(分享/完成态语义不变,2026-08-03 出血设计)。
+        if (bleedMm === 0) {
+          await runExportWithRetry(() => uploadPdfOnce(blob!), {
+            onExhausted: (lastError, attempts) => {
+              logger.error(
+                buildExportFailureLog(lastError, { albumId, attempts }),
+                'pdf cloud upload failed (silent — local download already succeeded)',
+              );
+            },
+          });
+        }
       } finally {
         hideExportProgress();
         exportingPdf = false;
@@ -5680,10 +5743,7 @@ function EditorBook({
         } | null;
         const token = json?.data?.token;
         if (!res.ok || !json?.ok || !token) {
-          const versionHint = photoSnapshotVersionMissingHint(
-            json?.error,
-            currentLang === 'zh',
-          );
+          const versionHint = photoSnapshotVersionMissingHint(json?.error, aT);
           if (versionHint) {
             if (hint) hint.textContent = versionHint;
             if (btn) btn.disabled = false;
@@ -5742,7 +5802,6 @@ function EditorBook({
        modals) so it never double-binds the chat-owned actions that ChatPanel binds
        inside its aside (buyShells / pickAddPhotos / toggleChat-collapse). */
     const actions: Record<string, () => void> = {
-      exportPdf,
       backupPhotos,
       // .chat-fold-expand lives in the shell (canvas scope) and toggles the shared
       // body class; the .chat-fold-collapse button in the aside is
@@ -5775,6 +5834,10 @@ function EditorBook({
       openNineGrid: openNineGridModal,
       closeNineGrid: closeNineGridModal,
       confirmLiveStyle: () => void (liveStyle === 'flip' ? exportLive() : exportNineGrid()),
+      // PDF 版式弹窗:确认时才分派;出血值 3 只在这一层出现(2026-08-03 出血设计)。
+      openPdfStyle: openPdfStyleModal,
+      closePdfStyle: closePdfStyleModal,
+      confirmPdfStyle: () => { closePdfStyleModal(); void exportPdf(pdfStyle === 'bleed' ? 3 : 0); },
       exportSinglePages: () => void exportSinglePages(),
       openBoardBg: openBoardBgModal,
       closeBoardBg: closeBoardBgModal,
@@ -5833,6 +5896,18 @@ function EditorBook({
       const fn = () => {
         liveStyle = el.getAttribute('data-live-style') as 'flip' | 'nine-grid';
         root.querySelectorAll('[data-live-style]').forEach((option) => {
+          const selected = option === el;
+          option.classList.toggle('selected', selected);
+          option.setAttribute('aria-pressed', String(selected));
+        });
+      };
+      el.addEventListener('click', fn);
+      actionHandlers.push({ el, fn });
+    });
+    root.querySelectorAll('[data-pdf-style]').forEach((el) => {
+      const fn = () => {
+        pdfStyle = el.getAttribute('data-pdf-style') as 'standard' | 'bleed';
+        root.querySelectorAll('[data-pdf-style]').forEach((option) => {
           const selected = option === el;
           option.classList.toggle('selected', selected);
           option.setAttribute('aria-pressed', String(selected));
@@ -6130,7 +6205,7 @@ function EditorBook({
       <div className="board-bg" id="boardBg" data-on="0" aria-hidden="true" />
       <div className="book-stage w-full flex-1 flex items-center justify-center px-4 pt-8 pb-16 overflow-auto relative">
         <div className="canvas-hint" data-i18n="canvasHint">
-          {locale === 'zh' ? '切换到编辑模式，点击可手动编辑' : 'Switch to edit mode · click to edit manually'}
+          {pick(locale, { zh: '切换到编辑模式，点击可手动编辑', en: 'Switch to edit mode · click to edit manually' })}
         </div>
         <div className="book bg-surface flex relative" id="book">
           <div className="page page-left bg-surface" id="pageLeft" />
@@ -6156,15 +6231,15 @@ function EditorBook({
         <div className="zoom-ctrl">
           {/* 预览模式只留上一页/下一页箭头,页码(#thumbInd)按用户拍板去掉。 */}
           <span className="nav-seg flex items-center gap-1.5">
-            <button className="zoom-btn" data-thumbnav="-1" data-i18n-title="prevPage" title={locale === 'zh' ? '上一页' : 'Previous page'} aria-label={locale === 'zh' ? '上一页' : 'Previous page'}>
+            <button className="zoom-btn" data-thumbnav="-1" data-i18n-title="prevPage" title={pick(locale, { zh: '上一页', en: 'Previous page' })} aria-label={pick(locale, { zh: '上一页', en: 'Previous page' })}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="15 18 9 12 15 6" /></svg>
             </button>
-            <button className="zoom-btn" data-thumbnav="1" data-i18n-title="nextPage" title={locale === 'zh' ? '下一页' : 'Next page'} aria-label={locale === 'zh' ? '下一页' : 'Next page'}>
+            <button className="zoom-btn" data-thumbnav="1" data-i18n-title="nextPage" title={pick(locale, { zh: '下一页', en: 'Next page' })} aria-label={pick(locale, { zh: '下一页', en: 'Next page' })}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><polyline points="9 18 15 12 9 6" /></svg>
             </button>
             <span className="zoom-sep" />
           </span>
-          <span className="zoom-pct" id="zoomPct" data-action="resetZoom" data-i18n-title="resetZoom" title={locale === 'zh' ? '点击复位缩放' : 'Click to reset zoom'}>100%</span>
+          <span className="zoom-pct" id="zoomPct" data-action="resetZoom" data-i18n-title="resetZoom" title={pick(locale, { zh: '点击复位缩放', en: 'Click to reset zoom' })}>100%</span>
         </div>
         <div className="ctrl-dock">
           <div className="view-ctrl">
@@ -6175,9 +6250,9 @@ function EditorBook({
               className="zoom-btn view-btn active"
               id="viewCanvasBtn"
               data-action="viewCanvas"
-              data-tip={locale === 'zh' ? '画布模式' : 'Canvas mode'}
+              data-tip={pick(locale, { zh: '画布模式', en: 'Canvas mode' })}
               data-i18n-tip="canvasMode"
-              aria-label={locale === 'zh' ? '画布模式' : 'Canvas mode'}
+              aria-label={pick(locale, { zh: '画布模式', en: 'Canvas mode' })}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
             </button>
@@ -6185,9 +6260,9 @@ function EditorBook({
               className="zoom-btn view-btn"
               id="viewBookBtn"
               data-action="viewBook"
-              data-tip={locale === 'zh' ? '预览模式' : 'Preview mode'}
+              data-tip={pick(locale, { zh: '预览模式', en: 'Preview mode' })}
               data-i18n-tip="previewMode"
-              aria-label={locale === 'zh' ? '预览模式' : 'Preview mode'}
+              aria-label={pick(locale, { zh: '预览模式', en: 'Preview mode' })}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M2 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2Z" /><path d="M22 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8Z" /></svg>
             </button>
@@ -6196,9 +6271,9 @@ function EditorBook({
               className="zoom-btn view-btn"
               data-action="openBoardBg"
               data-testid="board-bg-btn"
-              data-tip={locale === 'zh' ? '垫底背景' : 'Board background'}
+              data-tip={pick(locale, { zh: '垫底背景', en: 'Board background' })}
               data-i18n-tip="boardBg"
-              aria-label={locale === 'zh' ? '垫底背景' : 'Board background'}
+              aria-label={pick(locale, { zh: '垫底背景', en: 'Board background' })}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><polygon points="12 2 2 7 12 12 22 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></svg>
             </button>
@@ -6207,20 +6282,20 @@ function EditorBook({
           </div>
         </div>
 
-        <div className="el-bar" id="elBar" role="toolbar" aria-label={locale === 'zh' ? '元素编辑工具' : 'Element editing tools'}>
+        <div className="el-bar" id="elBar" role="toolbar" aria-label={pick(locale, { zh: '元素编辑工具', en: 'Element editing tools' })}>
           <div className="eb-group" data-group="text">
             {/* 颜色:自定义取色器(点开「填充」弹层,见 buildColorPanel)。面板挂在 elBar 根,
                 文字组/页组共用同一个 —— 见下方 #ebColorPanel。 */}
             <span className="eb-ctrl">
-              <button type="button" className="eb-color-trigger" data-edit-action="color-open" title={locale === 'zh' ? '颜色' : 'Color'} aria-label={locale === 'zh' ? '文字颜色' : 'Text color'}>
+              <button type="button" className="eb-color-trigger" data-edit-action="color-open" title={pick(locale, { zh: '颜色', en: 'Color' })} aria-label={pick(locale, { zh: '文字颜色', en: 'Text color' })}>
                 <span className="eb-color-dot" data-color-dot />
               </button>
             </span>
             <span className="eb-sep" />
             {/* 字体:触发按钮 + 带搜索的字体面板(imperative 填充,见 buildFontPanel)。 */}
             <span className="eb-ctrl">
-              <button type="button" className="eb-trigger eb-font-trigger" id="ebFontTrigger" data-edit-action="font-open" title={locale === 'zh' ? '字体' : 'Font'}>
-                <span className="eb-font-name" id="ebFontName">{locale === 'zh' ? '字体' : 'Font'}</span>
+              <button type="button" className="eb-trigger eb-font-trigger" id="ebFontTrigger" data-edit-action="font-open" title={pick(locale, { zh: '字体', en: 'Font' })}>
+                <span className="eb-font-name" id="ebFontName">{pick(locale, { zh: '字体', en: 'Font' })}</span>
                 <svg className="eb-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
               </button>
               <div className="eb-panel eb-font-panel" id="ebFontPanel" />
@@ -6228,38 +6303,38 @@ function EditorBook({
             <span className="eb-sep" />
             {/* 字号:可编辑数字 + 预设下拉。 */}
             <span className="eb-ctrl eb-size">
-              <input className="eb-size-input" id="ebSizeInput" data-edit-action="font-size-input" inputMode="numeric" placeholder="--" aria-label={locale === 'zh' ? '字号' : 'Font size'} />
-              <button type="button" className="eb-size-caret" data-edit-action="font-size-open" title={locale === 'zh' ? '字号预设' : 'Size presets'} aria-label={locale === 'zh' ? '字号预设' : 'Size presets'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg></button>
+              <input className="eb-size-input" id="ebSizeInput" data-edit-action="font-size-input" inputMode="numeric" placeholder="--" aria-label={pick(locale, { zh: '字号', en: 'Font size' })} />
+              <button type="button" className="eb-size-caret" data-edit-action="font-size-open" title={pick(locale, { zh: '字号预设', en: 'Size presets' })} aria-label={pick(locale, { zh: '字号预设', en: 'Size presets' })}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg></button>
               <div className="eb-panel eb-size-panel" id="ebSizePanel" />
             </span>
             <span className="eb-sep" />
-            <button type="button" className="eb-btn" data-edit-action="bold" title={locale === 'zh' ? '加粗' : 'Bold'} aria-label={locale === 'zh' ? '加粗' : 'Bold'}><b>B</b></button>
-            <button type="button" className="eb-btn" data-edit-action="italic" title={locale === 'zh' ? '斜体' : 'Italic'} aria-label={locale === 'zh' ? '斜体' : 'Italic'}><i style={{ fontFamily: 'Georgia,serif' }}>I</i></button>
+            <button type="button" className="eb-btn" data-edit-action="bold" title={pick(locale, { zh: '加粗', en: 'Bold' })} aria-label={pick(locale, { zh: '加粗', en: 'Bold' })}><b>B</b></button>
+            <button type="button" className="eb-btn" data-edit-action="italic" title={pick(locale, { zh: '斜体', en: 'Italic' })} aria-label={pick(locale, { zh: '斜体', en: 'Italic' })}><i style={{ fontFamily: 'Georgia,serif' }}>I</i></button>
             <span className="eb-sep" />
-            <button type="button" className="eb-btn" data-edit-action="align-left" title={locale === 'zh' ? '左对齐' : 'Align left'} aria-label={locale === 'zh' ? '左对齐' : 'Align left'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="15" y2="12" /><line x1="3" y1="18" x2="18" y2="18" /></svg></button>
-            <button type="button" className="eb-btn" data-edit-action="align-center" title={locale === 'zh' ? '居中' : 'Center'} aria-label={locale === 'zh' ? '居中' : 'Center'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="6" y1="12" x2="18" y2="12" /><line x1="5" y1="18" x2="19" y2="18" /></svg></button>
-            <button type="button" className="eb-btn" data-edit-action="align-right" title={locale === 'zh' ? '右对齐' : 'Align right'} aria-label={locale === 'zh' ? '右对齐' : 'Align right'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="9" y1="12" x2="21" y2="12" /><line x1="6" y1="18" x2="21" y2="18" /></svg></button>
+            <button type="button" className="eb-btn" data-edit-action="align-left" title={pick(locale, { zh: '左对齐', en: 'Align left' })} aria-label={pick(locale, { zh: '左对齐', en: 'Align left' })}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="15" y2="12" /><line x1="3" y1="18" x2="18" y2="18" /></svg></button>
+            <button type="button" className="eb-btn" data-edit-action="align-center" title={pick(locale, { zh: '居中', en: 'Center' })} aria-label={pick(locale, { zh: '居中', en: 'Center' })}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="6" y1="12" x2="18" y2="12" /><line x1="5" y1="18" x2="19" y2="18" /></svg></button>
+            <button type="button" className="eb-btn" data-edit-action="align-right" title={pick(locale, { zh: '右对齐', en: 'Align right' })} aria-label={pick(locale, { zh: '右对齐', en: 'Align right' })}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6" /><line x1="9" y1="12" x2="21" y2="12" /><line x1="6" y1="18" x2="21" y2="18" /></svg></button>
             <span className="eb-sep" />
-            <button type="button" className="eb-btn eb-primary" data-edit-action="edit-text" title={locale === 'zh' ? '编辑文案' : 'Edit text'} aria-label={locale === 'zh' ? '编辑文案' : 'Edit text'}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></button>
+            <button type="button" className="eb-btn eb-primary" data-edit-action="edit-text" title={pick(locale, { zh: '编辑文案', en: 'Edit text' })} aria-label={pick(locale, { zh: '编辑文案', en: 'Edit text' })}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg></button>
           </div>
           {/* 页组:选中「页」时出,只有书页背景色(同一个取色器组件,带透明度 + 无背景)。 */}
           <div className="eb-group" data-group="page" style={{ display: 'none' }}>
             <span className="eb-ctrl">
-              <button type="button" className="eb-color-trigger" data-edit-action="color-open" title={locale === 'zh' ? '书页背景色' : 'Page background'} aria-label={locale === 'zh' ? '书页背景色' : 'Page background'}>
+              <button type="button" className="eb-color-trigger" data-edit-action="color-open" title={pick(locale, { zh: '书页背景色', en: 'Page background' })} aria-label={pick(locale, { zh: '书页背景色', en: 'Page background' })}>
                 <span className="eb-color-dot" data-color-dot />
               </button>
             </span>
-            <span className="eb-page-label">{locale === 'zh' ? '背景色' : 'Background'}</span>
+            <span className="eb-page-label">{pick(locale, { zh: '背景色', en: 'Background' })}</span>
             {/* 页序弹窗入口(2026-08-02 迭代):挪进选中页气泡,与背景色并排 ——
                 功能作用于「这本书的页」,气泡是选中页的上下文位。样式走全项目
                 统一的文字胶囊族(同图片浮层的 旋转/换图 一排,用户拍板)。 */}
             <button type="button" className="eb-pill" data-edit-action="reorder-open" data-testid="eb-page-reorder">
-              {locale === 'zh' ? '调整页序' : 'Reorder'}
+              {pick(locale, { zh: '调整页序', en: 'Reorder' })}
             </button>
             {/* 删除书页(2026-08-03 设计):同一排文字胶囊。只对内页显示 ——
                 showElementToolbar 的 page 分支按选中页类目切显隐。 */}
             <button type="button" className="eb-pill" data-edit-action="delete-page" data-testid="eb-page-delete">
-              {locale === 'zh' ? '删除此页' : 'Delete page'}
+              {pick(locale, { zh: '删除此页', en: 'Delete page' })}
             </button>
           </div>
           {/* 图片编辑不再用 el-bar:选中图片=拖动平移(前后左右)+ 滑块/滚轮缩放 + 复位,
@@ -6273,12 +6348,12 @@ function EditorBook({
             选中书页背景 → page 模式(色板 + 无背景)。改动实时预览;取消=按打开时快照还原,完成=落库重绘。
             PC 端此 sheet 永不打开(showElementToolbar 仅在移动端分流到这里)。 */}
         <div className="mes-overlay" id="mesOverlay" data-open="0" aria-hidden="true">
-          <div className="mes-card" id="mesCard" role="dialog" aria-modal="true" aria-label={locale === 'zh' ? '编辑' : 'Edit'}>
+          <div className="mes-card" id="mesCard" role="dialog" aria-modal="true" aria-label={pick(locale, { zh: '编辑', en: 'Edit' })}>
             <div className="mes-grab" aria-hidden="true"><span /></div>
             <div className="mes-head">
-              <button type="button" className="mes-hbtn mes-cancel" data-mes="cancel">{locale === 'zh' ? '取消' : 'Cancel'}</button>
+              <button type="button" className="mes-hbtn mes-cancel" data-mes="cancel">{pick(locale, { zh: '取消', en: 'Cancel' })}</button>
               <span className="mes-title" id="mesTitle" />
-              <button type="button" className="mes-hbtn mes-done" data-mes="done">{locale === 'zh' ? '完成' : 'Done'}</button>
+              <button type="button" className="mes-hbtn mes-done" data-mes="done">{pick(locale, { zh: '完成', en: 'Done' })}</button>
             </div>
             <div className="mes-body" id="mesBody" />
           </div>

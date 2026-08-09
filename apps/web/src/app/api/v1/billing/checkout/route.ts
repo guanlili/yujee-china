@@ -3,6 +3,7 @@ import { requireRealUser } from '@/lib/auth/require-auth';
 import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
+import { defaultLocale, locales } from '@/lib/i18n/routing';
 import { creemService } from '@/services/billing/creem-service';
 import { waffoService } from '@/services/billing/waffo-service';
 import { ACTIVE_CHECKOUT_PROVIDER } from '@/config/pricing';
@@ -12,7 +13,7 @@ import { ACTIVE_CHECKOUT_PROVIDER } from '@/config/pricing';
 // changes happen later via signed webhooks. Per-book billing (#97): packs only.
 const schema = z.object({
   packId: z.string().min(1),
-  locale: z.enum(['en', 'zh']).default('en'),
+  locale: z.enum(locales).default(defaultLocale),
   from: z.enum(['album', 'create', 'home']).optional(),
 });
 

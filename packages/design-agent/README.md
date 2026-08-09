@@ -39,6 +39,10 @@ Web 侧客户端:`apps/web/src/lib/agent/design-agent-client.ts`。
 否则该工具的改动不会进 `layout_patch.designOps`,历史回放里会丢更新、彩色条少报。
 (`set_text_fonts` / `write_page_html` 就漏过一次。)
 
+另有 `write_todos`:复诵式长任务计划工具(参考 deepagents TodoListMiddleware,设计:
+`docs/specs/2026-08-05-write-todos-design.md`)。整表覆盖、服务端无状态、纯 no-op
+不动书 —— 它**不是写工具,不进** `DESIGN_WRITE_TOOLS`,与 read_page 同类。
+
 ## 部署:必须单机
 
 每册的 session / trace / 书状态**在进程内存里**,而 Web 每轮先 `POST /api/book`
@@ -93,5 +97,5 @@ print/RPC/interactive 三种模式。**通用 agent loop 在 `packages/agent`**,
 
 <!-- doc-scope
 paths: packages/design-agent/src/**, packages/design-agent/fly.toml, apps/web/src/lib/agent/design-agent-client.ts
-checked-at: 33a790c8
+checked-at: 2d3a2b43
 -->

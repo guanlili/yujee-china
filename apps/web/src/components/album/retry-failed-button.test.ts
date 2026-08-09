@@ -9,8 +9,8 @@ const source = readFileSync(join(here, 'RetryFailedButton.tsx'), 'utf8');
 
 test('RetryFailedButton localizes retry copy from the current route locale', () => {
   assert.match(source, /const locale = detectLocale\(pathname\)/, 'retry button should derive locale from the current route');
-  assert.match(source, /tryAgain: '重试一次'/, 'Chinese retry copy should not show English in zh pages');
-  assert.match(source, /retrying: '重试中…'/, 'Chinese busy copy should be localized');
-  assert.match(source, /tryAgain: 'Try again'/, 'English retry copy should remain available');
+  // Copy pairs now go through pick(), which also serves the overlay languages.
+  assert.match(source, /tryAgain: pick\(locale, \{ zh: '重试一次', en: 'Try again' \}\)/, 'retry copy should carry both source languages');
+  assert.match(source, /retrying: pick\(locale, \{ zh: '重试中…', en: 'Retrying…' \}\)/, 'busy copy should carry both source languages');
   assert.match(source, /busy \? copy\.retrying : copy\.tryAgain/, 'button label should use localized copy');
 });

@@ -89,7 +89,10 @@ test('导出四条格式全部接到真渲染上(不许只开菜单不干活)', 
   assert.match(root, /picked === 'nine-grid'\) void exporter\.exportNineGrid\(\)/, '九宫格样式要接到九宫格导出');
   assert.match(root, /else if \(picked === 'flip'\) void exporter\.exportLive\(\)/, '翻页样式要接到翻页导出');
   assert.match(root, /onSinglePages=\{[\s\S]{0,120}exporter\.exportSinglePages\(\)/);
-  assert.match(root, /onPdf=\{[\s\S]{0,120}exporter\.exportPdf\(\)/);
+  // PDF 与 Live 同形:先选版式(标准/印刷 3mm 出血)再导,不在菜单里直接开跑。
+  assert.match(root, /onPdf=\{[\s\S]{0,160}setPdfStyleOpen\(true\)/);
+  assert.match(root, /picked === 'bleed'\) void exporter\.exportPdf\(\{ bleedMm: 3 \}\)/, '印刷版式要带 3mm 出血导出');
+  assert.match(root, /else void exporter\.exportPdf\(\)/, '标准版式走原路径');
   // 拼图要先问密度,确认时才真导
   assert.match(root, /onCollage=\{[\s\S]{0,140}setCollageOpen\(true\)/);
   assert.match(root, /onConfirm=\{[\s\S]{0,200}exporter\.exportCollage\(/);

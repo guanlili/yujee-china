@@ -5,6 +5,7 @@ import type { Page } from '@yujee/contracts';
 import { db } from '../../db/client';
 import { albumRepo } from '../../db/repos/album-repo';
 import { agentJobRepo } from '../../db/repos/agent-job-repo';
+import { draftPageRepo } from '../../db/repos/draft-page-repo';
 import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '../../db/repos/__test__/setup';
 import { agentClient } from '../../lib/agent/agent-client';
 import { albumService } from './album-service';
@@ -189,6 +190,36 @@ test('composeAppend', async (t) => {
       state = await albumService.listCoverSets(user.id, album.id);
       assert.equal(state.lastComposeStatus, 'RUNNING');
       assert.equal(state.lastComposeWrote, null);
+    });
+
+    // draft_pages 拆表后的真实形态:排版完成回调把页写进 draft_pages 行,draftJson 被重写成
+    // 不含 pages 的 envelope。listCoverSets 若裸读 draftJson.pages 会得到 hasPages:false,
+    // 前端 offerDesignCard 因此静默不弹封面卡 —— 书永远选不了封面、导不了出(2026-08-06 线上事故)。
+    await t.test('listCoverSets: 行存书(envelope 无 pages)hasPages/designed 必须读 draft_pages 行', async () => {
+      const album = await makeAlbum(user.id);
+      const draft = designedDraft();
+      await albumRepo.update(db, album.id, {
+        status: 'EDITING',
+        draftJson: { version: 'v3-story', tree: draft.tree, progress: draft.progress },
+      });
+      await draftPageRepo.replaceAll(db, album.id, draft.pages, 1, null);
+
+      const state = await albumService.listCoverSets(user.id, album.id);
+      assert.equal(state.hasPages, true);
+      assert.equal(state.designed, false); // 行里只有内页 → 还没选封面
+      assert.ok(state.sets.length > 0); // 封面组选项照常从 envelope 的 tree 里生成
+
+      // applyDesign 之后的行存形态:行里出现 cover 页 → designed:true,选择卡不再弹。
+      const cover = (Object.values(TEMPLATES) as TemplateInfo[]).find((t) => t.category === 'cover')!;
+      await draftPageRepo.replaceAll(
+        db,
+        album.id,
+        [...draft.pages, { pageIndex: draft.pages.length, templateId: cover.id, images: {}, texts: {} }],
+        2,
+        null,
+      );
+      const designedState = await albumService.listCoverSets(user.id, album.id);
+      assert.equal(designedState.designed, true);
     });
   } finally {
     await cleanupUser(user.id);

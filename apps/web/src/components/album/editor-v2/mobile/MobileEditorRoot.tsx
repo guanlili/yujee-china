@@ -39,6 +39,7 @@ import {
   ExportMenuModal,
   CollageModal,
   LiveStyleModal,
+  PdfStyleModal,
   ExportProgressModal,
   ExportReadyModal,
   ExportFailModal,
@@ -55,6 +56,7 @@ import { resolveBackTarget } from './back-nav';
 import { ElementSheet } from './modals/ElementSheet';
 import { TextPanel } from './modals/TextPanel';
 import { PageBgPanel } from './modals/PageBgPanel';
+import { boundPick } from '@/lib/i18n/pick';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { collectPhotoIds, type ResolveImage } from '../../adapt-layout';
 import { interiorSpreads } from '@/lib/export/collage';
@@ -126,6 +128,7 @@ export function MobileEditorRoot({
   pages: incomingPages,
   locale,
   onBack,
+  devExportUnlocked,
   photoFilter: controlledPhotoFilter,
   setPhotoFilter: controlledSetPhotoFilter,
   draftChapters = null,
@@ -138,6 +141,8 @@ export function MobileEditorRoot({
   locale: Locale;
   /** 顶栏返回。默认回「我的相册」;dev 预览页覆盖它,免得一点就被踢出预览。 */
   onBack?: () => void;
+  /** dev 预览页专用:跳过导出闸门(样例书没有 story-progress,真实相册永远不传)。 */
+  devExportUnlocked?: boolean;
   /** EditorPort 提供时跨桌面/移动壳共享；独立预览页不提供时使用本地状态。 */
   photoFilter?: PhotoFilterState | null;
   setPhotoFilter?: Dispatch<SetStateAction<PhotoFilterState | null>>;
@@ -149,7 +154,7 @@ export function MobileEditorRoot({
   chatMode?: ChatMode;
 }) {
   const router = useRouter();
-  const zh = locale === 'zh';
+  const aT = useMemo(() => boundPick(locale), [locale]);
   // 浏览态顶栏「返回」:同源来处就回上一页(从相册预览/分享页点进来的人要回到那儿),
   // 没有来处或站外跳入则落到相册列表 —— 无脑 back() 会把人踢出站。判据见 back-nav.ts。
   const goBack = useCallback(() => {
@@ -196,6 +201,10 @@ export function MobileEditorRoot({
   // Live 样式(翻页 / 九宫格):与桌面同一步骤 —— 菜单点「Live 图」先选样式再导出。
   const [liveStyleOpen, setLiveStyleOpen] = useState(false);
   const [liveStyle, setLiveStyle] = useState<'flip' | 'nine-grid' | null>(null);
+  // PDF 版式(标准 / 印刷 3mm 出血):同 Live 的两步走,但默认预选标准版 ——
+  // 大多数人要的就是标准版,少点一下(2026-08-06 版式选择设计)。
+  const [pdfStyleOpen, setPdfStyleOpen] = useState(false);
+  const [pdfStyle, setPdfStyle] = useState<'standard' | 'bleed'>('standard');
   const [shareOpen, setShareOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
@@ -246,8 +255,8 @@ export function MobileEditorRoot({
     window.setTimeout(() => setToast((cur) => (cur === label ? null : cur)), 3000);
   }, []);
   const soon = useCallback(
-    (what: string, whatEn: string) => say(zh ? `${what}即将上线` : `${whatEn} — coming soon`),
-    [say, zh],
+    (what: string, whatEn: string) => say(aT(`${what}即将上线`, `${whatEn} — coming soon`)),
+    [say, aT],
   );
   // 画板背景是相册级视觉属性:本地先落地(立刻可见),再 PATCH 持久化(与桌面同一通道)。
   const [boardBgOverride, setBoardBgOverride] = useState<BoardBackground | null | undefined>(
@@ -344,11 +353,11 @@ export function MobileEditorRoot({
         body: JSON.stringify(body),
       })
         .then((res) => {
-          if (!res.ok) say(zh ? '没保存成功,请重试' : "Couldn't save — please retry");
+          if (!res.ok) say(aT('没保存成功,请重试', "Couldn't save — please retry"));
         })
-        .catch(() => say(zh ? '没保存成功,请重试' : "Couldn't save — please retry"));
+        .catch(() => say(aT('没保存成功,请重试', "Couldn't save — please retry")));
     },
-    [detail.album.id, say, zh],
+    [detail.album.id, say, aT],
   );
 
   const closeSheet = () => {
@@ -508,7 +517,7 @@ export function MobileEditorRoot({
       })
       .catch(() => {
         setPages(prev);
-        say(zh ? '页序没有存上，已恢复原顺序，请重试' : 'Order not saved; restored — please retry');
+        say(aT('页序没有存上，已恢复原顺序，请重试', 'Order not saved; restored — please retry'));
       });
   };
 
@@ -522,14 +531,14 @@ export function MobileEditorRoot({
     if (editPage == null || !pages[editPage]) return;
     const tpl = getTemplate(pages[editPage]!.templateId);
     if (tpl?.category !== 'interior') {
-      say(zh ? '封面、目录和封底不能删除' : 'Cover, contents and ending pages cannot be deleted');
+      say(aT('封面、目录和封底不能删除', 'Cover, contents and ending pages cannot be deleted'));
       return;
     }
     const interiorCount = pages.filter(
       (p) => getTemplate(p.templateId)?.category === 'interior',
     ).length;
     if (interiorCount <= 1) {
-      say(zh ? '这是最后一张内页，不能删除' : 'The last interior page cannot be deleted');
+      say(aT('这是最后一张内页，不能删除', 'The last interior page cannot be deleted'));
       return;
     }
     setDeleteConfirm({ pageIndex: editPage, spread: tpl.spread === true });
@@ -552,7 +561,7 @@ export function MobileEditorRoot({
       })
       .catch(() => {
         setPages(prev);
-        say(zh ? '页面没有删掉，已恢复，请重试' : 'Page not deleted; restored — please retry');
+        say(aT('页面没有删掉，已恢复，请重试', 'Page not deleted; restored — please retry'));
       });
   };
 
@@ -648,7 +657,7 @@ export function MobileEditorRoot({
   const exporter = useExport({
     albumId: detail.album.id,
     title: detail.album.title,
-    zh,
+    aT,
     pages,
     background: boardBg,
     photoFilter,
@@ -669,11 +678,12 @@ export function MobileEditorRoot({
     // 游客零 R2 写入:确认是真实账号才开自动对账补传(服务端对游客也是 403)。
     enabled: Boolean(viewerSession.user && !viewerSession.user.isAnonymous),
   });
-  const share = useShareLink(detail.album.id, locale, zh);
+  const share = useShareLink(detail.album.id, locale, aT);
 
   // 导出闸门:ChatPanel 挂载即拉 story-progress 并经 setExportGateUi 推锁态过来
   // (追加照片的整个流程里它还会持续轮询刷新)—— 不再自己发第二份同样的请求。
-  const exportUnlocked = !exportGateLocked;
+  // devExportUnlocked:dev 预览页直通(样例书没有 story-progress,真实相册不传)。
+  const exportUnlocked = devExportUnlocked ?? !exportGateLocked;
 
   /** 书里用到的照片(备份/分享要的就是这一批)。 */
   const bookPhotoIds = photoIds;
@@ -700,31 +710,29 @@ export function MobileEditorRoot({
   const rebackup = useCallback(() => {
     if (isGuest) { setMoreOpen(false); goLogin(); return; }
     setMoreOpen(false);
-    say(zh ? '正在重新备份…' : 'Re-backing up…');
+    say(aT('正在重新备份…', 'Re-backing up…'));
     void backup.backup(bookPhotoIds, true).then(({ missing, uploaded }) => {
-      if (missing === 0) say(zh ? `已重新备份 ${uploaded} 张` : `Re-backed up ${uploaded}`);
-      else say(zh ? `还差 ${missing} 张(原图可能不在这台设备)` : `${missing} still missing (originals may be on another device)`);
+      if (missing === 0) say(aT(`已重新备份 ${uploaded} 张`, `Re-backed up ${uploaded}`));
+      else say(aT(`还差 ${missing} 张(原图可能不在这台设备)`, `${missing} still missing (originals may be on another device)`));
     });
-  }, [backup, bookPhotoIds, say, zh]);
+  }, [backup, bookPhotoIds, say, aT]);
 
   const runBackup = useCallback(() => {
     // 游客门禁:保存 = 照片快照上云,真实账号能力。
     if (isGuest) { goLogin(); return; }
     void backup.backup(bookPhotoIds).then(({ missing, uploaded }) => {
-      if (missing === 0) say(zh ? '照片已全部备份' : 'All photos backed up');
+      if (missing === 0) say(aT('照片已全部备份', 'All photos backed up'));
       else if (uploaded > 0)
         say(
-          zh
-            ? `备份了 ${uploaded} 张,还差 ${missing} 张(原图可能不在这台设备)`
-            : `Backed up ${uploaded}, ${missing} still missing (originals may be on another device)`,
+          aT(`备份了 ${uploaded} 张,还差 ${missing} 张(原图可能不在这台设备)`, `Backed up ${uploaded}, ${missing} still missing (originals may be on another device)`),
         );
-      else say(zh ? '备份失败,请重试' : 'Backup failed — please retry');
+      else say(aT('备份失败,请重试', 'Backup failed — please retry'));
     });
-  }, [backup, bookPhotoIds, say, zh]);
+  }, [backup, bookPhotoIds, say, aT]);
 
   const openExport = () => {
     if (!exportUnlocked) {
-      say(zh ? '故事还没写完,写完才能导出' : 'Finish your story first, then you can export');
+      say(aT('故事还没写完,写完才能导出', 'Finish your story first, then you can export'));
       return;
     }
     setExportMenuOpen(true);
@@ -808,7 +816,7 @@ export function MobileEditorRoot({
       resolveThumb={resolveThumb}
       boardBackground={boardBackground}
       title={detail.album.title}
-      zh={zh}
+      aT={aT}
       onBack={onBack ?? goBack}
       onSave={runBackup}
       backupState={backup.state}
@@ -865,7 +873,7 @@ export function MobileEditorRoot({
         if (selection?.kind === 'image' && editPage != null && pages[editPage]) {
           setPhotoPickerOpen(true);
         } else {
-          say(zh ? '点页面上的照片来选中它' : 'Tap a photo on the page to select it');
+          say(aT('点页面上的照片来选中它', 'Tap a photo on the page to select it'));
         }
       }}
       onPickText={() => {
@@ -874,7 +882,7 @@ export function MobileEditorRoot({
         if (selection?.kind === 'text' && editPage != null && pages[editPage]) {
           openTextSheet(selection, pages[editPage]!);
         } else {
-          say(zh ? '点页面上的文字来选中它' : 'Tap the text on the page to select it');
+          say(aT('点页面上的文字来选中它', 'Tap the text on the page to select it'));
         }
       }}
       onMore={() => setMoreOpen(true)}
@@ -888,7 +896,7 @@ export function MobileEditorRoot({
     />
     <BoardBgSheet
       open={bgSheetOpen}
-      zh={zh}
+      aT={aT}
       current={boardBg}
       view={bgSheetView}
       onOpenPicker={() => setBgSheetView('color')}
@@ -909,7 +917,7 @@ export function MobileEditorRoot({
     />
     <ExportMenuModal
       open={exportMenuOpen}
-      zh={zh}
+      aT={aT}
       onClose={() => setExportMenuOpen(false)}
       onCollage={() => {
         setExportMenuOpen(false);
@@ -926,12 +934,13 @@ export function MobileEditorRoot({
       }}
       onPdf={() => {
         setExportMenuOpen(false);
-        void exporter.exportPdf();
+        setPdfStyle('standard'); // 每次打开都回到标准版,不带上次的残留
+        setPdfStyleOpen(true);
       }}
     />
     <CollageModal
       open={collageOpen}
-      zh={zh}
+      aT={aT}
       spreadCount={interiorSpreads(pages).length}
       density={collageDensity}
       onPickDensity={setCollageDensity}
@@ -945,7 +954,7 @@ export function MobileEditorRoot({
     />
     <LiveStyleModal
       open={liveStyleOpen}
-      zh={zh}
+      aT={aT}
       style={liveStyle}
       onPickStyle={setLiveStyle}
       onClose={() => setLiveStyleOpen(false)}
@@ -956,9 +965,23 @@ export function MobileEditorRoot({
         else if (picked === 'flip') void exporter.exportLive();
       }}
     />
+    <PdfStyleModal
+      open={pdfStyleOpen}
+      aT={aT}
+      style={pdfStyle}
+      onPickStyle={setPdfStyle}
+      onClose={() => setPdfStyleOpen(false)}
+      onConfirm={() => {
+        const picked = pdfStyle;
+        setPdfStyleOpen(false);
+        // 出血值 3 只在这一层出现;use-export 只透传(见 pdf-bleed-wiring.test)。
+        if (picked === 'bleed') void exporter.exportPdf({ bleedMm: 3 });
+        else void exporter.exportPdf();
+      }}
+    />
     <ExportProgressModal
       open={exporter.progress != null}
-      zh={zh}
+      aT={aT}
       label={
         exporter.progress == null
           ? ''
@@ -970,24 +993,24 @@ export function MobileEditorRoot({
     />
     <ExportReadyModal
       open={exporter.exportReady}
-      zh={zh}
+      aT={aT}
       label={exporter.exportReadyLabel}
       manualFiles={exporter.exportManualFiles}
       onClose={exporter.dismissExportReady}
       onSave={() => {
         void exporter.deliverExport().then((result) => {
-          if (result === 'shared') say(zh ? '已打开系统分享' : 'Opened system sharing');
+          if (result === 'shared') say(aT('已打开系统分享', 'Opened system sharing'));
           else if (result === 'downloaded')
-            say(zh ? '文件已开始下载' : 'File download started');
+            say(aT('文件已开始下载', 'File download started'));
           else if (result === 'manual')
-            say(zh ? '这台手机打不开系统分享，改成逐张保存' : 'No share sheet here — save them one by one');
+            say(aT('这台手机打不开系统分享，改成逐张保存', 'No share sheet here — save them one by one'));
         });
       }}
       onSaveFile={(i) => exporter.saveExportFile(i)}
     />
     <ExportFailModal
       open={exporter.failed}
-      zh={zh}
+      aT={aT}
       onClose={exporter.dismissFailed}
       onRetry={() => {
         exporter.dismissFailed();
@@ -996,14 +1019,14 @@ export function MobileEditorRoot({
     />
     <NoticeModal
       open={exporter.liveUnsupported != null}
-      zh={zh}
-      title={zh ? '这台设备导不了视频' : 'Video export unavailable'}
+      aT={aT}
+      title={aT('这台设备导不了视频', 'Video export unavailable')}
       message={exporter.liveUnsupported ?? ''}
       onClose={exporter.dismissLiveUnsupported}
     />
     <MoreSheet
       open={moreOpen}
-      zh={zh}
+      aT={aT}
       backupState={backup.state}
       backupProgress={backup.progress}
       lutSupported={lutSupported}
@@ -1018,7 +1041,7 @@ export function MobileEditorRoot({
     />
     <ReorderSheet
       open={reorderOpen}
-      zh={zh}
+      aT={aT}
       pages={pages}
       resolve={resolveThumb}
       onClose={() => setReorderOpen(false)}
@@ -1027,25 +1050,23 @@ export function MobileEditorRoot({
     <ModalHost
       open={deleteConfirm != null}
       onClose={() => setDeleteConfirm(null)}
-      ariaLabel={zh ? '删除页面' : 'Delete page'}
+      ariaLabel={aT('删除页面', 'Delete page')}
       testId="delete-page-confirm"
     >
       <div className="mdel-body">
-        <p className="mdel-title">{zh ? '删除这一页？' : 'Delete this page?'}</p>
+        <p className="mdel-title">{aT('删除这一页？', 'Delete this page?')}</p>
         <p className="mdel-text">
-          {zh ? '页面上的照片和文字会一起移除。' : 'Its photos and text will be removed together.'}
+          {aT('页面上的照片和文字会一起移除。', 'Its photos and text will be removed together.')}
         </p>
         {deleteConfirm != null && !deleteConfirm.spread && (
           <p className="mdel-text mdel-warn">
-            {zh
-              ? '删除后，这一页之后的页面左右位置会互换。'
-              : 'After deleting, pages after this one will swap left/right sides.'}
+            {aT('删除后，这一页之后的页面左右位置会互换。', 'After deleting, pages after this one will swap left/right sides.')}
           </p>
         )}
       </div>
       <div className="mdel-actions">
         <button type="button" className="mdel-btn" onClick={() => setDeleteConfirm(null)}>
-          {zh ? '取消' : 'Cancel'}
+          {aT('取消', 'Cancel')}
         </button>
         <button
           type="button"
@@ -1057,7 +1078,7 @@ export function MobileEditorRoot({
             if (target) commitDeletePage(target.pageIndex);
           }}
         >
-          {zh ? '删除' : 'Delete'}
+          {aT('删除', 'Delete')}
         </button>
       </div>
     </ModalHost>
@@ -1085,12 +1106,12 @@ export function MobileEditorRoot({
           filterSaver.retry();
         }}
       >
-        {zh ? '风格保存失败，点此重试' : 'Style failed to save. Tap to retry.'}
+        {aT('风格保存失败，点此重试', 'Style failed to save. Tap to retry.')}
       </button>
     )}
     <ShareLinkModal
       open={shareOpen}
-      zh={zh}
+      aT={aT}
       link={share.state.link}
       busy={share.state.stage === 'uploading' || share.state.stage === 'creating'}
       hint={share.state.hint ?? undefined}
@@ -1101,22 +1122,22 @@ export function MobileEditorRoot({
     {sheetKind != null && (
       <ElementSheet
         open
-        zh={zh}
+        aT={aT}
         title={
           sheetView === 'font'
-            ? zh ? '字体' : 'Font'
+            ? aT('字体', 'Font')
             : sheetView === 'color'
-            ? zh ? '颜色' : 'Color'
+            ? aT('颜色', 'Color')
             : sheetKind === 'text'
-              ? zh ? '文字' : 'Text'
-              : zh ? '书页背景' : 'Page background'
+              ? aT('文字', 'Text')
+              : aT('书页背景', 'Page background')
         }
         onCancel={cancelSheet}
         onDone={sheetKind === 'text' ? onTextDone : onPageBgDone}
       >
         {sheetKind === 'text' && textState != null ? (
           <TextPanel
-            zh={zh}
+            aT={aT}
             view={sheetView}
             state={textState}
             onChange={onTextChange}
@@ -1126,7 +1147,7 @@ export function MobileEditorRoot({
           />
         ) : (
           <PageBgPanel
-            zh={zh}
+            aT={aT}
             value={pageBg}
             view={sheetView === 'color' ? 'color' : 'main'}
             onChange={onPageBgChange}
@@ -1138,7 +1159,7 @@ export function MobileEditorRoot({
     )}
     <PhotoPickerSheet
       open={photoPickerOpen}
-      zh={zh}
+      aT={aT}
       photoIds={photoIds}
       urls={thumbUrls}
       currentPhotoId={

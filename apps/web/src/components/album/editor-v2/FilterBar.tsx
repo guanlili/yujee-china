@@ -22,6 +22,8 @@ import {
   type PhotoFilterRef,
   type PhotoFilterState,
 } from '@/lib/photo/filter-state';
+import { boundPick } from '@/lib/i18n/pick';
+import type { Locale } from '@/lib/i18n/routing';
 import { photoStore } from '@/lib/photo/store';
 import { lutEngine } from '@/lib/photo/lut/engine';
 import {
@@ -57,7 +59,7 @@ export function FilterBar({
   onClose,
   embedded = false,
 }: {
-  locale: string;
+  locale: Locale;
   state: PhotoFilterState | null;
   scope: FilterScope;
   photoId: string | null;
@@ -68,7 +70,7 @@ export function FilterBar({
   onClose: () => void;
   embedded?: boolean;
 }) {
-  const zh = locale === 'zh';
+  const aT = boundPick(locale);
   const current = currentScopeFilter(state, scope, photoId);
   const strength = current?.strength ?? 100;
   /** 这张图正在跟随全书 = 没有自己的 override(与 override === null 是两回事)。 */
@@ -168,24 +170,24 @@ export function FilterBar({
     <aside
       className="filter-bar"
       role={embedded ? undefined : 'dialog'}
-      aria-label={zh ? '照片风格' : 'Photo style'}
+      aria-label={aT('照片风格', 'Photo style')}
     >
       <div className="filter-bar-head">
-        <strong>{zh ? '风格' : 'Style'}</strong>
+        <strong>{aT('风格', 'Style')}</strong>
         {/* scope 只在一个地方表达。给了切换器 → 切换器自己就说明了当前在哪一档;
             没给 → 退回静态标签。两者互斥 —— 早先是「标签 + 切换器 + 跟随链接」三份并存。
             谁给谁不给:桌面永远给(它只有「点选中的图 → 风格」一个入口);移动端只在
             **从选中的照片**进来时给 —— 从「更多 → 全书风格」进来时 photoId 只是拿来生成
             缩略图的第一张,切到「这张照片」等于在改一张用户没选过的图(见 FilterSheet)。 */}
         {onScopeChange ? (
-          <div className="filter-scope-switch" role="group" aria-label={zh ? '风格应用范围' : 'Style scope'}>
+          <div className="filter-scope-switch" role="group" aria-label={aT('风格应用范围', 'Style scope')}>
             <button
               type="button"
               className="filter-scope-option"
               aria-pressed={scope === 'photo'}
               onClick={() => onScopeChange('photo')}
             >
-              {zh ? '这张照片' : 'This photo'}
+              {aT('这张照片', 'This photo')}
             </button>
             <button
               type="button"
@@ -193,26 +195,26 @@ export function FilterBar({
               aria-pressed={scope === 'book'}
               onClick={() => onScopeChange('book')}
             >
-              {zh ? '整本书' : 'Whole book'}
+              {aT('整本书', 'Whole book')}
             </button>
           </div>
         ) : (
           <span className="filter-scope-label">
-            {scope === 'book' ? (zh ? '整本书' : 'Whole book') : (zh ? '这张照片' : 'This photo')}
+            {scope === 'book' ? (aT('整本书', 'Whole book')) : (aT('这张照片', 'This photo'))}
           </span>
         )}
-        <button type="button" className="filter-bar-close" onClick={onClose} aria-label={zh ? '关闭风格面板' : 'Close style panel'}>×</button>
+        <button type="button" className="filter-bar-close" onClick={onClose} aria-label={aT('关闭风格面板', 'Close style panel')}>×</button>
       </div>
 
       {previewState === 'missing' ? (
         <p className="filter-state" role="status">
-          {zh ? '这张照片的原图不在本机,换个设备或先备份照片' : 'The original is not on this device'}
+          {aT('这张照片的原图不在本机,换个设备或先备份照片', 'The original is not on this device')}
         </p>
       ) : previewState === 'error' ? (
         <p className="filter-state filter-error" role="alert">
-          {zh ? '预览生成失败。' : 'Preview generation failed.'}
+          {aT('预览生成失败。', 'Preview generation failed.')}
           <button type="button" onClick={() => setPreviewRetry((value) => value + 1)}>
-            {zh ? '重试' : 'Retry'}
+            {aT('重试', 'Retry')}
           </button>
         </p>
       ) : (
@@ -222,7 +224,7 @@ export function FilterBar({
             <button
               type="button"
               className="filter-page filter-page-prev"
-              aria-label={zh ? '上一屏风格' : 'Previous styles'}
+              aria-label={aT('上一屏风格', 'Previous styles')}
               onClick={() => pageBy(-1)}
             >
               ‹
@@ -232,7 +234,7 @@ export function FilterBar({
             <button
               type="button"
               className="filter-page filter-page-next"
-              aria-label={zh ? '下一屏风格' : 'Next styles'}
+              aria-label={aT('下一屏风格', 'Next styles')}
               onClick={() => pageBy(1)}
             >
               ›
@@ -243,7 +245,7 @@ export function FilterBar({
             ref={gridRef}
             onScroll={syncPager}
             role="group"
-            aria-label={zh ? '选择风格' : 'Choose a style'}
+            aria-label={aT('选择风格', 'Choose a style')}
             aria-busy={previewState === 'loading'}
           >
             {/* 跟随全书:与「原片」并列的一个选择,不是附属操作。book scope 下无意义。 */}
@@ -259,7 +261,7 @@ export function FilterBar({
                     <img src={bookLutId ? previews[bookLutId] : previews.original} alt="" />
                   )}
                 </div>
-                <span>{zh ? '跟随全书' : 'Follow book'}</span>
+                <span>{aT('跟随全书', 'Follow book')}</span>
               </button>
             )}
             <button
@@ -271,7 +273,7 @@ export function FilterBar({
               <div className="filter-card-preview">
                 {previews.original && <img src={previews.original} alt="" />}
               </div>
-              <span>{zh ? '原片' : 'Original'}</span>
+              <span>{aT('原片', 'Original')}</span>
             </button>
             {LUT_DEFINITIONS.map((definition) => (
               <button
@@ -284,7 +286,7 @@ export function FilterBar({
                 <div className="filter-card-preview">
                   {previews[definition.id] && <img src={previews[definition.id]} alt="" />}
                 </div>
-                <span>{zh ? definition.nameZh : definition.id}</span>
+                <span>{aT(definition.nameZh, definition.id)}</span>
               </button>
             ))}
           </div>
@@ -295,14 +297,14 @@ export function FilterBar({
           早先用 disabled 灰着占位 —— 一个永远点不动的控件比没有更让人困惑。 */}
       {current && !following && (
         <label className="filter-strength">
-          <span>{zh ? '强度' : 'Strength'} {Math.round(strength)}%</span>
+          <span>{aT('强度', 'Strength')} {Math.round(strength)}%</span>
           <input
             type="range"
             min="0"
             max="100"
             step="5"
             value={strength}
-            aria-label={zh ? '滤镜强度' : 'Filter strength'}
+            aria-label={aT('滤镜强度', 'Filter strength')}
             onChange={(event) => apply({
               ...current,
               strength: Number(event.currentTarget.value),
@@ -313,8 +315,8 @@ export function FilterBar({
 
       {persistError && (
         <p className="filter-state filter-error" role="alert">
-          {zh ? '风格保存失败。' : 'Style failed to save.'}
-          <button type="button" onClick={onRetry}>{zh ? '重试' : 'Retry'}</button>
+          {aT('风格保存失败。', 'Style failed to save.')}
+          <button type="button" onClick={onRetry}>{aT('重试', 'Retry')}</button>
         </p>
       )}
     </aside>

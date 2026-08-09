@@ -67,7 +67,7 @@ export const chatI18n: Record<string, Record<string, string>> = {
   zh: {
     pageTitle: 'Yujee — 编辑你的纪念册',
     backToProjects: '返回我的项目',
-    backToDetail: '返回书本明细',
+    backToDetail: '返回作品列表',
     albumTitle: '2024 厦门三日游',
     saved: '已保存',
     undo: '撤销',
@@ -231,7 +231,7 @@ export const chatI18n: Record<string, Record<string, string>> = {
   en: {
     pageTitle: 'Yujee — Edit Your Album',
     backToProjects: 'Back to projects',
-    backToDetail: 'Back to album details',
+    backToDetail: 'Back to albums',
     albumTitle: '2024 Xiamen 3-Day Trip',
     saved: 'Saved',
     undo: 'Undo',

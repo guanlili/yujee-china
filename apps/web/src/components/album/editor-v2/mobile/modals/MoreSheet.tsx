@@ -10,6 +10,7 @@
 
 import { ModalHost } from './ModalHost';
 import type { BackupState } from '../use-photo-backup';
+import type { AT } from '@/lib/i18n/pick';
 
 const stroke = {
   viewBox: '0 0 24 24',
@@ -22,7 +23,7 @@ const stroke = {
 
 export function MoreSheet({
   open,
-  zh,
+  aT,
   backupState,
   backupProgress,
   lutSupported,
@@ -33,7 +34,7 @@ export function MoreSheet({
   onPhotoFilter,
 }: {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   backupState: BackupState;
   backupProgress: { done: number; total: number } | null;
   lutSupported: boolean;
@@ -49,13 +50,14 @@ export function MoreSheet({
   const backupLabel = () => {
     if (backupState === 'backing-up') {
       const p = backupProgress;
-      return zh
-        ? `正在备份照片…${p ? ` ${p.done}/${p.total}` : ''}`
-        : `Backing up photos…${p ? ` ${p.done}/${p.total}` : ''}`;
+      return aT(
+        `正在备份照片…${p ? ` ${p.done}/${p.total}` : ''}`,
+        `Backing up photos…${p ? ` ${p.done}/${p.total}` : ''}`,
+      );
     }
-    if (backupState === 'backed-up') return zh ? '照片已备份' : 'Photos backed up';
-    if (backupState === 'failed') return zh ? '备份未完成,点一下重试' : 'Backup incomplete — tap to retry';
-    return zh ? '备份照片到云端' : 'Back up photos to the cloud';
+    if (backupState === 'backed-up') return aT('照片已备份', 'Photos backed up');
+    if (backupState === 'failed') return aT('备份未完成,点一下重试', 'Backup incomplete — tap to retry');
+    return aT('备份照片到云端', 'Back up photos to the cloud');
   };
 
   return (
@@ -68,12 +70,10 @@ export function MoreSheet({
     >
       <div className="px-6 pt-5 pb-1">
         <h3 id="mMoreTitle" className="font-display text-[18px] font-bold">
-          {zh ? '更多' : 'More'}
+          {aT('更多', 'More')}
         </h3>
         <p className="text-[13px] text-muted mt-1">
-          {zh
-            ? '照片只存在这台设备上。备份后换设备/清缓存也能看到内页图。'
-            : 'Photos live only on this device. Back them up so pages still show after switching devices.'}
+          {aT('照片只存在这台设备上。备份后换设备/清缓存也能看到内页图。', 'Photos live only on this device. Back them up so pages still show after switching devices.')}
         </p>
       </div>
       <div className="px-5 py-4 flex flex-col gap-2.5">
@@ -84,7 +84,7 @@ export function MoreSheet({
             <polyline points="7 23 3 19 7 15" />
             <path d="M21 13v2a4 4 0 0 1-4 4H3" />
           </svg>
-          <span>{zh ? '调整页面顺序' : 'Reorder pages'}</span>
+          <span>{aT('调整页面顺序', 'Reorder pages')}</span>
         </button>
         {lutSupported && (
           <button
@@ -100,7 +100,7 @@ export function MoreSheet({
               <circle cx="15" cy="12" r="2" fill="currentColor" />
               <circle cx="11" cy="18" r="2" fill="currentColor" />
             </svg>
-            <span>{zh ? '全书照片风格' : 'Whole-book photo style'}</span>
+            <span>{aT('全书照片风格', 'Whole-book photo style')}</span>
           </button>
         )}
         <button
@@ -129,13 +129,13 @@ export function MoreSheet({
               <polyline points="23 4 23 10 17 10" />
               <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
             </svg>
-            <span>{zh ? '重新备份(提升导出画质)' : 'Re-back up (better export quality)'}</span>
+            <span>{aT('重新备份(提升导出画质)', 'Re-back up (better export quality)')}</span>
           </button>
         )}
       </div>
       <div className="px-5 pb-5">
         <button className="export-cancel" onClick={onClose}>
-          {zh ? '关闭' : 'Close'}
+          {aT('关闭', 'Close')}
         </button>
       </div>
     </ModalHost>
@@ -145,13 +145,13 @@ export function MoreSheet({
 /* ── 一句话告知框(Live 视频不支持这类「不是失败、但要说清楚」的情形) ────────── */
 export function NoticeModal({
   open,
-  zh,
+  aT,
   title,
   message,
   onClose,
 }: {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   title: string;
   message: string;
   onClose: () => void;
@@ -169,7 +169,7 @@ export function NoticeModal({
           className="px-5 py-2.5 rounded-pill text-[13px] font-medium text-fg2 border border-bd transition-colors hover:bg-bg"
           onClick={onClose}
         >
-          {zh ? '知道了' : 'Got it'}
+          {aT('知道了', 'Got it')}
         </button>
       </div>
     </ModalHost>

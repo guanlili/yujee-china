@@ -5,12 +5,13 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
+import { LANDING_COPIES, type Sample } from '@/components/landing/copy';
 import { ADDON_PACKS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { SOCIAL_LINKS, SUPPORT_EMAIL } from '@/config/social';
 import { useSession } from '@/lib/auth/client';
 import { getMessages } from '@/lib/i18n/messages';
-import { localizePath, type Locale } from '@/lib/i18n/routing';
-import { getFaqEntries } from '@/lib/seo/faq';
+import { pick } from '@/lib/i18n/pick';
+import { LOCALE_LABELS, localizePath, locales, type Locale } from '@/lib/i18n/routing';
 
 // Pricing copy states the rule through {photos}/{pages} tokens so the numbers can
 // only ever come from the constants. Rendering the raw message would ship the
@@ -24,392 +25,6 @@ type Props = {
   locale: Locale;
   composer: ReactNode;
 };
-
-type Sample = {
-  title: string;
-  brief: string;
-  body: string;
-  bullets: string[];
-  image: string;
-  video: string;
-};
-
-type PreviewChapter = {
-  title: string;
-  left: string;
-  right: string;
-};
-
-type Copy = {
-  sideHome: string;
-  sideProjects: string;
-  navExamples: string;
-  navPricing: string;
-  navFaq: string;
-  footerStory: string;
-  login: string;
-  menu: string;
-  createTitle: string;
-  createSub: string;
-  sampleCta: string;
-  makeSame: string;
-  samplesNote: string;
-  heroEyebrow: string;
-  heroTitle: ReactNode;
-  heroSub: string;
-  heroCta: string;
-  heroExamples: string;
-  trust: string[];
-  workflowTitle: string;
-  workflow: string[];
-  polish: string;
-  featuresLabel: string;
-  featuresTitle: ReactNode;
-  features: { title: string; body: string; icon: 'layout' | 'spark' | 'book' }[];
-  ctaTitle: string;
-  ctaSub: string;
-  start: string;
-  faqLabel: string;
-  faqTitle: string;
-  faq: { q: string; a: ReactNode }[];
-  footerTagline: string;
-  footerProduct: string;
-  footerResources: string;
-  footerExampleTravel: string;
-  footerExampleLifeStory: string;
-  footerExamplesAll: string;
-  footerCompany: string;
-  footerAccount: string;
-  footerPrivacy: string;
-  footerTerms: string;
-  signup: string;
-  copyright: string;
-  samples: Sample[];
-  previewChapters: PreviewChapter[];
-};
-
-/**
- * The FAQ prose lives in @/lib/seo/faq — the same module the FAQPage JSON-LD
- * serialises. Rendering both from one source means the structured data can never
- * claim something the page doesn't actually say.
- *
- * The pricing link is presentation, so it's appended here rather than baked into
- * the schema text (JSON-LD answers must be markup-free).
- */
-function buildFaq(locale: Locale, pricingLabel: string): { q: string; a: ReactNode }[] {
-  const entries = getFaqEntries(locale);
-
-  return entries.map((entry, index) => {
-    const isLast = index === entries.length - 1;
-    if (!isLast) return { q: entry.q, a: entry.a };
-
-    return {
-      q: entry.q,
-      a: (
-        <>
-          {entry.a}{' '}
-          <Link href={`${localizePath('/', locale)}#pricing`} className="underline underline-offset-2">
-            {pricingLabel}
-          </Link>
-        </>
-      ),
-    };
-  });
-}
-
-const copies: Record<Locale, Copy> = {
-  en: {
-    sideHome: 'Home',
-    sideProjects: 'My projects',
-    navExamples: 'Examples',
-    navPricing: 'Pricing',
-    navFaq: 'FAQ',
-    footerStory: 'Our story',
-    login: 'Log in',
-    menu: 'Menu',
-    createTitle: 'Turn your scattered photos into a photo book you can read, touch, and keep',
-    createSub: 'Upload your photos and the AI groups them, writes the story, and automatically lays out a magazine-style photo book — fully editable, ready to print.',
-    sampleCta: 'See example',
-    makeSame: 'Make one like this',
-    samplesNote: 'Demo books made by the Yujee team to show what the product can do — fictional content, not customer work.',
-    heroEyebrow: 'AI photo books · from shots to bound book',
-    heroTitle: (
-      <>
-        Turn your everyday snapshots
-        <br />
-        into a memoir that&apos;s yours alone
-      </>
-    ),
-    heroSub: 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful memory book made just for you.',
-    heroCta: 'Start creating',
-    heroExamples: 'See examples',
-    trust: ['No design skills needed', 'Fully editable layout', 'Print-ready PDF export'],
-    workflowTitle: 'How it works',
-    workflow: ['Automatic photo grouping', 'AI-assisted story writing', 'Automatic magazine-style layout'],
-    polish: 'Polishing the text…',
-    featuresLabel: 'What it does',
-    featuresTitle: (
-      <>
-        An AI photo book maker
-        <br />
-        that does the sorting for you
-      </>
-    ),
-    features: [
-      {
-        title: 'Auto-layout into a photo book',
-        body:
-          'Drop in a set of photos and the AI automatically lays out magazine-style spreads — full bleeds, grids, white space — a finished photo book layout without dragging pictures one by one.',
-        icon: 'layout',
-      },
-      {
-        title: 'Smart photo grouping + captions',
-        body:
-          'It detects time and scenes to group your photos automatically, and drafts an editable title and description for each. You set the tone; it writes the first draft.',
-        icon: 'spark',
-      },
-      {
-        title: 'Flip-book preview · print-ready PDF export',
-        body:
-          'Flip through a 3D preview, page by page — what you see is what you get. Export a 300 DPI print-ready PDF you can print and bind anytime.',
-        icon: 'book',
-      },
-    ],
-    ctaTitle: "Don't leave those photos in a folder — make them a keepsake book",
-    ctaSub: 'Make your first photo book in minutes. Start free; think about export and print once you love it.',
-    start: 'Start free',
-    faqLabel: 'FAQ',
-    faqTitle: 'AI photo book questions, answered',
-    faq: buildFaq('en', 'See pricing'),
-    footerTagline: 'Turn your photos into a beautifully designed album.',
-    footerProduct: 'Product',
-    footerResources: 'Resources',
-    footerExampleTravel: 'Travel photo book example',
-    footerExampleLifeStory: 'Life story book example',
-    footerExamplesAll: 'All memoir examples',
-    footerCompany: 'About',
-    footerAccount: 'Account',
-    footerPrivacy: 'Privacy',
-    footerTerms: 'Terms',
-    signup: 'Sign up free',
-    copyright: '© 2026 Yujee · Memories, beautifully laid out',
-    samples: [
-      {
-        title: 'Year in a book',
-        brief: 'One photo book a year, bound each December',
-        body:
-          'Pack a whole year into one book. Holidays, trips, and everyday moments are laid out by month and continued year after year.',
-        bullets: ['Grouped by month or event', 'One click for the year-end book', 'Same style, a matching set each year'],
-        image: '/landing-redesign/cards/03-year-record.png',
-        video: '/landing-redesign/cards/03-year-record.mp4',
-      },
-      {
-        title: 'Life story',
-        brief: 'Your milestones, into a life story book',
-        body:
-          'Lay milestones along a timeline: birth, school, people, and journeys. Each group gets editable short essays, bound like a biography.',
-        bullets: ['Auto-grouped by life stage', 'Long-form text and pull quotes per group', 'Great as a birthday or memorial gift'],
-        image: '/landing-redesign/cards/02-life-story.png',
-        video: '/landing-redesign/cards/02-life-story.mp4',
-      },
-      {
-        title: 'Travel',
-        brief: 'A trip, auto-bound into a travel photo book',
-        body:
-          'Auto-grouped by date, with places and order sorted for you. One spread per day, with room to breathe between photos.',
-        bullets: ['Auto-split by timeline', 'Add map pages and route notes', 'Export a PDF to share with travel mates'],
-        image: '/landing-redesign/cards/01-travel.png',
-        video: '/landing-redesign/cards/01-travel.mp4',
-      },
-      {
-        title: 'Portfolio',
-        brief: 'Your work, lined up quietly',
-        body:
-          'Photography, illustration, design: aligned to a grid with consistent margins so the work stays the star.',
-        bullets: ['Strict grid and uniform margins', 'Title, medium, and year per page', 'Export a submittable PDF portfolio'],
-        image: '/landing-redesign/cards/06-portfolio.png',
-        video: '/landing-redesign/cards/06-portfolio.mp4',
-      },
-      {
-        title: 'Magazine',
-        brief: 'Lay content out like a real magazine',
-        body:
-          'More than an album: cover, contents, features, and pull quotes on a magazine skeleton. Turn life into an issue.',
-        bullets: ['Cover, contents, and feature templates', 'Editorial layout with headlines and quotes', 'Print-ready export for a physical issue'],
-        image: '/landing-redesign/cards/05-magazine.png',
-        video: '/landing-redesign/cards/05-magazine.mp4',
-      },
-      {
-        title: 'Growth story',
-        brief: 'A page a month, every change',
-        body:
-          'Filed by month into a growth timeline. Quick notes like height, weight, and firsts land on the right page.',
-        bullets: ['Auto-grouped by month or milestone', 'Add little data cards', 'Keep adding; the album grows over time'],
-        image: '/landing-redesign/cards/04-growth-story.png',
-        video: '/landing-redesign/cards/04-growth-story.mp4',
-      },
-    ],
-    previewChapters: [
-      {
-        title: 'Morning departure',
-        left: '/landing-redesign/photos/bamboo-grove-path.jpg',
-        right: '/landing-redesign/photos/riverside-walk.jpg',
-      },
-      {
-        title: 'Summer Coastline',
-        left: '/landing-redesign/photos/kamakura-coastal-street.jpg',
-        right: '/landing-redesign/photos/seto-inland-sea-pier.jpg',
-      },
-      {
-        title: 'The way back',
-        left: '/landing-redesign/photos/rainy-kyoto-lane.jpg',
-        right: '/landing-redesign/photos/riverside-before-fireworks.jpg',
-      },
-    ],
-  },
-  zh: {
-    sideHome: '主页',
-    sideProjects: '我的项目',
-    navExamples: '示例',
-    navPricing: '定价',
-    navFaq: '常见问题',
-    footerStory: '创始故事',
-    login: '登录',
-    menu: '菜单',
-    createTitle: '把散落的照片，做成一本能读、能摸、能留的照片书',
-    createSub: 'YUJEE AI 将您的照片、故事、回忆和想法变成一本专为您制作的精美纪念册。',
-    sampleCta: '查看示例',
-    makeSame: '做同款',
-    samplesNote: '以下样书均为遇己官方制作的演示作品（内容为虚构示例），非真实用户创作。',
-    heroEyebrow: 'AI 相册创作 · 从照片到成册',
-    heroTitle: (
-      <>
-        把随手一拍的照片，
-        <br />
-        整理成只属于你的回忆录
-      </>
-    ),
-    heroSub: '你来讲故事，故事润色、排版、设计，通通交给 Yujee。',
-    heroCta: '开始创作',
-    heroExamples: '看看示例',
-    trust: ['无需设计基础', '全程可编辑', '导出高清成品'],
-    workflowTitle: '创作工作流',
-    workflow: ['自动识图分组', 'AI 辅助内容撰写', '自动设计'],
-    polish: '正在润色文字…',
-    featuresLabel: '它能做什么',
-    featuresTitle: (
-      <>
-        AI 照片书自动排版，
-        <br />
-        力气省下来给回忆
-      </>
-    ),
-    features: [
-      {
-        title: '自动排版成照片书',
-        body: '丢进一组照片，AI 按节奏排好跨页版式：大图、网格、留白，疏密有致，不用一张张拖。',
-        icon: 'layout',
-      },
-      {
-        title: '智能识图分组 + 配文',
-        body: '识别时间与场景自动分组，为每一组生成可编辑的标题和描述。文字你来定调，初稿它先写好。',
-        icon: 'spark',
-      },
-      {
-        title: '翻书预览 · 印刷级 PDF 导出',
-        body: '3D 翻书逐页预览，所见即所得。导出 300DPI 印刷级 PDF，随时打印装订成实体相册。',
-        icon: 'book',
-      },
-    ],
-    ctaTitle: '那些照片，别再躺在相册里了——做成一本纪念册',
-    ctaSub: '几分钟，做出第一本。免费开始，满意了再导出打印。',
-    start: '免费开始',
-    faqLabel: '常见问题',
-    faqTitle: '关于 AI 照片书，你想问的',
-    faq: buildFaq('zh', '查看定价'),
-    footerTagline: '把照片做成一本设计好的相册。',
-    footerProduct: '产品',
-    footerResources: '资源',
-    footerExampleTravel: '旅行照片书示例',
-    footerExampleLifeStory: '人生故事纪念册示例',
-    footerExamplesAll: '全部作品示例',
-    footerCompany: '关于',
-    footerAccount: '账户',
-    footerPrivacy: '隐私政策',
-    footerTerms: '服务条款',
-    signup: '免费注册',
-    copyright: '© 2026 Yujee · 用排版，把回忆收好',
-    samples: [
-      {
-        title: '年纪记录',
-        brief: '一年一本，年底自动成册',
-        body: '把一整年塞进一本。节日、出游、日常按月铺开，年底一键成册，年年续上一本。',
-        bullets: ['按月 / 按事件自动归类', '年底一键生成年度册', '风格沿用，逐年成套'],
-        image: '/landing-redesign/cards/03-year-record.png',
-        video: '/landing-redesign/cards/03-year-record.mp4',
-      },
-      {
-        title: '人生故事',
-        brief: '把人生节点，排成一本传记',
-        body: '按时间轴铺开重要节点：出生、求学、相遇、远行。每段配一篇可编辑短文，做成传记式相册。',
-        bullets: ['按人生阶段自动分组', '每组可配长文与引言', '适合做生日 / 纪念礼物'],
-        image: '/landing-redesign/cards/02-life-story.png',
-        video: '/landing-redesign/cards/02-life-story.mp4',
-      },
-      {
-        title: '旅行',
-        brief: '一趟旅行，自动收成一本游记',
-        body: '按日期自动分组，地点、天气、行程顺序都帮你理好。每一天一个跨页，照片之间留出呼吸。',
-        bullets: ['按时间线自动分日分组', '可加地图页与路线标注', '导出 PDF，和旅伴一起翻看'],
-        image: '/landing-redesign/cards/01-travel.png',
-        video: '/landing-redesign/cards/01-travel.mp4',
-      },
-      {
-        title: '作品集',
-        brief: '让作品安静地排成一册',
-        body: '摄影、插画、设计：网格对齐、统一留白，弱化装饰，让作品本身是主角。',
-        bullets: ['严格网格与统一边距', '每页可附标题 / 媒介 / 年份', '导出可直接投递的 PDF 作品集'],
-        image: '/landing-redesign/cards/06-portfolio.png',
-        video: '/landing-redesign/cards/06-portfolio.mp4',
-      },
-      {
-        title: '杂志',
-        brief: '把内容排成一本杂志感的刊物',
-        body: '不只是相册：封面、目录、专题、引言，按真正的杂志骨架排版，把生活做成一期刊物。',
-        bullets: ['封面 / 目录 / 专题模板', '大标题 + 引言的编辑式排版', '导出印刷级，可做成实体刊'],
-        image: '/landing-redesign/cards/05-magazine.png',
-        video: '/landing-redesign/cards/05-magazine.mp4',
-      },
-      {
-        title: '成长故事',
-        brief: '一月一页，记下 TA 的变化',
-        body: '按月份归档，自动生成成长时间线。身高体重、第一次的瞬间，都能落在对应的页上。',
-        bullets: ['按月 / 按里程碑自动归组', '可加身高体重等小数据卡', '持续添加，相册随时间长大'],
-        image: '/landing-redesign/cards/04-growth-story.png',
-        video: '/landing-redesign/cards/04-growth-story.mp4',
-      },
-    ],
-    previewChapters: [
-      {
-        title: '出发的清晨',
-        left: '/landing-redesign/photos/bamboo-grove-path.jpg',
-        right: '/landing-redesign/photos/riverside-walk.jpg',
-      },
-      {
-        title: '夏天的海岸线',
-        left: '/landing-redesign/photos/kamakura-coastal-street.jpg',
-        right: '/landing-redesign/photos/seto-inland-sea-pier.jpg',
-      },
-      {
-        title: '回程',
-        left: '/landing-redesign/photos/rainy-kyoto-lane.jpg',
-        right: '/landing-redesign/photos/riverside-before-fireworks.jpg',
-      },
-    ],
-  },
-};
-
-const languageOptions: Locale[] = ['zh', 'en'];
 
 function Icon({ name }: { name: 'home' | 'folder' | 'layout' | 'spark' | 'book' | 'menu' | 'x' }) {
   const common = {
@@ -615,7 +230,7 @@ function LandingPricing({ locale }: { locale: Locale }) {
     <section id="pricing" className="py-16 md:py-20">
       <div className="wrap">
         <div className="mx-auto mb-9 max-w-xl text-center md:mb-11">
-          <div className="sec-label">{locale === 'zh' ? '价格' : 'Pricing'}</div>
+          <div className="sec-label">{pick(locale, { zh: '价格', en: 'Pricing' })}</div>
           <h2 className="sec-title mt-3">{priceTitle}</h2>
           <p className="mt-3 text-sm text-[var(--muted)]">{priceSubtitle}</p>
         </div>
@@ -674,7 +289,7 @@ function LandingPricing({ locale }: { locale: Locale }) {
 }
 
 export function YujeeLandingHomeClient({ locale, composer }: Props) {
-  const c = copies[locale];
+  const c = LANDING_COPIES[locale];
   const dashboard = getMessages(locale).dashboard;
   const chrome = dashboard.chrome;
   const chromeSession = useChromeSession();
@@ -705,7 +320,7 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
 
   const home = `/${locale}`;
   const composerHref = `${home}#homepage-composer`;
-  const currentLanguageLabel = locale === 'zh' ? '中文' : 'English';
+  const currentLanguageLabel = LOCALE_LABELS[locale];
   const accountLinks: Array<[string, string]> = chromeSession.user
     ? [
         [dashboard.nav.myAlbums, `/${locale}/my-albums`],
@@ -930,7 +545,7 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
           </div>
           <div className="flex items-center gap-1.5 md:gap-2">
             <div className="has-menu hidden md:block">
-              <button type="button" className="nav-link" aria-haspopup="true" aria-label={locale === 'zh' ? '切换语言' : 'Switch language'}>
+              <button type="button" className="nav-link" aria-haspopup="true" aria-label={pick(locale, { zh: '切换语言', en: 'Switch language' })}>
                 <svg aria-hidden width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="12" cy="12" r="9" />
                   <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
@@ -941,9 +556,9 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
                 </svg>
               </button>
               <div className="nav-pop nav-pop-lang">
-                {languageOptions.map((l) => (
+                {locales.map((l) => (
                   <Link key={l} href={localizePath(pathname, l)} className={l === locale ? 'is-active' : undefined}>
-                    {l === 'zh' ? '中文' : 'English'}
+                    {LOCALE_LABELS[l]}
                   </Link>
                 ))}
               </div>
@@ -978,9 +593,9 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
             <Link href={`/${locale}/login`}>{c.login}</Link>
           )}
           <div className="m-lang">
-            {languageOptions.map((l) => (
+            {locales.map((l) => (
               <Link key={l} href={localizePath(pathname, l)} className={l === locale ? 'is-active' : undefined}>
-                {l === 'zh' ? '中文' : 'English'}
+                {LOCALE_LABELS[l]}
               </Link>
             ))}
           </div>

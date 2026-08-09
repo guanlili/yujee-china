@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { readPreviewPages } from './album-service';
+import { loadStoryDraft } from './draft-store';
 import { db } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
@@ -51,11 +51,13 @@ export const shareService = {
       if (!album) throw ERRORS.ALBUM_NOT_FOUND();
       if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
 
-      // 页面来源:编辑态相册页在 draft_json.pages(V3Page:images/texts/html);
-      // 定稿相册才在 album_pages。优先草稿,回退定稿。统一映射成 EditorPage 形状。
-      const draftPages = readPreviewPages(album.draftJson);
+      // 页面来源:编辑态页真相在 draft_pages 行(2026-08-03 拆表;loadStoryDraft 对未
+      // 播种的存量书回退 legacy draftJson.pages)。冻结读在行锁事务内且不烘
+      // (bake:false)—— 页面字节原样进快照。定稿相册才在 album_pages。优先草稿,回退定稿。
+      const draft = await loadStoryDraft(album, { tx, bake: false });
+      const draftPages = draft?.pages ?? [];
       let snapshotPages: AlbumShare['snapshotJson']['pages'];
-      if (draftPages && draftPages.length > 0) {
+      if (draftPages.length > 0) {
         snapshotPages = draftPages.map((p) => ({
           pageIndex: p.pageIndex,
           templateId: p.templateId,

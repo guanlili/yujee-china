@@ -13,6 +13,7 @@ import { PAGE } from '@/components/album/templates/constants';
 import { getWebTemplate } from '@/components/album/web-registry';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
 import { injectDocumentFontsInto } from '@/lib/font/clone-document-fonts';
+import { bleedCssPx, extendCanvasEdges, pdfPageFormat } from './extend-canvas-edges';
 import { faceCaptureSpec } from './face-capture';
 import { splitSpreadCanvas } from './split-spread-canvas';
 
@@ -29,6 +30,9 @@ import { splitSpreadCanvas } from './split-spread-canvas';
 export interface RasterPdfOptions {
   scale?: number; // 截图倍率，默认 3（≈288 DPI）
   jpegQuality?: number; // JPEG 质量 0..1，默认 0.92
+  // 出血毫米数,默认 0(印刷版传 3):四边边缘延伸 + 页面尺寸等比 216×303mm。
+  // 详见 docs/specs/2026-08-03-pdf-bleed-export-design.md。
+  bleedMm?: number;
   onProgress?: (done: number, total: number) => void;
 }
 
@@ -291,9 +295,15 @@ export async function renderAlbumPdfRaster(
   const scale = options.scale ?? 3;
   const jpegQuality = options.jpegQuality ?? 0.92;
   const total = pages.length;
+  // 出血(2026-08-03 设计):页面尺寸用浮点 CSS px 保物理比例精确(3mm → 等比
+  // 216×303mm),画布延伸宽取整。bleedMm 缺省 0 时 pdfPageFormat 回 [794,1123]、
+  // extendCanvasEdges 原样返回 —— 标准路径零改动。
+  const bleedMm = options.bleedMm ?? 0;
+  const pageFormat = pdfPageFormat(bleedMm);
+  const bleedDevicePx = Math.round(bleedCssPx(bleedMm) * scale);
 
   const { jsPDF } = await import('jspdf');
-  const doc = new jsPDF({ unit: 'px', format: [PAGE.width, PAGE.height], orientation: 'portrait' });
+  const doc = new jsPDF({ unit: 'px', format: pageFormat, orientation: 'portrait' });
 
   // 页签按导出页序计算(内页 1..N;封面/封尾/目录 null),与画板同一套覆盖层。
   const folioInfos = pageFolioInfos(pages.map((p) => p.templateId));
@@ -308,10 +318,12 @@ export async function renderAlbumPdfRaster(
     // 双宽页切成左右两张 A4 依次写入 —— PDF 保持纯竖版,可直送印刷。
     const faces = isSpreadTemplate(page.templateId) ? splitSpreadCanvas(canvas) : [canvas];
     for (const face of faces) {
-      const img = face.toDataURL('image/jpeg', jpegQuality);
-      if (!first) doc.addPage([PAGE.width, PAGE.height], 'portrait');
+      // 出血在**拆半之后**做:双宽页每半各自四边延伸(书脊侧也延伸,印厂拼版通用)。
+      const bled = extendCanvasEdges(face, bleedDevicePx);
+      const img = bled.toDataURL('image/jpeg', jpegQuality);
+      if (!first) doc.addPage(pageFormat, 'portrait');
       first = false;
-      doc.addImage(img, 'JPEG', 0, 0, PAGE.width, PAGE.height);
+      doc.addImage(img, 'JPEG', 0, 0, pageFormat[0], pageFormat[1]);
     }
     options.onProgress?.(i + 1, total);
   }

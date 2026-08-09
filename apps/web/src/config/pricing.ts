@@ -9,6 +9,8 @@
  *
  * Prices are USD (海外市场, yujeeai.com).
  */
+import type { Locale } from '@/lib/i18n/routing';
+
 
 export type PlanId = 'free';
 
@@ -32,7 +34,10 @@ export type CheckoutProvider = 'creem' | 'waffo';
 export const CHECKOUT_PROVIDERS = ['creem', 'waffo'] as const satisfies readonly CheckoutProvider[];
 // Waffo 是主通道(2026-08 切换);creem 保留仅为 Phase 1 在途订单 webhook 兜底。
 export const ACTIVE_CHECKOUT_PROVIDER = 'waffo' satisfies CheckoutProvider;
-export type CheckoutLocale = 'en' | 'zh';
+// The UI locale the buyer came from — it only ever decides which /{locale}/credits
+// URL the provider returns them to, so it tracks the full locale set (never the
+// zh|en generation language).
+export type CheckoutLocale = Locale;
 export type CheckoutSource = 'album' | 'create' | 'home';
 export type CheckoutReturnContext = {
   locale?: CheckoutLocale;

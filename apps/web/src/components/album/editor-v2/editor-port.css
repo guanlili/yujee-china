@@ -633,6 +633,36 @@
 }
 .editor-port .thinking-label{ font-family:var(--font-mono); font-size:12px; letter-spacing:0.01em; }
 .editor-port .thinking-arrow{ font-size:9px; opacity:0.4; margin-left:2px; transition: transform var(--motion-fast) var(--ease); }
+/* ── 流式过程披露(design chat):步骤叙述 + 人话工具步骤行 + 实时计划清单 ── */
+.editor-port .ep-step-feed{ display:flex; flex-direction:column; gap:7px; }
+.editor-port .ep-step-feed:not(:empty){ margin-bottom:10px; }
+.editor-port .ep-step-feed .ep-step-text{ font-size:13px; line-height:1.65; color:var(--fg-2); }
+.editor-port .ep-step-tool{
+  display:flex; align-items:center; gap:8px;
+  font-size:12.5px; color:var(--muted);
+}
+.editor-port .ep-step-tool .ep-step-dot{
+  width:14px; height:14px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:10px; line-height:1; color:var(--accent);
+}
+.editor-port .ep-step-tool.running .ep-step-dot::after{
+  content:''; width:6px; height:6px; border-radius:50%;
+  background:var(--grad-purple); animation: ep-step-pulse 1s ease-in-out infinite;
+}
+.editor-port .ep-step-tool.done{ color:var(--fg-2); }
+.editor-port .ep-step-tool.err .ep-step-dot{ color:#d05252; }
+@keyframes ep-step-pulse{ 0%,100%{ opacity:.35; transform:scale(.8);} 50%{ opacity:1; transform:scale(1);} }
+.editor-port .ep-step-todos{
+  display:flex; flex-direction:column; gap:5px;
+  padding:8px 10px; border-left:2px solid var(--border-soft);
+  font-size:12.5px; color:var(--fg-2);
+}
+.editor-port .ep-step-todos .todo-row{ display:flex; align-items:baseline; gap:7px; }
+.editor-port .ep-step-todos .todo-mark{ flex-shrink:0; width:14px; text-align:center; font-family:var(--font-mono); font-size:11px; color:var(--accent); }
+.editor-port .ep-step-todos .todo-done{ color:var(--meta); text-decoration:line-through; }
+.editor-port .ep-step-todos .todo-active{ color:var(--fg); }
+
 /* Finished thoughts: drop the little dot icon entirely */
 .editor-port .thinking-block:not(.active) .thinking-icon{ display:none; }
 /* Active thinking: jellyfish video loop replaces the pulsing dot */

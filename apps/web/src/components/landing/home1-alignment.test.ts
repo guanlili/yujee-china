@@ -18,7 +18,7 @@ function src(path: string): string {
 
 test('marketing nav restores the Home 1 centered desktop menu and mobile menu', () => {
   const marketingNav = component('marketing/MarketingNav.tsx');
-  const marketingMessages = src('messages/marketing.ts');
+  const marketingMessages = src('messages/marketing/types.ts');
 
   assert.match(marketingMessages, /home: string/, 'marketing nav copy should expose home');
   assert.match(marketingMessages, /myProjects: string/, 'marketing nav copy should expose myProjects');
@@ -83,8 +83,9 @@ test('HeroComposer stays embedded in the landing redesign shell and keeps send b
     /\[c\.footerStory, `\/\$\{locale\}\/about\/story`\]/,
     'the story should be a footer column entry',
   );
-  assert.match(landingClient, /footerCompany: '关于'/, 'the footer column should be titled 关于');
-  assert.match(landingClient, /footerCompany: 'About'/, 'the footer column should be titled About');
+  // Landing body copy lives one file per locale under landing/copy.
+  assert.match(component('landing/copy/zh.tsx'), /footerCompany: '关于'/, 'the footer column should be titled 关于');
+  assert.match(component('landing/copy/en.tsx'), /footerCompany: 'About'/, 'the footer column should be titled About');
 
   assert.match(landingClient, /\{composer\}/, 'redesigned landing shell should render the real composer');
   assert.match(composerShellClass, /px-5/, 'composer shell should keep mobile horizontal padding');

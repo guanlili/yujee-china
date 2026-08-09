@@ -3,9 +3,11 @@ import { test } from 'node:test';
 import robots from '@/app/robots';
 import sitemap from '@/app/sitemap';
 import { ADDON_PACKS, FREE_PLAN_CREDITS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config/pricing';
-import { locales } from '@/lib/i18n/routing';
+import { locales, localizePath } from '@/lib/i18n/routing';
 import { SOCIAL_LINKS } from '@/config/social';
+import { EXAMPLES, exampleContent, getExample } from '@/lib/examples/examples';
 import { getFaqEntries } from './faq';
+import { ROUTE_FRESHNESS } from './freshness';
 import { buildLlmsTxt } from './llms';
 import { INDEXABLE_ROUTES, NOINDEX_ROUTES } from './routes';
 import { articleSchema, faqPageSchema, organizationSchema, softwareApplicationSchema } from './schema';
@@ -169,6 +171,82 @@ test('FAQ entries exist for every locale and are plain text', () => {
   }
 });
 
+// The landing carries one deliberate keyword layer: "free" + "photo book
+// layout". It is the winnable half of the free-photo-book demand (the bare
+// "free photo book maker" head term belongs to Shutterfly/Canva and is not
+// contestable from a new domain), and it is honest — FREE_PLAN_CREDITS covers a
+// whole book. Copy rewrites drop keywords silently; these tests make that loud.
+test('the landing title and description carry the free + photo book keywords in both locales', () => {
+  const en = getMarketingMessages('en').landing;
+  assert.match(en.metaTitle, /free/i, 'en title dropped "free"');
+  assert.match(en.metaTitle, /photo book/i, 'en title dropped "photo book"');
+  assert.match(en.metaDesc, /free/i, 'en description dropped "free"');
+  assert.match(en.metaDesc, /photo book layout/i, 'en description dropped "photo book layout"');
+
+  const zh = getMarketingMessages('zh').landing;
+  assert.match(zh.metaTitle, /免费/, 'zh title dropped 免费');
+  assert.match(zh.metaTitle, /照片书/, 'zh title dropped 照片书');
+  assert.match(zh.metaDesc, /免费/, 'zh description dropped 免费');
+  assert.match(zh.metaDesc, /排版/, 'zh description dropped 排版');
+});
+
+test('the landing title and description stay inside what a SERP actually shows', () => {
+  // Past these lengths Google truncates mid-phrase and the keyword we just paid
+  // for never renders. Latin script only — the zh budget is pixel-width, not
+  // character count, so asserting a number there would be theatre.
+  const { metaTitle, metaDesc } = getMarketingMessages('en').landing;
+  assert.ok(metaTitle.length <= 65, `en title is ${metaTitle.length} chars, over the 65 SERP budget`);
+  assert.ok(metaDesc.length <= 165, `en description is ${metaDesc.length} chars, over the 165 SERP budget`);
+});
+
+// Each target keyword lives on exactly ONE page. A single page cannot rank for
+// "travel photobook" and "biography book" at once, and trying is what keyword
+// stuffing looks like to Google. The landing keeps the generic terms; the
+// /examples detail pages each own their format's term.
+test('each example page owns its own format keyword — no two pages chase the same term', () => {
+  const owned: Record<string, RegExp[]> = {
+    'travel-journal': [/travel photobook/i],
+    'life-story': [/biography book/i, /memoir book/i],
+  };
+
+  for (const [slug, patterns] of Object.entries(owned)) {
+    const example = getExample(slug);
+    assert.ok(example, `${slug} example disappeared`);
+    const c = exampleContent(example, 'en');
+    const page = [c.title, c.tagline, c.metaTitle, c.metaDesc, ...c.intro, ...c.inside].join(' ');
+    for (const pattern of patterns) {
+      assert.match(page, pattern, `${slug} no longer carries ${pattern}`);
+    }
+  }
+
+  // The landing must NOT also chase the per-format terms, or the example pages
+  // compete with their own homepage for them.
+  const landing = getMarketingMessages('en').landing;
+  const landingMeta = `${landing.metaTitle} ${landing.metaDesc}`;
+  assert.doesNotMatch(landingMeta, /travel photobook/i, 'the landing is competing with /examples/travel-journal');
+  assert.doesNotMatch(landingMeta, /biography book/i, 'the landing is competing with /examples/life-story');
+});
+
+test('every example page title and description stays inside the SERP budget', () => {
+  for (const example of EXAMPLES) {
+    const { metaTitle, metaDesc } = exampleContent(example, 'en');
+    assert.ok(metaTitle.length <= 65, `${example.slug} title is ${metaTitle.length} chars, over the 65 budget`);
+    assert.ok(metaDesc.length <= 165, `${example.slug} description is ${metaDesc.length} chars, over the 165 budget`);
+  }
+});
+
+test('the free-plan FAQ is phrased as the query people actually type', () => {
+  // This entry is the on-page anchor for the "free photo book" intent and feeds
+  // FAQPage JSON-LD verbatim. It must still state the real grant, not just the
+  // keyword — a "free" promise the product does not honour buys a bounce.
+  const entry = getFaqEntries('en').find((e) => /free/i.test(e.q));
+  assert.ok(entry, 'the free-plan FAQ entry disappeared');
+  assert.match(entry.q, /free/i);
+  assert.match(entry.q, /photo book/i, 'the free question no longer names photo books');
+  assert.match(entry.a, /free photobook/i, 'the answer dropped the joined "free photobook" spelling');
+  assert.match(entry.a, new RegExp(`${FREE_PLAN_CREDITS} free credits?\\b`), 'the answer stopped stating the real grant');
+});
+
 test('FAQ keeps the privacy answer — it is the top conversion blocker', () => {
   const en = getFaqEntries('en');
   const privacy = en.find((e) => e.q.toLowerCase().includes('safe'));
@@ -265,9 +343,47 @@ test('every sitemap entry carries the full hreflang cluster including x-default'
   }
 });
 
-test('sitemap omits lastModified rather than claiming every page changed on every deploy', () => {
+// lastmod used to be omitted entirely, because the only date available was the
+// build timestamp — which claims every page changed on every deploy, and Google
+// learns to ignore a lastmod that always says "just now". It is back now that
+// it is tied to hand-declared content dates (see freshness.ts), which is the
+// condition the old comment set for adding it.
+test('every indexable route declares when its content last changed, and nothing else does', () => {
+  const declared = Object.keys(ROUTE_FRESHNESS).sort();
+  assert.deepEqual(declared, [...INDEXABLE_ROUTES].sort(), 'freshness map and sitemap routes disagree');
+});
+
+test('content dates are real calendar dates, never in the future', () => {
+  // A future lastmod is the other way to get the signal distrusted.
+  const today = new Date().toISOString().slice(0, 10);
+  for (const [route, { updatedAt }] of Object.entries(ROUTE_FRESHNESS)) {
+    assert.match(updatedAt, /^\d{4}-\d{2}-\d{2}$/, `${route} updatedAt "${updatedAt}" is not YYYY-MM-DD`);
+    assert.equal(
+      new Date(`${updatedAt}T00:00:00Z`).toISOString().slice(0, 10),
+      updatedAt,
+      `${route} updatedAt "${updatedAt}" is not a real date`,
+    );
+    assert.ok(updatedAt <= today, `${route} claims it was updated in the future (${updatedAt})`);
+  }
+});
+
+test('sitemap emits each route content date as lastModified, both locales', () => {
   for (const entry of sitemap()) {
-    assert.equal(entry.lastModified, undefined);
+    const route = Object.keys(ROUTE_FRESHNESS).find((r) =>
+      locales.some((l) => entry.url === absoluteUrl(localizePath(r, l))),
+    );
+    assert.ok(route, `${entry.url} maps to no declared route`);
+    assert.equal(entry.lastModified, ROUTE_FRESHNESS[route].updatedAt, `${entry.url} has the wrong lastmod`);
+  }
+});
+
+test('sitemap is deterministic — no build clock leaks into lastmod', () => {
+  // The regression that made lastmod untrustworthy in the first place. If any
+  // date is computed from `new Date()`, two calls a moment apart can differ and
+  // every deploy republishes "everything changed".
+  assert.deepEqual(sitemap(), sitemap());
+  for (const entry of sitemap()) {
+    assert.equal(typeof entry.lastModified, 'string', `${entry.url} lastmod is not a fixed date string`);
   }
 });
 

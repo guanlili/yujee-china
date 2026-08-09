@@ -22,6 +22,17 @@ export function isProtectedPath(pathnameWithoutLocale: string): boolean {
   );
 }
 
+/**
+ * `/` always lands on the default locale: localeDetection is off, and the
+ * locale cookie never changes the target. next-intl performs this hop as a
+ * 307, which tells search engines the move is temporary — Bing then keeps the
+ * bare apex in its index and reports / and /en as duplicate title/description
+ * pairs. Handling it ourselves lets the redirect be a 308.
+ */
+export function getRootRedirect(pathname: string): string | null {
+  return pathname === '/' ? localizePath('/', routing.defaultLocale) : null;
+}
+
 export function getLegacyRedirect(pathname: string): LegacyRedirect | null {
   if (stripLocale(pathname) !== '/create') return null;
 
@@ -62,6 +73,13 @@ function withSecurityHeaders(response: NextResponse): NextResponse {
 }
 
 export default function middleware(request: NextRequest) {
+  const rootTarget = getRootRedirect(request.nextUrl.pathname);
+  if (rootTarget) {
+    const url = request.nextUrl.clone();
+    url.pathname = rootTarget;
+    return withSecurityHeaders(NextResponse.redirect(url, 308));
+  }
+
   const legacy = getLegacyRedirect(request.nextUrl.pathname);
   if (legacy) {
     const url = request.nextUrl.clone();

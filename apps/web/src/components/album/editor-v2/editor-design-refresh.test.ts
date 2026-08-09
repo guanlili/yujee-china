@@ -90,7 +90,7 @@ test('building loading keeps the canvas generic and puts photo-reading status in
   assert.match(building, /\{buildingStageLabel\(generation\?\.stage, locale\)\}/, 'live stage copy should live inside the chat panel');
   // 识图砍掉后 analyze 只发 'group'(0→100);select-layout 只发 'layout' 就直接
   // completed 带完整 pages,没有 'describe'/'template'/'preview' 这些死分支。
-  assert.match(editorPort, /case 'group':\s*return zh \? '正在整理这些瞬间…'/, 'group-stage copy must carry the first beat the user sees');
+  assert.match(editorPort, /case 'group':\s*return aT\('正在整理这些瞬间…'/, 'group-stage copy must carry the first beat the user sees');
   assert.doesNotMatch(editorPort, /case '(describe|template|preview)':/, "analyze/select-layout 不再发这些 stage,别留死分支");
   assert.doesNotMatch(building, /building-chat-placeholder/, 'building chat rail should not be an empty placeholder while the album is being built');
   assert.doesNotMatch(building, /<BuildingCanvasState locale=\{locale\} generation=\{generation\}/, 'canvas should not receive stage-specific progress copy');

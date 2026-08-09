@@ -1,9 +1,22 @@
 import { defineRouting } from 'next-intl/routing';
 
-export const locales = ['en', 'zh'] as const;
+export const locales = ['en', 'zh', 'es', 'ja', 'fr'] as const;
 export type Locale = (typeof locales)[number];
 export const defaultLocale: Locale = 'en';
 export const localeCookieName = 'YUJEE_LOCALE';
+
+/**
+ * Native-name label per locale. The only place a language name is spelled out —
+ * every switcher (marketing nav, user menu, landing header, login page) reads
+ * from here so a new locale never ships half-labelled.
+ */
+export const LOCALE_LABELS: Record<Locale, string> = {
+  en: 'English',
+  zh: '中文',
+  es: 'Español',
+  ja: '日本語',
+  fr: 'Français',
+};
 
 export const routing = defineRouting({
   locales,

@@ -8,6 +8,7 @@
    触点按拇指放大:方块 180px 高、两条轨 22px 高 —— 桌面那套是给鼠标的,直接照搬会太细。 */
 
 import { useRef } from 'react';
+import type { AT } from '@/lib/i18n/pick';
 
 import {
   clamp01,
@@ -18,7 +19,7 @@ import {
 } from '../../color-util';
 
 export type ColorPickerProps = {
-  zh: boolean;
+  aT: AT;
   /** 当前颜色(#rrggbb / rgba());null = 还没有值,给个中性起点。 */
   value: string | null;
   /** 要不要透明度轨(文字/底色要,画板纯色也要;不需要时整条不出现)。 */
@@ -28,7 +29,7 @@ export type ColorPickerProps = {
 
 const FALLBACK: Hsv = { h: 0, s: 0, v: 0.07 }; // 接近产品的 --fg(#111)
 
-export function ColorPicker({ zh, value, withAlpha = true, onChange }: ColorPickerProps) {
+export function ColorPicker({ aT, value, withAlpha = true, onChange }: ColorPickerProps) {
   const parsed = parseColor(value);
   const hsv = parsed?.hsv ?? FALLBACK;
   const alpha = parsed?.alpha ?? 1;
@@ -77,7 +78,7 @@ export function ColorPicker({ zh, value, withAlpha = true, onChange }: ColorPick
         className="mcp-sv"
         style={{ background: hueHex }}
         role="slider"
-        aria-label={zh ? '饱和度与明度' : 'Saturation and brightness'}
+        aria-label={aT('饱和度与明度', 'Saturation and brightness')}
         aria-valuetext={solidHex}
         {...track(svRef, (fx, fy) => emit({ s: fx, v: 1 - fy }))}
       >
@@ -94,7 +95,7 @@ export function ColorPicker({ zh, value, withAlpha = true, onChange }: ColorPick
         ref={hueRef}
         className="mcp-track mcp-hue"
         role="slider"
-        aria-label={zh ? '色相' : 'Hue'}
+        aria-label={aT('色相', 'Hue')}
         aria-valuenow={Math.round(hsv.h)}
         {...track(hueRef, (fx) => emit({ h: fx * 360 }))}
       >
@@ -107,7 +108,7 @@ export function ColorPicker({ zh, value, withAlpha = true, onChange }: ColorPick
           ref={alphaRef}
           className="mcp-track mcp-alpha"
           role="slider"
-          aria-label={zh ? '不透明度' : 'Opacity'}
+          aria-label={aT('不透明度', 'Opacity')}
           aria-valuenow={Math.round(alpha * 100)}
           {...track(alphaRef, (fx) => emit({}, fx))}
         >
@@ -128,7 +129,7 @@ export function ColorPicker({ zh, value, withAlpha = true, onChange }: ColorPick
             maxLength={6}
             spellCheck={false}
             inputMode="text"
-            aria-label={zh ? '十六进制颜色' : 'Hex colour'}
+            aria-label={aT('十六进制颜色', 'Hex colour')}
             value={solidHex.slice(1).toUpperCase()}
             onChange={(e) => {
               const p = parseColor(`#${e.target.value.trim()}`);
@@ -141,7 +142,7 @@ export function ColorPicker({ zh, value, withAlpha = true, onChange }: ColorPick
             <input
               className="mcp-alpha-input"
               inputMode="numeric"
-              aria-label={zh ? '不透明度百分比' : 'Opacity percent'}
+              aria-label={aT('不透明度百分比', 'Opacity percent')}
               value={Math.round(alpha * 100)}
               onChange={(e) => {
                 const n = parseInt(e.target.value, 10);

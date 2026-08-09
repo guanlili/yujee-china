@@ -6,6 +6,7 @@
    行为(canvas 渲染、上传)后续接线,这里只出 UI 与回调口。 */
 
 import { ModalHost } from './ModalHost';
+import type { AT } from '@/lib/i18n/pick';
 
 const stroke = {
   viewBox: '0 0 24 24',
@@ -19,7 +20,7 @@ const stroke = {
 /* ── 导出格式菜单 ─────────────────────────────────────────────────────────── */
 export function ExportMenuModal({
   open,
-  zh,
+  aT,
   onClose,
   onCollage,
   onLive,
@@ -27,7 +28,7 @@ export function ExportMenuModal({
   onPdf,
 }: {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   onClose: () => void;
   /** 四条格式的动作一律必填 —— 可选 + 父层漏传 = 亮着的死按钮(见 click-wiring.test)。 */
   onCollage: () => void;
@@ -45,10 +46,10 @@ export function ExportMenuModal({
     >
       <div className="px-6 pt-5 pb-1">
         <h3 id="mExportMenuTitle" className="font-display text-[18px] font-bold">
-          {zh ? '导出' : 'Export'}
+          {aT('导出', 'Export')}
         </h3>
         <p className="text-[13px] text-muted mt-1">
-          {zh ? '选一种格式导出' : 'Pick a format to export'}
+          {aT('选一种格式导出', 'Pick a format to export')}
         </p>
       </div>
       <div className="px-5 py-4 flex flex-col gap-2.5">
@@ -59,14 +60,14 @@ export function ExportMenuModal({
             <rect x="3" y="14" width="7" height="7" rx="1" />
             <rect x="14" y="14" width="7" height="7" rx="1" />
           </svg>
-          <span>{zh ? '多跨页拼图 · JPG' : 'Spread collage · JPG'}</span>
+          <span>{aT('多跨页拼图 · JPG', 'Spread collage · JPG')}</span>
         </button>
         <button className="export-opt" onClick={onLive} data-testid="export-opt-live">
           <svg {...stroke}>
             <rect x="2" y="6" width="14" height="12" rx="2" />
             <path d="m22 8-6 4 6 4V8Z" />
           </svg>
-          <span>{zh ? 'Live 图 · MP4' : 'Live · MP4'}</span>
+          <span>{aT('Live 图 · MP4', 'Live · MP4')}</span>
         </button>
         <button className="export-opt" onClick={onSinglePages} data-testid="export-opt-pages">
           <svg {...stroke}>
@@ -74,19 +75,19 @@ export function ExportMenuModal({
             <circle cx="9" cy="9" r="2" />
             <path d="m21 15-3.5-3.5L9 20" />
           </svg>
-          <span>{zh ? '单页 JPG' : 'Single pages · JPG'}</span>
+          <span>{aT('单页 JPG', 'Single pages · JPG')}</span>
         </button>
         <button className="export-opt" onClick={onPdf} data-testid="export-opt-pdf">
           <svg {...stroke}>
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
             <path d="M14 2v6h6" />
           </svg>
-          <span>{zh ? '整本 PDF' : 'Full PDF'}</span>
+          <span>{aT('整本 PDF', 'Full PDF')}</span>
         </button>
       </div>
       <div className="px-5 pb-5">
         <button className="export-cancel" onClick={onClose}>
-          {zh ? '取消' : 'Cancel'}
+          {aT('取消', 'Cancel')}
         </button>
       </div>
     </ModalHost>
@@ -96,7 +97,7 @@ export function ExportMenuModal({
 /* ── 拼图密度:一张图里放几个跨页 ─────────────────────────────────────────── */
 export function CollageModal({
   open,
-  zh,
+  aT,
   spreadCount,
   density,
   onPickDensity,
@@ -104,7 +105,7 @@ export function CollageModal({
   onClose,
 }: {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   spreadCount: number;
   density: number | null;
   onPickDensity: (n: number) => void;
@@ -128,12 +129,12 @@ export function CollageModal({
       </button>
       <div className="px-6 pt-6 text-center">
         <h3 id="mCollageTitle" className="font-display text-[18px] font-bold">
-          {zh ? '一张图里放几个跨页?' : 'How many spreads per image?'}
+          {aT('一张图里放几个跨页?', 'How many spreads per image?')}
         </h3>
         <p className="text-[13px] text-muted mt-1.5">
-          {zh ? '只导出内页(当前 ' : 'Interior spreads only (currently '}
+          {aT('只导出内页(当前 ', 'Interior spreads only (currently ')}
           <span className="font-semibold text-fg">{spreadCount}</span>
-          {zh ? ' 个跨页),按选择自动排版' : '), auto-arranged by your choice'}
+          {aT(' 个跨页),按选择自动排版', '), auto-arranged by your choice')}
         </p>
       </div>
       <div className="collage-density px-6 pt-5">
@@ -151,7 +152,7 @@ export function CollageModal({
               ))}
             </span>
             <span className="density-label">
-              {n} {zh ? '个' : ''}
+              {n} {aT('个', '')}
             </span>
           </button>
         ))}
@@ -163,7 +164,7 @@ export function CollageModal({
           disabled={density == null}
           onClick={onConfirm}
         >
-          {zh ? '确认导出' : 'Export'}
+          {aT('确认导出', 'Export')}
         </button>
       </div>
     </ModalHost>
@@ -175,14 +176,14 @@ export function CollageModal({
    复用拼图那套 collage-* 类名与结构,视觉不额外造一套。 */
 export function LiveStyleModal({
   open,
-  zh,
+  aT,
   style,
   onPickStyle,
   onConfirm,
   onClose,
 }: {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   style: 'flip' | 'nine-grid' | null;
   onPickStyle: (s: 'flip' | 'nine-grid') => void;
   /** 确认必填 —— 同 CollageModal:可选 + 父层漏传 = 亮着的死按钮。 */
@@ -192,13 +193,13 @@ export function LiveStyleModal({
   const options: { id: 'flip' | 'nine-grid'; title: string; copy: string }[] = [
     {
       id: 'flip',
-      title: zh ? '翻页 Live' : 'Page-flip Live',
-      copy: zh ? '像翻书一样逐页播放' : 'Pages turn like a physical book',
+      title: aT('翻页 Live', 'Page-flip Live'),
+      copy: aT('像翻书一样逐页播放', 'Pages turn like a physical book'),
     },
     {
       id: 'nine-grid',
-      title: zh ? '九宫格 Live' : 'Nine-grid Live',
-      copy: zh ? '每组 9 页整齐切换' : 'Nine pages switch as a neat grid',
+      title: aT('九宫格 Live', 'Nine-grid Live'),
+      copy: aT('每组 9 页整齐切换', 'Nine pages switch as a neat grid'),
     },
   ];
   return (
@@ -217,10 +218,10 @@ export function LiveStyleModal({
       </button>
       <div className="px-6 pt-6 text-center">
         <h3 id="mLiveStyleTitle" className="font-display text-[18px] font-bold">
-          {zh ? 'Live 图' : 'Live video'}
+          {aT('Live 图', 'Live video')}
         </h3>
         <p className="text-[13px] text-muted mt-1.5">
-          {zh ? '选一种样式,导出一段 Live 视频,可直接发社交平台。' : 'Pick a style and export a Live video you can post anywhere.'}
+          {aT('选一种样式,导出一段 Live 视频,可直接发社交平台。', 'Pick a style and export a Live video you can post anywhere.')}
         </p>
       </div>
       {/* 类名逐条复用桌面那套(nine-grid-choice / motion-*),不另造一份 ——
@@ -261,7 +262,93 @@ export function LiveStyleModal({
           disabled={style == null}
           onClick={onConfirm}
         >
-          {zh ? '继续导出' : 'Continue'}
+          {aT('继续导出', 'Continue')}
+        </button>
+      </div>
+    </ModalHost>
+  );
+}
+
+/* ── PDF 版式:标准 / 印刷(3mm 出血)(2026-08-06 版式选择设计) ────────────
+   与 LiveStyleModal 同一副骨架(nine-grid-choice 两卡 + collage-confirm),
+   区别只有一条:打开时父层已预选标准版,确认键不置灰。 */
+export function PdfStyleModal({
+  open,
+  aT,
+  style,
+  onPickStyle,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  aT: AT;
+  style: 'standard' | 'bleed';
+  onPickStyle: (s: 'standard' | 'bleed') => void;
+  /** 确认必填 —— 同 LiveStyleModal:可选 + 父层漏传 = 亮着的死按钮。 */
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const options: { id: 'standard' | 'bleed'; title: string; copy: string }[] = [
+    {
+      id: 'standard',
+      title: aT('标准版', 'Standard'),
+      copy: aT('屏幕查看、分享用', 'For screens and sharing'),
+    },
+    {
+      id: 'bleed',
+      title: aT('印刷版 · 3mm 出血', 'Print · 3mm bleed'),
+      copy: aT('四边各加 3mm 出血，供印刷厂裁切；相当于 216×303mm', 'Adds 3mm bleed on all sides for print trimming; equals 216×303mm'),
+    },
+  ];
+  return (
+    <ModalHost
+      open={open}
+      onClose={onClose}
+      cardClassName="collage-card"
+      labelledBy="mPdfStyleTitle"
+      testId="pdf-style-modal"
+    >
+      <button className="collage-close" onClick={onClose} aria-label="close">
+        <svg {...stroke}>
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+      <div className="px-6 pt-6 text-center">
+        <h3 id="mPdfStyleTitle" className="font-display text-[18px] font-bold">
+          {aT('整本 PDF', 'Full PDF')}
+        </h3>
+        <p className="text-[13px] text-muted mt-1.5">
+          {aT('选一种版式导出整本 PDF。', 'Pick a layout for the full PDF.')}
+        </p>
+      </div>
+      <div className="nine-grid-choice px-6 pt-5">
+        {options.map((o) => (
+          <button
+            key={o.id}
+            type="button"
+            className={style === o.id ? 'selected' : undefined}
+            data-testid={`pdf-style-${o.id}`}
+            aria-pressed={style === o.id}
+            onClick={() => onPickStyle(o.id)}
+          >
+            {/* 静态示意:标准=单页;印刷=单页外圈虚线出血框(裁切位)。 */}
+            <span className="motion-example" aria-hidden="true">
+              <svg width="72" height="92" viewBox="0 0 72 92" fill="none" stroke="#b9b9b9" strokeWidth="1.5">
+                {o.id === 'bleed' && (
+                  <rect x="3" y="3" width="66" height="86" rx="3" strokeDasharray="4 3" />
+                )}
+                <rect x="10" y="10" width="52" height="72" rx="2" fill="#dedede" stroke="#d1d1d1" />
+              </svg>
+            </span>
+            <span className="motion-option-title">{o.title}</span>
+            <span className="motion-option-copy">{o.copy}</span>
+          </button>
+        ))}
+      </div>
+      <div className="px-6 py-6">
+        <button className="collage-confirm" data-testid="pdf-style-confirm" onClick={onConfirm}>
+          {aT('继续导出', 'Continue')}
         </button>
       </div>
     </ModalHost>
@@ -271,12 +358,12 @@ export function LiveStyleModal({
 /* ── 导出进度(渲染期间不可关闭) ──────────────────────────────────────────── */
 export function ExportProgressModal({
   open,
-  zh,
+  aT,
   label,
   percent,
 }: {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   label: string;
   percent: number;
 }) {
@@ -290,7 +377,7 @@ export function ExportProgressModal({
       <div className="px-6 py-6">
         <div className="flex items-center justify-between mb-3">
           <h3 className="font-display text-[15px] font-semibold">
-            {zh ? '正在导出…' : 'Exporting…'}
+            {aT('正在导出…', 'Exporting…')}
           </h3>
           <span className="text-[13px] text-muted tabular-nums">{label}</span>
         </div>
@@ -298,7 +385,7 @@ export function ExportProgressModal({
           <div className="exp-bar-fill" style={{ width: `${Math.max(0, Math.min(100, percent))}%` }} />
         </div>
         <p className="text-[12px] text-muted mt-2.5">
-          {zh ? '生成中,请稍候,别关闭页面' : 'Generating — please keep this page open'}
+          {aT('生成中,请稍候,别关闭页面', 'Generating — please keep this page open')}
         </p>
       </div>
     </ModalHost>
@@ -311,7 +398,7 @@ export function ExportProgressModal({
    每一张都由用户的一记真实点击落地。理由见 mobile/export-no-zip.test。 */
 export function ExportReadyModal({
   open,
-  zh,
+  aT,
   label,
   manualFiles,
   onClose,
@@ -319,7 +406,7 @@ export function ExportReadyModal({
   onSaveFile,
 }: {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   label: string;
   /** 文件名列表;null = 还没进入逐张保存模式。 */
   manualFiles: string[] | null;
@@ -334,17 +421,13 @@ export function ExportReadyModal({
       <div className="px-6 pt-6 pb-3 shrink-0">
         <h3 id="mExportReadyTitle" className="font-display text-[17px] font-bold">
           {manual
-            ? zh ? `逐张保存${label}` : `Save ${label} one by one`
-            : zh ? `${label}已生成` : `${label} is ready`}
+            ? aT(`逐张保存${label}`, `Save ${label} one by one`)
+            : aT(`${label}已生成`, `${label} is ready`)}
         </h3>
         <p className="text-[13px] text-muted mt-3 leading-relaxed">
           {manual
-            ? zh
-              ? `这台手机打不开系统分享面板，点每一行的“保存”逐张存下来，共 ${manualFiles.length} 个文件。`
-              : `This phone can't open the system share sheet — tap “Save” on each row (${manualFiles.length} files).`
-            : zh
-              ? '点击“保存 / 分享”完成保存，手机会打开系统分享面板。'
-              : 'Tap “Save / Share” to finish. Your phone will open the system share sheet.'}
+            ? aT(`这台手机打不开系统分享面板，点每一行的“保存”逐张存下来，共 ${manualFiles.length} 个文件。`, `This phone can't open the system share sheet — tap “Save” on each row (${manualFiles.length} files).`)
+            : aT('点击“保存 / 分享”完成保存，手机会打开系统分享面板。', 'Tap “Save / Share” to finish. Your phone will open the system share sheet.')}
         </p>
       </div>
       {manual && (
@@ -357,7 +440,7 @@ export function ExportReadyModal({
                 data-testid={`export-save-file-${i}`}
                 onClick={() => onSaveFile(i)}
               >
-                {zh ? '保存' : 'Save'}
+                {aT('保存', 'Save')}
               </button>
             </div>
           ))}
@@ -368,7 +451,7 @@ export function ExportReadyModal({
           className="px-5 py-2.5 rounded-pill text-[13px] font-medium text-fg2 border border-bd transition-colors hover:bg-bg"
           onClick={onClose}
         >
-          {manual ? (zh ? '完成' : 'Done') : zh ? '稍后' : 'Later'}
+          {manual ? (aT('完成', 'Done')) : aT('稍后', 'Later')}
         </button>
         {!manual && (
           <span className="btn-glow">
@@ -377,7 +460,7 @@ export function ExportReadyModal({
               data-testid="export-ready-save"
               onClick={onSave}
             >
-              {zh ? '保存 / 分享' : 'Save / Share'}
+              {aT('保存 / 分享', 'Save / Share')}
             </button>
           </span>
         )}
@@ -389,12 +472,12 @@ export function ExportReadyModal({
 /* ── 导出失败安抚 ─────────────────────────────────────────────────────────── */
 export function ExportFailModal({
   open,
-  zh,
+  aT,
   onClose,
   onRetry,
 }: {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   onClose: () => void;
   /** 「再试一次」必填 —— 可选就会漏传成死按钮(见 click-wiring.test)。 */
   onRetry: () => void;
@@ -411,13 +494,11 @@ export function ExportFailModal({
             </svg>
           </span>
           <h3 id="mExportFailTitle" className="font-display text-[17px] font-bold">
-            {zh ? '导出遇到了点小麻烦' : 'Export ran into trouble'}
+            {aT('导出遇到了点小麻烦', 'Export ran into trouble')}
           </h3>
         </div>
         <p className="text-[13px] text-muted mt-3 leading-relaxed">
-          {zh
-            ? '我们试了几次都没能生成你的 PDF,可能是网络不太稳。你的纪念册内容都安全保存着,稍后再点一次「导出 PDF」通常就好了。'
-            : 'We tried a few times but could not generate your PDF — the network may be unstable. Your album is safely saved; try “Export PDF” again later.'}
+          {aT('我们试了几次都没能生成你的 PDF,可能是网络不太稳。你的纪念册内容都安全保存着,稍后再点一次「导出 PDF」通常就好了。', 'We tried a few times but could not generate your PDF — the network may be unstable. Your album is safely saved; try “Export PDF” again later.')}
         </p>
       </div>
       <div className="px-6 py-4 shrink-0 flex items-center justify-end gap-2">
@@ -425,7 +506,7 @@ export function ExportFailModal({
           className="px-5 py-2.5 rounded-pill text-[13px] font-medium text-fg2 border border-bd transition-colors hover:bg-bg"
           onClick={onClose}
         >
-          {zh ? '知道了' : 'Got it'}
+          {aT('知道了', 'Got it')}
         </button>
         <span className="btn-glow">
           <button
@@ -433,7 +514,7 @@ export function ExportFailModal({
             style={{ boxShadow: '0 1px 3px rgba(0,0,0,.12)' }}
             onClick={onRetry}
           >
-            {zh ? '再试一次' : 'Try again'}
+            {aT('再试一次', 'Try again')}
           </button>
         </span>
       </div>
