@@ -417,6 +417,8 @@ async def compose_global(
     album_title: str,
     chapter_titles: list[str],
     chapter_contexts: list[str],
+    chapter_places: list[str] | None = None,
+    chapter_years: list[list[str]] | None = None,
     cover_slots: list[dict[str, Any]],
     ending_slots: list[dict[str, Any]],
     user_font_choice: Any = None,
@@ -465,10 +467,21 @@ async def compose_global(
         payload: dict[str, Any] = {
             "language": language,
             "albumTitle": album_title,
-            # 章标题与章背景按章序对位;两边长度不齐时缺的补空串(不因为对不齐就整段不发)。
+            # 章标题/背景/地点/年份按章序对位;长度不齐时缺的补空(不因为对不齐就整段不发)。
             "chapters": [
-                {"title": title or "", "chapterContext": context or ""}
-                for title, context in zip_longest(chapter_titles, chapter_contexts, fillvalue="")
+                {
+                    "title": title or "",
+                    "chapterContext": context or "",
+                    "place": place or "",
+                    "years": years or [],
+                }
+                for title, context, place, years in zip_longest(
+                    chapter_titles,
+                    chapter_contexts,
+                    chapter_places or [],
+                    chapter_years or [],
+                    fillvalue="",
+                )
             ],
             "coverSlots": cover_slots,
             "endingSlots": ending_slots,

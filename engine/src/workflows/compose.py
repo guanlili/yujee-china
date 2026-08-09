@@ -111,6 +111,29 @@ def _trace_request_summary(req: ComposeRequest) -> dict[str, Any]:
     }
 
 
+def _chapter_place(chapter) -> str:
+    """本章第一张有 place 的照片的地点;没有就空串。"""
+    for photo in getattr(chapter, "photos", None) or []:
+        place = getattr(photo, "place", None)
+        if place:
+            return str(place)
+    return ""
+
+
+def _chapter_years(chapter) -> list[str]:
+    """本章照片出现过的年份(按首次出现排序,去重)。takenAt 可能是 str 或 datetime,
+    两者的字符串前四位都是年份。"""
+    years: list[str] = []
+    for photo in getattr(chapter, "photos", None) or []:
+        taken = getattr(photo, "takenAt", None)
+        if not taken:
+            continue
+        year = str(taken)[:4]
+        if year.isdigit() and year not in years:
+            years.append(year)
+    return years
+
+
 def _drop_failed_chapter(chapter: Any, result: Any):
     """章节任务抛了异常 → 降级成空结果(该章保留模板 sample),并留下痕迹。
 
@@ -202,6 +225,8 @@ async def _run_compose(job: _Job) -> None:
                 album_title=req.albumTitle,
                 chapter_titles=[chapter.title for chapter in req.chapters],
                 chapter_contexts=[chapter.chapterContext for chapter in req.chapters],
+                chapter_places=[_chapter_place(chapter) for chapter in req.chapters],
+                chapter_years=[_chapter_years(chapter) for chapter in req.chapters],
                 cover_slots=[slot.model_dump(mode="json") for slot in req.coverSlots],
                 ending_slots=[slot.model_dump(mode="json") for slot in req.endingSlots],
                 user_font_choice=(

@@ -827,3 +827,91 @@ def test_album_title_only_fills_the_first_title_slot(monkeypatch):
     )
     assert result.cover_texts["title"] == "Summer by the Sea"
     assert result.cover_texts["title2"] == ""
+
+
+def test_global_payload_carries_place_and_years(monkeypatch):
+    """封面的年份/地名槽要有据可写,否则模型按「不许编造」规则弃权、sample 上书。"""
+    seen: dict = {}
+
+    async def fake_generate(**kwargs):
+        seen["messages"] = kwargs["messages"]
+        return _gemini_response('{"scene":"清新","coverTexts":{},"endingTexts":{}}')
+
+    _run_global(
+        monkeypatch,
+        fake_generate,
+        chapter_titles=["糖色"],
+        chapter_contexts=["海边度假"],
+        chapter_places=["杭州"],
+        chapter_years=[["2024"]],
+    )
+    payload = json.loads(seen["messages"][1]["content"])
+    assert payload["chapters"][0]["place"] == "杭州"
+    assert payload["chapters"][0]["years"] == ["2024"]
+
+
+# ── compose.py:_chapter_place / _chapter_years(全局批次的地点/年份抽取) ──────
+
+
+def _chapter_with_photos(photos: list[dict]) -> Any:
+    from src.contracts.schemas import ComposeChapter
+
+    return ComposeChapter.model_validate({"chapterId": "c1", "photos": photos, "pages": []})
+
+
+def test_chapter_place_picks_first_photo_that_has_a_place():
+    from src.workflows.compose import _chapter_place
+
+    chapter = _chapter_with_photos(
+        [
+            {"photoId": "p1", "ref200px": "data:image/jpeg;base64,AA==", "place": None},
+            {"photoId": "p2", "ref200px": "data:image/jpeg;base64,AA==", "place": "杭州"},
+            {"photoId": "p3", "ref200px": "data:image/jpeg;base64,AA==", "place": "上海"},
+        ]
+    )
+    assert _chapter_place(chapter) == "杭州"
+
+
+def test_chapter_place_is_empty_when_no_photo_has_a_place():
+    from src.workflows.compose import _chapter_place
+
+    chapter = _chapter_with_photos([{"photoId": "p1", "ref200px": "data:image/jpeg;base64,AA=="}])
+    assert _chapter_place(chapter) == ""
+
+
+def test_chapter_place_is_empty_when_chapter_has_no_photos():
+    from src.workflows.compose import _chapter_place
+
+    assert _chapter_place(_chapter_with_photos([])) == ""
+
+
+def test_chapter_years_deduplicated_in_first_appearance_order():
+    from src.workflows.compose import _chapter_years
+
+    chapter = _chapter_with_photos(
+        [
+            {
+                "photoId": "p1",
+                "ref200px": "data:image/jpeg;base64,AA==",
+                "takenAt": "2024-05-01T00:00:00Z",
+            },
+            {"photoId": "p2", "ref200px": "data:image/jpeg;base64,AA=="},  # 无 takenAt
+            {
+                "photoId": "p3",
+                "ref200px": "data:image/jpeg;base64,AA==",
+                "takenAt": "2019-01-01T00:00:00Z",
+            },
+            {
+                "photoId": "p4",
+                "ref200px": "data:image/jpeg;base64,AA==",
+                "takenAt": "2024-12-31T00:00:00Z",  # 与 p1 同年,去重
+            },
+        ]
+    )
+    assert _chapter_years(chapter) == ["2024", "2019"]
+
+
+def test_chapter_years_is_empty_when_chapter_has_no_photos():
+    from src.workflows.compose import _chapter_years
+
+    assert _chapter_years(_chapter_with_photos([])) == []
