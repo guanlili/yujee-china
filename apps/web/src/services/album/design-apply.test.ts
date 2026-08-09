@@ -29,32 +29,26 @@ test('pickHeroPhotos: 构图 focal > closeup > 其余', () => {
   assert.deepEqual(pickHeroPhotos(CHAPTERS, 2), ['pf', 'pc']);
 });
 
-test('buildCoverSets: 4 个不同样式封面(按样式变不按照片变,同一 cover 照片),同 albumId 可复现', () => {
-  const sets = buildCoverSets('album-1', CHAPTERS);
-  assert.equal(sets.length, 4);
-  // 4 个封面模板样式各不相同 —— 推荐按样式变。
-  assert.equal(new Set(sets.map((s) => s.coverTemplateId)).size, sets.length);
-  // 封面照片统一用同一张 hero(可重复;不管图片,用户不满意自己换)。
-  assert.equal(new Set(sets.map((s) => s.coverPhotoId)).size, 1);
-  for (const set of sets) {
-    assert.equal(templateCategory(set.coverTemplateId), 'cover');
-    assert.equal(templateCategory(set.endingTemplateId), 'ending');
-    assert.notEqual(set.endingPhotoId, set.coverPhotoId); // 两张 hero 时封尾用另一张
-  }
-  assert.deepEqual(buildCoverSets('album-1', CHAPTERS), sets); // 确定性
-  // 不同 albumId 轮换出不同展示顺序。
-  const other = buildCoverSets('album-2', CHAPTERS);
-  assert.notDeepEqual(other.map((s) => s.coverTemplateId), sets.map((s) => s.coverTemplateId));
+test('buildCoverSets: 固定顺序,第 3 套是椭圆封面,不随 albumId 变', () => {
+  const a = buildCoverSets('album-1', CHAPTERS);
+  const b = buildCoverSets('album-2', CHAPTERS);
+  assert.equal(a.length, 4);
+  assert.deepEqual(a.map((s) => s.coverTemplateId), b.map((s) => s.coverTemplateId));
+  assert.equal(a[2]!.coverTemplateId, 'mag-62');
 });
 
-test('buildCoverSets: 每套绑定一个书页底色,4 套 × 4 色一一对应', async () => {
-  const { PAGE_BACKGROUNDS } = await import('@/lib/design/page-backgrounds');
+test('buildCoverSets: 只有第 3 套带 colorways,其余套走白灰底色', () => {
   const sets = buildCoverSets('album-1', CHAPTERS);
-  assert.equal(sets.length, 4);
-  // 每套按 PAGE_BACKGROUNDS 顺序绑一个底色(第 1 套纯白、第 2 套象牙白…)。
-  sets.forEach((s, i) => assert.equal(s.pageBackground, PAGE_BACKGROUNDS[i]!.hex));
-  // 4 套底色互不相同(一一对应,不重复)。
-  assert.equal(new Set(sets.map((s) => s.pageBackground)).size, sets.length);
+  assert.equal(sets[2]!.colorways?.length, 4);
+  assert.equal(sets[0]!.colorways, undefined);
+  assert.equal(sets[0]!.pageBackground, '#FFFFFF');
+});
+
+test('buildCoverSets: 封底逐套显式声明(SET_LAYOUT 表),不再按 albumId 哈希', () => {
+  const a = buildCoverSets('album-1', CHAPTERS);
+  const b = buildCoverSets('album-2', CHAPTERS);
+  assert.deepEqual(a.map((s) => s.endingTemplateId), b.map((s) => s.endingTemplateId));
+  for (const s of a) assert.equal(templateCategory(s.endingTemplateId), 'ending');
 });
 
 test('sweepCarriers: 按 role 写 #artFont/#accentColor,decoration 色跟标题色', () => {

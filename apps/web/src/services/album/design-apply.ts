@@ -3,6 +3,12 @@ import type { Page } from '@yujee/contracts';
 import { bakePagesHtml } from './bake-html';
 import { patchHtmlPageStyle } from '@/components/album/page-html-dom';
 import { PAGE_BACKGROUNDS, isDefaultPageBackground } from '@/lib/design/page-backgrounds';
+import {
+  THIRD_SET_COVERS,
+  THIRD_SET_COVER_TEMPLATE_ID,
+  THIRD_SET_INTERIOR,
+  type CoverColorway,
+} from '@/lib/design/third-set-palette';
 
 // 设计环节的确定性应用层(纯函数,零 AI):封面组规则生成、模板文字槽 spec 提取、
 // carrier sweep、成书页序组装。AI 决策(全书文案/封面封尾文案/字体)在 engine /v3/compose;
@@ -16,6 +22,8 @@ export type CoverSet = {
   // 每套推荐封面自带一个书页底色(4 套 × 4 色,一一对应);选定后刷全书。
   // 可选:老调用/内部组页(用 applyDesign 的 pageBackground 入参)不必带。
   pageBackground?: string;
+  /** 第三套(深色椭圆)专有:用户选中这一套后再挑一个配色。其余套不带。 */
+  colorways?: readonly CoverColorway[];
 };
 
 export type DesignFonts = { title: string; body: string; decoration: string };
@@ -145,29 +153,39 @@ export function pickEndingTemplateId(albumId: string): string | undefined {
   return pool[offset];
 }
 
-// 封面组规则生成:cover 模板(按 albumId 确定性轮换取 2)× hero 照片(2)= 至多 4 组;
-// 封尾统一用 pickEndingTemplateId(带文字槽优先),配第二张 hero(与该组封面不同则用之,否则同张)。
+// 四套固定顺序,不再按 albumId 轮换 —— 「第三套是深色椭圆」这个约定必须对每本书都成立,
+// 轮换会让第 3 位在不同相册指向不同模板。每套一对一绑自己的封底。
+//
+// 下面三个 mag-22 是**临时值**:两个新封底版式(Task 13)落地后,第 1/2/4 套
+// 各自改成新版式,第 3 套留 mag-22 或换成深色封底。这里显式写死而不是哈希,就是为了那天
+// 改起来是改一张表,不是改一个算法。
+//
+// ⚠️ 待小雨拍板:封面槽位只有 4 个,加了 mag-62 就得挤掉一个现有封面。这里先挤掉了
+// mag-32(它照片占比 87%,四个里留白最少、版面语言和 mag-23 最接近)。要换成挤掉别的,
+// 改这张表一行即可。
+const SET_LAYOUT: ReadonlyArray<{ cover: string; ending: string }> = [
+  { cover: 'mag-01', ending: 'mag-22' },
+  { cover: 'mag-23', ending: 'mag-22' },
+  { cover: THIRD_SET_COVER_TEMPLATE_ID, ending: 'mag-22' },
+  { cover: 'p01', ending: 'mag-22' },
+];
+
+// 封面组规则生成:四套固定顺序(SET_LAYOUT),不再按 albumId 轮换。封面/封尾各自的照片
+// 取 hero(2 张):封面统一用第一张,封尾配第二张(与封面不同则用之,否则同张)。
 export function buildCoverSets(albumId: string, chapters: TreeChapter[]): CoverSet[] {
   const heroes = pickHeroPhotos(chapters, 2);
   if (heroes.length === 0) return [];
-  const coverIds = templateIdsByCategory('cover').filter((id) => firstImageSlotId(id));
-  const ending = pickEndingTemplateId(albumId);
-  if (coverIds.length === 0 || !ending) return [];
-  // 推荐按【样式】变而非按照片变(用户拍板 2026-07-16):展示至多 4 个【不同样式】的封面,
-  // 封面照片统一用同一张 hero(可重复;用户若只是嫌图片不好会自己换)。rotate 让不同相册的
-  // 展示顺序不同,但每本都能看到全部样式。封尾配另一张 hero(只有一张时退回同一张)。
-  const offset = [...albumId].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % coverIds.length;
-  const rotated = [...coverIds.slice(offset), ...coverIds.slice(0, offset)].slice(0, 4);
-  const coverPhotoId = heroes[0];
+  const coverPhotoId = heroes[0]!;
   const endingPhotoId = heroes.find((id) => id !== coverPhotoId) ?? coverPhotoId;
-  // 每套按序绑一个书页底色:第 1 套→纯白、第 2 套→象牙白…(PAGE_BACKGROUNDS 顺序)。
-  // 4 套 × 4 色一一对应;用户选哪套 = 连那套底色一起刷全书。
-  return rotated.map((coverTemplateId, i) => ({
-    coverTemplateId,
+  return SET_LAYOUT.filter(
+    (s) => templateCategory(s.cover) === 'cover' && templateCategory(s.ending) === 'ending',
+  ).map((s, i) => ({
+    coverTemplateId: s.cover,
     coverPhotoId,
-    endingTemplateId: ending,
+    endingTemplateId: s.ending,
     endingPhotoId,
     pageBackground: PAGE_BACKGROUNDS[i % PAGE_BACKGROUNDS.length]!.hex,
+    ...(s.cover === THIRD_SET_COVER_TEMPLATE_ID ? { colorways: THIRD_SET_COVERS } : {}),
   }));
 }
 
