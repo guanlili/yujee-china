@@ -114,6 +114,25 @@ test('sweepCarriers: 按 role 写 #artFont/#accentColor,decoration 色跟标题�
   }
 });
 
+// 缺口 1(task-15):items 组文字槽(mag-10 的 explain[i])此前不在 sweepCarriers
+// 的遍历范围内 —— 只扫 template.texts,items.texts 整组漏掉,carrier 键从未写出,
+// 深色套上这些槽只能落到模板 token 默认色(黑),深底黑压黑。渲染端认 bracket 路径
+// `explain[0]` 这个键形状(fill-template.ts roleFor 剥 [n] 回查、adapt-layout 直接
+// 透传 #accentColor 结尾的键),缺的只是这里没写。
+test('sweepCarriers: items 组文字槽(mag-10 的 explain[i])也要写 #accentColor/#artFont(缺口 1)', () => {
+  const pages = sweepCarriers(
+    [{ pageIndex: 0, templateId: 'mag-10', images: {}, texts: {} }],
+    FONTS,
+    COLORS,
+  );
+  const texts = pages[0].texts;
+  // mag-10 的 items.images 固定展开 4 格(ITEMS_GRID_CAPACITY),explain[i] 与之一一对应。
+  for (let i = 0; i < 4; i += 1) {
+    assert.equal(texts[`explain[${i}]#accentColor`], COLORS.explain);
+    assert.equal(texts[`explain[${i}]#artFont`], FONTS.body); // explain 角色字体跟 body
+  }
+});
+
 test('assembleDesignedPages: 页序 [封面,...内页,封尾] 且 pageIndex 重排、carrier 已刷', () => {
   const sets = buildCoverSets('album-1', CHAPTERS);
   const set = sets[0];

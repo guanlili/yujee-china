@@ -1,4 +1,9 @@
-import { TEMPLATES, THEME_ACCENT_CARRIER_SUFFIX, THEME_FONT_CARRIER_SUFFIX } from '@yujee/contracts';
+import {
+  ITEMS_GRID_CAPACITY,
+  TEMPLATES,
+  THEME_ACCENT_CARRIER_SUFFIX,
+  THEME_FONT_CARRIER_SUFFIX,
+} from '@yujee/contracts';
 import type { Page } from '@yujee/contracts';
 import { bakePagesHtml } from './bake-html';
 import { patchHtmlPageStyle } from '@/components/album/page-html-dom';
@@ -302,6 +307,21 @@ export function sweepCarriers(
       const color = colorByRole[slot.role];
       if (font) texts[`${slot.id}${THEME_FONT_CARRIER_SUFFIX}`] = font;
       if (color) texts[`${slot.id}${THEME_ACCENT_CARRIER_SUFFIX}`] = color;
+    }
+    // items 重复组的文字槽(mag-10 的 explain、mag-02 的 label/title2/explain):渲染端
+    // 按 bracket 路径 `${slotId}[i]` 寻址(adapt-layout 把 items 组展成数组、fill-template
+    // 的 roleFor 剥掉下标回查角色,accentColor/artFont 本身按这个完整键直查,不经过
+    // roleFor)。这里必须原样写这个键形状 —— 写成裸 slotId 不会报错,但渲染端永远读不到,
+    // 深色套上这些槽就只能落回模板默认色。容量用 items-grid 固定格数
+    // ITEMS_GRID_CAPACITY:目前两个 items.texts 模板在 HTML 里都是硬写 4 格(0..3)。
+    for (const slot of template.items?.texts ?? []) {
+      const font = fontByRole[slot.role];
+      const color = colorByRole[slot.role];
+      for (let i = 0; i < ITEMS_GRID_CAPACITY; i += 1) {
+        const key = `${slot.id}[${i}]`;
+        if (font) texts[`${key}${THEME_FONT_CARRIER_SUFFIX}`] = font;
+        if (color) texts[`${key}${THEME_ACCENT_CARRIER_SUFFIX}`] = color;
+      }
     }
     return { ...page, texts };
   });
