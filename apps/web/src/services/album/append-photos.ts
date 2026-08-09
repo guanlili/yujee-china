@@ -37,12 +37,21 @@ export function mergeAppendTree(
   };
 }
 
+// 新页的插入下标:封尾页(ending 类目)之前;无封尾则追尾。合并后新页正好占据
+// [appendInsertAt, appendInsertAt + appended.length)——调用方要按**全书页序**给新页
+// 算颜色(第三套深色内页的三色循环)时需要这个区间,故与 insertAppendPages 共用一处。
+export function appendInsertAt(existing: Page[]): number {
+  const endingAt = existing.findIndex((p) => templateCategory(p.templateId) === 'ending');
+  return endingAt === -1 ? existing.length : endingAt;
+}
+
 // 新页插到封尾页(ending 类目)之前;无封尾则追尾。pageIndex 全书重排。
 export function insertAppendPages(existing: Page[], appended: Page[]): Page[] {
-  const endingAt = existing.findIndex((p) => templateCategory(p.templateId) === 'ending');
-  const head = endingAt === -1 ? existing : existing.slice(0, endingAt);
-  const tail = endingAt === -1 ? [] : existing.slice(endingAt);
-  return [...head, ...appended, ...tail].map((page, idx) => ({ ...page, pageIndex: idx }));
+  const at = appendInsertAt(existing);
+  return [...existing.slice(0, at), ...appended, ...existing.slice(at)].map((page, idx) => ({
+    ...page,
+    pageIndex: idx,
+  }));
 }
 
 // 从已有页反提取设计三键(sweepCarriers 的逆):按模板声明的文字槽 role 读 carrier 键。

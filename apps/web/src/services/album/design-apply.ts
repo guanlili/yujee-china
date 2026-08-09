@@ -4,9 +4,9 @@ import { bakePagesHtml } from './bake-html';
 import { patchHtmlPageStyle } from '@/components/album/page-html-dom';
 import { PAGE_BACKGROUNDS, isDefaultPageBackground } from '@/lib/design/page-backgrounds';
 import {
-  THIRD_SET_COVERS,
   THIRD_SET_COVER_TEMPLATE_ID,
   THIRD_SET_INTERIOR,
+  coverColorwayForAlbum,
   type CoverColorway,
 } from '@/lib/design/third-set-palette';
 
@@ -22,12 +22,26 @@ export type CoverSet = {
   // 每套推荐封面自带一个书页底色(4 套 × 4 色,一一对应);选定后刷全书。
   // 可选:老调用/内部组页(用 applyDesign 的 pageBackground 入参)不必带。
   pageBackground?: string;
-  /** 第三套(深色椭圆)专有:用户选中这一套后再挑一个配色。其余套不带。 */
-  colorways?: readonly CoverColorway[];
+  /**
+   * 第三套(深色椭圆)专有:系统按 albumId 确定性派定的配色 id。其余套不带。
+   * 这里**只放 id 字符串**,不放整张色表 —— 前端会把选中套的字段逐个塞进
+   * POST /design 的请求体,而那个 zod schema 是 .strict():数组字段一旦泄进去
+   * 就是 400,第三套的书直接组不出来(本分支已经栽过一次)。
+   */
+  coverColorway?: string;
 };
 
 export type DesignFonts = { title: string; body: string; decoration: string };
-export type DesignColors = { title: string; body: string; explain: string };
+/**
+ * 三个文字角色的颜色。`decoration` 可选:不给时装饰槽跟标题色走(全站通用口径,
+ * 与 design-agent set_text_colors 一致);第三套的封面/封尾要单独给,见 sweepCarriers。
+ */
+export type DesignColors = {
+  title: string;
+  body: string;
+  explain: string;
+  decoration?: string;
+};
 
 // 三色恒黑:模板自带的文字色就是它(见 html-templates 里的 `{{COLOR:*|#1c1b18}}`)。
 // compose 不再让模型选颜色(旧 /v3/design 出的三色实测也恒是这个值),Web 确定性填。
@@ -82,13 +96,36 @@ export function mergeSlotTexts(
  * 具体年份和地名(mag-23 的 "2026\n2025\n2024" / "Shanghai \nBeijing\nDali"),
  * 模型没写出来时回落 sample 等于把别人的年份地名印在用户的书上,比空着更糟。
  * 标题槽例外:封面没有大标题是废版面,必须留兜底。
+ *
+ * `albumTitle`(可选)是标题槽的**最后一道兜底**,兜底链因此是三级:
+ *   AI 写的 → 这本相册自己的标题(哪怕还是系统默认名)→ 模板 sample。
+ * 只填**第一个** role=title 槽(与 engine `_with_album_title` 同口径:mag-23 有
+ * title/title2 两个槽,两个都灌同一句会让书名在封面上重复两遍)。
+ *
+ * 为什么放在这里而不是回到 engine:原来的 bug 是默认标题**抢在 AI 前面**(它被写进
+ * compose 提示词并要求原样使用,模型于是从不自己写标题),所以 buildComposeRequest
+ * 对默认标题送 '' 这条必须保留。而 engine 的全局批次整个掉线时(compose.py 的
+ * `global_dropped` 直接返回空 ComposeGlobalResult,连 `_fallback()` 都不走),
+ * 封面文案是**空的**回到 Web —— 兜底只有落在 Web 这一层才罩得住那条路径。
+ * 这里在 mergeSlotTexts 的 base 侧,AI 只要写出了标题就会覆盖它,不构成任何抢跑。
  */
-export function coverTextBase(templateId: string): Record<string, string> {
+export function coverTextBase(
+  templateId: string,
+  albumTitle?: string | null,
+): Record<string, string> {
   const out: Record<string, string> = {};
+  const fallbackTitle = (albumTitle ?? '').trim();
+  let titleSlotFilled = false;
   for (const slot of templateOf(templateId)?.texts ?? []) {
     if (slot.role !== 'title') continue;
     const sample = (slot as { sample?: unknown }).sample;
-    if (typeof sample === 'string' && sample !== '') out[slot.id] = sample;
+    const useAlbumTitle = fallbackTitle !== '' && !titleSlotFilled;
+    titleSlotFilled = true;
+    if (useAlbumTitle) {
+      out[slot.id] = fallbackTitle;
+    } else if (typeof sample === 'string' && sample !== '') {
+      out[slot.id] = sample;
+    }
   }
   return out;
 }
@@ -185,8 +222,37 @@ export function buildCoverSets(albumId: string, chapters: TreeChapter[]): CoverS
     endingTemplateId: s.ending,
     endingPhotoId,
     pageBackground: PAGE_BACKGROUNDS[i % PAGE_BACKGROUNDS.length]!.hex,
-    ...(s.cover === THIRD_SET_COVER_TEMPLATE_ID ? { colorways: THIRD_SET_COVERS } : {}),
+    // 第三套的配色由系统派定(按 albumId 确定性派生),用户不再挑;同一本书每次拿到
+    // 的都是同一个 id,选择卡预览与最终成书因此永远一致。
+    ...(s.cover === THIRD_SET_COVER_TEMPLATE_ID
+      ? { coverColorway: coverColorwayForAlbum(albumId).id }
+      : {}),
   }));
+}
+
+/**
+ * 「用户选了这组封面」这条历史消息里的 layoutPatch.designApplied 标记。
+ *
+ * 两个写点(applyDesign 真成稿 / applyPlaceholderDesign 游客占位)共用这一个构造器 ——
+ * 它们此前各写各的,真账号那条漏了 pageBackground/coverColorway,于是刷新回放时回执卡
+ * 只能按浅底渲第三套的深色封面(粉标题 1.7:1)。同形是硬要求,别再分家。
+ */
+export function designAppliedMarker(input: {
+  coverTemplateId: string;
+  coverPhotoId: string;
+  endingTemplateId: string;
+  endingPhotoId: string;
+  pageBackground?: string;
+  coverColorway?: string;
+}): Record<string, string> {
+  return {
+    coverTemplateId: input.coverTemplateId,
+    coverPhotoId: input.coverPhotoId,
+    endingTemplateId: input.endingTemplateId,
+    endingPhotoId: input.endingPhotoId,
+    ...(input.pageBackground ? { pageBackground: input.pageBackground } : {}),
+    ...(input.coverColorway ? { coverColorway: input.coverColorway } : {}),
+  };
 }
 
 // 模板文字槽 spec(engine DesignRequest 的 coverSlots/endingSlots 入参)。
@@ -205,7 +271,10 @@ export function slotSpecs(
 
 // carrier sweep:按模板声明的文字槽 role,把三键字体/颜色写成 `${slotId}#artFont` /
 // `${slotId}#accentColor`(web/PDF 渲染端 theme-carrier 消费的同一格式)。
-// decoration 颜色跟标题色(与 design-agent set_text_colors 口径一致)。
+// decoration 颜色默认跟标题色(与 design-agent set_text_colors 口径一致);
+// colors 显式带 decoration 时以它为准 —— 第三套的封面/封尾靠这条把竖排系列名和
+// 两行署名刷成配色的 sub 色(THIRD_SET_COVERS 的契约就是「副标题/竖排系列名/底部
+// 署名」用 sub),不再跟着主标题变粉。默认规则对其余三套一个字没改。
 export function sweepCarriers(
   pages: Page[],
   fonts: DesignFonts,
@@ -225,7 +294,7 @@ export function sweepCarriers(
       title: c.title,
       body: c.body,
       explain: c.explain,
-      decoration: c.title,
+      decoration: c.decoration ?? c.title,
     };
     const texts = { ...page.texts };
     for (const slot of template.texts ?? []) {
@@ -282,43 +351,77 @@ export function assembleDesignedPages(input: {
   // C 方案:carrier sweep 改了 texts,已烘的 html 失效 —— 清掉重烘,设计结果
   // (字体/颜色/封面封尾文案)烘进页面真相。lenient 为迁移过渡期(见 bake-html)。
   const inkByIndex = input.colorway ? darkInkByPageIndex(ordered, input.colorway) : null;
-  const swept = sweepCarriers(ordered, input.fonts, (page) => {
-    const ink = inkByIndex?.get(page.pageIndex);
-    return ink ? { title: ink.accent, body: ink.body, explain: ink.body } : input.colors;
-  });
+  const swept = sweepCarriers(ordered, input.fonts, (page) => darkColorsOf(inkByIndex, page) ?? input.colors);
   const baked = bakePagesHtml(swept.map((page) => ({ ...page, html: undefined }))) as Page[];
   return inkByIndex
     ? applyDarkChrome(baked, inkByIndex)
     : applyPageBackground(baked, input.pageBackground);
 }
 
+/** 逐页深色墨:bg 刷页根,其余三键喂 sweepCarriers。 */
+export type DarkInkForPage = {
+  bg: string;
+  /** 标题色(内页是 accent 亮字,封面是 colorway.title) */
+  title: string;
+  /** 正文/说明色 */
+  body: string;
+  /** 装饰槽色(内页跟标题,封面/封尾走 colorway.sub) */
+  decoration: string;
+};
+
 /**
- * 第三套的逐页配色:封面/封尾用用户选的 colorway,内页按 THIRD_SET_INTERIOR 三组
+ * 第三套的逐页配色:封面/封尾用这本书的 colorway,内页按 THIRD_SET_INTERIOR 三组
  * **按出现顺序**循环(不按章 —— 章长短不一会让色块忽长忽短)。
  * 深色套不留白页:满版图页染了也基本看不见,但深色书里插一页纯白像漏印,故一律上底色。
+ *
+ * 追加照片那条路(job-service.mergeAppendLayoutPages)也要用它,所以导出:新页必须
+ * 跟全书用同一套循环、同一个页序口径,自己另算一份迟早会算歪。
  */
-function darkInkByPageIndex(
+export function darkInkByPageIndex(
   ordered: Page[],
   colorway: CoverColorway,
-): Map<number, { bg: string; accent: string; body: string }> {
-  const out = new Map<number, { bg: string; accent: string; body: string }>();
+): Map<number, DarkInkForPage> {
+  const out = new Map<number, DarkInkForPage>();
   let i = 0;
   for (const page of ordered) {
     if (templateCategory(page.templateId) === 'interior') {
       const ink = THIRD_SET_INTERIOR[i % THIRD_SET_INTERIOR.length]!;
-      out.set(page.pageIndex, { bg: ink.bg, accent: ink.accent, body: ink.body });
+      // 内页:accent 给 title/decoration,body 给 body/explain(THIRD_SET_INTERIOR 的契约)。
+      out.set(page.pageIndex, {
+        bg: ink.bg,
+        title: ink.accent,
+        body: ink.body,
+        decoration: ink.accent,
+      });
       i += 1;
     } else {
-      // 封面/封尾:用 colorway,让整本书首尾同色收口
-      out.set(page.pageIndex, { bg: colorway.bg, accent: colorway.title, body: colorway.sub });
+      // 封面/封尾:用 colorway,让整本书首尾同色收口。decoration 走 sub 而不是 title ——
+      // CoverColorway 的契约写着 sub 是「副标题 / 竖排系列名 / 底部署名」色,mag-62 的
+      // label/label2/label3 三个 decoration 槽正是这三样东西,跟标题变粉就不是设计稿了。
+      out.set(page.pageIndex, {
+        bg: colorway.bg,
+        title: colorway.title,
+        body: colorway.sub,
+        decoration: colorway.sub,
+      });
     }
   }
   return out;
 }
 
+/** 某页的深色三键(没有深色墨 → null,调用方回落全书统一色)。 */
+export function darkColorsOf(
+  inkByIndex: Map<number, DarkInkForPage> | null | undefined,
+  page: Page,
+): DesignColors | null {
+  const ink = inkByIndex?.get(page.pageIndex);
+  if (!ink) return null;
+  return { title: ink.title, body: ink.body, explain: ink.body, decoration: ink.decoration };
+}
+
 /** 页根同时刷底色和默认字色 —— 模板根写死 color:#1c1b18,深底上不翻浅的话,
  *  非 carrier 的静态装饰(页码、斜杠、分隔符)会黑压黑看不见。 */
-function applyDarkChrome(
+export function applyDarkChrome(
   pages: Page[],
   inkByIndex: Map<number, { bg: string; body: string }>,
 ): Page[] {
@@ -336,7 +439,8 @@ function applyDarkChrome(
 // 书页底色 sweep:烘完 html 后,给每页页根 [data-template] 写 background-color。
 // 与手动书页背景工具同一原语(patchHtmlPageStyle),纯字符串实现,服务端可跑。
 // 纯白/未传 = 不写(留模板自带 background:#fff);锚点失配的页原样保留(不影响其余页)。
-function applyPageBackground(pages: Page[], bg?: string): Page[] {
+// 导出给追加路径:重烘会把页根打回模板默认白,不重刷一遍新页就跟全书不同底。
+export function applyPageBackground(pages: Page[], bg?: string): Page[] {
   if (!bg || isDefaultPageBackground(bg)) return pages;
   return pages.map((page) => {
     if (typeof page.html !== 'string') return page;

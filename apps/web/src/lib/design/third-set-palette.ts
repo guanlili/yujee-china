@@ -29,6 +29,19 @@ export function coverColorwayById(id: string | null | undefined): CoverColorway 
   return THIRD_SET_COVERS.find((c) => c.id === id);
 }
 
+/**
+ * 第三套的配色由系统**确定性**派一个,不再让用户在选择卡里挑(产品决定 2026-08:
+ * 不满意后续在编辑器里改)。按 albumId 派生 —— 与旁边 pageBackground 同一思路,
+ * 也与 pickEndingTemplateId 同一个字符和取模。
+ *
+ * 绝不能用随机:同一本书每次拿封面组都要给出同一个配色,否则用户刷新一次封面换个颜色,
+ * 那是 bug 不是惊喜(而且选择卡预览与最终成书会对不上)。
+ */
+export function coverColorwayForAlbum(albumId: string): CoverColorway {
+  const offset = [...albumId].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % THIRD_SET_COVERS.length;
+  return THIRD_SET_COVERS[offset]!;
+}
+
 /** 内页深底配色。accent 给 title/decoration,body 给 body/explain。 */
 export type DarkInk = { id: string; bg: string; accent: string; body: string };
 

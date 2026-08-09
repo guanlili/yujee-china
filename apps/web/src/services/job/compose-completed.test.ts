@@ -326,3 +326,41 @@ test('mergeComposeIntoDraft: 不带 coverColorway 时不写深色底(老书行�
   const { draftJson } = mergeComposeIntoDraft(draft(), META, {});
   assert.doesNotMatch(draftJson.pages[1]!.html!, /#0E2A47/i);
 });
+
+// ── 封面标题的兜底链(评审 F5) ─────────────────────────────────────────────
+// AI 写的 → 相册自己的标题(哪怕是系统默认名)→ 模板 sample。
+// engine 的全局批次整个掉线时(compose.py 的 global_dropped 直接返回空结果),
+// coverTexts 是空的回到 Web —— 兜底只有落在这一层才罩得住那条路径。
+
+test('mergeComposeIntoDraft: AI 写出标题时用 AI 的(相册标题不抢跑)', () => {
+  const { draftJson } = mergeComposeIntoDraft(
+    draft(),
+    META,
+    { coverTexts: { title: 'AI 写的书名' } },
+    '我的纪念册',
+  );
+  assert.equal(pageByTemplate(draftJson.pages, COVER_ID).texts.title, 'AI 写的书名');
+});
+
+test('mergeComposeIntoDraft: 全局批次掉线(coverTexts 全空)时落到相册标题,不印模板 sample', () => {
+  // 系统默认名也照用 —— 它至少是这本书自己的名字,而 "DUE NORTH" 是模板作者的稿子。
+  const dropped = mergeComposeIntoDraft(draft(), META, {}, '我的纪念册');
+  assert.equal(pageByTemplate(dropped.draftJson.pages, COVER_ID).texts.title, '我的纪念册');
+  // 模型把标题槽写成空串带回来(engine 对封面槽的既有口径)也走同一条兜底。
+  const blank = mergeComposeIntoDraft(draft(), META, { coverTexts: { title: '   ' } }, '我的纪念册');
+  assert.equal(pageByTemplate(blank.draftJson.pages, COVER_ID).texts.title, '我的纪念册');
+});
+
+test('mergeComposeIntoDraft: 连相册标题都没有才回落模板 sample', () => {
+  const { draftJson } = mergeComposeIntoDraft(draft(), META, {}, '   ');
+  assert.equal(pageByTemplate(draftJson.pages, COVER_ID).texts.title, 'DUE NORTH');
+});
+
+test('coverTextBase: 相册标题只兜第一个 title 槽,副标题槽不重复书名', async () => {
+  const { coverTextBase } = await import('../album/design-apply');
+  const base = coverTextBase('mag-23', '我的纪念册');
+  assert.equal(base.title, '我的纪念册');
+  assert.equal(base.title2, 'Record', '第二个 title 槽仍是模板 sample,不重复书名');
+  // 不传标题 = 老行为一字不变。
+  assert.equal(coverTextBase('mag-23').title, 'NORWAY');
+});

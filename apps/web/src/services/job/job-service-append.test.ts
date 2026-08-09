@@ -3,7 +3,13 @@ import test from 'node:test';
 import { TEMPLATES, THEME_FONT_CARRIER_SUFFIX } from '@yujee/contracts';
 import type { Page } from '@yujee/contracts';
 import { sweepCarriers } from '@/services/album/design-apply';
-import { jobService, mergeAppendLayoutPages, readAppendChapterIds } from './job-service';
+import {
+  jobService,
+  mergeAppendComposeTexts,
+  mergeAppendLayoutPages,
+  mergeComposeIntoDraft,
+  readAppendChapterIds,
+} from './job-service';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { draftPageRepo } from '@/db/repos/draft-page-repo';
@@ -93,6 +99,108 @@ test('mergeAppendLayoutPages: 无既有 pages 直接抛', () => {
     () => mergeAppendLayoutPages(draft, [page(0, interior.id)], ['c1']),
     (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
   );
+});
+
+// ───────────── 加照片进「第三套(深色)」的书(评审 F1) ─────────────
+// 真实场景走一遍:先按第三套成书(mergeComposeIntoDraft 是真成稿回调用的那个纯函数),
+// 再往这本书里追加一页(mergeAppendLayoutPages),最后追加成稿把文案写进去
+// (mergeAppendComposeTexts,追加链路的下一步,它会重烘同一批页)。
+//
+// 修之前:新页拿的是 extractDesignFromPages 从**封面**反提取的浅字色,页根却是
+// 重烘出来的模板默认白 —— 正文 #E8E5DC 压白底 1.09:1,整页看着像没印上。
+
+function composedThirdSetBook(colorwayId = 'teal') {
+  const composed = mergeComposeIntoDraft(
+    pagedDraft({ designed: false }),
+    {
+      language: 'zh',
+      coverTemplateId: 'mag-62',
+      coverPhotoId: 'c1-p',
+      endingTemplateId: ending.id,
+      endingPhotoId: 'addx-c1-p',
+      extraEndingPhotoIds: [],
+      pageBackground: '#F1F2F0',
+      coverColorway: colorwayId,
+    },
+    {},
+  );
+  return composed.draftJson;
+}
+
+test('第三套成稿把配色 id 写进 draft 的设计契约(追加路径唯一能知道这是深色书的凭据)', () => {
+  const draftJson = composedThirdSetBook();
+  assert.equal(draftJson.design.coverColorway, 'teal');
+  // 契约是可选的:不带配色的老书照旧不写这个键,解析和行为都不变。
+  const plain = mergeComposeIntoDraft(
+    pagedDraft({ designed: false }),
+    {
+      language: 'zh',
+      coverTemplateId: 'mag-01',
+      coverPhotoId: 'c1-p',
+      endingTemplateId: ending.id,
+      endingPhotoId: 'addx-c1-p',
+      extraEndingPhotoIds: [],
+      pageBackground: '#FBF8F1',
+    },
+    {},
+  );
+  assert.equal(plain.draftJson.design.coverColorway, undefined);
+  // 脏 id 不进契约(coverColorwayById 认不出就当没有)。
+  const junk = composedThirdSetBook('not-a-colorway');
+  assert.equal(junk.design.coverColorway, undefined);
+});
+
+test('mergeAppendLayoutPages: 深色书的新页跟全书同一套深色,不是封面浅字压白底', () => {
+  const draftJson = composedThirdSetBook();
+  // 成书页序:[封面(mag-62), 内页 ×2, 封尾];新页插在封尾前 = 第 3 张内页,
+  // 按 THIRD_SET_INTERIOR 轮换应当拿到第三组 ink-lime(#14140F / #D4FF3F)。
+  const merged = mergeAppendLayoutPages(draftJson, [page(0, interior.id, { marker: 'new' })], ['addx-c1']);
+  const fresh = merged.pages.find((p) => p.texts.marker === 'new')!;
+  const titleSlot = (interior.texts ?? []).find((s) => s.role === 'title')!;
+  const bodySlot = (interior.texts ?? []).find((s) => s.role === 'body')!;
+
+  assert.match(fresh.html!, /background-color:\s*#14140F/i, '页根刷这一格的深底');
+  assert.match(fresh.html!, /color:\s*#E8E5DC/i, '页根字色翻浅(静态装饰不至于黑压黑)');
+  assert.equal(fresh.texts[`${titleSlot.id}#accentColor`], '#D4FF3F', '标题走这一格的亮字');
+  assert.equal(fresh.texts[`${bodySlot.id}#accentColor`], '#E8E5DC');
+  // 反提取到的封面色(粉标题)绝不能落到内页上 —— 这正是评审量到 1.09:1 的那条路。
+  assert.notEqual(fresh.texts[`${titleSlot.id}#accentColor`], '#F0A4C2');
+  assert.doesNotMatch(fresh.html!, /#F0A4C2/i);
+  // 老页一个字节不动(carrier 与页根都保持成书时的样子)。
+  assert.match(merged.pages[1]!.html!, /background-color:\s*#0E2A47/i);
+  assert.match(merged.pages[2]!.html!, /background-color:\s*#12363A/i);
+});
+
+test('mergeAppendComposeTexts: 追加成稿重烘后,深色不被洗回白底', () => {
+  const draftJson = composedThirdSetBook();
+  const merged = mergeAppendLayoutPages(draftJson, [page(0, interior.id, { marker: 'new' })], ['addx-c1']);
+  const freshIndex = merged.pages.find((p) => p.texts.marker === 'new')!.pageIndex;
+  const titleSlot = (interior.texts ?? []).find((s) => s.role === 'title')!;
+  const after = mergeAppendComposeTexts(merged, { [String(freshIndex)]: { [titleSlot.id]: '新章标题' } });
+  const rebaked = (after.draftJson.pages as Page[])[freshIndex]!;
+  assert.match(rebaked.html!, /新章标题/);
+  assert.match(rebaked.html!, /background-color:\s*#14140F/i, '重烘后仍是深底');
+  assert.match(rebaked.html!, /color:\s*#E8E5DC/i);
+});
+
+test('非深色书:追加页刷这本书的书页底色(重烘不该把新页留成模板默认白)', () => {
+  const composed = mergeComposeIntoDraft(
+    pagedDraft({ designed: false }),
+    {
+      language: 'zh',
+      coverTemplateId: 'mag-01',
+      coverPhotoId: 'c1-p',
+      endingTemplateId: ending.id,
+      endingPhotoId: 'addx-c1-p',
+      extraEndingPhotoIds: [],
+      pageBackground: '#FBF8F1',
+    },
+    {},
+  );
+  const merged = mergeAppendLayoutPages(composed.draftJson, [page(0, interior.id, { marker: 'new' })], ['addx-c1']);
+  const fresh = merged.pages.find((p) => p.texts.marker === 'new')!;
+  assert.match(fresh.html!, /background-color:\s*#FBF8F1/i);
+  assert.doesNotMatch(fresh.html!, /#0E2A47/i, '没有配色的书不许染上深色');
 });
 
 test('readAppendChapterIds: 合法 meta 返回 ids,其余 null', () => {

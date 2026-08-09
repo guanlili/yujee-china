@@ -25,6 +25,24 @@ test('coverTextBase: 只给 title 槽留 sample 兜底,其余槽宁可空着', (
   assert.equal(base.body2, undefined);  // sample 是 "Shanghai \nBeijing\nDali"
 });
 
+test('designAppliedMarker: 真成稿与占位成稿写同一形状(底色/配色不能只有一边记)', async () => {
+  const { designAppliedMarker } = await import('./design-apply');
+  const base = {
+    coverTemplateId: 'mag-62',
+    coverPhotoId: 'p1',
+    endingTemplateId: 'mag-22',
+    endingPhotoId: 'p2',
+  };
+  // 回放回执卡靠这两个键把第三套的深色封面染对(缺了就按浅底渲,粉标题 1.7:1)。
+  assert.deepEqual(designAppliedMarker({ ...base, pageBackground: '#F1F2F0', coverColorway: 'teal' }), {
+    ...base,
+    pageBackground: '#F1F2F0',
+    coverColorway: 'teal',
+  });
+  // 没有就不写键(老书/其余三套形状不变)。
+  assert.deepEqual(designAppliedMarker(base), base);
+});
+
 test('pickHeroPhotos: 构图 focal > closeup > 其余', () => {
   assert.deepEqual(pickHeroPhotos(CHAPTERS, 2), ['pf', 'pc']);
 });
@@ -37,11 +55,29 @@ test('buildCoverSets: 固定顺序,第 3 套是椭圆封面,不随 albumId 变',
   assert.equal(a[2]!.coverTemplateId, 'mag-62');
 });
 
-test('buildCoverSets: 只有第 3 套带 colorways,其余套走白灰底色', () => {
+test('buildCoverSets: 只有第 3 套带配色 id,其余套走白灰底色', async () => {
+  const { coverColorwayById } = await import('@/lib/design/third-set-palette');
   const sets = buildCoverSets('album-1', CHAPTERS);
-  assert.equal(sets[2]!.colorways?.length, 4);
-  assert.equal(sets[0]!.colorways, undefined);
+  assert.ok(coverColorwayById(sets[2]!.coverColorway), '第三套要派一个真实存在的配色');
+  assert.equal(sets[0]!.coverColorway, undefined);
   assert.equal(sets[0]!.pageBackground, '#FFFFFF');
+  // 只放 id 字符串:整张色表泄进 CoverSet 就会被前端一路带进 POST /design 的
+  // .strict() 请求体里(本分支已经这么炸过一次,4fa211fe)。
+  for (const s of sets) {
+    for (const [, v] of Object.entries(s)) assert.equal(typeof v, 'string');
+  }
+});
+
+test('buildCoverSets: 第三套的配色按 albumId 确定性派定(同一本书永远同一个色)', () => {
+  const a1 = buildCoverSets('album-1', CHAPTERS)[2]!.coverColorway;
+  const a2 = buildCoverSets('album-1', CHAPTERS)[2]!.coverColorway;
+  assert.equal(a1, a2, '同一本书两次取到的配色必须一致(随机=刷新就换色,是 bug)');
+  // 不同 albumId 之间会分散(否则「按 albumId 派生」这句话是假的):
+  // 取一批 id,至少出现两种配色。
+  const ids = new Set(
+    ['a', 'b', 'c', 'd', 'e', 'f'].map((x) => buildCoverSets(x, CHAPTERS)[2]!.coverColorway),
+  );
+  assert.ok(ids.size >= 2, '不同相册应当散到不同配色');
 });
 
 test('buildCoverSets: 封底逐套显式声明(SET_LAYOUT 表),不再按 albumId 哈希', () => {
@@ -235,6 +271,60 @@ test('assembleDesignedPages: 不带 colorway 时行为不变(仍走单色 pageBa
   });
   assert.match(pages[1]!.html!, /background-color:\s*#FBF8F1/i);
   assert.doesNotMatch(pages[1]!.html!, /#0E2A47/i);
+});
+
+// ── 封面装饰槽的颜色(评审 F4) ─────────────────────────────────────────────
+// CoverColorway 的契约白纸黑字写着 sub 是「副标题 / 竖排系列名 / 底部署名」色。
+// mag-62 的 label(竖排系列名)/label2(yujee 落款)/label3(年份署名)三个槽 role
+// 都是 decoration —— 走通用的「decoration 跟标题色」规则的话,三个全成了主标题的
+// 粉色,和批准的设计稿不是一回事。
+
+test('assembleDesignedPages: 第三套封面的 decoration 槽走 colorway.sub,不跟主标题色', () => {
+  const CREAM = { id: 'cream', name: '奶黄', nameEn: 'Cream', bg: '#F9EDC4', title: '#1F3A2E', sub: '#4A4A42' };
+  const pages = assembleDesignedPages({
+    interiorPages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }] as never,
+    set: { coverTemplateId: 'mag-62', coverPhotoId: 'p1', endingTemplateId: 'mag-22', endingPhotoId: 'p2' },
+    coverTexts: { title: '书名', explain: '副标题', label: 'Yujee Collection ①', label2: 'yujee', label3: '2026 年记' },
+    endingTexts: {},
+    fonts: FONTS,
+    colors: COLORS,
+    colorway: CREAM,
+  });
+  const cover = pages[0]!.texts;
+  assert.equal(cover['title#accentColor'], CREAM.title, '主标题仍是 colorway.title');
+  for (const slot of ['label', 'label2', 'label3']) {
+    assert.equal(cover[`${slot}#accentColor`], CREAM.sub, `${slot} 应当是 sub 色`);
+    assert.notEqual(cover[`${slot}#accentColor`], CREAM.title);
+  }
+  assert.equal(cover['explain#accentColor'], CREAM.sub, 'explain(副标题)本来就是 sub');
+  // 烘进 html 的也得是 sub —— carrier 写对了但填模板时没用上一样等于没修。
+  assert.match(pages[0]!.html!, new RegExp(`color:${CREAM.sub}`, 'i'));
+});
+
+test('sweepCarriers: 不给 decoration 色时仍跟标题色(其余三套的通用规则一个字没改)', () => {
+  const swept = sweepCarriers(
+    [{ pageIndex: 0, templateId: 'mag-62', images: {}, texts: { title: 'T', label: 'L' } }],
+    FONTS,
+    COLORS, // 没有 decoration 键
+  );
+  assert.equal(swept[0]!.texts['label#accentColor'], COLORS.title);
+  assert.equal(swept[0]!.texts['title#accentColor'], COLORS.title);
+});
+
+test('assembleDesignedPages: 深色内页的 decoration 仍跟亮字 accent(内页没有 sub 这一说)', () => {
+  // mag-08 是 interior 且有一个 role=decoration 的 label 槽。
+  const pages = assembleDesignedPages({
+    interiorPages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }] as never,
+    set: { coverTemplateId: 'mag-62', coverPhotoId: 'p1', endingTemplateId: 'mag-22', endingPhotoId: 'p2' },
+    coverTexts: {},
+    endingTexts: {},
+    fonts: FONTS,
+    colors: COLORS,
+    colorway: { id: 'cream', name: '奶黄', nameEn: 'Cream', bg: '#F9EDC4', title: '#1F3A2E', sub: '#4A4A42' },
+  });
+  const interior = pages[1]!.texts;
+  assert.equal(interior['label#accentColor'], '#B8FF3C', 'navy-lime 组的 accent');
+  assert.equal(interior['title#accentColor'], '#B8FF3C');
 });
 
 test('assembleDesignedPages: 无补充照片时后续图槽复用 endingPhotoId 不留空', async () => {

@@ -7,6 +7,7 @@ import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 import { Page, V3LayoutTree, V3StoryDraft } from '@yujee/contracts';
 import {
+  appendInsertAt,
   countTreePhotos,
   extractDesignFromPages,
   insertAppendPages,
@@ -16,8 +17,12 @@ import {
 import {
   DESIGN_COLORS,
   applyComposePagesTexts,
+  applyDarkChrome,
+  applyPageBackground,
   assembleDesignedPages,
   coverTextBase,
+  darkColorsOf,
+  darkInkByPageIndex,
   mergeSlotTexts,
   normalizeDesignFonts,
   sweepCarriers,
@@ -97,14 +102,35 @@ export function mergeAppendLayoutPages(
     throw ERRORS.VALIDATION_FAILED('append layout completion requires an existing paged draft');
   }
   const existingPages = parsed.data.pages;
-  let appended = Page.array().parse(pages);
+  const incoming = Page.array().parse(pages);
   const design = extractDesignFromPages(existingPages);
-  if (design) appended = sweepCarriers(appended, design.fonts, design.colors);
+  // 第三套(深色)书:配色 id 记在 draft 的设计契约里(成稿时写,V3StoryDraft.design
+  // .coverColorway)。没有它,这条路只能从页面 carrier 反提取颜色 —— 反提取到的是
+  // 深色书的浅字色,而新页重烘后页根是模板默认白,实测正文 1.09:1,整页看着像空白。
+  // 所以这里跟成书主路走同一套:同一个三色循环、同一个 applyDarkChrome。
+  const colorway = coverColorwayById(parsed.data.design?.coverColorway);
+  // 先按全书页序定位:新页的最终 pageIndex 决定它落在深色内页三色循环的哪一格。
+  const insertAt = appendInsertAt(existingPages);
+  const merged = insertAppendPages(existingPages, incoming);
+  const appendedEnd = insertAt + incoming.length;
+  const inkByIndex = colorway ? darkInkByPageIndex(merged, colorway) : null;
+
+  // 只重刷新页(carrier + 重烘 + 页面外观),老页一个字节不动。
+  let appended = merged.slice(insertAt, appendedEnd);
+  if (design) {
+    appended = sweepCarriers(
+      appended,
+      design.fonts,
+      (page) => darkColorsOf(inkByIndex, page) ?? design.colors,
+    );
+  }
   // C 方案:追加页烘 HTML 落库(carrier 已刷,旧 html 一律作废重烘);老页不动。
-  appended = bakePagesHtml(
-    appended.map((page) => ({ ...page, html: undefined })),
-  ) as typeof appended;
-  const mergedPages = insertAppendPages(existingPages, appended);
+  appended = bakePagesHtml(appended.map((page) => ({ ...page, html: undefined }))) as Page[];
+  // 重烘把页根打回模板默认白 —— 与成书主路同一个收尾:深色书刷 chrome,其余刷书页底色。
+  appended = inkByIndex
+    ? applyDarkChrome(appended, inkByIndex)
+    : applyPageBackground(appended, parsed.data.design?.pageBackground);
+  const mergedPages = [...merged.slice(0, insertAt), ...appended, ...merged.slice(appendedEnd)];
 
   const chapterOrder = parsed.data.tree.chapters.map((c) => c.chapterId);
   const doneSet = new Set(parsed.data.progress.doneChapterIds);
@@ -223,6 +249,9 @@ export function mergeComposeIntoDraft(
   draftJson: unknown,
   meta: ComposeJobMeta,
   payload: ComposeCompletedPayload,
+  // 封面标题的最后一道兜底(见 coverTextBase):AI 没写出标题时用这本相册自己的标题,
+  // 哪怕它还是系统默认名 —— 也好过把模板作者的样稿("NORWAY" / "海边那年")印上去。
+  albumTitle?: string | null,
 ) {
   const parsed = V3StoryDraft.safeParse(draftJson);
   if (!parsed.success || !parsed.data.pages || parsed.data.pages.length === 0) {
@@ -245,7 +274,9 @@ export function mergeComposeIntoDraft(
       endingTemplateId: meta.endingTemplateId,
       endingPhotoId: meta.endingPhotoId,
     },
-    coverTexts: mergeSlotTexts(coverTextBase(meta.coverTemplateId), payload.coverTexts),
+    // 封面标题槽兜底到相册标题;封尾不兜(封底没有「必须有个大标题」这条约束,
+    // 把书名再印一遍在封底上不是设计,是重复)。
+    coverTexts: mergeSlotTexts(coverTextBase(meta.coverTemplateId, albumTitle), payload.coverTexts),
     endingTexts: mergeSlotTexts(coverTextBase(meta.endingTemplateId), payload.endingTexts),
     fonts,
     colors: DESIGN_COLORS,
@@ -268,6 +299,10 @@ export function mergeComposeIntoDraft(
         fonts,
         colors: DESIGN_COLORS,
         pageBackground: meta.pageBackground,
+        // 第三套的配色 id 必须留痕:后续加照片要按它给新页刷同一套深色(只靠页面
+        // carrier 反推会推到封面的浅字色 + 模板默认白底,新页一片空白)。
+        // 只写查得到的 id(colorway 已过 coverColorwayById),脏值不进契约。
+        coverColorway: colorway?.id,
       },
       progress: { currentChapterId: null, doneChapterIds },
     },
@@ -288,7 +323,14 @@ export function mergeAppendComposeTexts(
   const written = new Set(Object.keys(pagesTexts ?? {}).map(Number));
   const merged = applyComposePagesTexts(parsed.data.pages, pagesTexts);
   const touched = merged.filter((page) => written.has(page.pageIndex));
-  const baked = bakePagesHtml(touched.map((page) => ({ ...page, html: undefined }))) as Page[];
+  let baked = bakePagesHtml(touched.map((page) => ({ ...page, html: undefined }))) as Page[];
+  // 重烘 = 页根回到模板默认白。追加成稿紧跟在追加排版后面跑,不在这里把页面外观
+  // (深色书的 chrome / 单色书页底)重刷一遍,上一步刚刷好的新页会立刻被洗回白底。
+  const colorway = coverColorwayById(parsed.data.design?.coverColorway);
+  const inkByIndex = colorway ? darkInkByPageIndex(merged, colorway) : null;
+  baked = inkByIndex
+    ? applyDarkChrome(baked, inkByIndex)
+    : applyPageBackground(baked, parsed.data.design?.pageBackground);
   const bakedByIndex = new Map(baked.map((page) => [page.pageIndex, page]));
   const pages = merged.map((page) => bakedByIndex.get(page.pageIndex) ?? page);
   return {
@@ -850,7 +892,9 @@ export const jobService = {
 
       let merged: ReturnType<typeof mergeComposeIntoDraft>;
       try {
-        merged = mergeComposeIntoDraft(draftJsonLike, meta, payload);
+        // album.title 是锁内读到的最新标题:AI 没写出封面标题时的最后兜底
+        // (哪怕它还是系统默认名,也好过印模板 sample 的 "NORWAY")。
+        merged = mergeComposeIntoDraft(draftJsonLike, meta, payload, album.title);
       } catch (e) {
         logger.error(
           { err: String(e), requestId, albumId: job.albumId },

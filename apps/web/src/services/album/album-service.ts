@@ -20,7 +20,13 @@ import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
 import { transientPagePhotoRefs } from './page-photo-refs';
 import { extractDesignFromPages } from './append-photos';
-import { buildCoverSets, pickHeroPhotos, slotSpecs, templateCategory } from './design-apply';
+import {
+  buildCoverSets,
+  designAppliedMarker,
+  pickHeroPhotos,
+  slotSpecs,
+  templateCategory,
+} from './design-apply';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/log/logger';
 import { isValidPageBackground } from '@/lib/design/page-backgrounds';
@@ -1360,14 +1366,7 @@ export const albumService = {
       userId,
       role: 'user',
       content: input.language === 'zh' ? '就用这组封面' : 'Use this cover set',
-      layoutPatch: {
-        designApplied: {
-          coverTemplateId: input.coverTemplateId,
-          coverPhotoId: input.coverPhotoId,
-          endingTemplateId: input.endingTemplateId,
-          endingPhotoId: input.endingPhotoId,
-        },
-      },
+      layoutPatch: { designApplied: designAppliedMarker(input) },
     });
 
     return { requestId, accepted: true as const };
@@ -1444,12 +1443,14 @@ export const albumService = {
       };
       // 空载荷语义由真成稿同一套纯函数保证:pagesTexts 空 → 内页保留 sample;
       // cover/endingTexts 空 → mergeSlotTexts 落模板 sample;fonts 空 → 按语言兜底。
-      const merged = mergeComposeIntoDraft(draftJsonLike, meta, {
-        pagesTexts: {},
-        coverTexts: {},
-        endingTexts: {},
-        fonts: {},
-      });
+      const merged = mergeComposeIntoDraft(
+        draftJsonLike,
+        meta,
+        { pagesTexts: {}, coverTexts: {}, endingTexts: {}, fonts: {} },
+        // 占位书没有 AI 文案,封面标题槽因此一定走兜底:相册自己的标题优先于模板
+        // sample —— 游客看到的示例书至少印着自己那本书的名字,不是 "NORWAY"。
+        locked.title,
+      );
 
       const seededRevision = await ensureDraftPagesSeeded(tx, locked);
       const rev = await bumpDraftRevision(tx, albumId, seededRevision);
@@ -1471,17 +1472,8 @@ export const albumService = {
         userId,
         role: 'user',
         content: input.language === 'zh' ? '就用这组封面' : 'Use this cover set',
-        layoutPatch: {
-          designApplied: {
-            coverTemplateId: input.coverTemplateId,
-            coverPhotoId: input.coverPhotoId,
-            endingTemplateId: input.endingTemplateId,
-            endingPhotoId: input.endingPhotoId,
-            // 登录后自动补跑真 compose 时,前端从这条记录恢复完整封面组(含底色/配色)。
-            ...(input.pageBackground ? { pageBackground: input.pageBackground } : {}),
-            ...(input.coverColorway ? { coverColorway: input.coverColorway } : {}),
-          },
-        },
+        // 登录后自动补跑真 compose 时,前端从这条记录恢复完整封面组(含底色/配色)。
+        layoutPatch: { designApplied: designAppliedMarker(input) },
       });
       await albumMessageRepo.create(tx, {
         albumId,
