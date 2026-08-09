@@ -15,7 +15,7 @@ import {
   makeAlbum,
   makeUser,
 } from '../../db/repos/__test__/setup';
-import { albumService } from './album-service';
+import { albumService, isDefaultAlbumTitle } from './album-service';
 import { transientPagePhotoRefs } from './page-photo-refs';
 import { jobService } from '../job/job-service';
 import {
@@ -2780,4 +2780,12 @@ test('persistDesignChat(committed=false):只读轮次不落 draft_pages/不动 p
   } finally {
     await cleanupUser(user.id);
   }
+});
+
+test('isDefaultAlbumTitle: 系统默认书名视为「用户没起名」', () => {
+  assert.equal(isDefaultAlbumTitle('My Memoir'), true);
+  assert.equal(isDefaultAlbumTitle('我的故事'), true);
+  assert.equal(isDefaultAlbumTitle('  My Memoir  '), true);
+  assert.equal(isDefaultAlbumTitle('海边那年'), false);
+  assert.equal(isDefaultAlbumTitle(''), true);
 });

@@ -261,6 +261,16 @@ function isUniqueViolation(e: unknown): boolean {
   return record.cause ? isUniqueViolation(record.cause) : false;
 }
 
+// 相册默认标题(generation-service.ts:61 的兜底值)。它不是用户起的书名 ——
+// 传给 compose 会被 prompt 当成「用户自己定的书名,原样使用」,导致封面大标题恒为
+// My Memoir、AI 从来没机会写封面标题。判定为默认就传空串,让 AI 自己起。
+export const DEFAULT_ALBUM_TITLES = ['My Memoir', '我的故事'] as const;
+
+export function isDefaultAlbumTitle(title: string | null | undefined): boolean {
+  const t = (title ?? '').trim();
+  return t === '' || DEFAULT_ALBUM_TITLES.some((d) => d === t);
+}
+
 /**
  * ④ 成稿请求装配(纯函数,便于单测):按章切片 —— 每章带【真实照片 200px 缩略图】+
  * 【用户讲的故事(chapterContext)】+【本章已选定版式的页】,封面/封尾只给文字槽 spec。
@@ -326,7 +336,7 @@ export function buildComposeRequest(input: {
     requestId: input.requestId,
     callbackUrl: input.callbackUrl,
     language: input.language,
-    albumTitle: input.albumTitle,
+    albumTitle: isDefaultAlbumTitle(input.albumTitle) ? '' : input.albumTitle.slice(0, 120),
     coverTemplateId: input.coverTemplateId,
     endingTemplateId: input.endingTemplateId,
     coverSlots: slotSpecs(input.coverTemplateId),
