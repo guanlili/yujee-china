@@ -299,7 +299,7 @@
     "basePages": {
       "cover": {
         "pageIndex": 0,
-        "templateId": "p01",
+        "templateId": "mag-62",
         "images": {
           "image": "c1p2"
         },
@@ -459,7 +459,7 @@
     "pages": [
       {
         "pageIndex": 0,
-        "templateId": "p01",
+        "templateId": "mag-62",
         "images": {
           "image": "c1p2"
         },

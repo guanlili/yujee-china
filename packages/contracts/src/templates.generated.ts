@@ -52,6 +52,7 @@ export const TEMPLATE_IDS = [
   "mag-59",
   "mag-60",
   "mag-61",
+  "mag-62",
   "p01"
 ] as const;
 
@@ -1793,6 +1794,57 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "role": "body",
         "lang": "user",
         "sample": "I read it three times standing at the kitchen counter, coffee going cold. Then I closed the laptop and walked around the block, because I did not know where to put it. All those months of guessing in the dark, and here was one person saying: it reached me. That was enough to keep going."
+      }
+    ]
+  },
+  "mag-62": {
+    "id": "mag-62",
+    "category": "cover",
+    "images": [
+      {
+        "id": "image",
+        "orientation": [
+          "portrait"
+        ],
+        "quality": [
+          "hero"
+        ],
+        "composition": [
+          "focal",
+          "closeup"
+        ]
+      }
+    ],
+    "texts": [
+      {
+        "id": "title",
+        "role": "title",
+        "lang": "user",
+        "sample": "海边那年"
+      },
+      {
+        "id": "explain",
+        "role": "explain",
+        "lang": "user",
+        "sample": "The Year We Walked the Shore"
+      },
+      {
+        "id": "label",
+        "role": "decoration",
+        "lang": "en",
+        "sample": "Yujee Collection ①"
+      },
+      {
+        "id": "label2",
+        "role": "decoration",
+        "lang": "en",
+        "sample": "yujee"
+      },
+      {
+        "id": "label3",
+        "role": "decoration",
+        "lang": "user",
+        "sample": "2026 年记"
       }
     ]
   },
