@@ -77,10 +77,37 @@ def test_prompt_loader_fills_placeholders_without_breaking_json_examples():
 
 
 def test_compose_global_prompt_states_new_rules():
-    """三条硬规则必须在 prompt 里:多 title 槽分主副、只用给定时间地点、不许留空。"""
+    """三条硬规则必须在 prompt 里:多 title 槽分主副、只用给定时间地点、不许留空。
+    同时验证旧 bullet 已删除(防止合并冲突时旧新并存)。"""
     from pathlib import Path
 
     text = Path("engine/src/workflows/core/compose/compose_global.md").read_text("utf-8")
-    assert "副标题" in text
-    assert "years" in text and "place" in text
-    assert "不许留空" in text
+
+    # Extract 「规则(硬性)」section for structural anchor (prevents false positives in comments/examples)
+    rules_start = text.find("# 规则(硬性)")
+    rules_end = text.find("\n# ", rules_start + 1)
+    rules_section = text[rules_start:rules_end] if rules_end != -1 else text[rules_start:]
+
+    # Extract 「输入」section for input spec validation
+    input_start = text.find("# 输入")
+    input_end = text.find("\n# ", input_start + 1)
+    input_section = text[input_start:input_end] if input_end != -1 else text[input_start:]
+
+    # New rule 1: Multiple title slots with subtitle distinction
+    assert "副标题" in rules_section, "规则必须提及「副标题」—— 主副标题须分别处理"
+    assert "绝不重复同一句" in rules_section, "规则必须禁止重复同一句(多 title 防重)"
+
+    # New rule 2: Use only given place/years fields
+    assert "place" in input_section and "years" in input_section, \
+        "输入描述必须提及 place 和 years 字段"
+    assert "只能用" in rules_section and "place" in rules_section and "years" in rules_section, \
+        "规则必须明确「时间和地点只能用给出的 place/years」"
+
+    # New rule 3: Never leave slot empty
+    assert "不许留空" in rules_section, "规则必须明确禁止「不许留空」"
+
+    # Old bullets must be gone (prevent regression from merge conflicts)
+    assert "不要编造具体日期、地名、人名;背景里没有的细节不写。" not in text, \
+        "旧 bullet「不要编造具体日期...」已被新规则替换,不应残留"
+    assert "- `chapters`:每章一条 `{title, chapterContext}`。" not in text, \
+        "chapters 定义已升级到 place/years,旧版本签名不应残留"
