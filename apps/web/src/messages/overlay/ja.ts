@@ -430,4 +430,10 @@ export const ja: Record<string, string> = {
   'photos': '枚',
   '↳ Hit the 3-round inspection cap.': '↳ 見直しの上限（3 回）に達したため、ここで止めます。',
   '✏️ Updated this page’s copy.': '✏️ このページの文章を更新しました。',
+  "Keep reading": "読み続ける",
+  "Link copied": "リンクをコピーしました",
+  "Make mine": "自分の本を作る",
+  "Share this book": "この本を共有",
+  "Upload your photos and Yujee’s AI lays out a whole photo book in minutes. Free to start.": "写真をアップロードするだけで、Yujee の AI が数分で思い出の本を一冊仕上げます。無料で始められます。",
+  "Want a book like this?": "こんな本を作りませんか？",
 };
