@@ -201,15 +201,24 @@ test('assembleDesignedPages: 带 colorway 时内页按 3 组深底循环,页根�
     endingTexts: {},
     fonts: FONTS,
     colors: COLORS,
-    colorway: { id: 'teal', name: '深墨绿', nameEn: 'Deep Teal', bg: '#12363A', title: '#F0A4C2', sub: '#E7E3D8' },
+    // cream:底色 #F9EDC4 和三组内页墨色(#0E2A47/#12363A/#14140F)都不重合 ——
+    // 用 teal(#12363A)会撞上 THIRD_SET_INTERIOR[1].bg,「封面/封尾没占用内页轮换
+    // 槽位」这件事就只能靠 p1-p4 的链条间接推,断不出来。
+    colorway: { id: 'cream', name: '奶黄', nameEn: 'Cream', bg: '#F9EDC4', title: '#1F3A2E', sub: '#4A4A42' },
   });
-  // 页序 [封面, 内页×4, 封底];内页从 index 1 开始,按 3 组循环
+  // 页序 [封面, 内页×4, 封尾];内页从 index 1 开始,按 3 组循环
   assert.match(pages[1]!.html!, /background-color:\s*#0E2A47/i);
   assert.match(pages[2]!.html!, /background-color:\s*#12363A/i);
   assert.match(pages[3]!.html!, /background-color:\s*#14140F/i);
   assert.match(pages[4]!.html!, /background-color:\s*#0E2A47/i); // 循环回第一组
-  // 封面/封底用 colorway 的底色
-  assert.match(pages[0]!.html!, /background-color:\s*#12363A/i);
+  // per-page accent 真的经 carrier 写进了 html —— 只断页根底色的话,把
+  // assembleDesignedPages 里喂给 sweepCarriers 的回调改成恒定返回 input.colors
+  // (等于废掉「sweepCarriers 第三参数放宽」这件事本身)也能全绿,这两条才钉得住。
+  assert.match(pages[1]!.html!, /#B8FF3C/i); // navy-lime 组的 accent
+  assert.match(pages[3]!.html!, /#D4FF3F/i); // ink-lime 组的 accent
+  // 封面/封尾用 colorway 的底色,不是内页墨色 —— 没有占用轮换槽位
+  assert.match(pages[0]!.html!, /background-color:\s*#F9EDC4/i);
+  assert.match(pages[5]!.html!, /background-color:\s*#F9EDC4/i); // 封尾此前从未被断言过
   // 深底上正文色翻浅,否则模板根写死的 #1c1b18 会黑压黑
   assert.match(pages[1]!.html!, /color:\s*#E8E5DC/i);
 });
