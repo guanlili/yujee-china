@@ -74,3 +74,13 @@ def test_prompt_loader_fills_placeholders_without_breaking_json_examples():
         assert '{"pages":[{"a":1}]}' in out, "JSON 示例的花括号被吃掉了"
     finally:
         fixture.unlink()
+
+
+def test_compose_global_prompt_states_new_rules():
+    """三条硬规则必须在 prompt 里:多 title 槽分主副、只用给定时间地点、不许留空。"""
+    from pathlib import Path
+
+    text = Path("engine/src/workflows/core/compose/compose_global.md").read_text("utf-8")
+    assert "副标题" in text
+    assert "years" in text and "place" in text
+    assert "不许留空" in text
