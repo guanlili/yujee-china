@@ -67,16 +67,6 @@ export function mergeSlotTexts(
   return out;
 }
 
-/** 模板自带的示例文案(逐槽 sample):封面/封尾组页的文案底稿,模型没写的槽留它。 */
-export function sampleTexts(templateId: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const slot of templateOf(templateId)?.texts ?? []) {
-    const sample = (slot as { sample?: unknown }).sample;
-    if (typeof sample === 'string' && sample !== '') out[slot.id] = sample;
-  }
-  return out;
-}
-
 /**
  * 封面/封尾文案的兜底底稿:**只**保留 role=title 槽的 sample。
  *

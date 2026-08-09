@@ -20,6 +20,7 @@ const COLORS = { title: '#2b4a6f', body: '#1c1b18', explain: '#6b675f' };
 test('coverTextBase: 只给 title 槽留 sample 兜底,其余槽宁可空着', () => {
   const base = coverTextBase('mag-23');
   assert.equal(base.title, 'NORWAY');
+  assert.equal(base.title2, 'Record'); // mag-23 有两个 title 角色的槽,都该留 sample
   assert.equal(base.body, undefined);   // sample 是 "2026\n2025\n2024",别人的年份
   assert.equal(base.body2, undefined);  // sample 是 "Shanghai \nBeijing\nDali"
 });
