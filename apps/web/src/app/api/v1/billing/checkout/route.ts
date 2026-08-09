@@ -5,6 +5,8 @@ import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
 import { defaultLocale, locales } from '@/lib/i18n/routing';
 import { creemService } from '@/services/billing/creem-service';
+import { waffoService } from '@/services/billing/waffo-service';
+import { ACTIVE_CHECKOUT_PROVIDER } from '@/config/pricing';
 
 // Billing checkout entry. Server-only because provider API keys must never reach
 // the client bundle. Returns a hosted checkout URL; settlement and entitlement
@@ -15,11 +17,14 @@ const schema = z.object({
   from: z.enum(['album', 'create', 'home']).optional(),
 });
 
+// createPackCheckout 双实现签名一致;按 ACTIVE_CHECKOUT_PROVIDER 单点切换。
+const checkoutService = ACTIVE_CHECKOUT_PROVIDER === 'waffo' ? waffoService : creemService;
+
 export async function POST(req: Request) {
   try {
     const user = await requireRealUser(req);
     const body = await parseBody(schema, req);
-    const { url } = await creemService.createPackCheckout(user.id, body.packId, {
+    const { url } = await checkoutService.createPackCheckout(user.id, body.packId, {
       locale: body.locale,
       from: body.from,
     });

@@ -30,9 +30,10 @@ export interface CreditPack {
   priceUsd: number;
 }
 
-export type CheckoutProvider = 'creem';
-export const CHECKOUT_PROVIDERS = ['creem'] as const satisfies readonly CheckoutProvider[];
-export const ACTIVE_CHECKOUT_PROVIDER = 'creem' satisfies CheckoutProvider;
+export type CheckoutProvider = 'creem' | 'waffo';
+export const CHECKOUT_PROVIDERS = ['creem', 'waffo'] as const satisfies readonly CheckoutProvider[];
+// Waffo 是主通道(2026-08 切换);creem 保留仅为 Phase 1 在途订单 webhook 兜底。
+export const ACTIVE_CHECKOUT_PROVIDER = 'waffo' satisfies CheckoutProvider;
 // The UI locale the buyer came from — it only ever decides which /{locale}/credits
 // URL the provider returns them to, so it tracks the full locale set (never the
 // zh|en generation language).
@@ -47,6 +48,11 @@ export type CreemProductEnvKey =
   | 'CREEM_PRODUCT_ID_PACK_1'
   | 'CREEM_PRODUCT_ID_PACK_4'
   | 'CREEM_PRODUCT_ID_PACK_10';
+
+export type WaffoProductEnvKey =
+  | 'WAFFO_PRODUCT_ID_PACK_1'
+  | 'WAFFO_PRODUCT_ID_PACK_4'
+  | 'WAFFO_PRODUCT_ID_PACK_10';
 
 // ── Photo → credit accounting (SINGLE SOURCE OF TRUTH) ───────────────────────
 // One credit covers up to PHOTOS_PER_CREDIT photos. A generation of N photos
@@ -107,7 +113,7 @@ export const PLANS: readonly Plan[] = [
 ] as const;
 
 // 三档一次性积分包。价格 $3/$10/$20 固定(Creem 产品),books 字段沿用旧名、语义是积分数。
-// 2026-07-17 重定价:1 积分=1 张后,三档积分数 ×20 → 20/80/200(美元不变)。Creem 产品 id 走 env。
+// 2026-07-17 重定价:1 积分=1 张后,三档积分数 ×20 → 20/80/200(美元不变)。产品 id 走 env(主通道 Waffo,Creem 兜底)。
 export const ADDON_PACKS = [
   { id: 'pack-1', books: 20, priceUsd: 3 },
   { id: 'pack-4', books: 80, priceUsd: 10 },
@@ -120,6 +126,12 @@ export const CREEM_PRODUCT_ENV_BY_PACK_ID: Record<AddonPackId, CreemProductEnvKe
   'pack-1': 'CREEM_PRODUCT_ID_PACK_1',
   'pack-4': 'CREEM_PRODUCT_ID_PACK_4',
   'pack-10': 'CREEM_PRODUCT_ID_PACK_10',
+};
+
+export const WAFFO_PRODUCT_ENV_BY_PACK_ID: Record<AddonPackId, WaffoProductEnvKey> = {
+  'pack-1': 'WAFFO_PRODUCT_ID_PACK_1',
+  'pack-4': 'WAFFO_PRODUCT_ID_PACK_4',
+  'pack-10': 'WAFFO_PRODUCT_ID_PACK_10',
 };
 
 export function buildCheckoutReturnUrls(

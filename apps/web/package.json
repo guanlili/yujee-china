@@ -20,6 +20,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.682.0",
     "@aws-sdk/s3-request-presigner": "^3.682.0",
+    "@waffo/pancake-ts": "0.17.0",
     "@yujee/contracts": "workspace:*",
     "better-auth": "1.4.17",
     "dompurify": "^3.4.11",
