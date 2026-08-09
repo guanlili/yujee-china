@@ -51,6 +51,17 @@ test('buildCoverSets: 封底逐套显式声明(SET_LAYOUT 表),不再按 albumId
   for (const s of a) assert.equal(templateCategory(s.endingTemplateId), 'ending');
 });
 
+// 补测(评审 Important):buildCoverSets 里 `PAGE_BACKGROUNDS[i % ...]` 这行这次没改,
+// 但被替换掉的旧测试连带删掉了对它的唯一覆盖 —— 全仓没有 page-backgrounds.test.ts,
+// 补回来防止这行退化(比如误改成恒定同一色)没有测试兜底。
+test('buildCoverSets: 每套绑定一个书页底色,4 套 × 4 色一一对应', async () => {
+  const { PAGE_BACKGROUNDS } = await import('@/lib/design/page-backgrounds');
+  const sets = buildCoverSets('album-1', CHAPTERS);
+  assert.equal(sets.length, 4);
+  sets.forEach((s, i) => assert.equal(s.pageBackground, PAGE_BACKGROUNDS[i]!.hex));
+  assert.equal(new Set(sets.map((s) => s.pageBackground)).size, 4);
+});
+
 test('sweepCarriers: 按 role 写 #artFont/#accentColor,decoration 色跟标题色', () => {
   const pages = sweepCarriers(
     [{ pageIndex: 0, templateId: 'mag-15', images: { main: 'p1' }, texts: { title: 'T' } }],
