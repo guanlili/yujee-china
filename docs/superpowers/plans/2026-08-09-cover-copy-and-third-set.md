@@ -832,9 +832,11 @@ test('buildCoverSets: 只有第 3 套带 colorways,其余套走白灰底色', ()
   assert.equal(sets[0]!.pageBackground, '#FFFFFF');
 });
 
-test('buildCoverSets: 每套各自绑封底,不再四套共用一个', () => {
-  const endings = buildCoverSets('album-1', CHAPTERS).map((s) => s.endingTemplateId);
-  assert.ok(new Set(endings).size >= 2, '至少两种封底');
+test('buildCoverSets: 封底逐套显式声明(SET_LAYOUT 表),不再按 albumId 哈希', () => {
+  const a = buildCoverSets('album-1', CHAPTERS);
+  const b = buildCoverSets('album-2', CHAPTERS);
+  assert.deepEqual(a.map((s) => s.endingTemplateId), b.map((s) => s.endingTemplateId));
+  for (const s of a) assert.equal(templateCategory(s.endingTemplateId), 'ending');
 });
 ```
 
@@ -1119,25 +1121,24 @@ git commit -m "feat(design): 第三套深色内页管线 —— 逐页循环底�
 
 - [ ] **Step 1: 写失败测试**
 
+加在 `apps/web/src/services/job/compose-completed.test.ts` 末尾。**复用文件里既有的
+`draft()` helper 和 `META` 常量** —— 别自己造 draft 字面量，`V3StoryDraft.safeParse`
+对形状有要求，手写的会直接被拒、测试红在无关的地方：
+
 ```typescript
 test('mergeComposeIntoDraft: meta 带 coverColorway 时内页走深色配色', () => {
-  const draft = {
-    tree: { chapters: [{ chapterId: 'c1' }] },
-    pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
-  };
-  const out = mergeComposeIntoDraft(
-    draft,
-    {
-      language: 'zh',
-      coverTemplateId: 'mag-62',
-      coverPhotoId: 'p1',
-      endingTemplateId: 'mag-22',
-      endingPhotoId: 'p2',
-      coverColorway: 'teal',
-    } as never,
+  const { draftJson } = mergeComposeIntoDraft(
+    draft(),
+    { ...META, coverTemplateId: 'mag-62', coverColorway: 'teal' } as ComposeJobMeta,
     {},
   );
-  assert.match(out.draftJson.pages[1]!.html!, /background-color:\s*#0E2A47/i);
+  // 页序 [封面, ...内页, 封尾];第一张内页拿 THIRD_SET_INTERIOR[0]
+  assert.match(draftJson.pages[1]!.html!, /background-color:\s*#0E2A47/i);
+});
+
+test('mergeComposeIntoDraft: 不带 coverColorway 时不写深色底(老书行为不变)', () => {
+  const { draftJson } = mergeComposeIntoDraft(draft(), META, {});
+  assert.doesNotMatch(draftJson.pages[1]!.html!, /#0E2A47/i);
 });
 ```
 
