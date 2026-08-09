@@ -438,11 +438,17 @@ async def compose_global(
         return base
 
     def _with_album_title(cover_texts: dict[str, str]) -> dict[str, str]:
-        # 封面标题兜底:模型没写/失败时,标题槽用相册标题(role=title 的槽)。
-        if album_title:
-            for slot in cover_slots:
-                if slot.get("role") == "title" and not cover_texts.get(slot["id"]):
-                    cover_texts[slot["id"]] = album_title
+        # 封面标题兜底:模型没写/失败时,**只**给第一个 role=title 的槽填相册标题。
+        # 旧实现给所有 title 槽都灌同一句 —— mag-23 有 title/title2 两个槽,封面上
+        # 会出现同一个书名重复两遍。副标题槽宁可空着,也不重复主标题。
+        if not album_title:
+            return cover_texts
+        for slot in cover_slots:
+            if slot.get("role") != "title":
+                continue
+            if not cover_texts.get(slot["id"]):
+                cover_texts[slot["id"]] = album_title
+            break
         return cover_texts
 
     def _fallback() -> ComposeGlobalResult:

@@ -810,3 +810,20 @@ def test_追加范围成稿_无封面封尾槽时全局批次不调_gemini(monke
     assert completed.coverTexts == {}
     assert completed.endingTexts == {}
     assert completed.fonts == {}
+
+
+def test_album_title_only_fills_the_first_title_slot(monkeypatch):
+    """mag-23 有 title/title2 两个 title 槽,旧实现灌成同一个书名重复两遍。"""
+
+    async def boom(**kwargs):
+        raise RuntimeError("gemini down")
+
+    slots = [
+        {"id": "title", "role": "title", "sample": "NORWAY"},
+        {"id": "title2", "role": "title", "sample": "Record"},
+    ]
+    result = _run_global(
+        monkeypatch, boom, language="en", album_title="Summer by the Sea", cover_slots=slots
+    )
+    assert result.cover_texts["title"] == "Summer by the Sea"
+    assert result.cover_texts["title2"] == ""
