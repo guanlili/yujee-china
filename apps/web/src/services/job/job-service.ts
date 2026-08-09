@@ -17,9 +17,9 @@ import {
   DESIGN_COLORS,
   applyComposePagesTexts,
   assembleDesignedPages,
+  coverTextBase,
   mergeSlotTexts,
   normalizeDesignFonts,
-  sampleTexts,
   sweepCarriers,
   templateCategory,
 } from '@/services/album/design-apply';
@@ -202,7 +202,9 @@ export type ComposeCompletedPayload = {
  * 整书重烘 html、刷书页底色。
  *
  * 四个数据坑都在这里兜住:
- *  · coverTexts/endingTexts 的空串忽略(mergeSlotTexts),模板 sample 不被洗白;
+ *  · coverTexts/endingTexts 的空串忽略(mergeSlotTexts);兜底底稿只含 title 槽的
+ *    模板 sample(coverTextBase)—— 标题槽不能空(封面没有大标题是废版面),但其余
+ *    槽(body/explain/decoration)模型没写出来时宁可空着,不回落模板作者写的年份地名;
  *  · pagesTexts 只含真写出来的页,没出现的页 texts 原样保留;
  *  · compose 不回 colors —— 三色用确定性常量 DESIGN_COLORS;
  *  · fonts 可能为空 —— normalizeDesignFonts 按语言兜底。
@@ -230,8 +232,8 @@ export function mergeComposeIntoDraft(
       endingTemplateId: meta.endingTemplateId,
       endingPhotoId: meta.endingPhotoId,
     },
-    coverTexts: mergeSlotTexts(sampleTexts(meta.coverTemplateId), payload.coverTexts),
-    endingTexts: mergeSlotTexts(sampleTexts(meta.endingTemplateId), payload.endingTexts),
+    coverTexts: mergeSlotTexts(coverTextBase(meta.coverTemplateId), payload.coverTexts),
+    endingTexts: mergeSlotTexts(coverTextBase(meta.endingTemplateId), payload.endingTexts),
     fonts,
     colors: DESIGN_COLORS,
     extraEndingPhotoIds: meta.extraEndingPhotoIds,

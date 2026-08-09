@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   assembleDesignedPages,
   buildCoverSets,
+  coverTextBase,
   pickHeroPhotos,
   sweepCarriers,
   templateCategory,
@@ -15,6 +16,13 @@ const CHAPTERS = [
 
 const FONTS = { title: 'zcool-xiaowei', body: 'lxgw-wenkai', decoration: 'smiley-sans' };
 const COLORS = { title: '#2b4a6f', body: '#1c1b18', explain: '#6b675f' };
+
+test('coverTextBase: 只给 title 槽留 sample 兜底,其余槽宁可空着', () => {
+  const base = coverTextBase('mag-23');
+  assert.equal(base.title, 'NORWAY');
+  assert.equal(base.body, undefined);   // sample 是 "2026\n2025\n2024",别人的年份
+  assert.equal(base.body2, undefined);  // sample 是 "Shanghai \nBeijing\nDali"
+});
 
 test('pickHeroPhotos: 构图 focal > closeup > 其余', () => {
   assert.deepEqual(pickHeroPhotos(CHAPTERS, 2), ['pf', 'pc']);

@@ -11,8 +11,10 @@ import { jobService, mergeComposeIntoDraft, type ComposeJobMeta } from '@/servic
 import { albumService } from './album-service';
 import { TEMPLATES, type Page } from '@yujee/contracts';
 
-// 游客占位成稿:mergeComposeIntoDraft 传空 compose 载荷 = 一本「示例文案书」。
-// 纯函数四条硬约束 + applyPlaceholderDesign / 登录后 applyDesign 升级计费的集成闭环。
+// 游客占位成稿:mergeComposeIntoDraft 传空 compose 载荷 = 一本内页保留模板 sample、
+// 封面/封尾 title 槽落 sample、其余槽空着的占位书(coverTextBase 只兜底 title,不印
+// 模板作者写的年份地名)。纯函数四条硬约束 + applyPlaceholderDesign / 登录后
+// applyDesign 升级计费的集成闭环。
 
 const COVER_ID = 'mag-01';
 const ENDING_ID = 'mag-22';
@@ -80,12 +82,16 @@ test('空载荷成书:内页 texts 原样保留 sample,一字不动', () => {
   assert.equal(interior.texts.body, 'SAMPLE BODY');
 });
 
-test('空载荷成书:封面/封尾文字槽落模板 sample,不是空白', () => {
+test('空载荷成书:封面/封尾 title 槽落模板 sample,其余槽宁可空着(不印别人的年份地名)', () => {
   const merged = mergeComposeIntoDraft(draft(), META, EMPTY_PAYLOAD);
   const cover = merged.pages.find((p) => p.templateId === COVER_ID)!;
   for (const slot of TEMPLATES[COVER_ID]!.texts ?? []) {
     const sample = (slot as { sample?: string }).sample;
-    if (sample) assert.equal(cover.texts[slot.id], sample, `cover slot ${slot.id} 应为模板 sample`);
+    if (slot.role === 'title') {
+      if (sample) assert.equal(cover.texts[slot.id], sample, `title 槽 ${slot.id} 应为模板 sample`);
+    } else {
+      assert.equal(cover.texts[slot.id], undefined, `非 title 槽 ${slot.id} 不该回落 sample`);
+    }
   }
 });
 

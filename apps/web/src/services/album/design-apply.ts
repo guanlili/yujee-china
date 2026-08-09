@@ -78,6 +78,24 @@ export function sampleTexts(templateId: string): Record<string, string> {
 }
 
 /**
+ * 封面/封尾文案的兜底底稿:**只**保留 role=title 槽的 sample。
+ *
+ * 其余槽(body/explain/decoration)宁可空着 —— 那些槽的 sample 是模板作者写的
+ * 具体年份和地名(mag-23 的 "2026\n2025\n2024" / "Shanghai \nBeijing\nDali"),
+ * 模型没写出来时回落 sample 等于把别人的年份地名印在用户的书上,比空着更糟。
+ * 标题槽例外:封面没有大标题是废版面,必须留兜底。
+ */
+export function coverTextBase(templateId: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const slot of templateOf(templateId)?.texts ?? []) {
+    if (slot.role !== 'title') continue;
+    const sample = (slot as { sample?: unknown }).sample;
+    if (typeof sample === 'string' && sample !== '') out[slot.id] = sample;
+  }
+  return out;
+}
+
+/**
  * compose 的 `pagesTexts`({[pageIndex]: {[slotId]: 文案}})逐槽写回内页。
  * · 逐槽覆盖,不整页替换 —— 模型没写的槽保留模板 sample;
  * · 没出现在 pagesTexts 里的页原样保留(某章写不出来也照常成稿,硬约束落点)。
