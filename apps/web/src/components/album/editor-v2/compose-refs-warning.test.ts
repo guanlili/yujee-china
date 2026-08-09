@@ -25,5 +25,6 @@ test('一张缩略图都拿不到就提交成稿时,留下一条 warn', () => {
   const body = applyDesignBody();
   assert.match(body, /console\.warn\(\s*'\[compose\] no photo refs/);
   // 只是可观测性,不改行为:拿不到缩略图仍然照常提交(不 return、不抛)。
-  assert.match(body, /refs\s*\}\)/);
+  // ,? 容纳 body 换成多行字面量后 refs 末尾的尾逗号(coverColorway 透传加的字段)。
+  assert.match(body, /refs,?\s*\}\)/);
 });

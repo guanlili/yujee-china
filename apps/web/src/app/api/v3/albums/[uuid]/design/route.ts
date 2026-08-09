@@ -17,6 +17,8 @@ const BodySchema = z
     endingPhotoId: z.string().min(1),
     // 书页底色(4 色之一,可选;具体色值合法性在 albumService.applyDesign 校验)。
     pageBackground: z.string().min(1).optional(),
+    // 第三套(深色椭圆)选中的配色 id;合法性在 albumService.applyDesign 校验。
+    coverColorway: z.string().min(1).optional(),
     // 200px 缩略图(photoId → data URL):compose 让模型看真实照片写文案,原图只在浏览器。
     refs: z.record(z.string().min(1), z.string().min(1)).optional(),
   })

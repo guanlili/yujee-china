@@ -1827,6 +1827,7 @@ export function ChatPanel({
     async function runApplyDesign(
       set: { coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string; pageBackground?: string },
       pageBackground?: string,
+      coverColorway?: string,
     ) {
       // main 的送出键单一真相源(setSending)+ design-work 的封面覆盖层清理,两者都保留。
       setSending(true);
@@ -1864,7 +1865,13 @@ export function ChatPanel({
         const res = await fetch(`/api/v3/albums/${albumId}/design`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ language: currentLang === 'zh' ? 'zh' : 'en', ...set, ...(pageBackground ? { pageBackground } : {}), refs }),
+          body: JSON.stringify({
+            language: currentLang === 'zh' ? 'zh' : 'en',
+            ...set,
+            ...(pageBackground ? { pageBackground } : {}),
+            ...(coverColorway ? { coverColorway } : {}),
+            refs,
+          }),
         });
         const json = await res.json();
         if (!res.ok || !json.ok) throw new Error(json.error?.message ?? 'design failed');

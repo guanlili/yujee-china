@@ -24,6 +24,7 @@ import { buildCoverSets, pickHeroPhotos, slotSpecs, templateCategory } from './d
 import { env } from '@/lib/env';
 import { logger } from '@/lib/log/logger';
 import { isValidPageBackground } from '@/lib/design/page-backgrounds';
+import { coverColorwayById } from '@/lib/design/third-set-palette';
 import {
   PhotoFilterStateSchema,
   normalizePhotoFilterState,
@@ -1227,6 +1228,8 @@ export const albumService = {
       endingPhotoId: string;
       // 书页底色(4 色之一,可选;纯白/不传 = 不写,留模板默认)。
       pageBackground?: string;
+      // 第三套(深色椭圆)选中的配色 id,可选;合法性见下方校验。
+      coverColorway?: string;
       // 浏览器本地的 200px 缩略图(photoId → data URL):compose 让模型**看真实照片**
       // 写文案,原图只在浏览器,故与 select-layout 同样由前端随请求带上。
       refs?: Record<string, string>;
@@ -1240,6 +1243,8 @@ export const albumService = {
       throw ERRORS.VALIDATION_FAILED(`not an ending template: ${input.endingTemplateId}`);
     if (input.pageBackground && !isValidPageBackground(input.pageBackground))
       throw ERRORS.VALIDATION_FAILED(`invalid page background: ${input.pageBackground}`);
+    if (input.coverColorway && !coverColorwayById(input.coverColorway))
+      throw ERRORS.VALIDATION_FAILED(`invalid cover colorway: ${input.coverColorway}`);
 
     // 页/树源走 loadStoryDraft 行读:draft_pages 拆表后 envelopeJson 从不把 pages 写回
     // draftJson,新相册排版完 draftJson.pages 就是空的 —— 拆表前这里裸读 draftJson.pages
@@ -1313,6 +1318,7 @@ export const albumService = {
               endingPhotoId: input.endingPhotoId,
               extraEndingPhotoIds,
               ...(input.pageBackground ? { pageBackground: input.pageBackground } : {}),
+              ...(input.coverColorway ? { coverColorway: input.coverColorway } : {}),
             },
           },
         });
@@ -1383,6 +1389,7 @@ export const albumService = {
       endingTemplateId: string;
       endingPhotoId: string;
       pageBackground?: string;
+      coverColorway?: string;
     },
   ): Promise<{ accepted: true; placeholder: true }> {
     const album = await this.findOwned(userId, albumId);
@@ -1393,6 +1400,8 @@ export const albumService = {
       throw ERRORS.VALIDATION_FAILED(`not an ending template: ${input.endingTemplateId}`);
     if (input.pageBackground && !isValidPageBackground(input.pageBackground))
       throw ERRORS.VALIDATION_FAILED(`invalid page background: ${input.pageBackground}`);
+    if (input.coverColorway && !coverColorwayById(input.coverColorway))
+      throw ERRORS.VALIDATION_FAILED(`invalid cover colorway: ${input.coverColorway}`);
 
     await db.transaction(async (tx) => {
       // 写事务固定次序(与三个回调对齐):album 行锁 → seed → bump → replaceAll → update。
@@ -1424,6 +1433,7 @@ export const albumService = {
           4,
         ).filter((id) => id !== input.endingPhotoId && id !== input.coverPhotoId),
         ...(input.pageBackground ? { pageBackground: input.pageBackground } : {}),
+        ...(input.coverColorway ? { coverColorway: input.coverColorway } : {}),
       };
       const draftJsonLike = {
         version: 'v3-story' as const,

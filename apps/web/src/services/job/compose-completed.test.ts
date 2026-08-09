@@ -295,3 +295,20 @@ test('buildComposeRequest:页按图槽归章、缺 200px ref 的照片跳过、t
   assert.ok(req.coverSlots.length > 0 && req.coverSlots.every((s) => s.id && s.role));
   assert.ok(req.endingSlots.length > 0);
 });
+
+// ── 第三套(深色椭圆)配色透传 ────────────────────────────────────────────────
+
+test('mergeComposeIntoDraft: meta 带 coverColorway 时内页走深色配色', () => {
+  const { draftJson } = mergeComposeIntoDraft(
+    draft(),
+    { ...META, coverTemplateId: 'mag-62', coverColorway: 'teal' } as ComposeJobMeta,
+    {},
+  );
+  // 页序 [封面, ...内页, 封尾];第一张内页拿 THIRD_SET_INTERIOR[0]
+  assert.match(draftJson.pages[1]!.html!, /background-color:\s*#0E2A47/i);
+});
+
+test('mergeComposeIntoDraft: 不带 coverColorway 时不写深色底(老书行为不变)', () => {
+  const { draftJson } = mergeComposeIntoDraft(draft(), META, {});
+  assert.doesNotMatch(draftJson.pages[1]!.html!, /#0E2A47/i);
+});

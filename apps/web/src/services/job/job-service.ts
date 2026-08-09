@@ -23,6 +23,7 @@ import {
   sweepCarriers,
   templateCategory,
 } from '@/services/album/design-apply';
+import { coverColorwayById } from '@/lib/design/third-set-palette';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
 import { bakePagesHtml, type BakeablePage } from '@/services/album/bake-html';
 // draft_pages 拆表(Phase 1a):三个回调写点(analyze-append/select-layout/compose)
@@ -130,6 +131,9 @@ export type ComposeJobMeta = {
   endingPhotoId: string;
   extraEndingPhotoIds: string[];
   pageBackground?: string;
+  // 第三套(深色椭圆)选中的配色 id;派发时可选,合法性已在 applyDesign/
+  // applyPlaceholderDesign 校验过,这里直接信。
+  coverColorway?: string;
 };
 
 export function readComposeMeta(meta: unknown): ComposeJobMeta | null {
@@ -154,6 +158,12 @@ export function readComposeMeta(meta: unknown): ComposeJobMeta | null {
     extraEndingPhotoIds: extras,
     ...(typeof value.pageBackground === 'string' && value.pageBackground
       ? { pageBackground: value.pageBackground }
+      : {}),
+    // 真实账号走这条路(applyDesign 派发 → agent_jobs.meta 落库 → 回调侧从这里读回):
+    // 漏了这一段,coverColorway 会在 DB 往返里悄悄丢掉 —— 占位书(applyPlaceholderDesign)
+    // 不经过这个函数,不受影响,但真书永远看不到深色套。
+    ...(typeof value.coverColorway === 'string' && value.coverColorway
+      ? { coverColorway: value.coverColorway }
       : {}),
   };
 }
@@ -224,6 +234,9 @@ export function mergeComposeIntoDraft(
   );
   const written = applyComposePagesTexts(interiorPages, payload.pagesTexts);
   const fonts = normalizeDesignFonts(payload.fonts, meta.language);
+  // 只查一次:coverColorwayById 对非法/缺省 id 一律 undefined,查两次是同一个结果,
+  // 白白多一次数组扫描还容易在改查找逻辑时两处不同步。
+  const colorway = coverColorwayById(meta.coverColorway);
   const pages = assembleDesignedPages({
     interiorPages: written,
     set: {
@@ -238,6 +251,7 @@ export function mergeComposeIntoDraft(
     colors: DESIGN_COLORS,
     extraEndingPhotoIds: meta.extraEndingPhotoIds,
     ...(meta.pageBackground ? { pageBackground: meta.pageBackground } : {}),
+    ...(colorway ? { colorway } : {}),
   });
 
   // 选定封面 = 故事环节收官:把现存章节全部记 done(与旧同步实现一致)。
