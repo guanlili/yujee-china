@@ -69,3 +69,10 @@ test('appendCoverSummary is a READ-ONLY recap (preview only, no API call)', () =
   assert.match(builder![0], /coverOptionHTML\?\.\(set\.endingTemplateId/);
   assert.doesNotMatch(builder![0], /addEventListener/);
 });
+
+test('appendCoverSummary 把真页 textsJson 传给 coverOptionHTML(回执卡不再显示模板 sample)', () => {
+  const fn = /function appendCoverSummary\(\)[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'appendCoverSummary must exist');
+  assert.match(fn![0], /coverTexts:\s*coverPage\?\.textsJson/);
+  assert.match(fn![0], /endingTexts:\s*endingPage\?\.textsJson/);
+});

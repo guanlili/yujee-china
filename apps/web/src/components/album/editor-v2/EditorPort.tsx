@@ -4984,12 +4984,14 @@ function EditorBook({
       boxW = 132,
       boxH = 176,
       pageBackground?: string,
+      texts?: Record<string, string>,
     ): string {
       const page: EditorPage = {
         pageIndex: 0,
         templateId,
         imagesJson: photoId ? { [heroSlotId(templateId)]: photoId } : {},
-        textsJson: {},
+        // 选择卡传空(那时还没文案,渲模板 sample 是对的);回执卡传真页 textsJson。
+        textsJson: texts ?? {},
       };
       const html = faceHTML(page, boxW, boxH);
       // 推荐封面自带的书页底色:染进预览页根(和真页同一 patchHtmlPageStyle 原语)。

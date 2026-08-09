@@ -90,13 +90,14 @@ export function createChatCoordinator(deps: () => MobileChatDeps): ChatCoordinat
     // 浏览态没有「选中页」概念,回落到第 0 页(桌面回落到当前跨页首页;移动浏览态
     // 的游标住在展示层,设计对话对整本书说话时 currentPageIndex 本就只是提示)。
     authoringFocusPageIndex: () => deps().editPage ?? 0,
-    coverOptionHTML: (templateId, photoId, boxW = 132, boxH = 176, pageBackground) => {
+    coverOptionHTML: (templateId, photoId, boxW = 132, boxH = 176, pageBackground, texts) => {
       const d = deps();
       const page: EditorPage = {
         pageIndex: 0,
         templateId,
         imagesJson: photoId ? { [heroSlotId(templateId)]: photoId } : {},
-        textsJson: {},
+        // 与桌面同口径:选择卡传空渲 sample,回执卡透传真页 textsJson。
+        textsJson: texts ?? {},
       };
       // 合成页不在书里,没有展示层页签(桌面同款:indexOf 未命中 → folio null)。
       const html = pageFaceHTML(page, boxW, boxH, {

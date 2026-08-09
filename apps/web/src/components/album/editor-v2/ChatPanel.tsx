@@ -632,6 +632,10 @@ export function ChatPanel({
       coverPhotoId: string | null;
       endingTemplateId: string | null;
       endingPhotoId: string | null;
+      // 只有 appendCoverSummary(成书后回放)传;runApplyDesign 的即时卡和
+      // loadHistory 的历史回放卡都没有真文案可传,留空走模板 sample。
+      coverTexts?: Record<string, string>;
+      endingTexts?: Record<string, string>;
     }, pageBackground?: string): HTMLElement {
       const card = document.createElement('div');
       card.className = 'msg ai max-w-full';
@@ -655,12 +659,12 @@ export function ChatPanel({
       let html = '';
       if (set.coverTemplateId) {
         html +=
-          `<span class="cv-face">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 92, 122, pageBackground) ?? ''}` +
+          `<span class="cv-face">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 92, 122, pageBackground, set.coverTexts) ?? ''}` +
           `<i class="cv-face-tag">${aT('封面', 'Cover')}</i></span>`;
       }
       if (set.endingTemplateId) {
         html +=
-          `<span class="cv-face">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 92, 122, pageBackground) ?? ''}` +
+          `<span class="cv-face">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 92, 122, pageBackground, set.endingTexts) ?? ''}` +
           `<i class="cv-face-tag">${aT('封底', 'Back')}</i></span>`;
       }
       pair.innerHTML = html;
@@ -691,6 +695,9 @@ export function ChatPanel({
           coverPhotoId: coverPage ? (Object.values(coverPage.imagesJson)[0] ?? null) : null,
           endingTemplateId: endingPage?.templateId ?? null,
           endingPhotoId: endingPage ? (Object.values(endingPage.imagesJson)[0] ?? null) : null,
+          // 成书后回放:真页 textsJson 直接传,回执卡不再恒渲模板 sample。
+          coverTexts: coverPage?.textsJson,
+          endingTexts: endingPage?.textsJson,
         }, bgOfPage(coverPage) ?? bgOfPage(endingPage)),
       );
     }
