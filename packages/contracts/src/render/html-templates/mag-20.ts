@@ -3,6 +3,9 @@
 // 左下角品牌 logo（YUJEE_LOGO_SVG data URI 原样内联自 brand-logo.ts）+ 版权行，
 // 右下角 Instagram / X / TikTok 图标 + 网址 —— 均为固定品牌落款，无文字槽（templates/mag-20.json texts: []）。
 // 版权年份：React 版渲染时取 new Date().getFullYear()；此处在模块求值时取一次内插，行为等价。
+// 版权行同 mag-22 先例（Task 14 深色清扫）：原写死浅灰色，深底上会消失，改
+// currentColor 跟随页根墨色，配 opacity:0.28 保持原来「很轻」的分量。图标/网址仍是
+// 中灰度写死值（不在本次清扫的 DARK 正则范围内，未动——它们对深底对比度尚可，非同一缺陷）。
 const SANS_EN = '&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif';
 const YEAR = new Date().getFullYear();
 const YUJEE_LOGO_SVG =
@@ -19,7 +22,7 @@ export const MAG_20_HTML = `<div data-template="mag-20" style="position:relative
     <img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image|50% 50%}};{{IMG_TF:image}}" />
   </div>
   <img src="${YUJEE_LOGO_SVG}" alt="yujee" style="position:absolute;left:56px;top:979px;width:112px;height:47px;object-fit:contain;display:block" />
-  <div style="position:absolute;left:56px;top:1038px;width:110px;font-family:${SANS_EN};font-weight:400;font-size:16px;line-height:1;color:#C2C2C2">© ${YEAR} Yujee</div>
+  <div style="position:absolute;left:56px;top:1038px;width:110px;font-family:${SANS_EN};font-weight:400;font-size:16px;line-height:1;color:currentColor;opacity:0.28">© ${YEAR} Yujee</div>
   <svg viewBox="0 0 24 24" width="28" height="28" fill="#999999" style="position:absolute;left:600px;top:988px"><path d="${IG_PATH}" /></svg>
   <svg viewBox="0 0 24 24" width="28" height="28" fill="#999999" style="position:absolute;left:655px;top:988px"><path d="${X_PATH}" /></svg>
   <svg viewBox="0 0 24 24" width="28" height="28" fill="#999999" style="position:absolute;left:710px;top:988px"><path d="${TIKTOK_PATH}" /></svg>

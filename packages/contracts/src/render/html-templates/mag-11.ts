@@ -24,7 +24,7 @@ export const MAG_11_HTML = `<div data-template="mag-11" style="position:relative
   <div style="position:absolute;top:992px;left:50px;width:280px">
     <div data-text-key="explain" data-variable-decor style="font-size:14px;letter-spacing:0.02em;color:{{COLOR:explain|#1c1b18}};text-transform:uppercase;font-family:{{FONT:explain|${SANS_EN}}};font-weight:600;white-space:pre-wrap;width:280px;height:24px;line-height:1.6">{{TEXT:explain}}</div>
   </div>
-  <div style="position:absolute;top:800px;right:50px;width:200px;line-height:1.75;color:#5a574f;letter-spacing:0.02em;text-align:justify">
+  <div style="position:absolute;top:800px;right:50px;width:200px;line-height:1.75;color:currentColor;letter-spacing:0.02em;text-align:justify">
     <p data-text-key="body" style="margin:0;font-size:18px;color:{{COLOR:body|#5a574f}};font-family:{{FONT:body|${SANS_EN}}};white-space:pre-wrap;width:200px;height:63px;left:100px;letter-spacing:0.02em;line-height:1.7">{{TEXT:body}}</p>
   </div>
 </div>`;

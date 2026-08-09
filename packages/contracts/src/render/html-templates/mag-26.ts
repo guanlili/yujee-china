@@ -19,8 +19,8 @@ export const MAG_26_HTML = `<div data-template="mag-26" style="position:relative
   </div>
   <div data-text-key="title" data-variable-decor style="position:absolute;left:120px;top:500px;width:445px;height:160px;transform:rotate(-90deg);transform-origin:top left;font-weight:800;font-size:75px;line-height:1.1;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${PLAYFAIR}}};letter-spacing:0.02em">{{TEXT:title}}</div>
   <div data-text-key="title2" data-variable-decor style="position:absolute;left:53px;top:440px;width:240px;height:24px;transform:rotate(-90deg);transform-origin:top left;font-size:24px;line-height:1.1;white-space:pre;overflow:hidden;color:{{COLOR:title2|#1c1b18}};font-family:{{FONT:title2|${SANS_EN}}};letter-spacing:0.02em">{{TEXT:title2}}</div>
-  <div style="position:absolute;left:183px;top:550px;width:113px;height:85px;font-family:${SERIF_EN};font-size:120px;line-height:1;color:#1c1b18;user-select:none;overflow:hidden">&rdquo;</div>
-  <div style="position:absolute;left:53px;top:710px;width:227px;height:1px;background:#1c1b18"></div>
+  <div style="position:absolute;left:183px;top:550px;width:113px;height:85px;font-family:${SERIF_EN};font-size:120px;line-height:1;color:currentColor;user-select:none;overflow:hidden">&rdquo;</div>
+  <div style="position:absolute;left:53px;top:710px;width:227px;height:1px;background:currentColor"></div>
   <div data-text-key="explain" style="position:absolute;left:53px;top:680px;width:240px;height:25px;font-size:14px;line-height:1.6;white-space:pre-wrap;overflow:hidden;color:{{COLOR:explain|#1c1b18}};font-family:{{FONT:explain|${SANS_CN}}};letter-spacing:0.02em">{{TEXT:explain}}</div>
   <div data-text-key="body" style="position:absolute;left:53px;top:754px;width:240px;height:300px;font-size:18px;line-height:1.7;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body|#1c1b18}};font-family:{{FONT:body|${SANS_CN}}};letter-spacing:0.02em">{{TEXT:body}}</div>
 </div>`;

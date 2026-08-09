@@ -25,7 +25,7 @@ export const MAG_09_HTML = `<div data-template="mag-09" style="position:relative
   <div data-image-slot="image2" style="position:absolute;left:374px;top:400px;width:370px;height:600px;overflow:hidden">
     <img data-image-slot="image2" src="{{IMG_SRC:image2}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image2|50% 50%}};{{IMG_TF:image2}}" />
   </div>
-  <div style="position:absolute;top:620px;left:60px;width:280px;line-height:1.75;color:#5a574f;letter-spacing:0.02em;text-align:justify">
+  <div style="position:absolute;top:620px;left:60px;width:280px;line-height:1.75;color:currentColor;letter-spacing:0.02em;text-align:justify">
     <p data-text-key="explain" style="position:absolute;left:60px;top:620px;width:280px;height:32px;font-size:14px;color:{{COLOR:explain|#5a574f}};font-family:{{FONT:explain|${SANS_EN}}};white-space:pre-wrap;letter-spacing:0.02em;line-height:1.6">{{TEXT:explain}}</p>
     <p data-text-key="explain2" style="position:absolute;left:60px;top:664px;width:280px;height:32px;font-size:14px;color:{{COLOR:explain2|#5a574f}};font-family:{{FONT:explain2|${SANS_EN}}};white-space:pre-wrap;letter-spacing:0.02em;line-height:1.6">{{TEXT:explain2}}</p>
     <p data-text-key="body2" style="margin-top:12px;margin-bottom:0;font-size:18px;line-height:1.7;color:{{COLOR:body2|#5a574f}};font-family:{{FONT:body2|${SANS_EN}}};white-space:pre-wrap;width:280px;height:200px;top:11px;letter-spacing:0.02em">{{TEXT:body2}}</p>

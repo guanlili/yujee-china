@@ -20,28 +20,28 @@ const SERIF_EN = '&quot;EB Garamond&quot;, &quot;Noto Serif SC&quot;, &quot;Song
 export const MAG_10_HTML = `<div data-template="mag-10" style="position:relative;width:794px;height:1123px;background:#fff;color:#1c1b18;overflow:hidden;box-sizing:border-box;font-family:${SANS_EN}">
   <div style="position:absolute;top:130px;left:60px;right:60px;display:grid;grid-template-columns:1fr 1fr;column-gap:50px;row-gap:50px">
     <div>
-      <div style="font-family:${SERIF_EN};font-size:22px;letter-spacing:0.04em;color:#1c1b18;margin-bottom:12px">1</div>
+      <div style="font-family:${SERIF_EN};font-size:22px;letter-spacing:0.04em;color:currentColor;margin-bottom:12px">1</div>
       <div data-image-slot="image[0]" style="display:block;width:100%;height:280px;overflow:hidden">
         <img data-image-slot="image[0]" src="{{IMG_SRC:image[0]}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image[0]|50% 50%}};{{IMG_TF:image[0]}}" />
       </div>
       <p data-text-key="explain[0]" style="margin:12px 0 0;line-height:1.6;letter-spacing:0.02em;text-align:justify;font-size:14px;color:{{COLOR:explain[0]|#1c1b18}};font-family:{{FONT:explain[0]|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain[0]}}</p>
     </div>
     <div>
-      <div style="font-family:${SERIF_EN};font-size:22px;letter-spacing:0.04em;color:#1c1b18;margin-bottom:12px">2</div>
+      <div style="font-family:${SERIF_EN};font-size:22px;letter-spacing:0.04em;color:currentColor;margin-bottom:12px">2</div>
       <div data-image-slot="image[1]" style="display:block;width:100%;height:280px;overflow:hidden">
         <img data-image-slot="image[1]" src="{{IMG_SRC:image[1]}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image[1]|50% 50%}};{{IMG_TF:image[1]}}" />
       </div>
       <p data-text-key="explain[1]" style="margin:12px 0 0;line-height:1.6;letter-spacing:0.02em;text-align:justify;font-size:14px;color:{{COLOR:explain[1]|#1c1b18}};font-family:{{FONT:explain[1]|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain[1]}}</p>
     </div>
     <div>
-      <div style="font-family:${SERIF_EN};font-size:22px;letter-spacing:0.04em;color:#1c1b18;margin-bottom:12px">3</div>
+      <div style="font-family:${SERIF_EN};font-size:22px;letter-spacing:0.04em;color:currentColor;margin-bottom:12px">3</div>
       <div data-image-slot="image[2]" style="display:block;width:100%;height:280px;overflow:hidden">
         <img data-image-slot="image[2]" src="{{IMG_SRC:image[2]}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image[2]|50% 50%}};{{IMG_TF:image[2]}}" />
       </div>
       <p data-text-key="explain[2]" style="margin:12px 0 0;line-height:1.6;letter-spacing:0.02em;text-align:justify;font-size:14px;color:{{COLOR:explain[2]|#1c1b18}};font-family:{{FONT:explain[2]|${SANS_EN}}};white-space:pre-wrap">{{TEXT:explain[2]}}</p>
     </div>
     <div>
-      <div style="font-family:${SERIF_EN};font-size:22px;letter-spacing:0.04em;color:#1c1b18;margin-bottom:12px">4</div>
+      <div style="font-family:${SERIF_EN};font-size:22px;letter-spacing:0.04em;color:currentColor;margin-bottom:12px">4</div>
       <div data-image-slot="image[3]" style="display:block;width:100%;height:280px;overflow:hidden">
         <img data-image-slot="image[3]" src="{{IMG_SRC:image[3]}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image[3]|50% 50%}};{{IMG_TF:image[3]}}" />
       </div>

@@ -1,7 +1,8 @@
 // mag-27 HTML 模板（外观真相源，镜像自 templates/mag-27/index.tsx 的 WebMag27）。
 // 内页 · 杂志风（category: interior，1 图）：白底；左上宽体大标题（两行），右上小标题 + 正文导语，
 // 中部一张横图 685×476，下方日期 / 图注 / 右侧标签 / 底部页脚小字；
-// 左上角固定汉堡图标（两根横条 #656565）是 furniture，不进契约。
+// 左上角固定汉堡图标（两根横条）是 furniture，不进契约；fill 为 currentColor 跟随
+// 页根墨色（原写死 #656565，深底上会消失，Task 14 改）。
 // 几何逐一照抄：794×1123、绝对定位、写死 px。动态槽用 {{...}} token（见 fill-template.ts）。
 //
 // 槽位：title/date/label1/label2（variableDecor：色/字体可主题）、explain1/body/explain2
@@ -14,8 +15,8 @@ const SANS_CN = '&quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, &quot;Heiti 
 const SANS_EN = '&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif';
 
 export const MAG_27_HTML = `<div data-template="mag-27" style="position:relative;width:794px;height:1123px;background:#FFFFFF;overflow:hidden">
-  <div style="position:absolute;left:63px;top:59px;width:23px;height:3px;background:#656565"></div>
-  <div style="position:absolute;left:63px;top:65px;width:23px;height:3px;background:#656565"></div>
+  <div style="position:absolute;left:63px;top:59px;width:23px;height:3px;background:currentColor"></div>
+  <div style="position:absolute;left:63px;top:65px;width:23px;height:3px;background:currentColor"></div>
   <div data-text-key="title" data-variable-decor style="position:absolute;left:63px;top:116px;width:335px;height:192px;font-weight:800;font-size:75px;line-height:1.1;letter-spacing:0.02em;white-space:pre-wrap;overflow:hidden;color:{{COLOR:title|#1c1b18}};font-family:{{FONT:title|${SERIF_CN}}}">{{TEXT:title}}</div>
   <div data-text-key="explain" style="position:absolute;left:430px;top:108px;width:144px;height:65px;font-weight:500;font-size:14px;line-height:1.6;white-space:pre-wrap;overflow:hidden;color:{{COLOR:explain|#1c1b18}};font-family:{{FONT:explain|${SANS_CN}}};letter-spacing:0.02em">{{TEXT:explain}}</div>
   <div data-text-key="body" style="position:absolute;left:430px;top:212px;width:310px;height:72px;font-weight:400;font-size:18px;line-height:1.7;white-space:pre-wrap;overflow:hidden;color:{{COLOR:body|#1c1b18}};font-family:{{FONT:body|${SANS_CN}}};letter-spacing:0.02em">{{TEXT:body}}</div>

@@ -17,7 +17,7 @@ export const MAG_23_HTML = `<div data-template="mag-23" style="position:relative
   <div style="position:absolute;left:81px;top:67px;width:13px;height:13px;background:rgba(0,0,0,0.35)"></div>
   <div style="position:absolute;left:95px;top:67px;width:13px;height:13px;background:rgba(0,0,0,0.65)"></div>
   <div style="position:absolute;left:108px;top:67px;width:13px;height:13px;background:rgba(0,0,0,0.9)"></div>
-  <div style="position:absolute;left:723px;top:60px;font-family:${SANS_CN};font-weight:700;font-size:16px;line-height:1;color:#1c1b18">M</div>
+  <div style="position:absolute;left:723px;top:60px;font-family:${SANS_CN};font-weight:700;font-size:16px;line-height:1;color:currentColor">M</div>
   <div data-text-key="body" style="position:absolute;left:467px;top:123px;width:60px;font-family:{{FONT:body|${SANS_EN}}};font-weight:300;font-size:18px;line-height:1.7;color:{{COLOR:body|#1c1b18}};white-space:pre-wrap;overflow:hidden;height:68px;letter-spacing:0.02em">{{TEXT:body}}</div>
   <div data-text-key="body2" style="position:absolute;left:550px;top:125px;width:130px;font-family:{{FONT:body2|${SANS_EN}}};font-weight:300;font-size:18px;line-height:1.7;color:{{COLOR:body2|#1c1b18}};white-space:pre-wrap;overflow:hidden;height:68px;letter-spacing:0.02em">{{TEXT:body2}}</div>
   <div data-text-key="title" data-variable-decor style="position:absolute;left:57px;top:201px;width:360px;height:80px;font-family:{{FONT:title|${PLAYFAIR}}};font-weight:800;font-size:{{FIT_SIZE:title|380,75,32}}px;line-height:1.1;letter-spacing:0.02em;color:{{COLOR:title|#1c1b18}};white-space:pre-wrap;overflow:hidden">{{TEXT:title}}</div>

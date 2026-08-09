@@ -15,6 +15,14 @@
 //   HTML 版空值即空输出（既有模板同约定）。
 // - label1 的 `?? d.label1Color` 中间兜底是旧字段（非 '#accentColor' 主题载体），无 token
 //   通道，HTML 版直接落到 COLORS.vermilionSoft 默认色。
+//
+// Task 14 深色清扫复核：底部面板背景色刻意保留写死值，不改 currentColor。p01 本身
+// 就是固定暗色封面（WebPage dark：背景 COLORS.ink、文字 COLORS.paper），与第三套
+// （深色椭圆）colorway 无关；面板背景与页根背景在设计上一直同色。面板上叠的
+// label/title/body 用的是 #d27b62/#f6f1e7/rgba(246,241,231,..) 这组暖白字色，专为
+// 深色面板设计。若改 currentColor，面板背景会随页根 color（选中浅色 colorway 时会
+// 变浅）一起变浅，而叠在上面的暖白字色不变，读不出来——两者本应独立，不是需要跟随
+// 书本墨色的装饰件。
 const SERIF_CN = '&quot;Noto Serif SC&quot;, &quot;Source Han Serif SC&quot;, &quot;Songti SC&quot;, serif';
 const MONO = '&quot;JetBrains Mono&quot;, &quot;Noto Sans SC&quot;, &quot;Menlo&quot;, monospace';
 
