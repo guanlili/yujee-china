@@ -76,3 +76,18 @@ test('appendCoverSummary 把真页 textsJson 传给 coverOptionHTML(回执卡不
   assert.match(fn![0], /coverTexts:\s*coverPage\?\.textsJson/);
   assert.match(fn![0], /endingTexts:\s*endingPage\?\.textsJson/);
 });
+
+// ─── 第三套配色色点(Task 12) ────────────────────────────────────────────────
+// 第三套(深色椭圆)带 colorways:选中它时选择卡下方展开一排色点,选完随封面组
+// 一起确认。其余套没有 colorways,行必须隐藏而不是空着。
+
+test('选中带 colorways 的那一套时,选择卡里出现一排色点', () => {
+  const fn = /async function offerDesignCard\(\)[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'offerDesignCard must exist');
+  assert.match(fn![0], /cv-swatches/);
+  assert.match(fn![0], /sets\[selected\]\?\.colorways/);
+});
+
+test('确认按钮把选中的配色 id 一起送出', () => {
+  assert.match(src, /runApplyDesign\(sets\[selected\], sets\[selected\]\?\.pageBackground, selectedColorway\)/);
+});

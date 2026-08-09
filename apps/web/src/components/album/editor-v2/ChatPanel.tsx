@@ -58,6 +58,7 @@ import {
   type DraftPageKind,
 } from '@/lib/album/authoring-client';
 import type { V3ChatTurn } from '@yujee/contracts';
+import type { CoverColorway } from '@/lib/design/third-set-palette';
 import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
 import {
   UnauthorizedError,
@@ -1701,7 +1702,7 @@ export function ChatPanel({
     }
     async function offerDesignCard() {
       if (disposed || designOfferShown) return;
-      let sets: Array<{ coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string; pageBackground?: string }> = [];
+      let sets: Array<{ coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string; pageBackground?: string; colorways?: readonly CoverColorway[] }> = [];
       try {
         const res = await fetch(`/api/v3/albums/${albumId}/design`);
         const json = await res.json();
@@ -1755,11 +1756,37 @@ export function ChatPanel({
       inner.appendChild(sub);
 
       let selected = 0;
+      // 第三套(深色椭圆)带 colorways:选中它时在列表下方展开一排色点,选完一起确认。
+      let selectedColorway: string | undefined = undefined;
+      const swatchRow = document.createElement('div');
+      swatchRow.className = 'cv-swatches';
+      swatchRow.style.display = 'none';
       const list = document.createElement('div');
       list.className = 'cv-picks';
       const picks: HTMLButtonElement[] = [];
       const repaint = () => {
         picks.forEach((p, i) => p.setAttribute('aria-checked', i === selected ? 'true' : 'false'));
+        const ways = sets[selected]?.colorways;
+        if (!ways || ways.length === 0) {
+          swatchRow.style.display = 'none';
+          swatchRow.replaceChildren();
+          selectedColorway = undefined;
+          return;
+        }
+        if (!ways.some((w) => w.id === selectedColorway)) selectedColorway = ways[0]!.id;
+        swatchRow.replaceChildren();
+        for (const way of ways) {
+          const dot = document.createElement('button');
+          dot.type = 'button';
+          dot.className = 'cv-swatch';
+          dot.style.background = way.bg;
+          dot.title = currentLang === 'zh' ? way.name : way.nameEn;
+          dot.setAttribute('aria-label', dot.title);
+          dot.setAttribute('aria-pressed', way.id === selectedColorway ? 'true' : 'false');
+          dot.addEventListener('click', () => { selectedColorway = way.id; repaint(); });
+          swatchRow.appendChild(dot);
+        }
+        swatchRow.style.display = '';
       };
       const CHECK_SVG =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
@@ -1789,6 +1816,7 @@ export function ChatPanel({
         list.appendChild(pick);
       });
       inner.appendChild(list);
+      inner.appendChild(swatchRow);
 
       // 书页底色不再单独选:每套推荐封面自带一个底色(见 buildCoverSets),已染进上面的
       // 缩略图预览;用户选哪套 = 连那套底色一起刷全书(下方确认时透传 set.pageBackground)。
@@ -1804,7 +1832,7 @@ export function ChatPanel({
       go.innerHTML = `${aT('确认并继续', 'Confirm')}${ARROW_SVG}`;
       go.addEventListener('click', () => {
         if (sending) return;
-        void runApplyDesign(sets[selected], sets[selected]?.pageBackground);
+        void runApplyDesign(sets[selected], sets[selected]?.pageBackground, selectedColorway);
       });
       const glow = document.createElement('span');
       glow.className = 'btn-glow';
