@@ -57,9 +57,13 @@ test('mag-22:版权行与社交图标跟随页根墨色(深底封底上不会消
   assert.match(html, /data-template="mag-22"[^>]*color:#1c1b18/, '页根要有确定的默认墨色');
   assert.doesNotMatch(html, /#292929/, '社交图标不再写死深灰');
   assert.doesNotMatch(html, /#C2C2C2/i, '版权行不再写死浅灰');
-  // 三处描边/填充 + 版权行,一律 currentColor(页根 color 是唯一色源)。
-  assert.equal((html.match(/currentColor/g) ?? []).length, 5);
+  // 三处描边/填充 + 版权行 + logo 字标笔画组(task-15 缺口 2:base64 SVG 换成内联
+  // SVG 后新增的一处),一律 currentColor(页根 color 是唯一色源)。
+  assert.equal((html.match(/currentColor/g) ?? []).length, 6);
   assert.match(html, /©[\s\S]{0,40}Yujee/, '版权行还在');
   // 版权行保持「很轻」:0.28 的墨色压白 ≈ 原来的 #C2C2C2,深底上同样只是淡淡一行。
   assert.match(html, /color:currentColor;opacity:0\.28/);
+  // logo 不再是 base64 data URI,笔画组直接跟墨色(task-15 缺口 2)。
+  assert.doesNotMatch(html, /base64/, 'logo 不再是 base64 SVG data URI');
+  assert.doesNotMatch(html, /#111111/i, 'logo 笔画组不再写死 #111111');
 });
