@@ -5,8 +5,13 @@ import { resolveThemeCarrier } from '../theme-carrier';
 import { contractRole } from '../contract-role';
 
 // 封面 · 椭圆挖空（category: cover，1 图）。深墨绿底；胶囊形（两端全圆）照片框
-// 水平居中；主标题 + 英文副标题压顶居中；右侧竖排系列名（label，旋转 90°）；
+// 水平居中；主标题 + 副标题压顶居中；右侧竖排系列名（label，旋转 90°）；
 // 底部左品牌字（label2）+ 底部右年记（label3）。
+//
+// 语言口径（#307）：title 的 lang 在 engine 侧 compose handler 里被强制覆盖成
+// en（产品决定标题一律英文、走杂志感），explain/label/label2/label3 都照
+// mag-62.json 声明的 lang 走 —— explain 这里声明的是 user，不是固定英文；下面
+// sample 兜底给的英文串只是示例文案的巧合，不代表这个槽恒定出英文。
 // 几何逐一镜像自 HTML 模板真相 `render/html-templates/mag-62.ts`（MAG_62_HTML）：
 // 794×1123、绝对定位、写死 px。胶囊 212×402、圆角 106（= 宽的一半，两端全圆）、
 // left 291（(794-212)/2，水平居中）、top 366。
@@ -53,7 +58,7 @@ export function WebMag62({ data, imagePos }: TemplateRenderProps) {
         {d['title'] || '海边那年'}
       </div>
 
-      {/* 英文副标题（槽 explain，同宽居中） */}
+      {/* 副标题（槽 explain，同宽居中；lang:user 随用户书的语言走，见文件头「语言口径」） */}
       <div
         style={{
           position: 'absolute',

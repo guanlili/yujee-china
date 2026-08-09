@@ -2,6 +2,15 @@
 // 胶囊照片框 212×402(圆角 106 = 宽的一半,两端全圆)、left 291 水平居中、top 366。
 // 底色与文字色由 design-apply 的第三套配色在页根 style 上覆盖(background-color/color),
 // 模板自带的是深墨绿默认配色。
+//
+// 槽位 lang 口径(见 mag-62.json,记一下「为什么」免得被误改):label/label2
+// 沿用 p01 同名槽的 en —— 系列名「Yujee Collection ①」、品牌字「yujee」是固定装饰,
+// 不随用户语言变。label3 是刻意的例外,声明 user:这里放的是「虫小宇 / 2026 年记」
+// 式的本地化落款,不是 p01 label3 那种 「VOL. 2026」英文卷号,内容要跟用户书的语言
+// 走。engine 侧 compose handler 只强制覆盖 title 的 lang 为 en(#307,产品决定标题
+// 一律英文、走杂志感),body/explain/decoration 都照 JSON 声明的 lang 发给写作模型
+// (engine/src/workflows/core/compose/handler.py:121-128)—— label3 的 user 不是
+// 疏漏,别照 p01 把它「修」回 en。
 const SANS_EN = '&quot;Work Sans&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&quot;, sans-serif';
 const SERIF_EN = '&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, &quot;Songti SC&quot;, serif';
 
