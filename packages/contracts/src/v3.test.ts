@@ -775,6 +775,29 @@ test('V3StoryDraft.design.pageBackground: 契约字段往返保留(此前无 .st
   assert.equal(withoutBg.success && withoutBg.data.design?.pageBackground, undefined);
 });
 
+test('V3StoryDraft.design.coverColorway: 第三套配色 id 往返保留,老草稿不带也照旧', () => {
+  const parsed = V3StoryDraft.safeParse({
+    version: 'v3-story',
+    tree: { chapters: [] },
+    progress: { currentChapterId: null, doneChapterIds: [] },
+    design: { fonts: {}, colors: {}, pageBackground: '#F1F2F0', coverColorway: 'teal' },
+  });
+  assert.equal(parsed.success, true);
+  // 丢了它,加照片那条路就只能从页面 carrier 反推配色 —— 反推到的是封面的浅字色,
+  // 刷到重烘出来的白底新页上,实测 1.09:1。
+  assert.equal(parsed.success && parsed.data.design?.coverColorway, 'teal');
+
+  const legacy = V3StoryDraft.safeParse({
+    version: 'v3-story',
+    tree: { chapters: [] },
+    progress: { currentChapterId: null, doneChapterIds: [] },
+    design: { fonts: {}, colors: {}, pageBackground: '#FBF8F1' },
+  });
+  assert.equal(legacy.success, true);
+  assert.equal(legacy.success && legacy.data.design?.coverColorway, undefined);
+  assert.equal(legacy.success && legacy.data.design?.pageBackground, '#FBF8F1');
+});
+
 test('Page.html:可选、64KB 上限(C 方案页面真相字段)', async () => {
   const { Page } = await import('./layout');
   const base = { pageIndex: 0, templateId: 'mag-01', images: {}, texts: {} };

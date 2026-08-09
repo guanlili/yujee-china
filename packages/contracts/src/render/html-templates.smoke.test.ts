@@ -48,3 +48,18 @@ for (const tpl of registered) {
     }
   });
 }
+
+// mag-22 是四套封面组共用的封底。第三套(深色椭圆)会把它的页根刷成配色深底 +
+// 浅墨色(apps/web design-apply 的 applyDarkChrome),此前版权行(#C2C2C2)和右下
+// 两个社交图标(#292929)写死深色,深底上直接消失 —— 印出来的封底缺一块。
+test('mag-22:版权行与社交图标跟随页根墨色(深底封底上不会消失)', () => {
+  const html = getHtmlTemplate('mag-22')!;
+  assert.match(html, /data-template="mag-22"[^>]*color:#1c1b18/, '页根要有确定的默认墨色');
+  assert.doesNotMatch(html, /#292929/, '社交图标不再写死深灰');
+  assert.doesNotMatch(html, /#C2C2C2/i, '版权行不再写死浅灰');
+  // 三处描边/填充 + 版权行,一律 currentColor(页根 color 是唯一色源)。
+  assert.equal((html.match(/currentColor/g) ?? []).length, 5);
+  assert.match(html, /©[\s\S]{0,40}Yujee/, '版权行还在');
+  // 版权行保持「很轻」:0.28 的墨色压白 ≈ 原来的 #C2C2C2,深底上同样只是淡淡一行。
+  assert.match(html, /color:currentColor;opacity:0\.28/);
+});

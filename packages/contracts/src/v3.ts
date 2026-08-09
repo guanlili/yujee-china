@@ -385,6 +385,11 @@ export const V3StoryDraft = z
         // 书页底色(design-chat / compose 的封面套色决策):此前没进这个 schema,
         // 靠默认 zod strip 静默丢弃(往返即丢);Phase 1a Task 6 收口。
         pageBackground: z.string().optional(),
+        // 第三套(深色椭圆)选中的配色 id。同样是「往返即丢」那一类:成稿时用过就必须
+        // 记下来,否则后续只能从页面 carrier 反推 —— 加照片那条路正是这么栽的
+        // (反推到封面的浅字色,刷到白底新页上,实测 1.09:1,整页像空白)。
+        // 可选且追加:老草稿没有这个键照旧解析、行为不变。
+        coverColorway: z.string().optional(),
       })
       .optional(),
   })
