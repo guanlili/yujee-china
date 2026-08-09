@@ -168,6 +168,14 @@ test('readComposeMeta:坏形状 → null(回调侧据此判失败,不会拿空�
   assert.equal(readComposeMeta({ appendChapterIds: ['c1'] }), null);
   assert.equal(readComposeMeta({ compose: { coverTemplateId: COVER_ID } }), null);
   assert.deepEqual(readComposeMeta({ compose: { ...META } }), META);
+  // coverColorway 是真实账号那条路唯一会丢字段的跳(job.meta 落库为 JSON,回调侧靠
+  // readComposeMeta 逐字段读回;占位书直接用内存对象,不经过这个函数)。META 本身不带
+  // 这个字段(全文件其余用例都复用 META,加上会让它们意外都走深色渲染),所以只在这一
+  // 条用例里局部构造,钉住「读回的 meta 里必须带着它」。
+  assert.deepEqual(
+    readComposeMeta({ compose: { ...META, coverColorway: 'teal' } }),
+    { ...META, coverColorway: 'teal' },
+  );
 });
 
 test('③ handleV3ComposeCompleted:落库成书 + stage 推到 ready(导出闸门钥匙)', async (t) => {
@@ -304,8 +312,14 @@ test('mergeComposeIntoDraft: meta 带 coverColorway 时内页走深色配色', (
     { ...META, coverTemplateId: 'mag-62', coverColorway: 'teal' } as ComposeJobMeta,
     {},
   );
-  // 页序 [封面, ...内页, 封尾];第一张内页拿 THIRD_SET_INTERIOR[0]
+  // 页序 [封面, ...内页, 封尾];第一张内页拿 THIRD_SET_INTERIOR[0]。
+  // 注意:内页墨色按**页序**在 THIRD_SET_INTERIOR 三组里轮换,与选了哪个 colorway 无关 ——
+  // 传 cream/pink/navy 这条断言照样是 #0E2A47,所以它不能证明「teal 这个 id 真的被查到
+  // 并用上了」,只能证明「dark 模式被打开了」。真正认 id 的是封面:封面/封尾直接吃
+  // colorway 自己的 bg(THIRD_SET_COVERS 里 teal 是 #12363A,与内页轮换色表不共享任何
+  // 一个值),下面这条才钉住「传进去的 id 真的被用了」。
   assert.match(draftJson.pages[1]!.html!, /background-color:\s*#0E2A47/i);
+  assert.match(draftJson.pages[0]!.html!, /background-color:\s*#12363A/i);
 });
 
 test('mergeComposeIntoDraft: 不带 coverColorway 时不写深色底(老书行为不变)', () => {

@@ -1867,7 +1867,15 @@ export function ChatPanel({
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             language: currentLang === 'zh' ? 'zh' : 'en',
-            ...set,
+            // 不能 ...set 整个展开:第三套(mag-62)的 set 在运行时带着
+            // design-apply.ts buildCoverSets 挂上的 colorways(类型里没有,
+            // JSON 里有),route.ts 的 BodySchema 是 .strict(),未知键会被
+            // 直接拒收(400),书组不出来。逐字段显式列,加字段以后不会再
+            // 静默炸一次。
+            coverTemplateId: set.coverTemplateId,
+            coverPhotoId: set.coverPhotoId,
+            endingTemplateId: set.endingTemplateId,
+            endingPhotoId: set.endingPhotoId,
             ...(pageBackground ? { pageBackground } : {}),
             ...(coverColorway ? { coverColorway } : {}),
             refs,
@@ -1935,6 +1943,7 @@ export function ChatPanel({
           endingTemplateId: string;
           endingPhotoId: string;
           pageBackground?: string;
+          coverColorway?: string;
         } | null = null;
         for (const m of msgs) {
           const patch = m.layoutPatch as { designApplied?: Record<string, unknown> } | null;
@@ -1954,6 +1963,9 @@ export function ChatPanel({
               ...(typeof a.pageBackground === 'string' && a.pageBackground
                 ? { pageBackground: a.pageBackground }
                 : {}),
+              ...(typeof a.coverColorway === 'string' && a.coverColorway
+                ? { coverColorway: a.coverColorway }
+                : {}),
             };
           }
         }
@@ -1967,7 +1979,7 @@ export function ChatPanel({
             'Signed in — now writing your real story into the book, one moment.',
           ),
         );
-        await runApplyDesign(applied, applied.pageBackground);
+        await runApplyDesign(applied, applied.pageBackground, applied.coverColorway);
       } catch {
         placeholderUpgradeStarted = false; // 网络抖动等,放过;下次进来再试
       }

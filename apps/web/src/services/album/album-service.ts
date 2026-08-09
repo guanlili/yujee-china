@@ -1477,8 +1477,9 @@ export const albumService = {
             coverPhotoId: input.coverPhotoId,
             endingTemplateId: input.endingTemplateId,
             endingPhotoId: input.endingPhotoId,
-            // 登录后自动补跑真 compose 时,前端从这条记录恢复完整封面组(含底色)。
+            // 登录后自动补跑真 compose 时,前端从这条记录恢复完整封面组(含底色/配色)。
             ...(input.pageBackground ? { pageBackground: input.pageBackground } : {}),
+            ...(input.coverColorway ? { coverColorway: input.coverColorway } : {}),
           },
         },
       });
