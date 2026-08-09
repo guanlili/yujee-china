@@ -180,6 +180,54 @@ test('assembleDesignedPages: 封底多图槽全部填上,第 1 槽是 endingPhot
   }
 });
 
+// ── 第三套深色内页配色(2026-08 三套体系) ──
+
+test('assembleDesignedPages: 带 colorway 时内页按 3 组深底循环,页根刷底色和字色', () => {
+  const interior = [0, 1, 2, 3].map((i) => ({
+    pageIndex: i,
+    templateId: 'mag-08',
+    images: {},
+    texts: { note: '文' },
+  }));
+  const pages = assembleDesignedPages({
+    interiorPages: interior as never,
+    set: {
+      coverTemplateId: 'mag-62',
+      coverPhotoId: 'p1',
+      endingTemplateId: 'mag-22',
+      endingPhotoId: 'p2',
+    },
+    coverTexts: {},
+    endingTexts: {},
+    fonts: FONTS,
+    colors: COLORS,
+    colorway: { id: 'teal', name: '深墨绿', nameEn: 'Deep Teal', bg: '#12363A', title: '#F0A4C2', sub: '#E7E3D8' },
+  });
+  // 页序 [封面, 内页×4, 封底];内页从 index 1 开始,按 3 组循环
+  assert.match(pages[1]!.html!, /background-color:\s*#0E2A47/i);
+  assert.match(pages[2]!.html!, /background-color:\s*#12363A/i);
+  assert.match(pages[3]!.html!, /background-color:\s*#14140F/i);
+  assert.match(pages[4]!.html!, /background-color:\s*#0E2A47/i); // 循环回第一组
+  // 封面/封底用 colorway 的底色
+  assert.match(pages[0]!.html!, /background-color:\s*#12363A/i);
+  // 深底上正文色翻浅,否则模板根写死的 #1c1b18 会黑压黑
+  assert.match(pages[1]!.html!, /color:\s*#E8E5DC/i);
+});
+
+test('assembleDesignedPages: 不带 colorway 时行为不变(仍走单色 pageBackground)', () => {
+  const pages = assembleDesignedPages({
+    interiorPages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }] as never,
+    set: { coverTemplateId: 'mag-01', coverPhotoId: 'p1', endingTemplateId: 'mag-22', endingPhotoId: 'p2' },
+    coverTexts: {},
+    endingTexts: {},
+    fonts: FONTS,
+    colors: COLORS,
+    pageBackground: '#FBF8F1',
+  });
+  assert.match(pages[1]!.html!, /background-color:\s*#FBF8F1/i);
+  assert.doesNotMatch(pages[1]!.html!, /#0E2A47/i);
+});
+
 test('assembleDesignedPages: 无补充照片时后续图槽复用 endingPhotoId 不留空', async () => {
   const { assembleDesignedPages, pickEndingTemplateId } = await import('./design-apply');
   const { TEMPLATES } = await import('@yujee/contracts');

@@ -206,22 +206,27 @@ export function slotSpecs(
 // carrier sweep:按模板声明的文字槽 role,把三键字体/颜色写成 `${slotId}#artFont` /
 // `${slotId}#accentColor`(web/PDF 渲染端 theme-carrier 消费的同一格式)。
 // decoration 颜色跟标题色(与 design-agent set_text_colors 口径一致)。
-export function sweepCarriers(pages: Page[], fonts: DesignFonts, colors: DesignColors): Page[] {
+export function sweepCarriers(
+  pages: Page[],
+  fonts: DesignFonts,
+  colors: DesignColors | ((page: Page) => DesignColors),
+): Page[] {
   const fontByRole: Record<string, string> = {
     title: fonts.title,
     body: fonts.body,
     explain: fonts.body,
     decoration: fonts.decoration,
   };
-  const colorByRole: Record<string, string> = {
-    title: colors.title,
-    body: colors.body,
-    explain: colors.explain,
-    decoration: colors.title,
-  };
   return pages.map((page) => {
     const template = templateOf(page.templateId);
     if (!template) return page;
+    const c = typeof colors === 'function' ? colors(page) : colors;
+    const colorByRole: Record<string, string> = {
+      title: c.title,
+      body: c.body,
+      explain: c.explain,
+      decoration: c.title,
+    };
     const texts = { ...page.texts };
     for (const slot of template.texts ?? []) {
       const font = fontByRole[slot.role];
@@ -247,6 +252,8 @@ export function assembleDesignedPages(input: {
   // 书页底色:用户在封面选择卡里选的 4 色之一,刷全书每页页根 background-color。
   // 纯白/未传 = 不写(留模板默认),见 applyPageBackground。
   pageBackground?: string;
+  /** 第三套(深色椭圆)选中的配色;不传 = 走原来的单色 pageBackground 路径。 */
+  colorway?: CoverColorway;
 }): Page[] {
   const coverSlot = firstImageSlotId(input.set.coverTemplateId);
   const endingSlotIds = (templateOf(input.set.endingTemplateId)?.images ?? []).map((s) => s.id);
@@ -272,11 +279,58 @@ export function assembleDesignedPages(input: {
     ...page,
     pageIndex: idx,
   }));
-  const swept = sweepCarriers(ordered, input.fonts, input.colors);
   // C 方案:carrier sweep 改了 texts,已烘的 html 失效 —— 清掉重烘,设计结果
   // (字体/颜色/封面封尾文案)烘进页面真相。lenient 为迁移过渡期(见 bake-html)。
+  const inkByIndex = input.colorway ? darkInkByPageIndex(ordered, input.colorway) : null;
+  const swept = sweepCarriers(ordered, input.fonts, (page) => {
+    const ink = inkByIndex?.get(page.pageIndex);
+    return ink ? { title: ink.accent, body: ink.body, explain: ink.body } : input.colors;
+  });
   const baked = bakePagesHtml(swept.map((page) => ({ ...page, html: undefined }))) as Page[];
-  return applyPageBackground(baked, input.pageBackground);
+  return inkByIndex
+    ? applyDarkChrome(baked, inkByIndex)
+    : applyPageBackground(baked, input.pageBackground);
+}
+
+/**
+ * 第三套的逐页配色:封面/封尾用用户选的 colorway,内页按 THIRD_SET_INTERIOR 三组
+ * **按出现顺序**循环(不按章 —— 章长短不一会让色块忽长忽短)。
+ * 深色套不留白页:满版图页染了也基本看不见,但深色书里插一页纯白像漏印,故一律上底色。
+ */
+function darkInkByPageIndex(
+  ordered: Page[],
+  colorway: CoverColorway,
+): Map<number, { bg: string; accent: string; body: string }> {
+  const out = new Map<number, { bg: string; accent: string; body: string }>();
+  let i = 0;
+  for (const page of ordered) {
+    if (templateCategory(page.templateId) === 'interior') {
+      const ink = THIRD_SET_INTERIOR[i % THIRD_SET_INTERIOR.length]!;
+      out.set(page.pageIndex, { bg: ink.bg, accent: ink.accent, body: ink.body });
+      i += 1;
+    } else {
+      // 封面/封尾:用 colorway,让整本书首尾同色收口
+      out.set(page.pageIndex, { bg: colorway.bg, accent: colorway.title, body: colorway.sub });
+    }
+  }
+  return out;
+}
+
+/** 页根同时刷底色和默认字色 —— 模板根写死 color:#1c1b18,深底上不翻浅的话,
+ *  非 carrier 的静态装饰(页码、斜杠、分隔符)会黑压黑看不见。 */
+function applyDarkChrome(
+  pages: Page[],
+  inkByIndex: Map<number, { bg: string; body: string }>,
+): Page[] {
+  return pages.map((page) => {
+    const ink = inkByIndex.get(page.pageIndex);
+    if (!ink || typeof page.html !== 'string') return page;
+    const patched = patchHtmlPageStyle(page.html, {
+      'background-color': ink.bg,
+      color: ink.body,
+    });
+    return patched ? { ...page, html: patched } : page;
+  });
 }
 
 // 书页底色 sweep:烘完 html 后,给每页页根 [data-template] 写 background-color。
