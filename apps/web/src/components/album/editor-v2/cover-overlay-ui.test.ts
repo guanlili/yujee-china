@@ -60,12 +60,16 @@ test('缩略图右下角小放大镜 → 无遮罩气泡放大', () => {
   assert.match(offer, /openCoverZoom\(sets\[i\]\)/, '点放大镜开气泡');
   const zoom = fnBody('openCoverZoom');
   assert.match(zoom, /cv-zoom-layer/, '气泡浮层');
+  // 底色不再直接读 set.pageBackground:第三套那一套的 pageBackground 是近白的内页底色,
+  // 盖到 mag-62 深页根上会把封面渲成浅色近空白。统一经 coverPreviewBackground 换算。
+  assert.match(zoom, /const zoomBg = coverPreviewBackground\(set\)/, '放大底色走统一口径');
   assert.match(
     zoom,
-    /coverOptionHTML\?\.\(set\.coverTemplateId, set\.coverPhotoId, 132, 176, set\.pageBackground\)/,
-    '放大用更大尺寸渲染封面(带每套书页底色)',
+    /coverOptionHTML\?\.\(set\.coverTemplateId, set\.coverPhotoId, 132, 176, zoomBg\)/,
+    '放大用更大尺寸渲染封面(带换算后的底色)',
   );
-  assert.match(zoom, /coverOptionHTML\?\.\(set\.endingTemplateId, set\.endingPhotoId, 132, 176, set\.pageBackground\)/, '放大封尾(带每套书页底色)');
+  assert.match(zoom, /coverOptionHTML\?\.\(set\.endingTemplateId, set\.endingPhotoId, 132, 176, zoomBg\)/, '放大封尾(带换算后的底色)');
+  assert.doesNotMatch(zoom, /set\.pageBackground/, '不能再绕过换算直接用 set.pageBackground');
   assert.doesNotMatch(
     css,
     /\.cv-zoom-layer\{[^}]*background:\s*rgba\(0,\s*0,\s*0/,

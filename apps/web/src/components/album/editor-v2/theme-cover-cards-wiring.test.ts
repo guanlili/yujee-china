@@ -43,7 +43,7 @@ test('loadHistory rebuilds the cover recap in place from the designApplied marke
   // user branch: marker → recap card (history-replay tagged) appended BEFORE the bubble.
   assert.match(
     src,
-    /const applied = readDesignApplied\(m\.layoutPatch\);[\s\S]{0,300}buildCoverRecapCard\(applied\)[\s\S]{0,200}appendUserText\(c, \{ historyReplay: true \}\)/,
+    /const applied = readDesignApplied\(m\.layoutPatch\);[\s\S]{0,900}buildCoverRecapCard\([\s\S]{0,300}appendUserText\(c, \{ historyReplay: true \}\)/,
   );
   // the flag is reset on每次 replay 清场 so a re-run can't leak a stale true.
   assert.match(src, /data-history-replay[\s\S]{0,120}historyHadCoverRecap = false;/);
@@ -55,8 +55,9 @@ test('appendCoverSummary is a READ-ONLY recap (preview only, no API call)', () =
   const body = fn![0];
   // 2026-07 重构:回执统一走 buildCoverRecapCard(chap-card 体系,封面+封底成对小预览)。
   assert.match(body, /buildCoverRecapCard\(/);
-  // cover/ending resolved by skeleton kind (same as the live card), previewed read-only.
-  assert.match(body, /kindByPageIndex\.get\(p\.pageIndex\) === 'cover'/);
+  // cover/ending 的解析(按骨架 kind 取真页)统一收进 coverRecapFromPages —— 三条
+  // 回执路径(实时成稿后/历史回放/ready 兜底)共用同一份,不再各写各的。
+  assert.match(body, /coverRecapFromPages\(recapSourcePages\(\)\)/);
   // read-only: never posts a cover selection.
   assert.doesNotMatch(body, /runCover\(/);
   assert.doesNotMatch(body, /runApplyDesign/);
@@ -70,24 +71,65 @@ test('appendCoverSummary is a READ-ONLY recap (preview only, no API call)', () =
   assert.doesNotMatch(builder![0], /addEventListener/);
 });
 
-test('appendCoverSummary 把真页 textsJson 传给 coverOptionHTML(回执卡不再显示模板 sample)', () => {
-  const fn = /function appendCoverSummary\(\)[\s\S]*?\n {4}\}/.exec(src);
-  assert.ok(fn, 'appendCoverSummary must exist');
-  assert.match(fn![0], /coverTexts:\s*coverPage\?\.textsJson/);
-  assert.match(fn![0], /endingTexts:\s*endingPage\?\.textsJson/);
+test('回执卡的真文案来自真页面:recapSourcePages 带 textsJson,三条路都经 coverRecapFromPages', () => {
+  const src2 = /function recapSourcePages\(\)[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(src2, 'recapSourcePages must exist');
+  assert.match(src2![0], /textsJson:\s*p\.textsJson/, '真页文案要带进回执数据');
+  assert.match(src2![0], /htmlJson/, '页根底色从 html 读,必须带上');
+  // 历史回放这条路也要用真页面(此前只按 designApplied 标记重建,永远渲模板 sample,
+  // 而且 pageBackground 整个漏掉 —— buildCoverRecapCard 只传了一个参数)。
+  const replay = /const applied = readDesignApplied\(m\.layoutPatch\);[\s\S]*?appendUserText\(c, \{ historyReplay: true \}\)/.exec(src);
+  assert.ok(replay, 'loadHistory 的 designApplied 分支必须可解析');
+  assert.match(replay![0], /coverRecapFromPages\(recapSourcePages\(\)\)/, '有真页时用真页');
+  assert.match(replay![0], /coverPreviewBackground\(applied\)/, '没真页时也要按标记算出底色');
 });
 
-// ─── 第三套配色色点(Task 12) ────────────────────────────────────────────────
-// 第三套(深色椭圆)带 colorways:选中它时选择卡下方展开一排色点,选完随封面组
-// 一起确认。其余套没有 colorways,行必须隐藏而不是空着。
+// ─── 成稿完成后回执卡换成真文案(评审 F2) ───────────────────────────────────
+// 用户真正走的那条路是 runApplyDesign → waitForComposeThenRefresh:选定时建的那张
+// 回执卡没有文案(那时 compose 还没跑),渲的是模板 sample。成书后必须原位换掉。
 
-test('选中带 colorways 的那一套时,选择卡里出现一排色点', () => {
+test('waitForComposeThenRefresh 用成书后的真页面原位替换回执卡', () => {
+  const fn = /async function waitForComposeThenRefresh\([\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'waitForComposeThenRefresh must exist');
+  const body = fn![0];
+  // 传进来的 recap 元素此前完全没被用过(死参数),现在必须真的被替换掉。
+  assert.match(body, /recap\?\.isConnected/, '回执卡还在 DOM 里才换');
+  assert.match(
+    body,
+    /coverRecapFromPages\(draft\.pages\)[\s\S]{0,200}recap\.replaceWith\(buildCoverRecapCard\(live, live\.pageBackground\)\)/,
+    '用刚取到的骨架真页(带 textsJson)重建回执卡并原位替换',
+  );
+});
+
+// ─── 第三套配色:系统派定,不再让用户挑(产品决定 2026-08) ────────────────────
+// Task 12 那排色点已拆除:buildCoverSets 按 albumId 确定性派一个 coverColorway,
+// 前端只负责原样透传。请求体仍逐字段列(不能 ...set:route 是 .strict())。
+
+test('选择卡不再有配色色点,第三套的配色随这一套一起确认', () => {
   const fn = /async function offerDesignCard\(\)[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'offerDesignCard must exist');
-  assert.match(fn![0], /cv-swatches/);
-  assert.match(fn![0], /sets\[selected\]\?\.colorways/);
+  assert.doesNotMatch(fn![0], /cv-swatch/, '色点 UI 已拆除');
+  assert.doesNotMatch(src, /selectedColorway/, '没有「用户选的配色」这个状态了');
+  assert.match(
+    src,
+    /runApplyDesign\(sets\[selected\], sets\[selected\]\?\.pageBackground, sets\[selected\]\?\.coverColorway\)/,
+    '确认时把服务端派定的配色 id 原样送出',
+  );
 });
 
-test('确认按钮把选中的配色 id 一起送出', () => {
-  assert.match(src, /runApplyDesign\(sets\[selected\], sets\[selected\]\?\.pageBackground, selectedColorway\)/);
+test('第三套的预览用它的 colorway 底色渲染,不是那套的书页底色', () => {
+  const fn = /async function offerDesignCard\(\)[\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(fn, 'offerDesignCard must exist');
+  assert.match(fn![0], /const previewBg = coverPreviewBackground\(set\)/);
+  assert.match(fn![0], /coverOptionHTML\?\.\(set\.coverTemplateId, set\.coverPhotoId, 46, 60, previewBg\)/);
+  assert.match(fn![0], /coverOptionHTML\?\.\(set\.endingTemplateId, set\.endingPhotoId, 46, 60, previewBg\)/);
+  assert.doesNotMatch(fn![0], /46, 60, set\.pageBackground/, '不能再把近白内页底色盖到深色封面上');
+});
+
+test('POST /design 的请求体仍是逐字段列举(不能 ...set 展开)', () => {
+  const run = /async function runApplyDesign\([\s\S]*?\n {4}\}/.exec(src);
+  assert.ok(run, 'runApplyDesign must exist');
+  assert.doesNotMatch(run![0], /\.\.\.set\b/, 'route 的 BodySchema 是 .strict(),展开会 400');
+  assert.match(run![0], /coverTemplateId: set\.coverTemplateId/);
+  assert.match(run![0], /\.\.\.\(coverColorway \? \{ coverColorway \} : \{\}\)/);
 });

@@ -1538,14 +1538,6 @@
 /* 只读回执(已选封面组):无交互态 */
 .editor-port .cv-opt.is-recap{ cursor:default; }
 .editor-port .cv-opt.is-recap:hover{ box-shadow:0 0 0 1px var(--border); }
-/* 第三套(深色椭圆)专属配色色点:选中该套时展开,其余套隐藏(display:none,非空着)。 */
-.editor-port .cv-swatches{ display:flex; gap:8px; padding:8px 3px 2px; }
-.editor-port .cv-swatch{
-  width:26px; height:26px; border-radius:50%; border:1px solid var(--border);
-  cursor:pointer; padding:0; transition:box-shadow .15s, transform .15s;
-}
-.editor-port .cv-swatch:hover{ transform:scale(1.08); }
-.editor-port .cv-swatch[aria-pressed="true"]{ box-shadow:0 0 0 2px var(--grad-purple); }
 /* 封面/封底成对小预览:真模板缩放渲染 + 左下角小标签 */
 .editor-port .cv-face{
   position:relative; display:block; width:92px; height:122px;

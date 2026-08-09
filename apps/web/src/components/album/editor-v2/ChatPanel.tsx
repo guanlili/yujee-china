@@ -58,7 +58,11 @@ import {
   type DraftPageKind,
 } from '@/lib/album/authoring-client';
 import type { V3ChatTurn } from '@yujee/contracts';
-import type { CoverColorway } from '@/lib/design/third-set-palette';
+import {
+  coverPreviewBackground,
+  coverRecapFromPages,
+  type RecapSourcePage,
+} from './cover-recap';
 import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
 import {
   UnauthorizedError,
@@ -87,6 +91,17 @@ import {
 import { YUJEE_STATE_ASSETS } from '@/components/app/YujeeState';
 
 export type ChatMode = 'authoring' | 'editing';
+
+/** 封面组选项(GET /design 的 sets 元素;与服务端 design-apply.CoverSet 同形)。 */
+type CoverSetOption = {
+  coverTemplateId: string;
+  coverPhotoId: string;
+  endingTemplateId: string;
+  endingPhotoId: string;
+  pageBackground?: string;
+  /** 第三套专有:系统派定的配色 id(单个字符串,不是色表 —— 请求体是 .strict()) */
+  coverColorway?: string;
+};
 
 type HistoryMessage = {
   seq?: number;
@@ -359,11 +374,15 @@ export function ChatPanel({
     // 历史里是否已原位重建过封面回执卡(designApplied 标记):有则 ready 分支不再尾部补卡。
     let historyHadCoverRecap = false;
     // applyDesign 落库的封面选择标记(album-service):形状不对就当没有,退回老行为。
+    // pageBackground / coverColorway 也一起读回来 —— 回执卡的预览底色靠它们,漏读
+    // 就等于把深色套的封面按浅底渲(粉标题 1.7:1,几乎看不见)。
     function readDesignApplied(layoutPatch: unknown): {
       coverTemplateId: string | null;
       coverPhotoId: string | null;
       endingTemplateId: string | null;
       endingPhotoId: string | null;
+      pageBackground?: string;
+      coverColorway?: string;
     } | null {
       if (!layoutPatch || typeof layoutPatch !== 'object') return null;
       const applied = (layoutPatch as { designApplied?: unknown }).designApplied;
@@ -372,13 +391,36 @@ export function ChatPanel({
         const v = (applied as Record<string, unknown>)[key];
         return typeof v === 'string' && v ? v : null;
       };
+      const pageBackground = pick('pageBackground');
+      const coverColorway = pick('coverColorway');
       const set = {
         coverTemplateId: pick('coverTemplateId'),
         coverPhotoId: pick('coverPhotoId'),
         endingTemplateId: pick('endingTemplateId'),
         endingPhotoId: pick('endingPhotoId'),
+        ...(pageBackground ? { pageBackground } : {}),
+        ...(coverColorway ? { coverColorway } : {}),
       };
       return set.coverTemplateId || set.endingTemplateId ? set : null;
+    }
+    /** 画板/骨架里的真页面(回执卡要拿它们的真文案);两处页源都可能还没就绪 → []。 */
+    function recapSourcePages(): RecapSourcePage[] {
+      const skel = latestAuthoringRef.current.draftChapters ?? draftSkel;
+      const kindByPageIndex = new Map<number, DraftPageKind>();
+      for (const p of skel?.pages ?? []) kindByPageIndex.set(p.pageIndex, p.kind);
+      const pagesState = co()?.getPagesState?.() ?? [];
+      return pagesState.flatMap((p) => {
+        const kind = kindByPageIndex.get(p.pageIndex);
+        return kind
+          ? [{
+              templateId: p.templateId,
+              imagesJson: p.imagesJson,
+              textsJson: p.textsJson,
+              ...(typeof p.htmlJson === 'string' ? { htmlJson: p.htmlJson } : {}),
+              kind,
+            }]
+          : [];
+      });
     }
     /** 只把历史消息**请求**发出去(顺带排好序),不碰 DOM。
      *
@@ -436,7 +478,18 @@ export function ChatPanel({
             const applied = readDesignApplied(m.layoutPatch);
             if (applied) {
               historyHadCoverRecap = true;
-              const recap = buildCoverRecapCard(applied);
+              // 页面已经成书时用真页面的文案和底色重建(否则回执卡上永远是模板 sample
+              // 的 "NORWAY / Record",评审 F2);只在模板对得上时才认 —— 后来在设计
+              // 对话里换过封面版式的话,老文案的槽名和新模板对不上,不如退回标记。
+              const live = coverRecapFromPages(recapSourcePages());
+              const sameCover =
+                !!live && live.coverTemplateId === applied.coverTemplateId;
+              const data = sameCover ? { ...applied, ...live } : applied;
+              const recap = buildCoverRecapCard(
+                data,
+                (sameCover ? live!.pageBackground : undefined) ??
+                  coverPreviewBackground(applied),
+              );
               recap.setAttribute('data-history-replay', '1');
               chatBody?.appendChild(recap);
             }
@@ -676,31 +729,11 @@ export function ChatPanel({
     }
 
     function appendCoverSummary() {
-      const kindByPageIndex = new Map<number, DraftPageKind>();
-      const skel = latestAuthoringRef.current.draftChapters ?? draftSkel;
-      for (const p of skel?.pages ?? []) kindByPageIndex.set(p.pageIndex, p.kind);
-      const pagesState = co()?.getPagesState?.() ?? [];
-      const coverPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'cover') ?? null;
-      const endingPage = pagesState.find((p) => kindByPageIndex.get(p.pageIndex) === 'ending') ?? null;
-      if (!coverPage && !endingPage) return; // 设计已必选;老数据没有封面就不渲染占位
-      // 刷新回放:从已落库页面 html 的页根读回书页底色,recap 预览也染上(和选定时一致)。
-      const bgOfPage = (page: { htmlJson?: string } | null): string | undefined => {
-        const html = page?.htmlJson;
-        if (typeof html !== 'string') return undefined;
-        const root = /<[a-z0-9]+\b[^>]*\bdata-template="[^"]*"[^>]*>/i.exec(html)?.[0] ?? '';
-        return /background-color:\s*(#[0-9a-fA-F]{6})/i.exec(root)?.[1];
-      };
-      chatBody!.appendChild(
-        buildCoverRecapCard({
-          coverTemplateId: coverPage?.templateId ?? null,
-          coverPhotoId: coverPage ? (Object.values(coverPage.imagesJson)[0] ?? null) : null,
-          endingTemplateId: endingPage?.templateId ?? null,
-          endingPhotoId: endingPage ? (Object.values(endingPage.imagesJson)[0] ?? null) : null,
-          // 成书后回放:真页 textsJson 直接传,回执卡不再恒渲模板 sample。
-          coverTexts: coverPage?.textsJson,
-          endingTexts: endingPage?.textsJson,
-        }, bgOfPage(coverPage) ?? bgOfPage(endingPage)),
-      );
+      // 成书后回放:真页 textsJson + 页根底色直接进卡,回执卡不再恒渲模板 sample
+      // (coverRecapFromPages 是这块逻辑的唯一真相源,实时/回放/历史三条路共用)。
+      const data = coverRecapFromPages(recapSourcePages());
+      if (!data) return; // 设计已必选;老数据没有封面就不渲染占位
+      chatBody!.appendChild(buildCoverRecapCard(data, data.pageBackground));
     }
 
     function imageUrl(id: string): string | undefined {
@@ -1702,7 +1735,9 @@ export function ChatPanel({
     }
     async function offerDesignCard() {
       if (disposed || designOfferShown) return;
-      let sets: Array<{ coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string; pageBackground?: string; colorways?: readonly CoverColorway[] }> = [];
+      // coverColorway:第三套(深色椭圆)由服务端按 albumId 确定性派定的配色 id
+      // (用户不再挑色);其余套没有这个字段。
+      let sets: Array<CoverSetOption> = [];
       try {
         const res = await fetch(`/api/v3/albums/${albumId}/design`);
         const json = await res.json();
@@ -1756,53 +1791,31 @@ export function ChatPanel({
       inner.appendChild(sub);
 
       let selected = 0;
-      // 第三套(深色椭圆)带 colorways:选中它时在列表下方展开一排色点,选完一起确认。
-      let selectedColorway: string | undefined = undefined;
-      const swatchRow = document.createElement('div');
-      swatchRow.className = 'cv-swatches';
-      swatchRow.style.display = 'none';
       const list = document.createElement('div');
       list.className = 'cv-picks';
       const picks: HTMLButtonElement[] = [];
       const repaint = () => {
         picks.forEach((p, i) => p.setAttribute('aria-checked', i === selected ? 'true' : 'false'));
-        const ways = sets[selected]?.colorways;
-        if (!ways || ways.length === 0) {
-          swatchRow.style.display = 'none';
-          swatchRow.replaceChildren();
-          selectedColorway = undefined;
-          return;
-        }
-        if (!ways.some((w) => w.id === selectedColorway)) selectedColorway = ways[0]!.id;
-        swatchRow.replaceChildren();
-        for (const way of ways) {
-          const dot = document.createElement('button');
-          dot.type = 'button';
-          dot.className = 'cv-swatch';
-          dot.style.background = way.bg;
-          dot.title = currentLang === 'zh' ? way.name : way.nameEn;
-          dot.setAttribute('aria-label', dot.title);
-          dot.setAttribute('aria-pressed', way.id === selectedColorway ? 'true' : 'false');
-          dot.addEventListener('click', () => { selectedColorway = way.id; repaint(); });
-          swatchRow.appendChild(dot);
-        }
-        swatchRow.style.display = '';
       };
       const CHECK_SVG =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
       const ZOOM_SVG =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><line x1="15.5" y1="15.5" x2="21" y2="21"/></svg>';
       // 竖排整行:[封面+封底小图(封面带放大镜)] + [标签] + [右侧圆形单选]。
+      // 预览底色一律走 coverPreviewBackground:第三套用它派定的 colorway 底色,
+      // 拿 set.pageBackground(近白的内页底色)去盖 mag-62 的深页根,整套会被渲成
+      // 浅色近空白(粉标题 1.7:1、米白小字 ~1.05:1)。
       sets.forEach((set, i) => {
+        const previewBg = coverPreviewBackground(set);
         const pick = document.createElement('button');
         pick.type = 'button';
         pick.className = 'cv-pick';
         pick.setAttribute('role', 'radio');
         pick.innerHTML =
           `<span class="cv-pick-thumbs">` +
-            `<span class="cv-face sm">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 46, 60, set.pageBackground) ?? ''}` +
+            `<span class="cv-face sm">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 46, 60, previewBg) ?? ''}` +
             `<button type="button" class="cv-zoom" aria-label="${aT('放大查看', 'Zoom')}" title="${aT('放大查看', 'Zoom')}">${ZOOM_SVG}</button></span>` +
-            `<span class="cv-face sm">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 46, 60, set.pageBackground) ?? ''}</span>` +
+            `<span class="cv-face sm">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 46, 60, previewBg) ?? ''}</span>` +
           `</span>` +
           `<span class="cv-pick-label">${aT('第 ' + (i + 1) + ' 套', 'Set ' + (i + 1))}<i>${aT('封面 + 封底', 'Cover + back')}</i></span>` +
           `<span class="cv-radio">${CHECK_SVG}</span>`;
@@ -1816,10 +1829,10 @@ export function ChatPanel({
         list.appendChild(pick);
       });
       inner.appendChild(list);
-      inner.appendChild(swatchRow);
 
       // 书页底色不再单独选:每套推荐封面自带一个底色(见 buildCoverSets),已染进上面的
       // 缩略图预览;用户选哪套 = 连那套底色一起刷全书(下方确认时透传 set.pageBackground)。
+      // 第三套的配色同理:服务端按 albumId 派定,随这一套一起确认,不再有色点让用户挑。
 
       // 底部:黑色「确认并继续」(必选,无跳过),带品牌光晕。
       const foot = document.createElement('div');
@@ -1832,7 +1845,7 @@ export function ChatPanel({
       go.innerHTML = `${aT('确认并继续', 'Confirm')}${ARROW_SVG}`;
       go.addEventListener('click', () => {
         if (sending) return;
-        void runApplyDesign(sets[selected], sets[selected]?.pageBackground, selectedColorway);
+        void runApplyDesign(sets[selected], sets[selected]?.pageBackground, sets[selected]?.coverColorway);
       });
       const glow = document.createElement('span');
       glow.className = 'btn-glow';
@@ -1853,7 +1866,7 @@ export function ChatPanel({
     }
 
     async function runApplyDesign(
-      set: { coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string; pageBackground?: string },
+      set: CoverSetOption,
       pageBackground?: string,
       coverColorway?: string,
     ) {
@@ -1864,7 +1877,10 @@ export function ChatPanel({
       const dock = byId('coverDock');
       if (dock) { dock.replaceChildren(); dock.style.display = 'none'; }
       setCoverLock(false);
-      const recap = buildCoverRecapCard(set, pageBackground);
+      // 即时回执卡还没有真文案(compose 还没跑),但底色必须已经对:第三套用 colorway
+      // 底色渲染,不然这张卡上的深色封面会是浅底近空白。真文案在成稿完成后由
+      // waitForComposeThenRefresh 原位换掉这张卡。
+      const recap = buildCoverRecapCard(set, coverPreviewBackground({ pageBackground, coverColorway }));
       chatBody!.appendChild(recap);
       appendUserText(aT('就用这组封面', 'Use this cover set'));
       const host = appendThinkingShell();
@@ -1895,11 +1911,10 @@ export function ChatPanel({
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             language: currentLang === 'zh' ? 'zh' : 'en',
-            // 不能 ...set 整个展开:第三套(mag-62)的 set 在运行时带着
-            // design-apply.ts buildCoverSets 挂上的 colorways(类型里没有,
-            // JSON 里有),route.ts 的 BodySchema 是 .strict(),未知键会被
-            // 直接拒收(400),书组不出来。逐字段显式列,加字段以后不会再
-            // 静默炸一次。
+            // 逐字段显式列,**不要**把整个 set 对象展开进来:route.ts 的
+            // BodySchema 是 .strict(),CoverSet 上任何一个没进 schema 的字段
+            // (本分支就被第三套的配色字段炸过一次)都会让请求直接 400,
+            // 书组不出来。加字段时同步改这里和 BodySchema,不留隐式通道。
             coverTemplateId: set.coverTemplateId,
             coverPhotoId: set.coverPhotoId,
             endingTemplateId: set.endingTemplateId,
@@ -2029,6 +2044,13 @@ export function ChatPanel({
           const { draft } = await fetchDraftSkeleton(albumId);
           if (draft && draft.pages.some((p) => p.kind === 'cover')) {
             if (disposed) return;
+            // 成书了 → 用**真页面**原位换掉那张回执卡:选定时建的那张没有文案,渲的是
+            // 模板 sample("NORWAY / Record"),而这条才是真实用户走的路(刷新回放是
+            // 另一条)。骨架里已带 textsJson/htmlJson,不用等画板 state 就绪。
+            if (recap?.isConnected) {
+              const live = coverRecapFromPages(draft.pages);
+              if (live) recap.replaceWith(buildCoverRecapCard(live, live.pageBackground));
+            }
             settleThinking(host, 'analyzedFeedback');
             const root = outerRootRef.current;
             root?.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
@@ -2140,7 +2162,7 @@ export function ChatPanel({
     }
 
     // 封面缩略图气泡放大:无遮罩,浮层 + 透明点击关闭层。
-    function openCoverZoom(set: { coverTemplateId: string; coverPhotoId: string; endingTemplateId: string; endingPhotoId: string; pageBackground?: string }) {
+    function openCoverZoom(set: CoverSetOption) {
       // 挂在整块聊天面板(.chat-card:relative + overflow-hidden)上居中浮现,
       // 而不是只有输入框高的 composer-group —— 否则气泡会溢出到面板/屏幕外。
       const host = outerRootRef.current?.querySelector('.chat-card');
@@ -2150,12 +2172,14 @@ export function ChatPanel({
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
       const layer = document.createElement('div');
       layer.className = 'cv-zoom-layer';
+      // 放大预览与列表缩略图同一个底色口径(第三套走 colorway 底色)。
+      const zoomBg = coverPreviewBackground(set);
       layer.innerHTML =
         `<div class="cv-bubble" role="dialog" aria-label="${aT('封面放大', 'Cover preview')}">` +
           `<button type="button" class="cv-bubble-x" aria-label="${aT('关闭', 'Close')}">${X_SVG}</button>` +
           `<div class="cv-bubble-faces">` +
-            `<span class="cv-bubble-face">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 132, 176, set.pageBackground) ?? ''}<i class="cv-face-tag">${aT('封面', 'Cover')}</i></span>` +
-            `<span class="cv-bubble-face">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 132, 176, set.pageBackground) ?? ''}<i class="cv-face-tag">${aT('封底', 'Back')}</i></span>` +
+            `<span class="cv-bubble-face">${co()?.coverOptionHTML?.(set.coverTemplateId, set.coverPhotoId, 132, 176, zoomBg) ?? ''}<i class="cv-face-tag">${aT('封面', 'Cover')}</i></span>` +
+            `<span class="cv-bubble-face">${co()?.coverOptionHTML?.(set.endingTemplateId, set.endingPhotoId, 132, 176, zoomBg) ?? ''}<i class="cv-face-tag">${aT('封底', 'Back')}</i></span>` +
           `</div>` +
         `</div>`;
       layer.addEventListener('click', (e) => { if (e.target === layer) closeCoverZoom(); });
