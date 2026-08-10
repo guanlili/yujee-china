@@ -253,10 +253,11 @@ export const es: MarketingMessages = {
       {
         h: 'Hecho por una sola persona',
         paras: [
-          'Yujee lo construí yo entera trabajando con Claude Code, aprendiendo y publicando a la vez. La arquitectura de sistemas que aprendí hace años haciendo integración todavía aguanta. Pregúntame otra vez más adelante.',
+          'Yujee lo construí yo sola, aprendiendo y publicando a la vez. La arquitectura de sistemas que aprendí hace años haciendo integración todavía aguanta. Pregúntame otra vez más adelante.',
           'Durante dos meses apenas dormí y saqué la primera demo que me pareció utilizable. En julio, 20 usuarios pioneros me mandaron sus comentarios, y seguí.',
-          'Hacerlo todo sola no es fácil. Pero quería hacer bien esta cosa, y lo quería con muchas ganas.',
+          'Hacerlo todo sola no es fácil, y hay bastantes cosas que aún están sin pulir. Algunas son porque no me da para más. Otras simplemente no les ha llegado el turno. Pero quería hacer bien esta cosa, y lo quería con muchas ganas.',
           'Lo que Yujee es hoy sigue siendo una versión muy pequeña. Puede que no te cambie nada de inmediato. Aun así quiero poner esta terquedad dentro.',
+          `Si algo te chirría al usarlo, o hay algo que te gustaría que hiciera, dímelo en el Discord. También puedes escribirme a ${SUPPORT_EMAIL} o mandarme un mensaje por X. Lo leo todo.`,
         ],
       },
     ],

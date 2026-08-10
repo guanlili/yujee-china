@@ -253,10 +253,11 @@ export const en: MarketingMessages = {
       {
         h: 'Built by one person',
         paras: [
-          'Yujee was built entirely by me working with Claude Code, learning and shipping at the same time. The systems architecture I picked up years ago doing system integration still holds up. Ask me again later.',
+          'I built Yujee on my own, learning and shipping at the same time. The systems architecture I picked up years ago doing system integration still holds up. Ask me again later.',
           'For two months I barely slept, and put out the first demo I considered usable. In July, 20 early users sent feedback, and I kept going.',
-          'Doing the whole thing alone is not easy. But I wanted to get this one thing right, badly.',
+          'Doing the whole thing alone is not easy, and plenty about it is still rough. Some of that is me not being good enough. Some of it just has not come up the queue yet. But I wanted to get this one thing right, badly.',
           'What Yujee is today is still a very small version. It may not change anything for you right away. I still want to put this stubbornness into it.',
+          `If something feels off while you use it, or there is something you wish it did, come tell me in the Discord. Email ${SUPPORT_EMAIL} or DM me on X works too. I read all of it.`,
         ],
       },
     ],
