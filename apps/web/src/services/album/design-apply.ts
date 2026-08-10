@@ -233,9 +233,10 @@ export function pickEndingTemplateId(albumId: string): string | undefined {
 // 各自改成新版式,第 3 套留 mag-22 或换成深色封底。这里显式写死而不是哈希,就是为了那天
 // 改起来是改一张表,不是改一个算法。
 //
-// ⚠️ 待小雨拍板:封面槽位只有 4 个,加了 mag-62 就得挤掉一个现有封面。这里先挤掉了
-// mag-32(它照片占比 87%,四个里留白最少、版面语言和 mag-23 最接近)。要换成挤掉别的,
-// 改这张表一行即可。
+// 封面槽位固定 4 个,已拍板(task-16):mag-01 / mag-23 / mag-62(第三套深色椭圆)/
+// p01。加入 mag-62 时从原来的候选里挤出了 mag-32 —— 它照片占比 87%,四个候选里留白
+// 最少,版面语言又和 mag-23 最接近,挤掉它对设计语言整体性的损失最小。mag-32 已退出
+// 封面池,不再出现在这张表里;要换成挤掉别的,改这张表一行即可。
 const SET_LAYOUT: ReadonlyArray<{ cover: string; ending: string }> = [
   { cover: 'mag-01', ending: 'mag-22' },
   { cover: 'mag-23', ending: 'mag-22' },
