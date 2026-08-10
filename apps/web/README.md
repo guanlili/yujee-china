@@ -9,7 +9,9 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
 - Billing/credits through Creem and the credit ledger.
 - 游客模式(匿名影子账号,anonymous 插件):落地页点「发送」即静默建号,免登录走完
   建相册 → CLIP 分组 → 讲故事 → 选版 → 确认封面(**占位成稿**:内页保留模板 sample,
-  封面/封尾只有标题槽落 sample、其余槽空着(不印模板作者的年份地名),
+  封面/封尾也全量落模板 sample(含非标题槽)—— 占位书本来就明示是「示例」,不存在印
+  模板作者年份地名的顾虑,靠它撑住游客的第一印象;真成稿路径只兜标题槽不变,
+  见 `design-apply.ts` 的 `coverTextBase`/`placeholderCoverTextBase`),
   `albums.copy_source='placeholder'`,零 AI/零积分/零 R2)→ 本地导出。只有三件事要
   真实账号:对话改书(design-chat)、保存(照片快照)、分享 —— API 层 `requireRealUser`
   403 `ANON_UPGRADE_REQUIRED`,前端统一弹登录。登录时 `onLinkAccount` 过户相册并删匿名
@@ -286,5 +288,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: b54f5d62
+checked-at: 01a977d4
 -->
