@@ -47,36 +47,40 @@ test('pickHeroPhotos: 构图 focal > closeup > 其余', () => {
   assert.deepEqual(pickHeroPhotos(CHAPTERS, 2), ['pf', 'pc']);
 });
 
-test('buildCoverSets: 固定顺序,第 3 套是椭圆封面,不随 albumId 变', () => {
+test('buildCoverSets: 固定顺序,不随 albumId 变', () => {
   const a = buildCoverSets('album-1', CHAPTERS);
   const b = buildCoverSets('album-2', CHAPTERS);
   assert.equal(a.length, 4);
   assert.deepEqual(a.map((s) => s.coverTemplateId), b.map((s) => s.coverTemplateId));
-  assert.equal(a[2]!.coverTemplateId, 'mag-62');
 });
 
-test('buildCoverSets: 只有第 3 套带配色 id,其余套走白灰底色', async () => {
-  const { coverColorwayById } = await import('@/lib/design/third-set-palette');
+test('buildCoverSets: 第三套当前处于关闭态 —— mag-62 不在封面池里,没有一套带配色', async () => {
+  // 新封底版式未落地前,第三套从 SET_LAYOUT 摘出(见该表上方注释)。这条测试钉住的是
+  // 「关着」这个当前契约:哪天有人把第 3 行换回 mag-62 而封底还没做,这里会红,
+  // 提醒他先把封底补上再开。开启时把这条测试改成断言第 3 套是 mag-62 且带配色。
+  const { THIRD_SET_COVER_TEMPLATE_ID } = await import('@/lib/design/third-set-palette');
   const sets = buildCoverSets('album-1', CHAPTERS);
-  assert.ok(coverColorwayById(sets[2]!.coverColorway), '第三套要派一个真实存在的配色');
-  assert.equal(sets[0]!.coverColorway, undefined);
+  assert.ok(
+    !sets.some((s) => s.coverTemplateId === THIRD_SET_COVER_TEMPLATE_ID),
+    '第三套封面模板不该出现在封面池里(封底未落地)',
+  );
+  for (const s of sets) assert.equal(s.coverColorway, undefined, '关闭态下不该有任何配色');
   assert.equal(sets[0]!.pageBackground, '#FFFFFF');
   // 只放 id 字符串:整张色表泄进 CoverSet 就会被前端一路带进 POST /design 的
-  // .strict() 请求体里(本分支已经这么炸过一次,4fa211fe)。
+  // .strict() 请求体里(本分支已经这么炸过一次,4fa211fe)。开关无关,恒成立。
   for (const s of sets) {
     for (const [, v] of Object.entries(s)) assert.equal(typeof v, 'string');
   }
 });
 
-test('buildCoverSets: 第三套的配色按 albumId 确定性派定(同一本书永远同一个色)', () => {
-  const a1 = buildCoverSets('album-1', CHAPTERS)[2]!.coverColorway;
-  const a2 = buildCoverSets('album-1', CHAPTERS)[2]!.coverColorway;
-  assert.equal(a1, a2, '同一本书两次取到的配色必须一致(随机=刷新就换色,是 bug)');
-  // 不同 albumId 之间会分散(否则「按 albumId 派生」这句话是假的):
-  // 取一批 id,至少出现两种配色。
-  const ids = new Set(
-    ['a', 'b', 'c', 'd', 'e', 'f'].map((x) => buildCoverSets(x, CHAPTERS)[2]!.coverColorway),
-  );
+test('coverColorwayForAlbum: 按 albumId 确定性派定(同一本书永远同一个色)', async () => {
+  // 直接测派色函数本身,不经过 SET_LAYOUT —— 这样第三套开关的状态不影响这条契约,
+  // 开启那天不用再改这条测试。
+  const { coverColorwayForAlbum, coverColorwayById } = await import('@/lib/design/third-set-palette');
+  assert.equal(coverColorwayForAlbum('album-1').id, coverColorwayForAlbum('album-1').id,
+    '同一本书两次取到的配色必须一致(随机=刷新就换色,是 bug)');
+  assert.ok(coverColorwayById(coverColorwayForAlbum('album-1').id), '派出来的必须是真实存在的配色');
+  const ids = new Set(['a', 'b', 'c', 'd', 'e', 'f'].map((x) => coverColorwayForAlbum(x).id));
   assert.ok(ids.size >= 2, '不同相册应当散到不同配色');
 });
 

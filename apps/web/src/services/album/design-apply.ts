@@ -235,12 +235,21 @@ export function pickEndingTemplateId(albumId: string): string | undefined {
 //
 // 封面槽位固定 4 个,已拍板(task-16):mag-01 / mag-23 / mag-62(第三套深色椭圆)/
 // p01。加入 mag-62 时从原来的候选里挤出了 mag-32 —— 它照片占比 87%,四个候选里留白
-// 最少,版面语言又和 mag-23 最接近,挤掉它对设计语言整体性的损失最小。mag-32 已退出
-// 封面池,不再出现在这张表里;要换成挤掉别的,改这张表一行即可。
+// 最少,版面语言又和 mag-23 最接近,挤掉它对设计语言整体性的损失最小。要换成挤掉别的,
+// 改这张表一行即可。
+//
+// ⚠️ 第三套暂时关闭(2026-08-10):第 3 行现在指向 mag-32 而不是 mag-62,因为它的**新封底
+// 版式还没落地** —— 现在上线的话,深色套会配一个和其它三套一模一样的旧封底,不是定稿的
+// 「彩色底 + 左下字标 + 右下条形码」。第三套的全部代码(mag-62 模板、配色真相源、深色内页
+// 管线、colorway 全链路、模板深色清扫)都已落地并通过评审,只是从这张表上摘了出口:
+// `colorways` 只在 `cover === THIRD_SET_COVER_TEMPLATE_ID` 时才附加,所以换掉这一行,
+// 深色路径整条不可达,行为等同于第三套不存在。
+//
+// **开启方式:把第 3 行换回 `THIRD_SET_COVER_TEMPLATE_ID`,并把封底换成新版式。** 只此一处。
 const SET_LAYOUT: ReadonlyArray<{ cover: string; ending: string }> = [
   { cover: 'mag-01', ending: 'mag-22' },
   { cover: 'mag-23', ending: 'mag-22' },
-  { cover: THIRD_SET_COVER_TEMPLATE_ID, ending: 'mag-22' },
+  { cover: 'mag-32', ending: 'mag-22' },
   { cover: 'p01', ending: 'mag-22' },
 ];
 
