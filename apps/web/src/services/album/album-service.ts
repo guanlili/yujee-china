@@ -1373,10 +1373,11 @@ export const albumService = {
   },
 
   // 游客占位成稿:确认封面后**不派 compose、不碰 Gemini、不动积分**,同步在 Web 端
-  // 组书 —— 复用 mergeComposeIntoDraft 传空 compose 载荷:内页文案保留 select-layout
-  // 时 engine 已填的模板 sample(fill_sample_texts),封面/封尾用模板 sample,字体按
-  // 语言兜底(normalizeDesignFonts),carrier/重烘/pageIndex 重排全部走真成稿同一条
-  // 纯函数,画板立刻显示一本完整的「示例文案书」。相册标记 copySource='placeholder',
+  // 组书 —— 复用 mergeComposeIntoDraft 传空 compose 载荷 + isPlaceholder=true:内页
+  // 文案保留 select-layout 时 engine 已填的模板 sample(fill_sample_texts),封面/
+  // 封尾全量落模板 sample(placeholderCoverTextBase,含非标题槽),字体按语言兜底
+  // (normalizeDesignFonts),carrier/重烘/pageIndex 重排全部走真成稿同一条纯函数,
+  // 画板立刻显示一本完整的「示例文案书」。相册标记 copySource='placeholder',
   // 登录转正后前端检测到它会自动重发 POST /design 跑真 compose(那时才计费)。
   async applyPlaceholderDesign(
     userId: string,
@@ -1450,6 +1451,10 @@ export const albumService = {
         // 占位书没有 AI 文案,封面标题槽因此一定走兜底:相册自己的标题优先于模板
         // sample —— 游客看到的示例书至少印着自己那本书的名字,不是 "NORWAY"。
         locked.title,
+        // 占位书保留全量 sample 回落(裁决见 task-16):封面/封尾非标题槽也落模板
+        // sample。占位书本来就明示是「示例」,不存在「印别人年份地名」的顾虑;
+        // 它承担游客的第一印象和转化,封面不该只剩一个大标题。
+        true,
       );
 
       const seededRevision = await ensureDraftPagesSeeded(tx, locked);

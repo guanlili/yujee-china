@@ -25,6 +25,7 @@ import {
   darkInkByPageIndex,
   mergeSlotTexts,
   normalizeDesignFonts,
+  placeholderCoverTextBase,
   sweepCarriers,
   templateCategory,
 } from '@/services/album/design-apply';
@@ -238,9 +239,10 @@ export type ComposeCompletedPayload = {
  * 整书重烘 html、刷书页底色。
  *
  * 四个数据坑都在这里兜住:
- *  · coverTexts/endingTexts 的空串忽略(mergeSlotTexts);兜底底稿只含 title 槽的
- *    模板 sample(coverTextBase)—— 标题槽不能空(封面没有大标题是废版面),但其余
- *    槽(body/explain/decoration)模型没写出来时宁可空着,不回落模板作者写的年份地名;
+ *  · coverTexts/endingTexts 的空串忽略(mergeSlotTexts);兜底底稿含 title 槽的
+ *    模板 sample(coverTextBase)—— 标题槽不能空(封面没有大标题是废版面);其余
+ *    槽(body/explain/decoration)真成稿路径宁可空着,不回落模板作者写的年份地名 ——
+ *    占位书路径(isPlaceholder=true)例外,见下方参数说明;
  *  · pagesTexts 只含真写出来的页,没出现的页 texts 原样保留;
  *  · compose 不回 colors —— 三色用确定性常量 DESIGN_COLORS;
  *  · fonts 可能为空 —— normalizeDesignFonts 按语言兜底。
@@ -252,6 +254,12 @@ export function mergeComposeIntoDraft(
   // 封面标题的最后一道兜底(见 coverTextBase):AI 没写出标题时用这本相册自己的标题,
   // 哪怕它还是系统默认名 —— 也好过把模板作者的样稿("NORWAY" / "海边那年")印上去。
   albumTitle?: string | null,
+  // 占位书专用开关(裁决见 2026-08-09 task-16):true = 封面/封尾非标题槽也回落模板
+  // sample(placeholderCoverTextBase,改动前 sampleTexts 的口径)—— 占位书零 AI,
+  // 内页文案本来就是模板 sample,封面不该只剩标题;它是游客的第一印象和转化入口。
+  // 默认 false = coverTextBase 的老行为原样不变,真成稿路径(handleV3ComposeCompleted)
+  // 不传这个参数就是这个默认值,这是本分支的头号 bug 修复,这里不能退回去。
+  isPlaceholder = false,
 ) {
   const parsed = V3StoryDraft.safeParse(draftJson);
   if (!parsed.success || !parsed.data.pages || parsed.data.pages.length === 0) {
@@ -266,6 +274,8 @@ export function mergeComposeIntoDraft(
   // 只查一次:coverColorwayById 对非法/缺省 id 一律 undefined,查两次是同一个结果,
   // 白白多一次数组扫描还容易在改查找逻辑时两处不同步。
   const colorway = coverColorwayById(meta.coverColorway);
+  // 两条路径共用同一个遍历实现(buildCoverTextBase),只用哪个导出函数区分口径。
+  const textBaseOf = isPlaceholder ? placeholderCoverTextBase : coverTextBase;
   const pages = assembleDesignedPages({
     interiorPages: written,
     set: {
@@ -276,8 +286,8 @@ export function mergeComposeIntoDraft(
     },
     // 封面标题槽兜底到相册标题;封尾不兜(封底没有「必须有个大标题」这条约束,
     // 把书名再印一遍在封底上不是设计,是重复)。
-    coverTexts: mergeSlotTexts(coverTextBase(meta.coverTemplateId, albumTitle), payload.coverTexts),
-    endingTexts: mergeSlotTexts(coverTextBase(meta.endingTemplateId), payload.endingTexts),
+    coverTexts: mergeSlotTexts(textBaseOf(meta.coverTemplateId, albumTitle), payload.coverTexts),
+    endingTexts: mergeSlotTexts(textBaseOf(meta.endingTemplateId), payload.endingTexts),
     fonts,
     colors: DESIGN_COLORS,
     extraEndingPhotoIds: meta.extraEndingPhotoIds,

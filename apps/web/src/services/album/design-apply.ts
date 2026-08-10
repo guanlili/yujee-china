@@ -95,15 +95,21 @@ export function mergeSlotTexts(
 }
 
 /**
- * 封面/封尾文案的兜底底稿:**只**保留 role=title 槽的 sample。
+ * `coverTextBase` / `placeholderCoverTextBase` 共用的槽遍历逻辑,用 `allSlots` 参数
+ * 区分两条路径的口径(两者曾经是逐字重复的两个函数,清理时删过一次,别再复活重复)。
  *
+ * `allSlots=false`(真成稿路径,coverTextBase):**只**保留 role=title 槽的 sample。
  * 其余槽(body/explain/decoration)宁可空着 —— 那些槽的 sample 是模板作者写的
  * 具体年份和地名(mag-23 的 "2026\n2025\n2024" / "Shanghai \nBeijing\nDali"),
  * 模型没写出来时回落 sample 等于把别人的年份地名印在用户的书上,比空着更糟。
  * 标题槽例外:封面没有大标题是废版面,必须留兜底。
  *
- * `albumTitle`(可选)是标题槽的**最后一道兜底**,兜底链因此是三级:
- *   AI 写的 → 这本相册自己的标题(哪怕还是系统默认名)→ 模板 sample。
+ * `allSlots=true`(占位书路径,placeholderCoverTextBase):非 title 槽也回落 sample
+ * ——占位书零 AI,内页文案本来就是模板 sample,整本书明示是「示例」,不存在「印
+ * 别人年份地名」这个顾虑;封面反而要靠它撑住游客的第一印象。
+ *
+ * `albumTitle`(可选)是标题槽的**最后一道兜底**,两条路径共用同一条三级兜底链:
+ *   AI 写的(占位书没有)→ 这本相册自己的标题(哪怕还是系统默认名)→ 模板 sample。
  * 只填**第一个** role=title 槽(与 engine `_with_album_title` 同口径:mag-23 有
  * title/title2 两个槽,两个都灌同一句会让书名在封面上重复两遍)。
  *
@@ -114,25 +120,50 @@ export function mergeSlotTexts(
  * 封面文案是**空的**回到 Web —— 兜底只有落在 Web 这一层才罩得住那条路径。
  * 这里在 mergeSlotTexts 的 base 侧,AI 只要写出了标题就会覆盖它,不构成任何抢跑。
  */
+function buildCoverTextBase(
+  templateId: string,
+  options: { albumTitle?: string | null; allSlots?: boolean },
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  const fallbackTitle = (options.albumTitle ?? '').trim();
+  const allSlots = options.allSlots ?? false;
+  let titleSlotFilled = false;
+  for (const slot of templateOf(templateId)?.texts ?? []) {
+    const isTitleSlot = slot.role === 'title';
+    if (!isTitleSlot && !allSlots) continue;
+    const sample = (slot as { sample?: unknown }).sample;
+    if (isTitleSlot) {
+      const useAlbumTitle = fallbackTitle !== '' && !titleSlotFilled;
+      titleSlotFilled = true;
+      if (useAlbumTitle) {
+        out[slot.id] = fallbackTitle;
+        continue;
+      }
+    }
+    if (typeof sample === 'string' && sample !== '') out[slot.id] = sample;
+  }
+  return out;
+}
+
+/** 真成稿路径的封面/封尾文案兜底底稿。行为/签名不变,见 buildCoverTextBase(allSlots=false)。 */
 export function coverTextBase(
   templateId: string,
   albumTitle?: string | null,
 ): Record<string, string> {
-  const out: Record<string, string> = {};
-  const fallbackTitle = (albumTitle ?? '').trim();
-  let titleSlotFilled = false;
-  for (const slot of templateOf(templateId)?.texts ?? []) {
-    if (slot.role !== 'title') continue;
-    const sample = (slot as { sample?: unknown }).sample;
-    const useAlbumTitle = fallbackTitle !== '' && !titleSlotFilled;
-    titleSlotFilled = true;
-    if (useAlbumTitle) {
-      out[slot.id] = fallbackTitle;
-    } else if (typeof sample === 'string' && sample !== '') {
-      out[slot.id] = sample;
-    }
-  }
-  return out;
+  return buildCoverTextBase(templateId, { albumTitle });
+}
+
+/**
+ * 占位书专用(裁决见 2026-08-09 task-16):封面/封尾文案兜底底稿改用全量 sample ——
+ * 即改动前 `sampleTexts` 的口径,非 title 槽也回落模板 sample。只给
+ * `mergeComposeIntoDraft` 在 `isPlaceholder=true` 时用;真成稿路径继续用上面的
+ * `coverTextBase`,两者共用 buildCoverTextBase,不是两份重复实现。
+ */
+export function placeholderCoverTextBase(
+  templateId: string,
+  albumTitle?: string | null,
+): Record<string, string> {
+  return buildCoverTextBase(templateId, { albumTitle, allSlots: true });
 }
 
 /**

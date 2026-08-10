@@ -95,6 +95,23 @@ test('空载荷成书:封面/封尾 title 槽落模板 sample,其余槽宁可空
   }
 });
 
+// task-16 裁决:占位书(applyPlaceholderDesign)保留全量 sample 回落,真成稿路径
+// (上面这条测试)维持只兜 title 槽不变 —— mergeComposeIntoDraft 新增 isPlaceholder
+// 开关区分两条路径,共用同一份 buildCoverTextBase 遍历实现(design-apply.ts)。
+test('isPlaceholder=true(占位路径):封面/封尾非标题槽也落模板 sample —— 占位书零 AI,不存在印别人年份地名的顾虑', () => {
+  const merged = mergeComposeIntoDraft(draft(), META, EMPTY_PAYLOAD, null, true);
+  const cover = merged.pages.find((p) => p.templateId === COVER_ID)!;
+  for (const slot of TEMPLATES[COVER_ID]!.texts ?? []) {
+    const sample = (slot as { sample?: string }).sample;
+    if (sample) assert.equal(cover.texts[slot.id], sample, `封面槽 ${slot.id} 应落模板 sample(占位路径全量兜底)`);
+  }
+  const ending = merged.pages.find((p) => p.templateId === ENDING_ID)!;
+  for (const slot of TEMPLATES[ENDING_ID]!.texts ?? []) {
+    const sample = (slot as { sample?: string }).sample;
+    if (sample) assert.equal(ending.texts[slot.id], sample, `封尾槽 ${slot.id} 应落模板 sample(占位路径全量兜底)`);
+  }
+});
+
 test('空载荷成书:字体按语言兜底 + carrier 键 + html 重烘 + pageIndex 连续', () => {
   const merged = mergeComposeIntoDraft(draft(), META, EMPTY_PAYLOAD);
   const design = merged.draftJson.design as { fonts: Record<string, string> };

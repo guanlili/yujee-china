@@ -356,6 +356,20 @@ test('mergeComposeIntoDraft: 连相册标题都没有才回落模板 sample', ()
   assert.equal(pageByTemplate(draftJson.pages, COVER_ID).texts.title, 'DUE NORTH');
 });
 
+// task-16 裁决:占位书路径(placeholder-design.test.ts)改为保留全量 sample 回落,
+// 真成稿路径(这个文件 = handleV3ComposeCompleted 的落地路径)必须原样不变 —— 这是
+// 防止修 A(占位书)弄坏 B(真成稿)的闸门。mergeComposeIntoDraft 新增的 isPlaceholder
+// 开关默认 false,真成稿调用点(job-service.handleV3ComposeCompleted)不传这个参数。
+test('mergeComposeIntoDraft: isPlaceholder 缺省(真成稿路径)—— 封面/封尾非标题槽仍然空着', () => {
+  const { draftJson } = mergeComposeIntoDraft(draft(), META, {});
+  const cover = pageByTemplate(draftJson.pages, COVER_ID);
+  // mag-01 的 label(decoration)/body(body)都带模板 sample,真成稿路径必须留空。
+  assert.equal(cover.texts.label, undefined, '非 title 槽不该回落 sample(真成稿路径)');
+  assert.equal(cover.texts.body, undefined, '非 title 槽不该回落 sample(真成稿路径)');
+  const ending = pageByTemplate(draftJson.pages, ENDING_ID);
+  assert.equal(ending.texts.body, undefined, '封尾非 title 槽同样不该回落 sample(真成稿路径)');
+});
+
 test('coverTextBase: 相册标题只兜第一个 title 槽,副标题槽不重复书名', async () => {
   const { coverTextBase } = await import('../album/design-apply');
   const base = coverTextBase('mag-23', '我的纪念册');
