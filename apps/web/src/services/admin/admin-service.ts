@@ -363,16 +363,26 @@ export const adminService = {
         USING albums a
         WHERE d.album_id = a.id
           AND jsonb_typeof(a.draft_json->'pages') = 'array'`);
+      // FOR KEY SHARE:把要写子行的 album 行先锁住,挡掉并发删除。不锁的话
+      // 「一边跑修复、一边有用户删相册」会在插入的瞬间撞 draft_pages 的外键
+      // (album_id 已经没了)——整个修复事务回滚,admin 拿到 500。KEY SHARE 是能
+      // 挡 DELETE 的最弱锁:它只与 FOR UPDATE(删除取的锁)冲突,正常改书的
+      // UPDATE 照跑不误。
       await tx.execute(sql`
+        WITH locked AS (
+          SELECT id, draft_json, draft_revision
+          FROM albums
+          WHERE jsonb_typeof(draft_json->'pages') = 'array'
+          FOR KEY SHARE
+        )
         INSERT INTO draft_pages (album_id, page_index, page, version, updated_by)
         SELECT a.id,
                p.ord::int - 1,
                jsonb_set(p.elem, '{pageIndex}', to_jsonb(p.ord::int - 1)),
                GREATEST(a.draft_revision, 1),
                NULL
-        FROM albums a,
-             LATERAL jsonb_array_elements(a.draft_json->'pages') WITH ORDINALITY AS p(elem, ord)
-        WHERE jsonb_typeof(a.draft_json->'pages') = 'array'`);
+        FROM locked a,
+             LATERAL jsonb_array_elements(a.draft_json->'pages') WITH ORDINALITY AS p(elem, ord)`);
       await tx.execute(sql`
         UPDATE albums SET draft_revision = GREATEST(draft_revision, 1)
         WHERE jsonb_typeof(draft_json->'pages') = 'array'`);
