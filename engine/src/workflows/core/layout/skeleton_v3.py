@@ -317,8 +317,14 @@ def default_cover_template_id() -> str | None:
 
 
 def default_ending_template_id() -> str | None:
-    """默认封底模板 id(ending 类别里稳定排序的第一个),没有 ending 模板时为 None。"""
-    bucket = sorted(tid for ids in POOLS.get("ending", {}).values() for tid in ids)
+    """默认封底模板 id(ending 类别里稳定排序的第一个),没有 ending 模板时为 None。
+
+    只从图槽数 > 0 的桶里选:`wrap_with_cover_ending` 拿这个 id 给 hero 槽塞一张
+    照片(见该函数),0 图槽的模板(如 mag-63,纯装饰封底,§9 之外的特例)根本没有
+    槽可塞,选中会让 `assign_images_v3` 直接抛 ValueError。ending 类别里图槽 > 0
+    的模板一个都没有时才退回 None,和「没有 ending 模板」走同一条优雅降级路径。"""
+    capacities = {c: ids for c, ids in POOLS.get("ending", {}).items() if c > 0}
+    bucket = sorted(tid for ids in capacities.values() for tid in ids)
     return bucket[0] if bucket else None
 
 

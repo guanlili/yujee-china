@@ -244,6 +244,28 @@ def test_default_cover_and_ending_template_ids_are_stable_first():
     assert sk.default_ending_template_id() == "mag-20"
 
 
+def test_default_ending_template_id_skips_zero_capacity_templates(monkeypatch):
+    # mag-63 (task-13, decorative back cover with zero image slots) is the first
+    # 0-capacity ending template this pool has ever had. Give it an id that sorts
+    # BEFORE the real 1-slot winner ("mag-20") so an un-guarded pick would land on
+    # it — `wrap_with_cover_ending` always hands this id exactly one photo, and a
+    # 0-slot template makes `assign_images_v3` raise. The guard must skip it.
+    monkeypatch.setattr(
+        sk, "POOLS", {"ending": {0: ["mag-00-decorative"], 1: ["mag-20"], 2: ["mag-22"]}}
+    )
+    assert sk.default_ending_template_id() == "mag-20"
+
+
+def test_default_ending_template_id_none_when_only_zero_capacity_templates_exist(monkeypatch):
+    # Degenerate pool (every ending template is 0-slot): no template can safely
+    # take the hero photo, so this falls back to None — same graceful-degradation
+    # contract as "no ending pool at all" (wrap_with_cover_ending then skips the
+    # ending page entirely instead of crashing).
+    monkeypatch.setattr(sk, "POOLS", {"ending": {0: ["mag-63"]}})
+    assert sk.default_ending_template_id() is None
+
+
+
 def test_wrap_with_cover_ending_prepends_cover_appends_ending_and_reindexes():
     interior = sk.build_skeleton_v3([{"photos": ["a", "b", "c"]}])
     wrapped = sk.wrap_with_cover_ending(interior, [{"photos": ["a", "b", "c"]}])
