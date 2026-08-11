@@ -11,12 +11,13 @@
    失败标红,不另弹提示。 */
 
 import { IconBack, IconShare, IconExport, IconMore, IconSave } from './icons';
+import type { AT } from '@/lib/i18n/pick';
 
 export type BackupState = 'idle' | 'backing-up' | 'backed-up' | 'failed';
 
 export type MobileTopbarProps = {
   title: string;
-  zh: boolean;
+  aT: AT;
   onBack: () => void;
   backLabel: string;
   /** 动作 handler 必填 —— 「可选」等于「可以不接」,漏一个就是死按钮。 */
@@ -32,7 +33,7 @@ export type MobileTopbarProps = {
 
 export function MobileTopbar({
   title,
-  zh,
+  aT,
   onBack,
   backLabel,
   onSave,
@@ -45,21 +46,13 @@ export function MobileTopbar({
   const saveLabel =
     backupState === 'backing-up'
       ? backupProgress
-        ? `${zh ? '备份中' : 'Backing up'} ${backupProgress.done}/${backupProgress.total}`
-        : zh
-          ? '备份中'
-          : 'Backing up'
+        ? `${aT('备份中', 'Backing up')} ${backupProgress.done}/${backupProgress.total}`
+        : aT('备份中', 'Backing up')
       : backupState === 'backed-up'
-        ? zh
-          ? '已备份'
-          : 'Backed up'
+        ? aT('已备份', 'Backed up')
         : backupState === 'failed'
-          ? zh
-            ? '备份失败'
-            : 'Backup failed'
-          : zh
-            ? '保存到云端:备份照片,换设备也能看'
-            : 'Save to cloud: back up photos so you can view on any device';
+          ? aT('备份失败', 'Backup failed')
+          : aT('保存到云端:备份照片,换设备也能看', 'Save to cloud: back up photos so you can view on any device');
   return (
     <header className="mtopbar">
       <button type="button" className="mtb-btn" onClick={onBack} aria-label={backLabel}>
@@ -83,7 +76,7 @@ export function MobileTopbar({
         type="button"
         className="mtb-btn"
         onClick={onShare}
-        aria-label={zh ? '分享' : 'Share'}
+        aria-label={aT('分享', 'Share')}
       >
         <IconShare className="mtb-ic" />
       </button>
@@ -91,11 +84,11 @@ export function MobileTopbar({
         type="button"
         className="mtb-btn"
         onClick={onExport}
-        aria-label={zh ? '导出' : 'Export'}
+        aria-label={aT('导出', 'Export')}
       >
         <IconExport className="mtb-ic" />
       </button>
-      <button type="button" className="mtb-btn" onClick={onMore} aria-label={zh ? '更多' : 'More'}>
+      <button type="button" className="mtb-btn" onClick={onMore} aria-label={aT('更多', 'More')}>
         <IconMore className="mtb-ic" />
       </button>
     </header>

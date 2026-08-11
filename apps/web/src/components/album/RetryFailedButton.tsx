@@ -9,6 +9,7 @@ import {
   PhotosUnavailableError,
 } from '@/lib/generation/client';
 import { albumRecipe } from '@/lib/generation/draft';
+import { pick } from '@/lib/i18n/pick';
 import { detectLocale } from '@/lib/i18n/routing';
 
 // Retry a FAILED album by reusing the same albumId (§6.5.3). The browser resends
@@ -34,24 +35,17 @@ export function RetryFailedButton({
   const router = useRouter();
   const pathname = usePathname();
   const locale = detectLocale(pathname);
-  const copy =
-    locale === 'zh'
-      ? {
-          tryAgain: '重试一次',
-          retrying: '重试中…',
-          unavailable: '照片已不在这台设备上。',
-          startNew: '重新新建',
-          unavailableLong: '这些照片已不在这台设备上。',
-          startNewLong: '重新创建一本相册',
-        }
-      : {
-          tryAgain: 'Try again',
-          retrying: 'Retrying…',
-          unavailable: 'Photos no longer on this device.',
-          startNew: 'Start new',
-          unavailableLong: 'These photos are no longer on this device.',
-          startNewLong: 'Start a new memoir',
-        };
+  const copy = {
+    tryAgain: pick(locale, { zh: '重试一次', en: 'Try again' }),
+    retrying: pick(locale, { zh: '重试中…', en: 'Retrying…' }),
+    unavailable: pick(locale, { zh: '照片已不在这台设备上。', en: 'Photos no longer on this device.' }),
+    startNew: pick(locale, { zh: '重新新建', en: 'Start new' }),
+    unavailableLong: pick(locale, {
+      zh: '这些照片已不在这台设备上。',
+      en: 'These photos are no longer on this device.',
+    }),
+    startNewLong: pick(locale, { zh: '重新创建一本相册', en: 'Start a new memoir' }),
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [unavailable, setUnavailable] = useState(false);

@@ -7,6 +7,7 @@
    上传图只存本地(IndexedDB),换设备解析不到则回落无背景 —— 与桌面同一取舍。 */
 
 import { useRef } from 'react';
+import type { AT } from '@/lib/i18n/pick';
 
 import {
   COLOR_PRESETS,
@@ -20,7 +21,7 @@ import { ColorPicker } from './ColorPicker';
 
 export type BoardBgSheetProps = {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   current: BoardBackground | null;
   onClose: () => void;
   onPick: (bg: BoardBackground | null) => void;
@@ -34,7 +35,7 @@ export type BoardBgSheetProps = {
 
 export function BoardBgSheet({
   open,
-  zh,
+  aT,
   current,
   onClose,
   onPick,
@@ -56,7 +57,7 @@ export function BoardBgSheet({
     >
       <div className="board-bg-head">
         <h3 id="mBoardBgTitle" className="font-display text-[17px] font-bold">
-          {zh ? '垫底背景' : 'Board background'}
+          {aT('垫底背景', 'Board background')}
         </h3>
         <button className="board-bg-close" onClick={onClose} aria-label="close">
           <svg
@@ -76,10 +77,10 @@ export function BoardBgSheet({
       {view === 'color' ? (
         <div className="board-bg-body" data-bbg-view="color">
           <button type="button" className="mes-back" onClick={onBackToMain}>
-            ‹ {zh ? '返回' : 'Back'}
+            ‹ {aT('返回', 'Go back')}
           </button>
           <ColorPicker
-            zh={zh}
+            aT={aT}
             value={current?.kind === 'color' ? current.color : null}
             withAlpha={false}
             onChange={(css) => onPick({ kind: 'color', color: css })}
@@ -93,8 +94,8 @@ export function BoardBgSheet({
               className="bbg-swatch bbg-none"
               data-testid="bbg-none"
               data-selected={current == null ? '1' : undefined}
-              title={zh ? '无背景' : 'None'}
-              aria-label={zh ? '无背景' : 'None'}
+              title={aT('无背景', 'None')}
+              aria-label={aT('无背景', 'None')}
               onClick={() => onPick(null)}
             />
             {COLOR_PRESETS.map((c) => (
@@ -115,14 +116,14 @@ export function BoardBgSheet({
               <button
                 className="bbg-swatch mes-sw-more"
                 data-testid="bbg-more"
-                title={zh ? '更多颜色' : 'More colors'}
-                aria-label={zh ? '更多颜色' : 'More colors'}
+                title={aT('更多颜色', 'More colors')}
+                aria-label={aT('更多颜色', 'More colors')}
                 onClick={onOpenPicker}
               />
             )}
           </div>
 
-          <p className="bbg-section-label">{zh ? '图片' : 'Images'}</p>
+          <p className="bbg-section-label">{aT('图片', 'Images')}</p>
           <div className="bbg-images">
             {IMAGE_PRESETS.map((p) => (
               <button
@@ -137,13 +138,13 @@ export function BoardBgSheet({
               />
             ))}
             {/* 上传自己的图当垫底背景(只存本地) */}
-            <label className="bbg-image bbg-upload" title={zh ? '上传图片' : 'Upload image'}>
+            <label className="bbg-image bbg-upload" title={aT('上传图片', 'Upload image')}>
               <input
                 ref={fileRef}
                 type="file"
                 accept={IMAGE_INPUT_ACCEPT}
                 className="hidden"
-                aria-label={zh ? '上传图片' : 'Upload image'}
+                aria-label={aT('上传图片', 'Upload image')}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) onUpload(f);

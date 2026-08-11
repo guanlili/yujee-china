@@ -11,6 +11,7 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 import { useCallback, useState } from 'react';
+import type { AT } from '@/lib/i18n/pick';
 
 import type { Locale } from '@/lib/i18n/routing';
 import { photoSnapshotVersionMissingHint } from '../share-error';
@@ -27,7 +28,7 @@ export type ShareState = {
 
 const IDLE: ShareState = { stage: 'idle', link: null, hint: null };
 
-export function useShareLink(albumId: string, locale: Locale, zh: boolean) {
+export function useShareLink(albumId: string, locale: Locale, aT: AT) {
   const [state, setState] = useState<ShareState>(IDLE);
 
   const reset = useCallback(() => setState(IDLE), []);
@@ -41,7 +42,7 @@ export function useShareLink(albumId: string, locale: Locale, zh: boolean) {
       bookPhotoIds: string[],
       backup: (ids: string[]) => Promise<{ missing: number }>,
     ): Promise<void> => {
-      setState({ stage: 'uploading', link: null, hint: zh ? '正在上传照片…' : 'Uploading photos…' });
+      setState({ stage: 'uploading', link: null, hint: aT('正在上传照片…', 'Uploading photos…') });
       try {
         const { missing } = await backup(bookPhotoIds);
         if (missing > 0) {
@@ -49,16 +50,14 @@ export function useShareLink(albumId: string, locale: Locale, zh: boolean) {
           setState({
             stage: 'failed',
             link: null,
-            hint: zh
-              ? `还有 ${missing} 张照片没上传成功,先不生成链接。请重试;若原图不在这台设备,先去有原图的设备备份。`
-              : `${missing} photo(s) failed to upload, so no link was created. Retry — or if the originals live on another device, back them up there first.`,
+            hint: aT(`还有 ${missing} 张照片没上传成功,先不生成链接。请重试;若原图不在这台设备,先去有原图的设备备份。`, `${missing} photo(s) failed to upload, so no link was created. Retry — or if the originals live on another device, back them up there first.`),
           });
           return;
         }
         setState({
           stage: 'creating',
           link: null,
-          hint: zh ? '照片已上传,正在生成链接…' : 'Photos uploaded — creating link…',
+          hint: aT('照片已上传,正在生成链接…', 'Photos uploaded — creating link…'),
         });
         const res = await fetch(`/api/v1/albums/${albumId}/share`, {
           method: 'POST',
@@ -74,7 +73,7 @@ export function useShareLink(albumId: string, locale: Locale, zh: boolean) {
           | null;
         const token = json?.data?.token;
         if (!res.ok || !json?.ok || !token) {
-          const versionHint = photoSnapshotVersionMissingHint(json?.error, zh);
+          const versionHint = photoSnapshotVersionMissingHint(json?.error, aT);
           if (versionHint) {
             setState({
               stage: 'failed',
@@ -98,22 +97,18 @@ export function useShareLink(albumId: string, locale: Locale, zh: boolean) {
           stage: 'ready',
           link,
           hint: copied
-            ? zh
-              ? '已复制到剪贴板 · 任何人打开即可只读查看'
-              : 'Copied to clipboard · anyone with the link can view'
-            : zh
-              ? '链接已生成,请手动复制'
-              : 'Link ready — copy it manually',
+            ? aT('已复制到剪贴板 · 任何人打开即可只读查看', 'Copied to clipboard · anyone with the link can view')
+            : aT('链接已生成,请手动复制', 'Link ready — copy it manually'),
         });
       } catch {
         setState({
           stage: 'failed',
           link: null,
-          hint: zh ? '生成失败,请重试' : 'Failed to generate, please retry',
+          hint: aT('生成失败,请重试', 'Failed to generate, please retry'),
         });
       }
     },
-    [albumId, locale, zh],
+    [albumId, locale, aT],
   );
 
   const copy = useCallback(async () => {
@@ -122,12 +117,12 @@ export function useShareLink(albumId: string, locale: Locale, zh: boolean) {
       await navigator.clipboard.writeText(state.link);
       setState((s) => ({
         ...s,
-        hint: zh ? '已复制到剪贴板' : 'Copied to clipboard',
+        hint: aT('已复制到剪贴板', 'Copied to clipboard'),
       }));
     } catch {
-      setState((s) => ({ ...s, hint: zh ? '复制失败,请手动选中' : 'Copy failed — select it manually' }));
+      setState((s) => ({ ...s, hint: aT('复制失败,请手动选中', 'Copy failed — select it manually') }));
     }
-  }, [state.link, zh]);
+  }, [state.link, aT]);
 
   return { state, create, copy, reset };
 }

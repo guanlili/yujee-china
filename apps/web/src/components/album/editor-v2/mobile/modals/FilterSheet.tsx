@@ -1,5 +1,7 @@
 'use client';
 
+import { boundPick } from '@/lib/i18n/pick';
+import type { Locale } from '@/lib/i18n/routing';
 import type { PhotoFilterState } from '@/lib/photo/filter-state';
 import { FilterBar } from '../../FilterBar';
 import { ModalHost } from './ModalHost';
@@ -17,7 +19,7 @@ export function FilterSheet({
   onClose,
 }: {
   open: boolean;
-  locale: string;
+  locale: Locale;
   state: PhotoFilterState | null;
   scope: 'book' | 'photo';
   photoId: string | null;
@@ -31,14 +33,14 @@ export function FilterSheet({
   onRetry: () => void;
   onClose: () => void;
 }) {
-  const zh = locale === 'zh';
+  const aT = boundPick(locale);
   return (
     <ModalHost
       open={open}
       onClose={onClose}
       variant="bottom-sheet"
       cardClassName="mobile-filter-sheet"
-      ariaLabel={zh ? '照片风格' : 'Photo style'}
+      ariaLabel={aT('照片风格', 'Photo style')}
       testId="filter-sheet"
     >
       <FilterBar

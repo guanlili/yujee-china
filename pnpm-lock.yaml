@@ -23,6 +23,9 @@ importers:
       '@aws-sdk/s3-request-presigner':
         specifier: ^3.682.0
         version: 3.1054.0
+      '@waffo/pancake-ts':
+        specifier: 0.17.0
+        version: 0.17.0
       '@yujee/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -1792,6 +1795,10 @@ packages:
 
   '@vitest/utils@4.1.9':
     resolution: {integrity: sha512-A51o8ymO5PpqlWNnBP9ZHPXDIpuMtTLlGSjN7la4US+LJzoUMyhwjA5QXlm39JexgwHKW4Xjs8Z2d3dLCXOeuA==}
+
+  '@waffo/pancake-ts@0.17.0':
+    resolution: {integrity: sha512-p9qESx5ZHhXbxO8lW6YX4chcq7YEyBin5wp0MAQOzsAd63q1wTa2RRTyhykMr/oBpwgYFfUFVWnA+RffX8aSAg==}
+    engines: {node: '>=20.0.0'}
 
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
@@ -4348,6 +4355,8 @@ snapshots:
       '@vitest/pretty-format': 4.1.9
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
+
+  '@waffo/pancake-ts@0.17.0': {}
 
   agent-base@7.1.4: {}
 

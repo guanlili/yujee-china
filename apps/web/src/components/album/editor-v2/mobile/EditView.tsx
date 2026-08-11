@@ -25,6 +25,7 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { AT } from '@/lib/i18n/pick';
 
 import type { EditorPage } from '../../types';
 import { editableTextOf } from '../editable-text';
@@ -70,7 +71,7 @@ export type EditViewProps = {
   fontsReady: boolean;
   resolve: ResolveImage;
   boardBackground?: string | null;
-  zh: boolean;
+  aT: AT;
   /** 正在编辑的页 index。 */
   editPage: number;
   /** 当前选中的槽(父层持有;null = 没选中)。文字与图片共用这一个高亮。 */
@@ -142,7 +143,7 @@ export function EditView({
   fontsReady,
   resolve,
   boardBackground,
-  zh,
+  aT,
   editPage,
   selection,
   imagePos,
@@ -608,10 +609,10 @@ export function EditView({
       style={boardBackground ? { background: boardBackground } : undefined}
     >
       <MobileTopbar
-        title={zh ? `第 ${editPage + 1} 页` : `Page ${editPage + 1}`}
-        zh={zh}
+        title={aT(`第 ${editPage + 1} 页`, `Page ${editPage + 1}`)}
+        aT={aT}
         onBack={onExit}
-        backLabel={zh ? '返回浏览' : 'Back to browsing'}
+        backLabel={aT('返回浏览', 'Back to browsing')}
         onSave={onSave}
         backupState={backupState}
         backupProgress={backupProgress}
@@ -701,11 +702,11 @@ export function EditView({
             >
               <button type="button" className="mimg-btn" onClick={onReplaceImage}>
                 <IconImage className="mimg-ic" />
-                <span>{zh ? '换图' : 'Replace'}</span>
+                <span>{aT('换图', 'Replace')}</span>
               </button>
               <button type="button" className="mimg-btn" onClick={onResetImagePos}>
                 <IconReset className="mimg-ic" />
-                <span>{zh ? '复位' : 'Reset'}</span>
+                <span>{aT('复位', 'Reset')}</span>
               </button>
               {lutSupported && selectedPhotoId && (
                 <button
@@ -715,12 +716,12 @@ export function EditView({
                   onClick={onPhotoFilter}
                 >
                   <IconFilter className="mimg-ic" />
-                  <span>{zh ? '风格' : 'Style'}</span>
+                  <span>{aT('风格', 'Style')}</span>
                 </button>
               )}
               <button type="button" className="mimg-btn" data-danger="1" onClick={onClearImage}>
                 <IconTrash className="mimg-ic" />
-                <span>{zh ? '删除' : 'Delete'}</span>
+                <span>{aT('删除', 'Delete')}</span>
               </button>
             </div>
           )}
@@ -730,7 +731,7 @@ export function EditView({
         <button
           type="button"
           className="mai"
-          aria-label={zh ? '展开对话' : 'Expand chat'}
+          aria-label={aT('展开对话', 'Expand chat')}
           onClick={onOpenChat}
         >
           <img className="mai-jelly" src="/jellyfish-icon.png" alt="" />
@@ -765,18 +766,18 @@ export function EditView({
       </div>
 
       {/* 一级栏:背景是页面级入口;图片/文字是「点页面上的元素来选中」的提示入口。 */}
-      <nav className="ml1" aria-label={zh ? '编辑工具' : 'Editing tools'}>
+      <nav className="ml1" aria-label={aT('编辑工具', 'Editing tools')}>
         <button type="button" className="ml1-cell" onClick={onPageBg}>
           <IconPageBg className="ml1-ic" />
-          <span>{zh ? '背景' : 'Background'}</span>
+          <span>{aT('背景', 'Background')}</span>
         </button>
         <button type="button" className="ml1-cell" onClick={onPickImage}>
           <IconImage className="ml1-ic" />
-          <span>{zh ? '图片' : 'Photo'}</span>
+          <span>{aT('图片', 'Photo')}</span>
         </button>
         <button type="button" className="ml1-cell" onClick={onPickText}>
           <IconText className="ml1-ic" />
-          <span>{zh ? '文字' : 'Text'}</span>
+          <span>{aT('文字', 'Text')}</span>
         </button>
         {(() => {
           // 非内页(封面/目录/封尾)置灰:仍可点,点了由容器层 toast 说明原因 ——
@@ -794,7 +795,7 @@ export function EditView({
               onClick={onDeletePage}
             >
               <IconTrash className="ml1-ic" />
-              <span>{zh ? '删除' : 'Delete'}</span>
+              <span>{aT('删除', 'Delete')}</span>
             </button>
           );
         })()}

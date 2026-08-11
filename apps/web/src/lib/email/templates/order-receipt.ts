@@ -1,3 +1,4 @@
+import { getEmailCopy } from './copy';
 import { escapeHtml, renderButton, renderShell, type EmailLocale, type RenderedEmail } from './shared';
 
 type OrderReceiptEmailInput = {
@@ -8,31 +9,8 @@ type OrderReceiptEmailInput = {
   receiptUrl?: string | null;
 };
 
-const copy = {
-  en: {
-    subject: 'Yujee order confirmation',
-    title: 'Order confirmed',
-    body: 'Your Yujee order is paid and ready.',
-    orderId: 'Order ID',
-    amount: 'Amount',
-    album: 'Album',
-    button: 'View album',
-    footer: 'Keep this email as your receipt.',
-  },
-  zh: {
-    subject: 'Yujee 订单确认',
-    title: '订单已确认',
-    body: '你的 Yujee 订单已支付完成。',
-    orderId: '订单号',
-    amount: '金额',
-    album: '相册',
-    button: '查看相册',
-    footer: '请保留这封邮件作为收据。',
-  },
-} as const;
-
 export function renderOrderReceiptEmail(input: OrderReceiptEmailInput): RenderedEmail {
-  const t = copy[input.locale];
+  const t = getEmailCopy(input.locale).order;
   const rows = [
     [t.orderId, input.orderId],
     [t.amount, input.amountLabel],

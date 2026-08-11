@@ -1,3 +1,6 @@
+import type { Locale } from '@/lib/i18n/routing';
+import { PROMPTS } from './prompts';
+
 // 内容采集(采访)环节的纯逻辑:根据一章「时间/地点是否已知」决定问哪套引导语,
 // 并把用户答案 + 已知的时间/地点拼成 chapterContext(给排版和写文案当章节背景)。
 //
@@ -86,59 +89,10 @@ export function classifyInterviewCase(input: ChapterInterviewInput): InterviewCa
   return 'neither';
 }
 
-// 每情况一套引导语,拆成三条短消息连着发(模仿真人一句一句打字)。一章只问这一次,不追问。
-// 已知的信息不再问(时间已知就不问时间,地点已知就不问地点)。
-const PROMPTS: Record<'zh' | 'en', Record<InterviewCase, readonly [string, string, string]>> = {
-  zh: {
-    timeAndPlace: [
-      '这组照片我大概整理好啦～',
-      '不过想再多了解一点：当时是和谁一起的呀？',
-      '有没有什么特别的人、事，或者心情，想记进这本相册里？',
-    ],
-    timeOnly: [
-      '这组照片挺有感觉的～',
-      '是在哪儿拍的呀？当时和谁在一起？',
-      '有什么想留下的回忆或心情，都可以跟我说说。',
-    ],
-    placeOnly: [
-      '这组照片我看过啦～',
-      '大概是什么时候拍的呀？和谁一起的？',
-      '有没有特别想记录的故事或心情？',
-    ],
-    neither: [
-      '想更懂这组照片一点～',
-      '大概是什么时候、在哪、和谁一起拍的呀？',
-      '当时发生了什么、心情怎样，随便聊聊都行。',
-    ],
-  },
-  en: {
-    timeAndPlace: [
-      "I've grouped these photos for you.",
-      'I’d love to know a little more — who were you with that day?',
-      'Any special people, moments, or feelings you’d like woven into this book?',
-    ],
-    timeOnly: [
-      'These photos have a lovely feel to them.',
-      'Where were they taken, and who were you with?',
-      'Tell me any memory or mood you’d like to keep.',
-    ],
-    placeOnly: [
-      "I've looked through these photos.",
-      'Roughly when were they taken, and who were you with?',
-      'Any story or feeling you especially want to record?',
-    ],
-    neither: [
-      'I’d love to understand these photos a little more.',
-      'Roughly when, where, and with whom were they taken?',
-      'What happened, how did it feel — tell me anything you like.',
-    ],
-  },
-};
-
-/** 取某情况的三条引导短消息。默认中文(兼容旧调用);传 locale 拿英文那套。 */
+/** 取某情况的三条引导短消息。默认中文(兼容旧调用);传 locale 拿该语言那套。 */
 export function interviewMessages(
   caseKind: InterviewCase,
-  locale: 'zh' | 'en' = 'zh',
+  locale: Locale = 'zh',
 ): readonly [string, string, string] {
   return PROMPTS[locale][caseKind];
 }

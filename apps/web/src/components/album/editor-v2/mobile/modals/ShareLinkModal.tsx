@@ -6,10 +6,11 @@
    结构与类名逐条对齐桌面成品(EditorPort.tsx 的 shareLinkModal)。 */
 
 import { ModalHost } from './ModalHost';
+import type { AT } from '@/lib/i18n/pick';
 
 export type ShareLinkModalProps = {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   /** 已生成的链接;null = 还在第一步(待确认上传)。 */
   link: string | null;
   /** 上传/生成进行中:确认按钮禁用。 */
@@ -24,7 +25,7 @@ export type ShareLinkModalProps = {
 
 export function ShareLinkModal({
   open,
-  zh,
+  aT,
   link,
   busy,
   hint,
@@ -42,21 +43,17 @@ export function ShareLinkModal({
     >
       <div className="px-6 pt-5 pb-1">
         <h3 id="mShareLinkTitle" className="font-display text-[18px] font-bold">
-          {zh ? '分享链接' : 'Share link'}
+          {aT('分享链接', 'Share link')}
         </h3>
         <p className="text-[13px] text-muted mt-1">
-          {zh
-            ? '生成链接分享给朋友,免注册即可查看。'
-            : 'Create a link to share with friends — no sign-up to view.'}
+          {aT('生成链接分享给朋友,免注册即可查看。', 'Create a link to share with friends — no sign-up to view.')}
         </p>
       </div>
       <div className="px-5 py-3">
         {link == null ? (
           <div>
             <p className="text-[13px] leading-relaxed text-[var(--fg)]">
-              {zh
-                ? '生成链接会上传照片,朋友才能看到。'
-                : 'Creating the link uploads your photos so friends can see them.'}
+              {aT('生成链接会上传照片,朋友才能看到。', 'Creating the link uploads your photos so friends can see them.')}
             </p>
             <button
               className="mt-3 w-full rounded-lg bg-[var(--fg)] px-4 py-2.5 text-[13px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-45"
@@ -64,7 +61,7 @@ export function ShareLinkModal({
               disabled={busy}
               onClick={onConfirm}
             >
-              {zh ? '上传照片并生成链接' : 'Upload photos & create link'}
+              {aT('上传照片并生成链接', 'Upload photos & create link')}
             </button>
           </div>
         ) : (
@@ -79,7 +76,7 @@ export function ShareLinkModal({
                 className="rounded-lg bg-[var(--fg)] px-4 py-2 text-[13px] font-semibold text-white"
                 onClick={onCopy}
               >
-                {zh ? '复制' : 'Copy'}
+                {aT('复制', 'Copy')}
               </button>
             </div>
           </div>
@@ -88,7 +85,7 @@ export function ShareLinkModal({
       </div>
       <div className="px-5 pb-5">
         <button className="export-cancel" onClick={onClose}>
-          {zh ? '关闭' : 'Close'}
+          {aT('关闭', 'Close')}
         </button>
       </div>
     </ModalHost>

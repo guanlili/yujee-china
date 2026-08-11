@@ -8,6 +8,7 @@
    规则,移动端只在 mobile-editor.css 里做尺寸微调。 */
 
 import { useEffect, useRef, useState } from 'react';
+import type { AT } from '@/lib/i18n/pick';
 
 import type { EditorPage } from '../../../types';
 import type { ResolveImage } from '../../../adapt-layout';
@@ -41,14 +42,14 @@ type Drag = {
 
 export function ReorderSheet({
   open,
-  zh,
+  aT,
   pages,
   resolve,
   onClose,
   onCommit,
 }: {
   open: boolean;
-  zh: boolean;
+  aT: AT;
   pages: EditorPage[];
   resolve: ResolveImage;
   onClose: () => void;
@@ -166,8 +167,8 @@ export function ReorderSheet({
   return (
     <ModalHost open onClose={onClose} cardClassName="preorder-card" labelledBy="mReorderTitle" testId="reorder-sheet">
       <div className="preorder-head">
-        <h3 id="mReorderTitle" className="font-display text-[17px] font-bold">{zh ? '调整页面顺序' : 'Reorder pages'}</h3>
-        <p className="preorder-hint">{zh ? '长按拖动页面到新位置。封面、目录与封尾固定不动。' : 'Long-press and drag pages. Cover, contents and ending stay fixed.'}</p>
+        <h3 id="mReorderTitle" className="font-display text-[17px] font-bold">{aT('调整页面顺序', 'Reorder pages')}</h3>
+        <p className="preorder-hint">{aT('长按拖动页面到新位置。封面、目录与封尾固定不动。', 'Long-press and drag pages. Cover, contents and ending stay fixed.')}</p>
       </div>
       <div
         ref={gridRef}
@@ -221,8 +222,8 @@ export function ReorderSheet({
         )}
       </div>
       <div className="preorder-foot">
-        <button className="preorder-btn" onClick={onClose} data-testid="m-reorder-cancel">{zh ? '取消' : 'Cancel'}</button>
-        <button className="preorder-btn preorder-btn-primary" onClick={done} data-testid="m-reorder-done">{zh ? '完成' : 'Done'}</button>
+        <button className="preorder-btn" onClick={onClose} data-testid="m-reorder-cancel">{aT('取消', 'Cancel')}</button>
+        <button className="preorder-btn preorder-btn-primary" onClick={done} data-testid="m-reorder-done">{aT('完成', 'Done')}</button>
       </div>
     </ModalHost>
   );

@@ -4,6 +4,7 @@ import { use, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getMessages } from '@/lib/i18n/messages';
+import { pick } from '@/lib/i18n/pick';
 import type { Locale } from '@/lib/i18n/routing';
 import { useAnonymousRedirect } from '@/components/app/useAnonymousRedirect';
 import { authHrefWithFrom } from '@/lib/auth/redirect';
@@ -106,7 +107,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         photoFilter: normalizePhotoFilterState(item.photoFilter),
       })));
     } catch {
-      setErr(locale === 'zh' ? '网络异常，检查网络' : 'Network error. Check your connection.');
+      setErr(pick(locale, { zh: '网络异常，检查网络', en: 'Network error. Check your connection.' }));
       setErrKind('network');
       setAlbums([]);
     }
@@ -253,7 +254,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         setErrKind('other');
       }
     } catch {
-      setErr(locale === 'zh' ? '网络异常，检查网络' : 'Network error. Check your connection.');
+      setErr(pick(locale, { zh: '网络异常，检查网络', en: 'Network error. Check your connection.' }));
       setErrKind('network');
     } finally {
       setDeleting(null);
@@ -274,19 +275,13 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
   const albumCount = albums?.length ?? 0;
   const runningCount = (albums ?? []).filter((a) => a.status === 'AGENT_RUNNING').length;
   const albumSummary =
-    locale === 'zh'
-      ? `共 ${albumCount} 本 · ${runningCount} 本正在生成`
-      : `${albumCount} album${albumCount === 1 ? '' : 's'} · ${runningCount} generating`;
+    pick(locale, { zh: `共 ${albumCount} 本 · ${runningCount} 本正在生成`, en: `${albumCount} album${albumCount === 1 ? '' : 's'} · ${runningCount} generating` });
 
   const pageUnit = (count: number) =>
-    locale === 'zh'
-      ? `${count} 页`
-      : `${count} page${count === 1 ? '' : 's'}`;
+    pick(locale, { zh: `${count} 页`, en: `${count} page${count === 1 ? '' : 's'}` });
 
   const cardKicker = (a: Album) =>
-    locale === 'zh'
-      ? `${a.photoCount} 张照片`
-      : `${a.photoCount} photo${a.photoCount === 1 ? '' : 's'}`;
+    pick(locale, { zh: `${a.photoCount} 张照片`, en: `${a.photoCount} photo${a.photoCount === 1 ? '' : 's'}` });
 
   const albumFoot = (a: Album) => {
     const date = formatDate(a.createdAt);
@@ -376,7 +371,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           </Link>
           <div className="flex min-h-[52px] items-center justify-between gap-2 px-3.5 py-3">
             <span className="min-w-0 truncate text-[12.5px] text-[var(--muted)]">
-              {locale === 'zh' ? '正在排版 · 约 1 分钟' : 'Laying out · about 1 min'}
+              {pick(locale, { zh: '正在排版 · 约 1 分钟', en: 'Laying out · about 1 min' })}
             </span>
             {statusChip(a.status)}
           </div>
@@ -598,7 +593,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         <div className="mb-8 flex items-end justify-between gap-6 md:mb-10">
           <div>
             <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.16em] text-[var(--meta)]">
-              {locale === 'zh' ? '我的作品' : 'My work'}
+              {pick(locale, { zh: '我的作品', en: 'My work' })}
             </div>
             <h1 className="font-['Playfair_Display','Noto_Serif_SC_Landing',Georgia,serif] font-extrabold leading-[1.02] text-[var(--fg)] text-[clamp(36px,6vw,60px)]">
               {t.myAlbums.title}
@@ -609,12 +604,12 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
             <button
               type="button"
               className="inline-flex items-center gap-2 rounded-full border border-black/10 px-4 py-2.5 text-sm font-medium text-[var(--fg-2)] transition hover:bg-black/[0.05]"
-              aria-label={locale === 'zh' ? '最近修改' : 'Recently modified'}
+              aria-label={pick(locale, { zh: '最近修改', en: 'Recently modified' })}
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M3 6h18M6 12h12M10 18h4" />
               </svg>
-              {locale === 'zh' ? '最近修改' : 'Recent'}
+              {pick(locale, { zh: '最近修改', en: 'Recent' })}
             </button>
           </div>
         </div>
@@ -645,8 +640,8 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           <div className="min-h-[420px]">
             <YujeeState
               variant="error"
-              title={locale === 'zh' ? '出错了' : 'Something went wrong'}
-              message={errKind === 'network' ? (locale === 'zh' ? '网络异常，检查网络' : 'Network error. Check your connection.') : err}
+              title={pick(locale, { zh: '出错了', en: 'Something went wrong' })}
+              message={errKind === 'network' ? (pick(locale, { zh: '网络异常，检查网络', en: 'Network error. Check your connection.' })) : err}
             />
           </div>
         )}
@@ -655,8 +650,8 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           <div className="min-h-[420px]">
             <YujeeState
               variant="empty"
-              title={locale === 'zh' ? '还没有相册' : 'No albums yet'}
-              message={locale === 'zh' ? '上传照片，开始创建一本新的回忆相册。' : 'Upload photos to start a new memoir.'}
+              title={pick(locale, { zh: '还没有相册', en: 'No albums yet' })}
+              message={pick(locale, { zh: '上传照片，开始创建一本新的回忆相册。', en: 'Upload photos to start a new memoir.' })}
             >
               <label className={`inline-flex cursor-pointer items-center justify-center rounded-full bg-[var(--fg)] px-8 py-3.5 text-[15px] font-semibold text-white shadow-[0_8px_22px_rgba(0,0,0,0.18)] transition hover:-translate-y-0.5 hover:bg-black ${creating ? 'pointer-events-none opacity-60' : ''}`}>
                 <input
@@ -670,7 +665,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
                     e.target.value = '';
                   }}
                 />
-                {locale === 'zh' ? '新建' : 'New'}
+                {pick(locale, { zh: '新建', en: 'New' })}
               </label>
             </YujeeState>
           </div>

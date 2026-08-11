@@ -39,7 +39,7 @@ function render(
       pages: BOOK,
       fontsReady: true,
       resolve: () => undefined,
-      zh: opts.zh ?? true,
+      aT: (opts.zh ?? true) ? (zh: string) => zh : (_zh: string, en: string) => en,
       editPage,
       selection: opts.selection ?? null,
       photoFilter: null, selectedPhotoId: null, lutSupported: false,

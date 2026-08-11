@@ -20,6 +20,7 @@
    否则松手会顺带触发格子按钮的 onJump。 */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { AT } from '@/lib/i18n/pick';
 
 import type { EditorPage } from '../../types';
 import { pageSlot } from '../../spreads';
@@ -43,7 +44,7 @@ export type MobileStripProps = {
   pages: EditorPage[];
   /** 格子 = 屏,来自 browseUnits(与画布同一套分屏)。 */
   units: BrowseUnit[];
-  zh: boolean;
+  aT: AT;
   /** 当前页游标,用来描高亮框。 */
   currentPage: number;
   /** 缩略档的渲染上下文(照片走 thumb tier)。引用必须稳定,否则每帧重渲整条。 */
@@ -70,7 +71,7 @@ type StripDrag = {
   y: number;
 };
 
-export function MobileStrip({ pages, units, zh, currentPage, thumbCtxOf, onJump, onReorder }: MobileStripProps) {
+export function MobileStrip({ pages, units, aT, currentPage, thumbCtxOf, onJump, onReorder }: MobileStripProps) {
   // 按页缓存(不按格):切密度只是重新分组,不该让每一页的 HTML 重渲一遍。
   const faces = useMemo(
     () => pages.map((p, i) => pageFaceHTML(p, STRIP_CELL_W, STRIP_CELL_H, thumbCtxOf(i))),
@@ -184,8 +185,8 @@ export function MobileStrip({ pages, units, zh, currentPage, thumbCtxOf, onJump,
   const label = (u: BrowseUnit) => {
     const first = u.pageIndices[0] ?? 0;
     const last = u.pageIndices[u.pageIndices.length - 1] ?? first;
-    if (first === last) return zh ? `第 ${first + 1} 页` : `Page ${first + 1}`;
-    return zh ? `第 ${first + 1}–${last + 1} 页` : `Pages ${first + 1}–${last + 1}`;
+    if (first === last) return aT(`第 ${first + 1} 页`, `Page ${first + 1}`);
+    return aT(`第 ${first + 1}–${last + 1} 页`, `Pages ${first + 1}–${last + 1}`);
   };
 
   const drag = dragRef.current;
@@ -208,7 +209,7 @@ export function MobileStrip({ pages, units, zh, currentPage, thumbCtxOf, onJump,
   })();
 
   return (
-    <nav className="mstrip" aria-label={zh ? '书册预览' : 'Book preview'}>
+    <nav className="mstrip" aria-label={aT('书册预览', 'Book preview')}>
       <div
         ref={trackRef}
         className="mstrip-track"
