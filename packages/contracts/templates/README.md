@@ -85,5 +85,5 @@ under `packages/contracts/fixtures/skeleton/`.
 
 <!-- doc-scope
 paths: packages/contracts/templates/*.json, packages/contracts/src/templates.ts, packages/contracts/src/render/html-templates/**, apps/web/src/components/album/web-registry.ts
-checked-at: c25e0a73
+checked-at: 293b1d2d
 -->
