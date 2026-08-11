@@ -45,6 +45,8 @@ import {
   transitionFrameCount,
   type DropShadow,
 } from './live-flip-motion';
+import { LIVE_FAN_SHAPE, fanCards, fanFaceIndex } from './live-fan-geometry';
+import { gridCellRect, gridScrollY, gridSpec, gridTailFrames, type GridSpec } from './live-grid-motion';
 
 // 上传的垫底背景只存本地(photoStore):blob → 同源 objectURL → 载入(不污染导出画布)。缺失→null→中性底。
 async function loadBoardUpload(key: string, load: (src: string) => Promise<HTMLImageElement>): Promise<HTMLImageElement | null> {
@@ -86,14 +88,32 @@ const FACE_SCALE = 2; // 单 face 截图倍率(会缩到半页显示,2 足够清
 const CODEC_CANDIDATES = ['avc1.640028', 'avc1.4d0028', 'avc1.420028', 'avc1.640029', 'avc1.640032'];
 
 // 书在竖版画布里的位置(横向跨页居中)。
-const MARGIN_X = 90;
-const BOOK_W = OUT_W - MARGIN_X * 2; // 900
-const HALF_W = BOOK_W / 2; // 450
-const BOOK_H = BOOK_W / ((PAGE.width * 2) / PAGE.height); // ≈636
-const BOOK_X = MARGIN_X;
+//
+// 2026-08-11:书从 900 收到 760,腾出的横向空间给两侧的扇形页堆。参考录屏是横屏
+// 构图(书占宽 52%、两侧扇形各 21%),照搬到 3:4 竖版书只剩 560 宽、跨页高 252 ——
+// 页面上的字会糊掉,而 Live 视频就是拿去给人看这本书的。760 是「一眼还是厚厚一本」
+// 与「页面看得清」的折中(跨页高 537,是原先的 85%)。桌面 Live翻书版式预览.html
+// 是这组数的调参台。
+const BOOK_W = 760;
+const HALF_W = BOOK_W / 2; // 380
+const BOOK_H = BOOK_W / ((PAGE.width * 2) / PAGE.height); // ≈537
+const BOOK_X = (OUT_W - BOOK_W) / 2; // 160
 const BOOK_Y = (OUT_H - BOOK_H) / 2;
-const SPINE = BOOK_X + HALF_W;
+const SPINE = BOOK_X + HALF_W; // 540 = 画布中线
 const SOLO_X = (OUT_W - HALF_W) / 2; // 封面/封尾:单页居中,无空白半页
+
+// 扇形页堆的出片参数住在 live-fan-geometry(几何与它同一份真相,顺带被出画守卫盯着)。
+const FAN = LIVE_FAN_SHAPE;
+/** 扇形卡自己的投影(比翻动那张纸轻:它们是垫在底下的)。 */
+const FAN_SHADOW: DropShadow = { y: 8, blur: 16, color: 'rgba(8,12,20,.42)' };
+/** 扇形卡外口的 1px 受光细边 —— 卡挨得密,没有它会糊成一坨。 */
+const FAN_EDGE_RING = { w: 1, color: 'rgba(255,255,255,.18)' } as const;
+
+/** 垫底背景上的暗角:让卡片投影立得住,深底浅底都聚焦到书上。 */
+const VIGNETTE = 0.42;
+
+/** 网格一格的宽高比 = 跨页比例。结尾段的帧账全在 live-grid-motion 的 gridTailFrames。 */
+const GRID_CELL_RATIO = (PAGE.width * 2) / PAGE.height;
 
 // 1080×1440 = 360×480pt 手机 @3x:mobile-editor.css 里的 CSS px 一律 ×3 落到画布,
 // 阴影/纸叠/沟槽/透视的相对强度才与手机上看到的一致。
@@ -226,6 +246,76 @@ function paintInsetRings(
     ctx.lineWidth = px(r.w);
     ctx.strokeRect(x + px(r.w) / 2, BOOK_Y + px(r.w) / 2, w - px(r.w), BOOK_H - px(r.w));
   }
+}
+
+/** 垫底背景上的暗角。画布只有圆形径向渐变,按画幅比例压扁成椭圆。 */
+function paintVignette(ctx: CanvasRenderingContext2D) {
+  const cx = OUT_W / 2;
+  const cy = OUT_H / 2;
+  const rx = OUT_W * 0.62;
+  const ry = OUT_H * 0.56;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(1, ry / rx);
+  const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+  g.addColorStop(0.34, 'rgba(0,0,0,0)');
+  g.addColorStop(1, `rgba(0,0,0,${VIGNETTE})`);
+  ctx.fillStyle = g;
+  const h = (OUT_H * rx) / ry;
+  ctx.fillRect(-OUT_W, -h, OUT_W * 2, h * 2);
+  ctx.restore();
+}
+
+/** 预渲一张「只有投影、没有本体」的精灵:之后逐帧只 drawImage,不再现算高斯模糊。
+ *  精灵里本体矩形落在 (m, m),所以按 k 缩放贴图时投影强度也随 k 缩 —— 与逐帧
+ *  现算 `shadowBlur = px(blur) * k` 等价。 */
+type ShadowSprite = { canvas: HTMLCanvasElement; m: number };
+function makeShadowSprite(w: number, h: number, s: DropShadow): ShadowSprite {
+  const blur = px(s.blur);
+  const dy = px(s.y);
+  const m = Math.ceil(blur * 1.5 + Math.abs(dy) + 4);
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(w + m * 2);
+  c.height = Math.ceil(h + m * 2);
+  const g = c.getContext('2d')!;
+  g.shadowColor = s.color;
+  g.shadowBlur = blur;
+  g.shadowOffsetX = 3000; // 本体画到视野外,只把影子留在精灵里
+  g.shadowOffsetY = dy;
+  g.fillStyle = '#000';
+  g.fillRect(m - 3000, m, w, h);
+  return { canvas: c, m };
+}
+
+/** 把投影精灵贴到 (x,y) —— 让精灵里的本体矩形正好落在 (x, y, w·k, h·k)。 */
+function drawShadowSprite(ctx: CanvasRenderingContext2D, sp: ShadowSprite, x: number, y: number, k: number) {
+  ctx.drawImage(
+    sp.canvas,
+    x - sp.m * k, y - sp.m * k,
+    sp.canvas.width * k, sp.canvas.height * k,
+  );
+}
+
+/** 一张扇形卡:投影 → 白纸底 → 页面内容 → 纵深压暗 → 外口细边。全是正矩形。 */
+function paintFanCard(
+  ctx: CanvasRenderingContext2D,
+  face: HTMLCanvasElement | null,
+  c: { x: number; y: number; w: number; h: number; k: number; dark: number },
+  shadow: ShadowSprite,
+) {
+  if (c.w <= 0.5 || c.h <= 0.5) return;
+  drawShadowSprite(ctx, shadow, c.x, c.y, c.k);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(c.x, c.y, c.w, c.h);
+  if (face) ctx.drawImage(face, c.x, c.y, c.w, c.h);
+  if (c.dark > 0) {
+    ctx.fillStyle = `rgba(10,14,22,${c.dark.toFixed(4)})`;
+    ctx.fillRect(c.x, c.y, c.w, c.h);
+  }
+  const rw = px(FAN_EDGE_RING.w);
+  ctx.strokeStyle = FAN_EDGE_RING.color;
+  ctx.lineWidth = rw;
+  ctx.strokeRect(c.x + rw / 2, c.y + rw / 2, c.w - rw, c.h - rw);
 }
 
 /** 摊开的书(pair):投影层 + 纸叠 + 两张面 + 弧面明暗 + 书脊沟槽。 */
@@ -512,6 +602,29 @@ export async function renderLiveVideo(
     solo: layer((c) => paintDropShadows(c, SOLO_X, HALF_W, SOLO_BOOK_SHADOW)),
     edge: layer((c) => paintDropShadows(c, BOOK_X, BOOK_W, EDGE_BOOK_SHADOW)),
   };
+  /** 垫底背景 + 暗角都不随帧变(背景可能是几千像素的大图,暗角是整幅渐变),
+   *  与上面的书影同理:画一次,逐帧贴。 */
+  const ground = layer((c) => { paintBg(c); paintVignette(c); });
+  /** 扇形卡的投影精灵。所有卡都是 HALF_W×BOOK_H 的等比缩放,一张就够。 */
+  const fanShadow = makeShadowSprite(HALF_W, BOOK_H, FAN_SHADOW);
+  // face 原画布是 1588×2246(≈3.6Mpx),而扇形卡最大不过 HALF_W×BOOK_H。
+  // 逐帧拿原图做高质量降采样,一帧 14 次、长相册几万次 —— 先按最大卡尺寸降一次,
+  // 之后每帧只是小图之间的缩放。代价是每张 face 多存 ≈0.8MB(原图本就缓存着 14MB)。
+  const fanFaceCache = new Map<HTMLCanvasElement, HTMLCanvasElement>();
+  function fanFaceOf(src: HTMLCanvasElement | null): HTMLCanvasElement | null {
+    if (!src) return null;
+    const hit = fanFaceCache.get(src);
+    if (hit) return hit;
+    const c = document.createElement('canvas');
+    c.width = Math.ceil(HALF_W);
+    c.height = Math.ceil(BOOK_H);
+    const g = c.getContext('2d')!;
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(src, 0, 0, c.width, c.height);
+    fanFaceCache.set(src, c);
+    return c;
+  }
 
   // 画一个视图的「书」:solo=居中单页;pair 与双宽(#303)同一条路 —— 双宽已在
   // faces 里裁成左右两半,paintOpenBook 照常给中缝/弧面/纸叠(与移动端同款)。
@@ -524,6 +637,34 @@ export async function renderLiveVideo(
       paintOpenBook(ctx, chrome.spread, faceOf(v.faces[0] ?? null), faceOf(v.faces[1] ?? null));
     }
   }
+
+  // 摊在书两侧的整本页堆。每张卡是正矩形(几何与推导见 live-fan-geometry),
+  // pos 允许带小数 —— 翻页时把缓动后的进度直接加进去,整摞就随那张纸推进一格,
+  // 不为扇形另写一套动画。封面/封尾是合着的书,没有摊开的页堆:alpha 由调用方
+  // 按开合进度给,合着时为 0。
+  function paintFan(ctx: CanvasRenderingContext2D, pos: number, spineX: number, alpha: number) {
+    if (alpha <= 0) return;
+    const cards = fanCards(pos, n, {
+      ...FAN,
+      bookW: BOOK_W,
+      bookH: BOOK_H,
+      spineX,
+      centerY: BOOK_Y + BOOK_H / 2,
+    });
+    if (cards.length === 0) return;
+    ctx.save();
+    // **相乘不覆写**:调用方可能正处在交叉淡出里(已经设了 globalAlpha),
+    // 直接赋值会让页堆不跟着淡,在网格的列距里透出来再突然消失。
+    ctx.globalAlpha = ctx.globalAlpha * alpha;
+    for (const c of cards) {
+      const v = views[c.view]!;
+      const face = faceOf(v.faces[fanFaceIndex(v.faces.length, c.side)] ?? null);
+      paintFanCard(ctx, fanFaceOf(face), c, fanShadow);
+    }
+    ctx.restore();
+  }
+  /** 摊开的书才有页堆;封面/封尾合着时没有。 */
+  const fanAlphaOf = (v: View) => (v.solo ? 0 : 1);
 
   // 跨页→跨页翻页:与移动端 spread 翻纸同一套图层(leafLayers)与几何(leafGeometry)。
   function paintSpreadFlip(ctx: CanvasRenderingContext2D, a: View, b: View, t: number) {
@@ -541,6 +682,11 @@ export async function renderLiveVideo(
     });
   }
 
+  // 开合过程里书脊的横向位置。扇形页堆要跟着书一起走,所以直接给到书脊 ——
+  // 给平移量的话,外面还得再推一次 `bookX + HALF_W`,又是第二处推导。
+  const edgeSpineOf = (em: ReturnType<typeof edgeMotion>, e: number) =>
+    BOOK_X + ((em.startShiftPct + (em.endShiftPct - em.startShiftPct) * e) / 100) * BOOK_W + HALF_W;
+
   // 封面开卷 / 封底合卷:书体平移 + 半宽封皮绕书脊翻(edgeMotion/edgeLayers),
   // 正文与书脊按 medge-under-* 的时间线显隐,书影按 medge-shadow-* 渐入渐出。
   function paintEdgeFlip(
@@ -553,14 +699,13 @@ export async function renderLiveVideo(
     const em = edgeMotion(transition);
     const layers = edgeLayers(transition, a.faces, b.faces);
     const e = flipEase(t);
-    const shift = ((em.startShiftPct + (em.endShiftPct - em.startShiftPct) * e) / 100) * BOOK_W;
-    const bookX = BOOK_X + shift;
-    const spineX = bookX + HALF_W;
+    const spineX = edgeSpineOf(em, e);
+    const bookX = spineX - HALF_W;
     const shadowProgress = em.opening ? tokenEase(t) : 1 - tokenEase(t);
     if (shadowProgress > 0) {
       ctx.save();
-      ctx.globalAlpha = shadowProgress;
-      ctx.drawImage(chrome.edge, shift, 0);
+      ctx.globalAlpha = ctx.globalAlpha * shadowProgress;
+      ctx.drawImage(chrome.edge, bookX - BOOK_X, 0);
       ctx.restore();
     }
     const under = edgeUnderAlpha(em.opening, t * EDGE_FLIP_MS);
@@ -585,6 +730,61 @@ export async function renderLiveVideo(
     });
   }
 
+  // ── 结尾「全部页面一览」──────────────────────────────────────────────
+  // 翻完最后一屏,把整本书铺成三列缩略图从顶滚到底。排布与滚动时间线全在
+  // live-grid-motion(纯函数、单测锁住「正好停在底」),这里只负责画。
+  const grid: GridSpec = gridSpec(n, OUT_W, OUT_H, GRID_CELL_RATIO);
+  const tail = gridTailFrames(grid.scroll, FPS);
+  /** 网格格子的投影精灵:整格一张、solo 半格一张,两种尺寸够用。 */
+  const gridShadow = {
+    full: makeShadowSprite(grid.cellW, grid.cellH, FAN_SHADOW),
+    half: makeShadowSprite(grid.cellW / 2, grid.cellH, FAN_SHADOW),
+  };
+  /** 格子滚出画幅多远才不画。投影往下要铺到卡底以下 offset+blur,
+   *  按格子边界裁会在滚动时于画面顶端闪一道暗带。 */
+  const GRID_CULL = px(FAN_SHADOW.y) + px(FAN_SHADOW.blur);
+
+  /** 一格 = 一屏。solo(封面/封尾)只占半格宽居中,四周透出垫底背景。 */
+  type Thumb = { canvas: HTMLCanvasElement; x: number; w: number };
+  function renderThumb(v: View): Thumb {
+    const cw = Math.max(1, Math.round(grid.cellW));
+    const ch = Math.max(1, Math.round(grid.cellH));
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const g = c.getContext('2d')!;
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    const half = cw / 2;
+    if (v.solo) {
+      const x = half / 2;
+      g.fillStyle = '#ffffff';
+      g.fillRect(x, 0, half, ch);
+      const f = faceOf(v.faces[0] ?? null);
+      if (f) g.drawImage(f, x, 0, half, ch);
+      return { canvas: c, x, w: half };
+    }
+    g.fillStyle = '#ffffff';
+    g.fillRect(0, 0, cw, ch);
+    const l = faceOf(v.faces[0] ?? null);
+    const r = faceOf(v.faces[1] ?? null);
+    if (l) g.drawImage(l, 0, 0, half, ch);
+    if (r) g.drawImage(r, half, 0, half, ch);
+    return { canvas: c, x: 0, w: cw };
+  }
+
+  function paintGrid(ctx: CanvasRenderingContext2D, thumbs: Thumb[], scrollY: number) {
+    for (let i = 0; i < thumbs.length; i++) {
+      const cell = gridCellRect(i, grid);
+      const y = cell.y - scrollY;
+      if (y + cell.h < -GRID_CULL || y > OUT_H + GRID_CULL) continue; // 画幅外的格子不画
+      const t = thumbs[i]!;
+      const sx = cell.x + (t.x / t.canvas.width) * cell.w;
+      const sprite = t.w >= t.canvas.width ? gridShadow.full : gridShadow.half;
+      drawShadowSprite(ctx, sprite, sx, y, 1);
+      ctx.drawImage(t.canvas, cell.x, y, cell.w, cell.h);
+    }
+  }
+
   // ── 编码 ──
   const { Muxer, ArrayBufferTarget } = await import('mp4-muxer');
   const muxer = new Muxer({
@@ -604,7 +804,8 @@ export async function renderLiveVideo(
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  const totalFrames = n * HOLD_FRAMES + transitions.reduce((sum, tr) => sum + framesOf(tr), 0);
+  const totalFrames =
+    n * HOLD_FRAMES + transitions.reduce((sum, tr) => sum + framesOf(tr), 0) + tail.total;
   let frameIdx = 0;
   // 背压:每帧 VideoFrame 约 6MB,超长相册若一次性堆满编码队列会爆内存。
   // 队列超阈值就让出主线程等编码器消化,把在飞帧数压到个位数。
@@ -620,10 +821,17 @@ export async function renderLiveVideo(
     options.onProgress?.(frameIdx, totalFrames);
   }
 
+  // 每帧的底:垫底背景(用户在编辑器里选的那张)+ 暗角,都不随帧变,预渲一次贴过来。
+  // 暗角压在背景上、书之下,深底浅底都能把视线收到书上,扇形卡的投影也才立得住。
+  const paintGround = (ctx: CanvasRenderingContext2D) => {
+    ctx.drawImage(ground, 0, 0);
+  };
+
   for (let k = 0; k < n; k++) {
     const a = views[k]!;
     // 停留
-    paintBg(ctx);
+    paintGround(ctx);
+    paintFan(ctx, k, SPINE, fanAlphaOf(a));
     paintViewBook(ctx, a);
     for (let f = 0; f < HOLD_FRAMES; f++) await emit();
     // 过渡到下一视图
@@ -633,16 +841,24 @@ export async function renderLiveVideo(
       const frames = framesOf(tr);
       for (let f = 0; f < frames; f++) {
         const t = (f + 1) / (frames + 1);
-        paintBg(ctx);
+        paintGround(ctx);
         if (tr === 'spread') {
+          // 页堆与那张纸同一条缓动:整摞随翻页恰好推进一格。
+          paintFan(ctx, k + flipEase(t), SPINE, 1);
           paintSpreadFlip(ctx, a, b, t);
         } else if (tr != null) {
+          // 开合过程中书体在平移,页堆跟着走;开卷渐入、合卷渐出。
+          const em = edgeMotion(tr);
+          const alpha = em.opening ? tokenEase(t) : 1 - tokenEase(t);
+          paintFan(ctx, k + flipEase(t), edgeSpineOf(em, flipEase(t)), alpha);
           paintEdgeFlip(ctx, tr, a, b, t);
         } else {
           // 淡入淡出:先画 A(渐隐)再画 B(渐显),起点纯 A、终点纯 B,无空白半页。
           ctx.globalAlpha = 1 - t;
+          paintFan(ctx, k + t, SPINE, fanAlphaOf(a));
           paintViewBook(ctx, a);
           ctx.globalAlpha = t;
+          paintFan(ctx, k + t, SPINE, fanAlphaOf(b));
           paintViewBook(ctx, b);
           ctx.globalAlpha = 1;
         }
@@ -650,6 +866,29 @@ export async function renderLiveVideo(
       }
     }
   }
+
+  // ── 结尾:全部页面一览 ──
+  // 缩略图到这里才渲:翻页阶段用不到,提前建等于白占内存。
+  const thumbs = views.map(renderThumb);
+  const lastView = views[n - 1]!;
+  for (let f = 0; f < tail.fade; f++) {
+    const t = (f + 1) / (tail.fade + 1);
+    paintGround(ctx);
+    ctx.globalAlpha = 1 - t;
+    paintFan(ctx, n - 1, SPINE, fanAlphaOf(lastView));
+    paintViewBook(ctx, lastView);
+    ctx.globalAlpha = t;
+    paintGrid(ctx, thumbs, 0);
+    ctx.globalAlpha = 1;
+    await emit();
+  }
+  for (let f = 0; f < tail.scroll; f++) {
+    paintGround(ctx);
+    paintGrid(ctx, thumbs, gridScrollY(f, tail.scroll, grid.scroll));
+    await emit();
+  }
+  // 定格:画布已经停在底,重复取帧即可,不必重画。
+  for (let f = 0; f < tail.hold; f++) await emit();
 
   await encoder.flush();
   muxer.finalize();
