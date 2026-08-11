@@ -238,27 +238,25 @@ export function pickEndingTemplateId(albumId: string): string | undefined {
 // 最少,版面语言又和 mag-23 最接近,挤掉它对设计语言整体性的损失最小。要换成挤掉别的,
 // 改这张表一行即可。
 //
-// ⚠️ 第三套暂时关闭(2026-08-10):第 3 行现在指向 mag-32 而不是 mag-62,因为它的**新封底
-// 版式还没落地** —— 现在上线的话,深色套会配一个和其它三套一模一样的旧封底,不是定稿的
-// 「彩色底 + 左下字标 + 右下条形码」。第三套的全部代码(mag-62 模板、配色真相源、深色内页
-// 管线、colorway 全链路、模板深色清扫)都已落地并通过评审,只是从这张表上摘了出口:
-// `coverColorway` 只在 `cover === THIRD_SET_COVER_TEMPLATE_ID` 时才附加,而下游每个深色
-// 分支(assembleDesignedPages 的 colorway 入参、applyDarkChrome、darkInkByPageIndex、
-// 两条 append 路径)都以「解得出 colorway」为前提 —— 所以换掉这一行,**成书链路**上的
-// 深色路径整条不可达。
+// 第 3 套是深色套:mag-62(椭圆挖空封面)+ mag-63(纯装饰封底,零槽位)。它是四套里唯一
+// 带 `coverColorway` 的 —— 系统按 albumId 确定性派四色之一,刷封面、封底和全部内页。
+// 另外三套维持原样(白灰页底色 + mag-22 封底),线上行为不受深色套影响。
 //
-// 但**设计 Agent 那条路没关**:它的模板目录直接读 `packages/contracts/templates/*.json`,
-// `list_templates({category:'cover'})` 仍然会列出 mag-62,`swap_page_template` 只校验
-// category 和图槽数,所以用户在对话里要求换封面版式时,Agent 可能把页面换成 mag-62 ——
-// 而那一页的 carrier 还是浅底书的 `#1c1b18`,落在 mag-62 的 `#12363A` 底上约 1.3:1,
-// 读不了。p01(深底模板)本来就有同样的毛病,这不是本分支引入的新问题,只是多了一个。
-// 真正的修法属于「深底模板换版式时 carrier 要跟着翻」那件事,不在这张表的范围内。
+// 封底为什么只有第 3 套不同:mag-63 没有文字槽,AI 写的封尾结语在这一套里无处可落
+// (已知代价,用户拍板选的「变体 A」)。第 1/2/4 套仍用 mag-22 的 5 个槽,所以
+// compose 的封尾结语规则对它们照常有效 —— 那条 prompt 规则不能因为 mag-63 而改。
 //
-// **开启方式:把第 3 行换回 `THIRD_SET_COVER_TEMPLATE_ID`,并把封底换成新版式。** 只此一处。
+// ⚠️ **设计 Agent 那条路不受这张表约束**:它的模板目录直接读
+// `packages/contracts/templates/*.json`,`list_templates({category:'cover'})` 会列出
+// mag-62,而 `swap_page_template` 只校验 category 和图槽数。所以用户在对话里要求换封面
+// 版式时,Agent 可能把一本**浅底书**的封面换成 mag-62 —— 那一页的 carrier 还是
+// `#1c1b18`,落在 mag-62 的 `#12363A` 底上约 1.3:1,读不了。p01(深底模板)本来就有
+// 同样的毛病,不是本分支引入的。真正的修法是「换成深底模板时 carrier 要跟着翻」,
+// 属于设计 Agent 的写工具,不在这张表的范围内。
 const SET_LAYOUT: ReadonlyArray<{ cover: string; ending: string }> = [
   { cover: 'mag-01', ending: 'mag-22' },
   { cover: 'mag-23', ending: 'mag-22' },
-  { cover: 'mag-32', ending: 'mag-22' },
+  { cover: THIRD_SET_COVER_TEMPLATE_ID, ending: 'mag-63' },
   { cover: 'p01', ending: 'mag-22' },
 ];
 

@@ -54,20 +54,20 @@ test('buildCoverSets: 固定顺序,不随 albumId 变', () => {
   assert.deepEqual(a.map((s) => s.coverTemplateId), b.map((s) => s.coverTemplateId));
 });
 
-test('buildCoverSets: 第三套当前处于关闭态 —— mag-62 不在封面池里,没有一套带配色', async () => {
-  // 新封底版式未落地前,第三套从 SET_LAYOUT 摘出(见该表上方注释)。这条测试钉住的是
-  // 「关着」这个当前契约:哪天有人把第 3 行换回 mag-62 而封底还没做,这里会红,
-  // 提醒他先把封底补上再开。开启时把这条测试改成断言第 3 套是 mag-62 且带配色。
-  const { THIRD_SET_COVER_TEMPLATE_ID } = await import('@/lib/design/third-set-palette');
+test('buildCoverSets: 第三套是深色套 —— mag-62 封面 + mag-63 封底 + 派定的配色', async () => {
+  const { THIRD_SET_COVER_TEMPLATE_ID, coverColorwayById } = await import('@/lib/design/third-set-palette');
   const sets = buildCoverSets('album-1', CHAPTERS);
-  assert.ok(
-    !sets.some((s) => s.coverTemplateId === THIRD_SET_COVER_TEMPLATE_ID),
-    '第三套封面模板不该出现在封面池里(封底未落地)',
-  );
-  for (const s of sets) assert.equal(s.coverColorway, undefined, '关闭态下不该有任何配色');
+  assert.equal(sets[2]!.coverTemplateId, THIRD_SET_COVER_TEMPLATE_ID, '第 3 套必须是深色椭圆封面');
+  assert.equal(sets[2]!.endingTemplateId, 'mag-63', '第 3 套配纯装饰封底(零槽位,无 AI 结语)');
+  assert.ok(coverColorwayById(sets[2]!.coverColorway), '第 3 套要派一个真实存在的配色');
+  // 另外三套不受影响:没有配色,封底仍是 mag-22(5 个文字槽,AI 结语照常有地方落)。
+  for (const i of [0, 1, 3]) {
+    assert.equal(sets[i]!.coverColorway, undefined, `第 ${i + 1} 套不该带配色`);
+    assert.equal(sets[i]!.endingTemplateId, 'mag-22', `第 ${i + 1} 套封底应仍是 mag-22`);
+  }
   assert.equal(sets[0]!.pageBackground, '#FFFFFF');
   // 只放 id 字符串:整张色表泄进 CoverSet 就会被前端一路带进 POST /design 的
-  // .strict() 请求体里(本分支已经这么炸过一次,4fa211fe)。开关无关,恒成立。
+  // .strict() 请求体里(本分支已经这么炸过一次,4fa211fe)。
   for (const s of sets) {
     for (const [, v] of Object.entries(s)) assert.equal(typeof v, 'string');
   }
