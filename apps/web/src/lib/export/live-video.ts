@@ -5,12 +5,9 @@ import type { EditorPage } from '@/components/album/types';
 import { PAGE } from '@/components/album/templates/constants';
 import {
   EDGE_FLIP_MS,
-  FLIP_MS,
   edgeLayers,
   edgeMotion,
   flipTransition,
-  leafGeometry,
-  leafLayers,
   type FlipDir,
   type FlipTransition,
   type ScreenShape,
@@ -25,15 +22,10 @@ import {
   LEAF_FRONT_EDGE,
   LEAF_INSET_RING,
   LEAF_SHADOW,
-  PAGE_SPINE_LEFT,
-  PAGE_SPINE_RIGHT,
   PAPER_STACK,
   PERSPECTIVE,
   SOLO_BOOK_SHADOW,
   SOLO_INSET_RINGS,
-  SPINE_CREASE,
-  SPINE_CREASE_WIDTH,
-  SPINE_SEAM,
   SPREAD_BOOK_SHADOW,
   edgeUnderAlpha,
   flipEase,
@@ -58,10 +50,16 @@ async function loadBoardUpload(key: string, load: (src: string) => Promise<HTMLI
 
 // Live·MP4 导出:从封面开始翻到页尾,整本书浮在垫底背景上,输出 3:4 竖版 MP4(1080×1440)。
 //
-// 翻页动效与移动端画布是**同一本书**:哪两屏能翻、封面怎么开、封底怎么合、时长缓动,
-// 全部走 flip.ts 的纯函数(flipTransition/leafGeometry/edgeMotion/…),不在这里重写第二份;
-// 受光渐变、书口纸叠、书脊沟槽、书体投影按 mobile-editor.css 的数值经 live-flip-motion
-// 落到画布(叶片是真·透视投影,逐列切片,不是从前那种 cos 挤压的假 3D)。
+// 整本书是**一条折页**:每一页绕自己内侧的竖轴折起来,宽度按 cos 收,越远越扁、越矮、
+// 越暗;深度 0 的那两张就是摊平的当前跨页。翻页 = 把角度分布推进一格,于是「当前页
+// 收起、下一页展开」是模型自带的(几何见 live-fan-geometry)。这套照用户给的参考录屏
+// 逐帧比对定下来,取代了原先「目标跨页先画好、一张纸绕书脊扫过去」——那种做法那张纸
+// 一进中段就压成细缝,新内容第一帧就摊在底下,成片里整段翻页几乎看不出在动。
+//
+// **书的语义仍与移动端 flip.ts 同源**:哪两屏能翻(flipTransition)、封面怎么开、封底
+// 怎么合(edgeMotion/edgeLayers/edgeUnderAlpha)都不在这里重写第二份;封面开合那段仍是
+// 真透视叶片(projectLeafColumn 逐列切片),受光与书影按 mobile-editor.css 的数值经
+// live-flip-motion 落到画布。刻意分叉的只有内页翻页:折页模型、370ms、不画书脊沟槽。
 //
 // 渲染全在前端:每个 face 复用 renderFaceToCanvas,逐帧合成 → WebCodecs VideoEncoder
 // (H.264)→ mp4-muxer 封成 MP4。不支持 WebCodecs 的浏览器(如 Firefox)抛
@@ -78,8 +76,10 @@ const OUT_W = 1080;
 const OUT_H = 1440; // 3:4 竖版
 const FPS = 30;
 const HOLD_FRAMES = 22; // 每个跨页停留 ~0.73s
-// 翻页/开合时长逐帧对齐移动端(900ms / 700ms + FLIP_EASE),不再另拍一套「视频专用」节奏。
-const SPREAD_FLIP_FRAMES = transitionFrameCount(FLIP_MS, FPS); // 27
+// 内页翻页**不再**沿用移动端的 900ms:参考录屏逐帧差分实测单次翻页 ≈370ms,那份
+// 「脆」是这套动效观感的一部分,拖到 900ms 就散了。封面开合仍走移动端 EDGE_FLIP_MS。
+const SPREAD_FLIP_MS = 370;
+const SPREAD_FLIP_FRAMES = transitionFrameCount(SPREAD_FLIP_MS, FPS); // 11
 const EDGE_FLIP_FRAMES = transitionFrameCount(EDGE_FLIP_MS, FPS); // 21
 const FADE_FRAMES = 8; // 翻不了的场景(双宽#303 等,移动端直切)在视频里用短淡入淡出
 const FACE_SCALE = 2; // 单 face 截图倍率(会缩到半页显示,2 足够清晰)
@@ -108,6 +108,8 @@ const FAN = LIVE_FAN_SHAPE;
 const FAN_SHADOW: DropShadow = { y: 8, blur: 16, color: 'rgba(8,12,20,.42)' };
 /** 扇形卡外口的 1px 受光细边 —— 卡挨得密,没有它会糊成一坨。 */
 const FAN_EDGE_RING = { w: 1, color: 'rgba(255,255,255,.18)' } as const;
+/** 页面外口圆角(CSS px)。参考录屏实测约半页宽的 6%。 */
+const PAGE_RADIUS = 7;
 
 /** 垫底背景上的暗角:让卡片投影立得住,深底浅底都聚焦到书上。 */
 const VIGNETTE = 0.42;
@@ -206,33 +208,9 @@ function paintPaperStack(ctx: CanvasRenderingContext2D, x: number, w: number) {
   }
 }
 
-/** 左右半页向书脊的弧面明暗(mpage::before,只在两半都是真页时套)。 */
-function paintPageCurvature(ctx: CanvasRenderingContext2D, x: number, w: number) {
-  const half = w / 2;
-  const gl = ctx.createLinearGradient(x, 0, x + half, 0);
-  for (const s of PAGE_SPINE_LEFT) gl.addColorStop(s.at, stopCss(s.color));
-  ctx.fillStyle = gl;
-  ctx.fillRect(x, BOOK_Y, half, BOOK_H);
-  const gr = ctx.createLinearGradient(x + half, 0, x + w, 0);
-  for (const s of PAGE_SPINE_RIGHT) gr.addColorStop(s.at, stopCss(s.color));
-  ctx.fillStyle = gr;
-  ctx.fillRect(x + half, BOOK_Y, half, BOOK_H);
-}
-
-/** 书脊沟槽折光带 + 1px 接缝(mspread::before/::after)。 */
-function paintSpineChrome(ctx: CanvasRenderingContext2D, spineX: number) {
-  const w = px(SPINE_CREASE_WIDTH);
-  const g = ctx.createLinearGradient(spineX - w / 2, 0, spineX + w / 2, 0);
-  for (const s of SPINE_CREASE) g.addColorStop(s.at, stopCss(s.color));
-  ctx.fillStyle = g;
-  ctx.fillRect(spineX - w / 2, BOOK_Y, w, BOOK_H);
-  ctx.fillStyle = SPINE_SEAM.lit;
-  ctx.fillRect(spineX - px(1.5), BOOK_Y, px(1), BOOK_H);
-  ctx.fillStyle = SPINE_SEAM.shade;
-  ctx.fillRect(spineX + px(0.5), BOOK_Y, px(1), BOOK_H);
-  ctx.fillStyle = SPINE_SEAM.color;
-  ctx.fillRect(spineX - px(0.5), BOOK_Y, px(1), BOOK_H);
-}
+// 书脊沟槽折光带(SPINE_CREASE/SPINE_SEAM)与左右半页的弧面明暗(PAGE_SPINE_*)
+// 2026-08-12 退场:那套仿真是为「平摊着看」补厚度的。现在整本书是一条折页,页面
+// 绕自己内侧的竖轴折起来,立体感由折叠本身交代;再压一道深沟只会抢戏。用户拍板。
 
 /** 内圈描边(inset box-shadow 的 0 0 0 w 形态)。数组顺序 = 从底往上画。 */
 function paintInsetRings(
@@ -300,18 +278,43 @@ function drawShadowSprite(ctx: CanvasRenderingContext2D, sp: ShadowSprite, x: nu
 function paintFanCard(
   ctx: CanvasRenderingContext2D,
   face: HTMLCanvasElement | null,
-  c: { x: number; y: number; w: number; h: number; k: number; dark: number },
+  c: { x: number; y: number; w: number; h: number; k: number; dark: number; side: 1 | -1 },
   shadow: ShadowSprite,
 ) {
   if (c.w <= 0.5 || c.h <= 0.5) return;
   drawShadowSprite(ctx, shadow, c.x, c.y, c.k);
+  // 只有外口两角是圆的:内口贴着书脊,装订起来那条边是直的。
+  const r = Math.min(px(PAGE_RADIUS) * c.k, c.w / 2, c.h / 2);
+  const x1 = c.x + c.w;
+  const y1 = c.y + c.h;
+  ctx.save();
+  ctx.beginPath();
+  if (c.side === 1) {
+    ctx.moveTo(c.x, c.y);
+    ctx.lineTo(x1 - r, c.y);
+    ctx.quadraticCurveTo(x1, c.y, x1, c.y + r);
+    ctx.lineTo(x1, y1 - r);
+    ctx.quadraticCurveTo(x1, y1, x1 - r, y1);
+    ctx.lineTo(c.x, y1);
+  } else {
+    ctx.moveTo(x1, c.y);
+    ctx.lineTo(c.x + r, c.y);
+    ctx.quadraticCurveTo(c.x, c.y, c.x, c.y + r);
+    ctx.lineTo(c.x, y1 - r);
+    ctx.quadraticCurveTo(c.x, y1, c.x + r, y1);
+    ctx.lineTo(x1, y1);
+  }
+  ctx.closePath();
+  ctx.clip();
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(c.x, c.y, c.w, c.h);
+  // 折起来的页面横向被压扁,内容跟着压 —— 这就是「展开 / 收起」看到的那件事。
   if (face) ctx.drawImage(face, c.x, c.y, c.w, c.h);
   if (c.dark > 0) {
     ctx.fillStyle = `rgba(10,14,22,${c.dark.toFixed(4)})`;
     ctx.fillRect(c.x, c.y, c.w, c.h);
   }
+  ctx.restore();
   const rw = px(FAN_EDGE_RING.w);
   ctx.strokeStyle = FAN_EDGE_RING.color;
   ctx.lineWidth = rw;
@@ -329,11 +332,13 @@ function paintOpenBook(
   paintPaperStack(ctx, BOOK_X, BOOK_W);
   drawFace(ctx, left, BOOK_X, HALF_W);
   drawFace(ctx, right, SPINE, HALF_W);
-  // 与移动端 data-paper-spine 同判据:两半都是真页才有沟槽和弧面(空半边不画折痕)。
-  if (left && right) {
-    paintPageCurvature(ctx, BOOK_X, BOOK_W);
-    paintSpineChrome(ctx, SPINE);
-  }
+}
+
+/** 摊开的书**只铺底**:书影 + 书口纸叠。两个页面本身由折页(paintFan)画 ——
+ *  它们是同一条折页上深度为 0 的那两张,翻页时要能跟着折起来。 */
+function paintSpreadGround(ctx: CanvasRenderingContext2D, chrome: HTMLCanvasElement) {
+  ctx.drawImage(chrome, 0, 0);
+  paintPaperStack(ctx, BOOK_X, BOOK_W);
 }
 
 type ChromeLayers = {
@@ -634,7 +639,8 @@ export async function renderLiveVideo(
       drawFace(ctx, faceOf(v.faces[0] ?? null), SOLO_X, HALF_W);
       paintInsetRings(ctx, SOLO_X, HALF_W, SOLO_INSET_RINGS);
     } else {
-      paintOpenBook(ctx, chrome.spread, faceOf(v.faces[0] ?? null), faceOf(v.faces[1] ?? null));
+      // 跨页只铺底;两个页面是折页上深度 0 的两张,由 paintFan 画。
+      paintSpreadGround(ctx, chrome.spread);
     }
   }
 
@@ -666,21 +672,43 @@ export async function renderLiveVideo(
   /** 摊开的书才有页堆;封面/封尾合着时没有。 */
   const fanAlphaOf = (v: View) => (v.solo ? 0 : 1);
 
-  // 跨页→跨页翻页:与移动端 spread 翻纸同一套图层(leafLayers)与几何(leafGeometry)。
-  function paintSpreadFlip(ctx: CanvasRenderingContext2D, a: View, b: View, t: number) {
-    const dir: FlipDir = 'next';
-    const layers = leafLayers(dir, 2, a.faces, b.faces);
-    paintOpenBook(ctx, chrome.spread, faceOf(layers.under[0] ?? null), faceOf(layers.under[1] ?? null));
-    const geo = leafGeometry(dir, 2);
-    paintLeaf(ctx, {
-      front: faceOf(layers.front),
-      back: faceOf(layers.back),
-      spineX: SPINE,
-      side: geo.origin === 'left center' ? 1 : -1,
-      angle: geo.endAngle * flipEase(t),
-      dir,
-    });
+  // 正在转的那一张纸。折页推进只交代了**留在两侧**的页:视图 k 的左页往左折、
+  // 视图 k+1 的右页往右展开;而 k 的右页与 k+1 的左页是同一张纸的正反面,它要
+  // 横穿书脊过去。漏了它,翻页途中书的正中就是空的(2026-08-12 成片实拍到)。
+  //
+  // 它仍然只是一张卡:绕书脊转 θ=180°·e,宽度 = 半页 × |cosθ|,cos 变号就换面 ——
+  // 侧立那一瞬宽度归零,正好是「收起」与「展开」的交接点。
+  function paintTurningLeaf(ctx: CanvasRenderingContext2D, a: View, b: View, e: number) {
+    const cos = Math.cos(Math.PI * e);
+    const w = HALF_W * Math.abs(cos);
+    if (w <= 0.5) return;
+    const front = cos > 0;
+    const side: 1 | -1 = front ? 1 : -1;
+    const ref = front ? (a.faces[a.faces.length - 1] ?? null) : (b.faces[0] ?? null);
+    paintFanCard(
+      ctx,
+      fanFaceOf(faceOf(ref)),
+      {
+        x: front ? SPINE : SPINE - w,
+        y: BOOK_Y,
+        w,
+        h: BOOK_H,
+        k: 1,
+        // 转动中的纸受光比躺平的页略深一点,免得糊在底下那几张里分不出来。
+        dark: 0.06 * (1 - Math.abs(cos)),
+        side,
+      },
+      fanShadow,
+    );
   }
+
+  // 跨页→跨页翻页**没有单独的翻纸图层**。整本书是一条折页,翻页就是把角度分布推进
+  // 一格:当前那页折起来(宽度按 cos 收)、下一页展开,本来就是同一个模型的两端。
+  //
+  // 旧做法是「目标跨页先整张画好,一张纸绕书脊扫过去」。那张纸一进中段就压成一条细缝,
+  // 而新内容从第一帧起已经完整摊在底下 —— 2026-08-12 把成片与参考录屏同尺度并排逐帧
+  // 比对,整段翻页几乎看不出在动,就是这个原因。leafLayers/leafGeometry 这条路只留给
+  // 封面开合(paintEdgeFlip),那里书体确实在平移,叶片模型仍然对。
 
   // 开合过程里书脊的横向位置。扇形页堆要跟着书一起走,所以直接给到书脊 ——
   // 给平移量的话,外面还得再推一次 `bookX + HALF_W`,又是第二处推导。
@@ -714,10 +742,6 @@ export async function renderLiveVideo(
       ctx.globalAlpha = under;
       drawFace(ctx, faceOf(layers.under[0] ?? null), bookX, HALF_W);
       drawFace(ctx, faceOf(layers.under[1] ?? null), spineX, HALF_W);
-      if (layers.under[0] != null && layers.under[1] != null) {
-        paintPageCurvature(ctx, bookX, BOOK_W);
-        paintSpineChrome(ctx, spineX);
-      }
       ctx.restore();
     }
     paintLeaf(ctx, {
@@ -831,8 +855,8 @@ export async function renderLiveVideo(
     const a = views[k]!;
     // 停留
     paintGround(ctx);
-    paintFan(ctx, k, SPINE, fanAlphaOf(a));
     paintViewBook(ctx, a);
+    paintFan(ctx, k, SPINE, fanAlphaOf(a));
     for (let f = 0; f < HOLD_FRAMES; f++) await emit();
     // 过渡到下一视图
     if (k < n - 1) {
@@ -843,9 +867,11 @@ export async function renderLiveVideo(
         const t = (f + 1) / (frames + 1);
         paintGround(ctx);
         if (tr === 'spread') {
-          // 页堆与那张纸同一条缓动:整摞随翻页恰好推进一格。
-          paintFan(ctx, k + flipEase(t), SPINE, 1);
-          paintSpreadFlip(ctx, a, b, t);
+          // 折页推进一格 + 横穿书脊的那一张纸,就是整个翻页动画。
+          const e = flipEase(t);
+          paintSpreadGround(ctx, chrome.spread);
+          paintFan(ctx, k + e, SPINE, 1);
+          paintTurningLeaf(ctx, a, b, e);
         } else if (tr != null) {
           // 开合过程中书体在平移,页堆跟着走;开卷渐入、合卷渐出。
           const em = edgeMotion(tr);
@@ -855,11 +881,11 @@ export async function renderLiveVideo(
         } else {
           // 淡入淡出:先画 A(渐隐)再画 B(渐显),起点纯 A、终点纯 B,无空白半页。
           ctx.globalAlpha = 1 - t;
-          paintFan(ctx, k + t, SPINE, fanAlphaOf(a));
           paintViewBook(ctx, a);
+          paintFan(ctx, k + t, SPINE, fanAlphaOf(a));
           ctx.globalAlpha = t;
-          paintFan(ctx, k + t, SPINE, fanAlphaOf(b));
           paintViewBook(ctx, b);
+          paintFan(ctx, k + t, SPINE, fanAlphaOf(b));
           ctx.globalAlpha = 1;
         }
         await emit();
@@ -875,8 +901,8 @@ export async function renderLiveVideo(
     const t = (f + 1) / (tail.fade + 1);
     paintGround(ctx);
     ctx.globalAlpha = 1 - t;
-    paintFan(ctx, n - 1, SPINE, fanAlphaOf(lastView));
     paintViewBook(ctx, lastView);
+    paintFan(ctx, n - 1, SPINE, fanAlphaOf(lastView));
     ctx.globalAlpha = t;
     paintGrid(ctx, thumbs, 0);
     ctx.globalAlpha = 1;

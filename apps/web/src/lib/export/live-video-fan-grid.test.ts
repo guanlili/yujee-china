@@ -36,8 +36,8 @@ test('网格排布与滚动来自 live-grid-motion', () => {
 test('页堆画在书之下,暗角画在页堆之下', () => {
   // 停留那一帧的顺序:底(背景+暗角)→ 页堆 → 书。顺序错了书会被自己的页堆盖住。
   // 只比先后,不钉参数写法 —— 钉整行的话改个形参名就红,而行为没变。
-  const hold = /^\s*paintGround\(ctx\);\n(?:.*\n)?\s*paintFan\(.*\n\s*paintViewBook\(ctx, a\);/m;
-  assert.match(src, hold, '停留帧的绘制顺序不对(底 → 页堆 → 书)');
+  const hold = /^\s*paintGround\(ctx\);\n\s*paintViewBook\(ctx, a\);\n\s*paintFan\(/m;
+  assert.match(src, hold, '停留帧的绘制顺序不对(底 → 书底 → 折页)');
   const ground = /const ground = layer\(\(c\) => \{[^}]*\}\);/.exec(src);
   assert.ok(ground, '垫底背景 + 暗角必须预渲成一层');
   assert.match(ground![0], /paintBg\(c\);[^]*paintVignette\(c\)/, '暗角必须压在垫底背景之上');
@@ -79,7 +79,7 @@ test('封面/封尾合着时不画页堆;开合过程里书脊位置只有一处
 
 test('页堆与翻页同一条缓动:整摞随那张纸推进一格', () => {
   // pos = k + flipEase(t) —— 用线性 t 的话页堆会与纸脱拍。
-  assert.match(src, /paintFan\(ctx, k \+ flipEase\(t\)/);
+  assert.match(src, /const e = flipEase\(t\);\n\s*paintSpreadGround[\s\S]{0,80}paintFan\(ctx, k \+ e,/);
 });
 
 test('页堆的 alpha 与调用方相乘而不是覆写(交叉淡出里不许硬挺着不淡)', () => {

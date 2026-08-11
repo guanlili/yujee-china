@@ -37,6 +37,10 @@ export interface FanParams {
   gamma: number;
   /** 最深一张压暗多少(0–1)。 */
   dark: number;
+  /** 最深一张的折叠角(度)。页面绕自己内侧的竖轴折,宽度按 cos 收。 */
+  thetaMax: number;
+  /** 折叠角的分布指数。越小 = 刚离开正中就折得越急。 */
+  gammaA: number;
 }
 
 export interface FanCard {
@@ -46,8 +50,10 @@ export interface FanCard {
   side: 1 | -1;
   /** 连续深度,(0, count]。整数 = 停在某一格,小数 = 翻页推进途中。 */
   depth: number;
-  /** 缩放系数。 */
+  /** 纵深缩放系数。 */
   k: number;
+  /** 折叠因子 cos(θ)。1 = 完全摊平,0 = 侧立成一条线。 */
+  fold: number;
   x: number;
   y: number;
   w: number;
@@ -65,16 +71,23 @@ export interface FanCard {
  */
 export const LIVE_FAN_SHAPE = {
   count: 7,
-  vp: 2.6,
+  vp: 5.2,
   kMin: 0.8,
   gamma: 0.62,
   dark: 0.3,
+  thetaMax: 72,
+  gammaA: 0.22,
 } as const satisfies Omit<FanParams, 'bookW' | 'bookH' | 'spineX' | 'centerY'>;
 
 /** 深度 → 缩放。 */
 function scaleAt(depth: number, p: FanParams): number {
   const f = Math.pow(depth / p.count, p.gamma);
   return 1 - (1 - p.kMin) * f;
+}
+
+/** 深度 → 折叠角(度)。深度 0 = 摊平。 */
+function angleAt(depth: number, p: FanParams): number {
+  return p.thetaMax * Math.pow(depth / p.count, p.gammaA);
 }
 
 /** 深度 → 压暗。指数比缩放平缓一点,免得靠外那几张糊成一团黑。 */
@@ -85,18 +98,20 @@ function darkAt(depth: number, p: FanParams): number {
 function cardAt(view: number, side: 1 | -1, depth: number, p: FanParams): FanCard {
   const hw = p.bookW / 2;
   const k = scaleAt(depth, p);
+  const fold = Math.cos((angleAt(depth, p) * Math.PI) / 180);
   const V = p.spineX + side * p.vp * hw;
   const inner = V + (p.spineX - V) * k;
-  const outer = V + (p.spineX + side * hw - V) * k;
+  const outer = V + (p.spineX + side * hw * fold - V) * k;
   const h = p.bookH * k;
   return {
     view,
     side,
     depth,
     k,
+    fold,
     x: Math.min(inner, outer),
     y: p.centerY - h / 2,
-    w: Math.abs(outer - inner), // 恒等于 hw * k
+    w: Math.abs(outer - inner), // = hw · fold · k
     h,
     dark: darkAt(depth, p),
   };
@@ -115,18 +130,21 @@ function cardAt(view: number, side: 1 | -1, depth: number, p: FanParams): FanCar
 export function fanCards(pos: number, viewCount: number, p: FanParams): FanCard[] {
   const out: FanCard[] = [];
   if (p.count < 1 || viewCount < 1) return out;
-  const lo = Math.floor(pos);
   const hi = Math.ceil(pos);
-  for (let v = lo + p.count; v >= lo + 1; v--) {
+  const lo = Math.floor(pos);
+  // 右侧:视图 ⌈pos⌉ 起往后。**含深度 0** —— pos 为整数时那张就是摊平的右页。
+  for (let v = hi + p.count; v >= hi; v--) {
     if (v < 0 || v >= viewCount) continue;
     const depth = v - pos;
-    if (depth <= 0 || depth > p.count) continue;
+    if (depth < 0 || depth > p.count) continue;
     out.push(cardAt(v, 1, depth, p));
   }
-  for (let v = hi - p.count; v <= hi - 1; v++) {
+  // 左侧:视图 ⌊pos⌋ 起往前。pos 为整数时 ⌊pos⌋ 与 ⌈pos⌉ 是同一屏,
+  // 于是它同时出两张深度 0 的卡 —— 正好是摊平跨页的左右两页。
+  for (let v = lo - p.count; v <= lo; v++) {
     if (v < 0 || v >= viewCount) continue;
     const depth = pos - v;
-    if (depth <= 0 || depth > p.count) continue;
+    if (depth < 0 || depth > p.count) continue;
     out.push(cardAt(v, -1, depth, p));
   }
   return out;

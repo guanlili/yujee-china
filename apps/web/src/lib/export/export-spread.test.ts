@@ -69,8 +69,10 @@ test('live-video paints a full spread as two bound half-crops of the SAME page (
   );
   // 裁半在 faceOf 里做(源画布左/右半),缓存,不重复渲染。
   assert.match(liveSrc, /ref\.half === 'left' \? 0 : base\.width \/ 2/);
-  // pair 与双宽同一条摊开书路径(paintOpenBook 自带中缝),独立 full 分支退场。
-  assert.match(liveSrc, /paintOpenBook\(ctx, chrome\.spread, faceOf\(v\.faces\[0\] \?\? null\), faceOf\(v\.faces\[1\] \?\? null\)\)/);
+  // 2026-08-12:跨页(含双宽)的两个页面改由折页画 —— 它们是折页上深度 0 的那两张,
+  // 翻页时要能跟着折起来。live-video 只铺底(书影 + 书口纸叠),不再自己画页面。
+  assert.match(liveSrc, /paintSpreadGround\(ctx, chrome\.spread\)/);
+  assert.match(liveSrc, /fanFaceIndex\(v\.faces\.length, c\.side\)/, '取哪一面走 fanFaceIndex');
   assert.doesNotMatch(liveSrc, /else if \(v\.full\)/, '不许再有独立的 full 渲染分支');
   // 翻不翻由 flipTransition 决定(与移动端同一双眼睛),不许回到本地 canFlip。
   assert.match(liveSrc, /flipTransition\(shapeOf\(views\[k\]!\), shapeOf\(views\[k \+ 1\]!\), 'next', false\)/);
