@@ -3,7 +3,7 @@ import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
 import { generationService } from '@/services/generation/generation-service';
-import { BodySchema } from '../../schema';
+import { RetryBodySchema } from '../../schema';
 
 // Browser-facing retry for V3 analyze. The album id is fixed by the URL; the
 // browser resends the photo data from local IndexedDB so the same FAILED album
@@ -14,7 +14,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
   try {
     const user = await requireAuth(req);
     const { uuid } = await ctx.params;
-    const body = await parseBody(BodySchema, req);
+    const body = await parseBody(RetryBodySchema, req);
     const data = await generationService.retryAnalyzeV3(user.id, uuid, body);
     return ok(data);
   } catch (e) {

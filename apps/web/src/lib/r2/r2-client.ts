@@ -2,6 +2,7 @@ import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '@/lib/env';
 import { ERRORS } from '@/lib/api/error-codes';
+import { logger } from '@/lib/log/logger';
 
 // Cloudflare R2 is S3-compatible. The server only ever hands out presigned URLs
 // (PUT for direct browser uploads, GET for private reads like photo-originals) —
@@ -63,4 +64,34 @@ export const r2 = {
       throw ERRORS.R2_SIGN_FAILED();
     }
   },
+
+  // 唯一一处服务端真的把字节读回来的地方(建书直传:浏览器 PUT 完 800px 预览,
+  // Web 取回来拼成 base64 转发给 engine)。其余链路一律只发预签名 URL,不代理字节。
+  //
+  // 只有「对象不存在」返回 null(调用方按「这张没传上来」处理);其余一律抛。
+  // 早先这里 catch-all 返回 null,后果是 R2 挂了/凭证轮换/503 限流都会被翻译成
+  // 「请重新上传照片」—— 用户重传多少次都一样失败,而服务端一条日志都没有。
+  async getObject(key: string): Promise<Uint8Array | null> {
+    try {
+      const out = await client().send(
+        new GetObjectCommand({ Bucket: env.R2_BUCKET, Key: key }),
+      );
+      if (!out.Body) return null;
+      return await out.Body.transformToByteArray();
+    } catch (e) {
+      if (isNotFound(e)) return null;
+      logger.error({ err: String(e), key }, 'r2 getObject failed');
+      throw e;
+    }
+  },
 };
+
+// S3/R2 的「不存在」有好几种形态:SDK 的 NoSuchKey/NotFound 异常名,以及
+// HEAD 语义下只有 404 状态码的响应。其余(403/503/网络)都不是「不存在」。
+export function isNotFound(e: unknown): boolean {
+  if (!e || typeof e !== 'object') return false;
+  const name = (e as { name?: unknown }).name;
+  if (name === 'NoSuchKey' || name === 'NotFound') return true;
+  const status = (e as { $metadata?: { httpStatusCode?: unknown } }).$metadata?.httpStatusCode;
+  return status === 404;
+}

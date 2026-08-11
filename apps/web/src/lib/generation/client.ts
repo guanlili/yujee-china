@@ -1,6 +1,7 @@
 'use client';
 
 import { assignClusterIds, type ClusterInput } from '@/lib/photo/cluster';
+import { uploadAnalyzePreviews } from './analyze-upload';
 import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
 import { representativePlaceForGroup } from '@/lib/photo/geocode';
 import { photoStore } from '@/lib/photo/store';
@@ -246,18 +247,39 @@ export async function selectLayoutRefsFromStore(photoIds: string[]): Promise<Rec
 
 type SubmitResult = { albumId: string; requestId: string };
 
+// 平台级失败(413/502/504…)返回的是 text/plain 或 HTML,不是我们的 {ok,error} 信封。
+// 无脑 res.json() 会抛 SyntaxError,用户看到的是
+// `Unexpected token 'R', "Request En"... is not valid JSON` —— 上传照片撞 413 时
+// 线上就是这么甩人脸的。这里统一把「响应体不是 JSON」翻成带状态码的人话。
+async function readJsonEnvelope(res: Response, path: string): Promise<{
+  ok?: boolean;
+  data?: unknown;
+  error?: { code?: string; message?: string };
+}> {
+  const text = await res.text();
+  try {
+    return JSON.parse(text) as { ok?: boolean; error?: { code?: string; message?: string } };
+  } catch {
+    throw new Error(`${path} failed (HTTP ${res.status})`);
+  }
+}
+
 async function postJobs(path: string, body: unknown): Promise<SubmitResult> {
   const res = await fetch(path, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const json = await res.json();
+  const json = await readJsonEnvelope(res, path);
   if (!json.ok) {
     if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
     if (json.error?.code === 'CREDIT_INSUFFICIENT') throw new CreditInsufficientError();
     if (json.error?.code === 'ANON_PHOTO_LIMIT' || json.error?.code === 'ANON_ALBUM_LIMIT') {
-      throw new AnonLimitError(json.error.code);
+      throw new AnonLimitError(json.error.code as 'ANON_PHOTO_LIMIT' | 'ANON_ALBUM_LIMIT');
+    }
+    if (json.error?.code === 'ANALYZE_UPLOAD_INCOMPLETE') {
+      // message 是服务端刻意只回的「缺失张数」,不是给人看的文案。
+      throw new PhotosUploadIncompleteError(Number(json.error.message) || 1);
     }
     throw new Error(json.error?.message ?? 'Request failed');
   }
@@ -312,6 +334,59 @@ async function backupGenerationPreviews(
   if (uploaded.length > 0) await confirmPhotoSnapshot(albumId, uploaded);
 }
 
+// 一张都没传上去 / 传了一部分:调用方必须看见。绝不能悄悄建一本缺图的书 ——
+// photoCount 会和实际字节对不上,排版出来就是空框。
+export class PhotosUploadFailedError extends Error {
+  readonly code = 'PHOTOS_UPLOAD_FAILED';
+  readonly failedPhotoIds: string[];
+  constructor(failedPhotoIds: string[]) {
+    super(`${failedPhotoIds.length} photo(s) failed to upload`);
+    this.name = 'PhotosUploadFailedError';
+    this.failedPhotoIds = failedPhotoIds;
+  }
+}
+
+// 浏览器以为都传上去了,服务端去 R2 取却少了几张(PUT 静默失败 / 预签名过期 /
+// 两个标签页之间会话从游客翻成正式账号,key 前缀里的 userId 变了)。
+// 服务端的 ANALYZE_UPLOAD_INCOMPLETE 只回个数(不回 photoId,见 error-codes.ts),
+// 所以 error.message 是个裸数字 "2" —— 直接 setErr(e.message) 就会给用户弹一个
+// 写着「2」的框。这个类型把它接住,调用方拿 missingCount 去套 i18n 文案。
+export class PhotosUploadIncompleteError extends Error {
+  readonly code = 'ANALYZE_UPLOAD_INCOMPLETE';
+  readonly missingCount: number;
+  constructor(missingCount: number) {
+    super(`${missingCount} uploaded photo(s) were not found on the server`);
+    this.name = 'PhotosUploadIncompleteError';
+    this.missingCount = missingCount;
+  }
+}
+
+async function signAnalyzeUploads(
+  photoIds: string[],
+): Promise<{ sessionId: string; uploads: { photoId: string; putUrl: string }[] }> {
+  const path = '/api/v3/albums/upload-urls';
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ photoIds }),
+  });
+  const json = await readJsonEnvelope(res, path);
+  if (!json.ok) {
+    if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
+    throw new Error(json.error?.message ?? 'Failed to sign photo uploads');
+  }
+  return json.data as { sessionId: string; uploads: { photoId: string; putUrl: string }[] };
+}
+
+async function putAnalyzePreview(putUrl: string, blob: Blob): Promise<void> {
+  const res = await fetch(putUrl, {
+    method: 'PUT',
+    headers: { 'content-type': 'image/jpeg' },
+    body: blob,
+  });
+  if (!res.ok) throw new Error(`analyze preview PUT failed (${res.status})`);
+}
+
 export async function submitAnalyzeV3(
   input: {
     requestId: string;
@@ -319,9 +394,31 @@ export async function submitAnalyzeV3(
     promptHint?: string;
     photos: GenerationPhoto[];
   },
-  opts: { skipCloudBackup?: boolean } = {},
+  opts: { skipCloudBackup?: boolean; onUploadProgress?: (done: number, total: number) => void } = {},
 ): Promise<SubmitResult> {
-  const result = await postJobs('/api/v3/albums', input);
+  // 照片字节先直传 R2,建书请求只带 photoId + 元数据。改造前这些 base64 内联在
+  // body 里,27~50 张就撞 Vercel 4.5MB 的 FUNCTION_PAYLOAD_TOO_LARGE(413)。
+  const { sessionId, uploadedPhotoIds, failedPhotoIds } = await uploadAnalyzePreviews({
+    photos: input.photos.map((photo) => ({
+      photoId: photo.photoId,
+      blob: jpegDataUrlToBlob(photo.base64),
+    })),
+    deps: { sign: signAnalyzeUploads, put: putAnalyzePreview },
+    ...(opts.onUploadProgress ? { onProgress: opts.onUploadProgress } : {}),
+  });
+  if (failedPhotoIds.length > 0) throw new PhotosUploadFailedError(failedPhotoIds);
+
+  const uploaded = new Set(uploadedPhotoIds);
+  const result = await postJobs('/api/v3/albums', {
+    requestId: input.requestId,
+    language: input.language,
+    ...(input.promptHint ? { promptHint: input.promptHint } : {}),
+    uploadSessionId: sessionId,
+    // 剥掉 base64:字节已经在 R2 了,再塞一份进 body 就等于什么都没改。
+    photos: input.photos
+      .filter((photo) => uploaded.has(photo.photoId))
+      .map(({ base64: _base64, ...meta }) => meta),
+  });
   // 游客零 R2 写入:快照备份是真实账号的能力(服务端也会 403),干脆不发起。
   if (!opts.skipCloudBackup) {
     try {

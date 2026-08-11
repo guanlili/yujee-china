@@ -125,6 +125,7 @@
       "errPhotoMin": "写真を 1 枚以上追加してください。",
       "errPromptEmpty": "物語の説明を短く入力してください。",
       "errPhotosUnavailable": "一部の写真がこの端末で見つかりません。もう一度追加してください。",
+      "errPhotosUploadFailed": "{count} 枚の写真をアップロードできませんでした。もう一度お試しください。",
       "hints": [
         {
           "label": "旅の記録",

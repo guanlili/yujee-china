@@ -125,6 +125,7 @@
       "errPhotoMin": "Añade al menos 1 foto.",
       "errPromptEmpty": "Escribe una frase sobre tu historia.",
       "errPhotosUnavailable": "Algunas fotos ya no están disponibles en este dispositivo. Vuelve a añadirlas.",
+      "errPhotosUploadFailed": "No se pudieron subir {count} foto(s). Inténtalo de nuevo.",
       "hints": [
         {
           "label": "Álbum de viaje",

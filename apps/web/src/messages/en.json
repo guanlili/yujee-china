@@ -125,6 +125,7 @@
       "errPhotoMin": "Add at least 1 photo.",
       "errPromptEmpty": "Add a short story prompt.",
       "errPhotosUnavailable": "Some photos are no longer available on this device. Please re-add them.",
+      "errPhotosUploadFailed": "{count} photo(s) couldn't be uploaded. Please try again.",
       "hints": [
         {
           "label": "Travel album",
