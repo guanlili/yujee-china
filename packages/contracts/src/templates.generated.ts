@@ -53,6 +53,7 @@ export const TEMPLATE_IDS = [
   "mag-60",
   "mag-61",
   "mag-62",
+  "mag-63",
   "p01"
 ] as const;
 
@@ -1847,6 +1848,12 @@ export const TEMPLATES: Record<string, TemplateDef> = {
         "sample": "2026 年记"
       }
     ]
+  },
+  "mag-63": {
+    "id": "mag-63",
+    "category": "ending",
+    "images": [],
+    "texts": []
   },
   "p01": {
     "id": "p01",
