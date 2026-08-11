@@ -242,8 +242,17 @@ export function pickEndingTemplateId(albumId: string): string | undefined {
 // 版式还没落地** —— 现在上线的话,深色套会配一个和其它三套一模一样的旧封底,不是定稿的
 // 「彩色底 + 左下字标 + 右下条形码」。第三套的全部代码(mag-62 模板、配色真相源、深色内页
 // 管线、colorway 全链路、模板深色清扫)都已落地并通过评审,只是从这张表上摘了出口:
-// `colorways` 只在 `cover === THIRD_SET_COVER_TEMPLATE_ID` 时才附加,所以换掉这一行,
-// 深色路径整条不可达,行为等同于第三套不存在。
+// `coverColorway` 只在 `cover === THIRD_SET_COVER_TEMPLATE_ID` 时才附加,而下游每个深色
+// 分支(assembleDesignedPages 的 colorway 入参、applyDarkChrome、darkInkByPageIndex、
+// 两条 append 路径)都以「解得出 colorway」为前提 —— 所以换掉这一行,**成书链路**上的
+// 深色路径整条不可达。
+//
+// 但**设计 Agent 那条路没关**:它的模板目录直接读 `packages/contracts/templates/*.json`,
+// `list_templates({category:'cover'})` 仍然会列出 mag-62,`swap_page_template` 只校验
+// category 和图槽数,所以用户在对话里要求换封面版式时,Agent 可能把页面换成 mag-62 ——
+// 而那一页的 carrier 还是浅底书的 `#1c1b18`,落在 mag-62 的 `#12363A` 底上约 1.3:1,
+// 读不了。p01(深底模板)本来就有同样的毛病,这不是本分支引入的新问题,只是多了一个。
+// 真正的修法属于「深底模板换版式时 carrier 要跟着翻」那件事,不在这张表的范围内。
 //
 // **开启方式:把第 3 行换回 `THIRD_SET_COVER_TEMPLATE_ID`,并把封底换成新版式。** 只此一处。
 const SET_LAYOUT: ReadonlyArray<{ cover: string; ending: string }> = [
