@@ -46,9 +46,16 @@ memoir-agent-rebuild/
 
 ## 当前工作流
 
-1. Browser 压缩照片,只发送生成所需的轻量图像数据和时间/聚类信号(EXIF 时间、GPS、
-   本地聚类标签);原图不出浏览器。
-2. Web 创建 album/job/credit hold,调用 Agent `POST /v3/analyze`。
+1. Browser 压缩照片(800px/q0.6),把这批派生 JPEG **直传 R2**:先 `POST
+   /api/v3/albums/upload-urls` 换一批预签名 PUT(只报 photoId,不建书不扣积分),
+   再逐张 PUT 到 `analyze-uploads/{userId}/{uploadSessionId}/`。原图不出浏览器。
+   照片字节从此不进 Vercel 请求体 —— 内联 base64 时代 27~50 张就撞 4.5MB 的
+   `FUNCTION_PAYLOAD_TOO_LARGE`。
+2. Browser `POST /api/v3/albums`,body 只带 `uploadSessionId` + 元信息(photoId、
+   宽高、EXIF 时间、本地聚类标签;100 张约 12KB)。Web 先从 R2 取回字节(取不齐就
+   409 `ANALYZE_UPLOAD_INCOMPLETE`,不建半本书),再创建 album/job/credit hold,
+   调用 Agent `POST /v3/analyze`。`analyze-uploads/` 下的中转对象靠 R2 生命周期
+   规则过期回收,应用层不删。
 3. Agent **纯确定性分组**(CLIP embedding / 拍摄时间 / GPS / 像素特征)+ 确定性归散图 +
    提取章节主色,回调 tree-only `V3LayoutTree`。章标题由拍摄时间跨度确定性派生,落在
    `V3Chapter.title`。**这一步零 AI 调用,也不识图。**
@@ -184,5 +191,5 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 509faba4
+checked-at: 6b945a3e
 -->
