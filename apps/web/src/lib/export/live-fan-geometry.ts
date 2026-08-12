@@ -41,6 +41,13 @@ export interface FanParams {
   thetaMax: number;
   /** 折叠角的分布指数。越小 = 刚离开正中就折得越急。 */
   gammaA: number;
+  /**
+   * 外推从第几格才完全生效。**靠中心那一两张不该吃外推** ——
+   * 外推同时把卡的内缘推离书脊,于是翻页中途书会从正中裂开一道口子;
+   * 而折叠又把外缘收进书里,展开就变成「从书底下滑出来」而不是抡开。
+   * 近处走纯粹的绕书脊折叠(内缘钉书脊、外缘随 cos 扫出去),远处才并入外推那摞。
+   */
+  vpRamp: number;
 }
 
 export interface FanCard {
@@ -70,13 +77,16 @@ export interface FanCard {
  * 照搬会把书压到 560 宽。这组外扩 0.32×半页,书还能保住 760。
  */
 export const LIVE_FAN_SHAPE = {
+  // 这组是解出来的,不是试凑的:要同时满足「深度 1 那张外缘 ≥1×半页(露得出来)」
+  // 与「最外一张 + 投影不出 1080 画幅」,两条不等式把 θmax 卡在 ≤32°、vp 卡在 ≈3.4。
   count: 7,
-  vp: 5.2,
+  vp: 3.4,
   kMin: 0.8,
   gamma: 0.62,
   dark: 0.3,
-  thetaMax: 72,
+  thetaMax: 32,
   gammaA: 0.22,
+  vpRamp: 1,
 } as const satisfies Omit<FanParams, 'bookW' | 'bookH' | 'spineX' | 'centerY'>;
 
 /** 深度 → 缩放。 */
@@ -85,9 +95,15 @@ function scaleAt(depth: number, p: FanParams): number {
   return 1 - (1 - p.kMin) * f;
 }
 
-/** 深度 → 折叠角(度)。深度 0 = 摊平。 */
+/**
+ * 深度 → 折叠角(度)。深度 0 = 摊平,深度 ≥1 折到 thetaMax 就**不再继续折**。
+ *
+ * 折叠只在「正在翻的那一格」发力(min(1,depth)):它要交代的是那一页展开/收起。
+ * 更深的那些是垫在后面的页堆,它们的层次靠纵深缩放与外推交代;若让折叠一路加深,
+ * 外缘会被 cos 收回书里,页堆就没了 —— 而竖版画幅横向就那么点余量,两头顾不过来。
+ */
 function angleAt(depth: number, p: FanParams): number {
-  return p.thetaMax * Math.pow(depth / p.count, p.gammaA);
+  return p.thetaMax * Math.pow(Math.min(1, depth), p.gammaA);
 }
 
 /** 深度 → 压暗。指数比缩放平缓一点,免得靠外那几张糊成一团黑。 */
@@ -99,7 +115,9 @@ function cardAt(view: number, side: 1 | -1, depth: number, p: FanParams): FanCar
   const hw = p.bookW / 2;
   const k = scaleAt(depth, p);
   const fold = Math.cos((angleAt(depth, p) * Math.PI) / 180);
-  const V = p.spineX + side * p.vp * hw;
+  // 外推随深度渐入(见 vpRamp):depth<vpRamp 的那几张几乎不外推,内缘因此钉在书脊。
+  const vp = p.vp * Math.pow(Math.min(1, depth / Math.max(1e-9, p.vpRamp)), 4);
+  const V = p.spineX + side * vp * hw;
   const inner = V + (p.spineX - V) * k;
   const outer = V + (p.spineX + side * hw * fold - V) * k;
   const h = p.bookH * k;

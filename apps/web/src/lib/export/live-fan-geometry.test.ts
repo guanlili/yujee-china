@@ -22,12 +22,13 @@ const P: FanParams = {
   spineX: 540,
   centerY: 720,
   count: 7,
-  vp: 5.2,
+  vp: 3.4,
   kMin: 0.8,
   gamma: 0.62,
   dark: 0.3,
-  thetaMax: 72,
+  thetaMax: 32,
   gammaA: 0.22,
+  vpRamp: 1,
 };
 
 const HW = P.bookW / 2;
@@ -86,12 +87,17 @@ test('越深的卡:折得越扁、缩得越小、越矮、越暗', () => {
   for (let i = 1; i < cards.length; i++) {
     const prev = cards[i - 1]!;
     const cur = cards[i]!;
-    assert.ok(cur.fold < prev.fold, `第 ${i} 张没有更扁`);
+    assert.ok(cur.fold <= prev.fold + 1e-12, `第 ${i} 张反而更展开了`);
     assert.ok(cur.k < prev.k, `第 ${i} 张没有更小`);
     assert.ok(cur.h < prev.h, `第 ${i} 张没有更矮`);
     assert.ok(cur.dark > prev.dark, `第 ${i} 张没有更暗`);
   }
   assert.ok(cards[cards.length - 1]!.dark <= P.dark + 1e-9, '压暗不得超过上限');
+  // 页堆的层次不能只靠折叠:深度 ≥1 折叠恒定,靠的是纵深缩放 + 外推把外缘推出去。
+  const outerOf = (c: Cards[number]) => c.x + c.w - P.spineX;
+  for (let i = 1; i < cards.length; i++) {
+    assert.ok(outerOf(cards[i]!) > outerOf(cards[i - 1]!), `第 ${i} 张外缘没有更外,页堆会糊在一起`);
+  }
 });
 
 test('卡宽 = 半页 × 纵深缩放 × 折叠因子;纵向仍以书的中线为轴', () => {
@@ -130,7 +136,11 @@ test('翻页途中:当前页单调收起、下一页单调展开(这就是那个
     prevIn = inc;
   }
   // 全程要有明显幅度,不能是「几乎不动」——那正是被证伪的旧模型的症状。
-  assert.ok(widthOf(11, 12, 1) < HW * 0.75, '起手时下一页应当还折得很扁');
+  // +25% 是竖版画幅解出来的上限:折得更狠,最外那张的外缘就会被 cos 收回书里,
+  // 页堆没了;要两头都要就得把书再收窄,那样页面上的字又糊了。
+  const start = widthOf(11, 12, 1) / HW;
+  assert.ok(start < 0.85, `起手时下一页已经 ${(start * 100).toFixed(0)}% 宽,展开看不出来`);
+  assert.ok(start > 0.6, '也不能折到几乎没有,那样像凭空长出来');
   assert.ok(Math.abs(widthOf(12, 12, 1) - HW) < 1e-9, '落定时下一页必须完全摊平');
 });
 
@@ -179,8 +189,27 @@ test('fanOuterEdge 与逐张扫出来的最外缘一致;没有折页时就是书
 test('出片参数是唯一一份,且折页确实铺到书外', () => {
   assert.deepEqual(
     Object.keys(LIVE_FAN_SHAPE).sort(),
-    ['count', 'dark', 'gamma', 'gammaA', 'kMin', 'thetaMax', 'vp'],
+    ['count', 'dark', 'gamma', 'gammaA', 'kMin', 'thetaMax', 'vp', 'vpRamp'],
   );
   const outer = (fanOuterEdge({ ...P, ...LIVE_FAN_SHAPE }) - P.spineX) / HW;
   assert.ok(outer > 1, `折页没有露出书外(${outer.toFixed(2)}×),厚度就没了`);
+});
+
+test('靠中心那几张:内缘必须钉在书脊,外缘必须露到书外', () => {
+  // 2026-08-12 活预览逐帧抓到的两个病,都出在「外推对近处也全额生效」:
+  //   · 外推把内缘也推离书脊 → 翻页中途书从正中裂开一道口子;
+  //   · 折叠把外缘收进书里 → 「展开」看着像从书底下滑出来,不是抡开。
+  // 只验 depth ≤ 0.5:那是翻页正中间、横穿书脊那张纸宽度归零的时刻,谁也遮不住裂口。
+  // 更深的那几张此刻被那张纸盖着,少许缺口看不见,而它们正需要外推来撑出页堆。
+  for (const depth of [0.2, 0.35, 0.5]) {
+    const c = fanCards(11 + depth, 22, P).find((x) => x.side === -1 && Math.abs(x.depth - depth) < 1e-9)!;
+    assert.ok(c, `深度 ${depth} 应当有卡`);
+    const gap = Math.abs(c.x + c.w - P.spineX); // 左侧卡的内缘 = x + w
+    assert.ok(gap < HW * 0.02, `深度 ${depth} 的内缘离书脊 ${gap.toFixed(1)}px,正中会裂口`);
+  }
+  const d1 = fanCards(11, 22, P).find((x) => x.side === 1 && Math.abs(x.depth - 1) < 1e-9)!;
+  assert.ok(
+    d1.x + d1.w - P.spineX >= HW,
+    `深度 1 那张外缘只到 ${((d1.x + d1.w - P.spineX) / HW).toFixed(2)}× 半页,缩在书里就看不见展开`,
+  );
 });
