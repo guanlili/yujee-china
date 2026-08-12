@@ -38,10 +38,11 @@ test('内页翻页刻意不再是「叶片盖在目标跨页上」——那套�
   assert.doesNotMatch(src, /function paintSpreadFlip\(/, '叶片式跨页翻页不许回来');
   assert.doesNotMatch(src, /\bleafLayers\(/, '跨页翻页不再用 leafLayers 分三层');
   assert.match(src, /const e = flipEase\(t\);/, '推进量必须走 flip.ts 的缓动');
-  assert.match(src, /paintFan\(ctx, k \+ e, SPINE, 1\)/, '跨页翻页 = 折页推进一格');
-  // 折页只交代留在两侧的页;横穿书脊那张纸(k 的右页 / k+1 的左页是它的正反面)
-  // 必须另画,否则翻页途中书的正中是空的 —— 这个洞被成片实拍到过。
-  assert.match(src, /paintTurningLeaf\(ctx, a, b, e\)/, '转动中的那张纸不能漏');
+  // 2026-08-12 用户口述纠偏:参考里翻的是**整个对页** —— 新跨页从书脊像贺卡一样
+  // 左右同时对开,盖住平躺的旧跨页;不是一张半页纸绕书脊横穿过去。
+  assert.match(src, /paintRestingSpread\(ctx, a\)/, '旧跨页必须平躺在底被盖住');
+  assert.match(src, /paintUnfoldingSpread\(ctx, b, e\)/, '新跨页必须两半成对对开');
+  assert.doesNotMatch(src, /paintTurningLeaf/, '单张纸横穿书脊的旧路退场');
 });
 
 test('内页翻页 370ms,是照参考录屏量的,不是随手改小的', () => {

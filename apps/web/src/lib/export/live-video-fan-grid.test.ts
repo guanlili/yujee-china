@@ -77,9 +77,12 @@ test('封面/封尾合着时不画页堆;开合过程里书脊位置只有一处
   assert.match(src, /paintFan\([^;]*edgeSpineOf\(/, '页堆必须跟着书脊走');
 });
 
-test('页堆与翻页同一条缓动:整摞随那张纸推进一格', () => {
-  // pos = k + flipEase(t) —— 用线性 t 的话页堆会与纸脱拍。
-  assert.match(src, /const e = flipEase\(t\);\n\s*paintSpreadGround[\s\S]{0,80}paintFan\(ctx, k \+ e,/);
+test('页堆与对开同一条缓动,交接的两屏不进页堆', () => {
+  // pos = k + flipEase(t) —— 用线性 t 的话页堆会与对开的跨页脱拍。
+  // 交接中的两屏(k 与 k+1)必须从页堆里摘出来:它们由平躺层与对开层专门画,
+  // 页堆里再画一份就是重影。
+  assert.match(src, /const handoff = new Set\(\[k, k \+ 1\]\);/);
+  assert.match(src, /const e = flipEase\(t\);[\s\S]{0,300}paintFan\(ctx, k \+ e, SPINE, 1, handoff\)/);
 });
 
 test('页堆的 alpha 与调用方相乘而不是覆写(交叉淡出里不许硬挺着不淡)', () => {

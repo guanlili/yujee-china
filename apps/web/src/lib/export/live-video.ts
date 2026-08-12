@@ -652,7 +652,13 @@ export async function renderLiveVideo(
   // pos 允许带小数 —— 翻页时把缓动后的进度直接加进去,整摞就随那张纸推进一格,
   // 不为扇形另写一套动画。封面/封尾是合着的书,没有摊开的页堆:alpha 由调用方
   // 按开合进度给,合着时为 0。
-  function paintFan(ctx: CanvasRenderingContext2D, pos: number, spineX: number, alpha: number) {
+  function paintFan(
+    ctx: CanvasRenderingContext2D,
+    pos: number,
+    spineX: number,
+    alpha: number,
+    skip?: ReadonlySet<number>,
+  ) {
     if (alpha <= 0) return;
     const cards = fanCards(pos, n, {
       ...FAN,
@@ -667,6 +673,7 @@ export async function renderLiveVideo(
     // 直接赋值会让页堆不跟着淡,在网格的列距里透出来再突然消失。
     ctx.globalAlpha = ctx.globalAlpha * alpha;
     for (const c of cards) {
+      if (skip?.has(c.view)) continue; // 正在交接的两屏由专门的两层画,不进页堆
       const v = views[c.view]!;
       const face = faceOf(v.faces[fanFaceIndex(v.faces.length, c.side)] ?? null);
       paintFanCard(ctx, fanFaceOf(face), c, fanShadow);
@@ -676,32 +683,42 @@ export async function renderLiveVideo(
   /** 摊开的书才有页堆;封面/封尾合着时没有。 */
   const fanAlphaOf = (v: View) => (v.solo ? 0 : 1);
 
-  // 正在转的那一张纸。折页推进只交代了**留在两侧**的页:视图 k 的左页往左折、
-  // 视图 k+1 的右页往右展开;而 k 的右页与 k+1 的左页是同一张纸的正反面,它要
-  // 横穿书脊过去。漏了它,翻页途中书的正中就是空的(2026-08-12 成片实拍到)。
-  //
-  // 它仍然只是一张卡:绕书脊转 θ=180°·e,宽度 = 半页 × |cosθ|,cos 变号就换面 ——
-  // 侧立那一瞬宽度归零,正好是「收起」与「展开」的交接点。
-  function paintTurningLeaf(ctx: CanvasRenderingContext2D, a: View, b: View, e: number) {
-    const cos = Math.cos(Math.PI * e);
-    const w = HALF_W * Math.abs(cos);
-    if (w <= 0.5) return;
-    const front = cos > 0;
-    const side: 1 | -1 = front ? 1 : -1;
-    const ref = front ? (a.faces[a.faces.length - 1] ?? null) : (b.faces[0] ?? null);
+  // ── 翻页的两层(2026-08-12 用户口述纠偏)────────────────────────────────
+  // 参考里翻的是**整个对页**:新跨页从书脊处像贺卡一样左右同时对开,盖住平躺的
+  // 旧跨页 ——「对页的两页一起翻」。此前写的是一张半页纸绕书脊横穿过去(经典的
+  // 单页 page-turn),完全不是同一个动作,被用户当场打回。
+
+  /** 旧跨页:整个过渡期间平躺在底,被对开的新跨页逐渐盖住。
+   *  过渡结束的交接是无缝的:e=1 时新跨页恰好全宽,旧跨页在其下换成页堆里
+   *  深度 1 的折叠卡(那张卡整个落在新跨页覆盖范围内),观众看不到切换。 */
+  function paintRestingSpread(ctx: CanvasRenderingContext2D, v: View) {
     paintFanCard(
-      ctx,
-      fanFaceOf(faceOf(ref)),
-      {
-        x: front ? SPINE : SPINE - w,
-        y: BOOK_Y,
-        w,
-        h: BOOK_H,
-        k: 1,
-        // 转动中的纸受光比躺平的页略深一点,免得糊在底下那几张里分不出来。
-        dark: 0.06 * (1 - Math.abs(cos)),
-        side,
-      },
+      ctx, fanFaceOf(faceOf(v.faces[0] ?? null)),
+      { x: SPINE - HALF_W, y: BOOK_Y, w: HALF_W, h: BOOK_H, k: 1, dark: 0, side: -1 },
+      fanShadow,
+    );
+    paintFanCard(
+      ctx, fanFaceOf(faceOf(v.faces[1] ?? null)),
+      { x: SPINE, y: BOOK_Y, w: HALF_W, h: BOOK_H, k: 1, dark: 0, side: 1 },
+      fanShadow,
+    );
+  }
+
+  /** 新跨页:两半以书脊为轴同时对开,开合度 = cos((1-e)·90°),宽度从 0 长到半页。
+   *  半开时略压暗,摊平时归零 —— 与页堆深度 0 的卡完全重合,落定无缝。 */
+  function paintUnfoldingSpread(ctx: CanvasRenderingContext2D, v: View, e: number) {
+    const open = Math.cos(((1 - e) * Math.PI) / 2);
+    const w = HALF_W * open;
+    if (w <= 0.5) return;
+    const dark = 0.1 * (1 - open);
+    paintFanCard(
+      ctx, fanFaceOf(faceOf(v.faces[0] ?? null)),
+      { x: SPINE - w, y: BOOK_Y, w, h: BOOK_H, k: 1, dark, side: -1 },
+      fanShadow,
+    );
+    paintFanCard(
+      ctx, fanFaceOf(faceOf(v.faces[1] ?? null)),
+      { x: SPINE, y: BOOK_Y, w, h: BOOK_H, k: 1, dark, side: 1 },
       fanShadow,
     );
   }
@@ -871,11 +888,14 @@ export async function renderLiveVideo(
         const t = (f + 1) / (frames + 1);
         paintGround(ctx);
         if (tr === 'spread') {
-          // 折页推进一格 + 横穿书脊的那一张纸,就是整个翻页动画。
+          // 对页翻页:两侧页堆随进度推进;正在交接的两屏不进页堆 —— 旧跨页平躺
+          // 在底、新跨页从书脊对开盖上来,三层叠出来就是参考里的那个动作。
           const e = flipEase(t);
+          const handoff = new Set([k, k + 1]);
           paintSpreadGround(ctx, chrome.spread);
-          paintFan(ctx, k + e, SPINE, 1);
-          paintTurningLeaf(ctx, a, b, e);
+          paintFan(ctx, k + e, SPINE, 1, handoff);
+          paintRestingSpread(ctx, a);
+          paintUnfoldingSpread(ctx, b, e);
         } else if (tr != null) {
           // 开合过程中书体在平移,页堆跟着走;开卷渐入、合卷渐出。
           const em = edgeMotion(tr);
