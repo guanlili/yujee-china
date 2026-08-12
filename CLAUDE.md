@@ -70,6 +70,16 @@ Postgres + Cloudflare R2
   26 个确定性 LUT 只以生成后的 17³/33³ 二进制资源随 Web 发布,`.cube` 源文件不进仓。
 - 滤镜引擎只在 Browser 运行,只生成缓存/导出/上传用的派生像素;IndexedDB 原图不改写,
   Web/Agent 不做服务端滤镜处理。
+- **建书照片直传 R2**:`POST /api/v3/albums` 的 body 里**没有照片字节**。浏览器先
+  `POST /api/v3/albums/upload-urls` 换预签名 PUT(不建书/不扣积分/不写库,游客在此
+  就按 `ANON_MAX_PHOTOS_PER_GENERATION` 卡住),直传到
+  `analyze-uploads/{userId}/{uploadSessionId}/{photoId}.jpg`,建书请求只带
+  `uploadSessionId` + 元信息;Web 在**建库之前**从 R2 取回字节拼成 `V3AnalyzeRequest`
+  (engine 侧零改动),取不齐就 409 `ANALYZE_UPLOAD_INCOMPLETE`。理由:内联 base64
+  时 27~50 张就撞 Vercel 4.5MB 的 `FUNCTION_PAYLOAD_TOO_LARGE`。
+  `/retry` 和 `/add-photos` **仍走内联**(`RetryBodySchema` 里 base64 必填),因此仍受
+  4.5MB 约束 —— 大书重试会 413,尚未治。
+  `analyze-uploads/` 前缀需要 R2 生命周期规则回收(运维前置条件,应用层不删)。
 - 照片规范原图(压缩派生物,长边 3400/q0.82 无滤镜 JPEG,`getCanonicalUploadBlob` 产出)
   以 R2 私有桶 `photo-originals/{albumId}/{photoId}.jpg` 为真相源,presigned PUT 上传 +
   确认落 `album_photos` 表(`status` uploaded/missing,upsert 靠 CASE 保护不倒退),
@@ -116,5 +126,5 @@ Postgres + Cloudflare R2
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 509faba4
+checked-at: 6b945a3e
 -->

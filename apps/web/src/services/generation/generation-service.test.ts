@@ -636,3 +636,123 @@ test('submitAddPhotosV3(匿名): 累计超 20 张抛 ANON_PHOTO_LIMIT;20 内零�
     await cleanupUser(anon.id);
   }
 });
+
+// ── 建书照片直传 R2(绕开 Vercel 4.5MB 请求体上限)────────────────────────────
+// 字节由浏览器 PUT 到 analyze-uploads/,建书 body 只带 uploadSessionId + 元数据;
+// 服务端取回来拼成和内联时代一模一样的 photos 转发给 agent,engine 侧零改动。
+
+function metaPhotos(n: number) {
+  return Array.from({ length: n }, (_, i) => ({
+    photoId: `up${i + 1}`,
+    width: 800,
+    height: 600,
+  }));
+}
+
+test('submitAnalyzeV3(直传): 从 R2 取回的字节原样转发给 agent', async (t: TestContext) => {
+  if (!(await isDbReachable())) { t.skip('DATABASE_URL is not reachable'); return; }
+  const user = await makeUser('analyze-upload-ok');
+  const sessionId = crypto.randomUUID();
+  try {
+    const { analyzeUploadService } = await import('@/services/album/analyze-upload-service');
+    t.mock.method(analyzeUploadService, 'collect', async (
+      _userId: string,
+      _sessionId: string,
+      photos: { photoId: string; width: number; height: number }[],
+    ) => photos.map((p) => ({ ...p, base64: `data:image/jpeg;base64,${p.photoId}` })));
+
+    let sent: { photos: { photoId: string; base64: string }[] } | null = null;
+    t.mock.method(agentClient, 'submitAnalyzeV3', async (req: typeof sent) => {
+      sent = req;
+      return { requestId: 'upload-r1' };
+    });
+
+    const result = await generationService.submitAnalyzeV3(user.id, {
+      requestId: crypto.randomUUID(),
+      language: 'zh',
+      uploadSessionId: sessionId,
+      photos: metaPhotos(3),
+    });
+
+    assert.equal(result.accepted, true);
+    assert.deepEqual(
+      sent!.photos.map((p) => [p.photoId, p.base64]),
+      [
+        ['up1', 'data:image/jpeg;base64,up1'],
+        ['up2', 'data:image/jpeg;base64,up2'],
+        ['up3', 'data:image/jpeg;base64,up3'],
+      ],
+    );
+    const album = await albumRepo.findById(result.albumId);
+    assert.equal(album?.photoCount, 3);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('submitAnalyzeV3(直传): R2 少字节时不建相册、不 hold 积分、不发 agent', async (t: TestContext) => {
+  if (!(await isDbReachable())) { t.skip('DATABASE_URL is not reachable'); return; }
+  const user = await makeUser('analyze-upload-missing');
+  try {
+    const { analyzeUploadService } = await import('@/services/album/analyze-upload-service');
+    const { ERRORS } = await import('@/lib/api/error-codes');
+    const { userRepo } = await import('@/db/repos/user-repo');
+    const balanceBefore = (await userRepo.findById(user.id))?.creditBalance;
+    t.mock.method(analyzeUploadService, 'collect', async () => {
+      throw ERRORS.ANALYZE_UPLOAD_INCOMPLETE(2);
+    });
+    let agentCalls = 0;
+    t.mock.method(agentClient, 'submitAnalyzeV3', async () => {
+      agentCalls += 1;
+      return { requestId: 'never' };
+    });
+
+    await assert.rejects(
+      () => generationService.submitAnalyzeV3(user.id, {
+        requestId: crypto.randomUUID(),
+        language: 'zh',
+        uploadSessionId: crypto.randomUUID(),
+        photos: metaPhotos(3),
+      }),
+      (e: { code?: string; status?: number }) =>
+        e.code === 'ANALYZE_UPLOAD_INCOMPLETE' && e.status === 409,
+    );
+
+    assert.equal(agentCalls, 0);
+    const list = await albumRepo.findByUser(user.id);
+    assert.equal(list.length, 0, '相册一行都不该写');
+    const after = await userRepo.findById(user.id);
+    assert.equal(after?.creditBalance, balanceBefore, '积分余额纹丝不动');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('submitAnalyzeV3(旧式内联): 没有 uploadSessionId 时不碰 R2,照旧直发', async (t: TestContext) => {
+  if (!(await isDbReachable())) { t.skip('DATABASE_URL is not reachable'); return; }
+  const user = await makeUser('analyze-upload-legacy');
+  try {
+    const { analyzeUploadService } = await import('@/services/album/analyze-upload-service');
+    let collectCalls = 0;
+    t.mock.method(analyzeUploadService, 'collect', async () => {
+      collectCalls += 1;
+      return [];
+    });
+    let sent: { photos: { photoId: string; base64: string }[] } | null = null;
+    t.mock.method(agentClient, 'submitAnalyzeV3', async (req: typeof sent) => {
+      sent = req;
+      return { requestId: 'legacy-r1' };
+    });
+
+    await generationService.submitAnalyzeV3(user.id, {
+      requestId: crypto.randomUUID(),
+      language: 'zh',
+      photos: dummyPhotos(2),
+    });
+
+    assert.equal(collectCalls, 0, '旧路径不该去 R2 取字节');
+    assert.equal(sent!.photos[0]!.base64, 'data:image/jpeg;base64,aGk=');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});

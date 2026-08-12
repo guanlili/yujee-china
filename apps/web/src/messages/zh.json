@@ -125,6 +125,7 @@
       "errPhotoMin": "请至少添加 1 张照片。",
       "errPromptEmpty": "请输入一句故事描述。",
       "errPhotosUnavailable": "部分照片在此设备上已不可用，请重新添加。",
+      "errPhotosUploadFailed": "有 {count} 张照片没能传上去，请重试。",
       "hints": [
         {
           "label": "旅行纪念册",

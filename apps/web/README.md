@@ -128,6 +128,28 @@ Key files:
 
 ## Browser Data Boundary
 
+- **建书照片直传 R2**(照片字节永不进 Vercel 请求体)。曾经 `POST /api/v3/albums` 把每张
+  800px 预览的 base64 内联进 body,27~50 张就撞 Vercel 4.5MB 的
+  `FUNCTION_PAYLOAD_TOO_LARGE`(413,且响应体是 text/plain,客户端 `res.json()` 直接抛
+  SyntaxError)。现在分两步:
+  1. `POST /api/v3/albums/upload-urls` —— 只收 photoId 列表,回一个服务端签发的
+     `uploadSessionId` + 每张一个 30 分钟的预签名 PUT。**不建书、不扣积分、不写库**,
+     所以用户中途放弃不会留下空相册和挂着的 hold;游客同路(`getAuthUser`),但在这里
+     就按 `ANON_MAX_PHOTOS_PER_GENERATION` 卡住,免得这个端点变成纯写 R2 的白嫖通道。
+  2. `POST /api/v3/albums` —— body 只带 `uploadSessionId` + 元信息(100 张约 12KB)。
+     服务端在**建库之前**从 R2 取回字节(`analyzeUploadService.collect`),拼成与内联
+     时代一模一样的 `V3AnalyzeRequest` 转发 agent,engine 侧零改动。少一张就抛
+     `ANALYZE_UPLOAD_INCOMPLETE`(409,只回个数不回 photoId),不留半本书。
+  - key:`analyze-uploads/{userId}/{uploadSessionId}/{photoId}.jpg`。单张 ≤800KB,与旧
+    路径的 `V3AnalyzeImageDataUrl` 同一道闸(预签名 PUT 本身不带体积约束,所以这道闸
+    在读回来时补)。
+  - **运维前置:R2 上必须给 `analyze-uploads/` 前缀配生命周期规则(建议 1 天过期)。**
+    字节在建书成功后几分钟内就被消费完,应用层不删它们;中途放弃的上传、以及每次
+    重试都会换新 `uploadSessionId` 留下的上一轮对象,全靠这条规则回收。没配就是无上限
+    的存储成本。
+  - `POST /api/v3/albums/[uuid]/retry` **不走**这条路:它仍把全书照片内联重发,用的是
+    `RetryBodySchema`(base64 必填),因此仍受 4.5MB 限制,大书重试会 413。要治的话最
+    省事的走法是让它也从 R2 读 —— 字节建书时已经在那儿了。
 - The canonical photo original is now a compressed, unfiltered JPEG derivative (long
   edge 3400px, q0.82, built by `store.ts`'s `getCanonicalUploadBlob`) uploaded to a
   private R2 bucket at `photo-originals/{albumId}/{photoId}.jpg` via presigned PUT +
@@ -313,5 +335,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 4afc36bc
+checked-at: 6b945a3e
 -->

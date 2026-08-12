@@ -46,6 +46,11 @@ export const ERRORS = {
   // immutable render snapshot is absent/stale. Never include photo IDs or versions.
   PHOTO_SNAPSHOT_VERSION_MISSING: (count: number) =>
     new AppError('PHOTO_SNAPSHOT_VERSION_MISSING', String(count), 409),
+  // 建书直传:客户端说照片都传上去了,服务端去 R2 取却少了几张(PUT 静默失败 /
+  // 预签名过期 / 客户端漏传)。同 PHOTO_SNAPSHOT_VERSION_MISSING 的口径,只报个数,
+  // 不回 photoId,也不把 R2 的原始错误漏出去。409 = 客户端重传这几张就能好。
+  ANALYZE_UPLOAD_INCOMPLETE: (count: number) =>
+    new AppError('ANALYZE_UPLOAD_INCOMPLETE', String(count), 409),
 
   AGENT_TIMEOUT:         () => new AppError('AGENT_TIMEOUT',         'Agent timed out',             504),
   AGENT_VISION_FAILED:   () => new AppError('AGENT_VISION_FAILED',   'Vision API failed',           502),

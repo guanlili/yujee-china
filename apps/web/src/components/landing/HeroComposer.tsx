@@ -12,6 +12,8 @@ import {
   compressedPhotosFromCache,
   CreditInsufficientError,
   PhotosUnavailableError,
+  PhotosUploadFailedError,
+  PhotosUploadIncompleteError,
   UnauthorizedError,
   photosFromStore,
   submitAnalyzeV3,
@@ -47,16 +49,19 @@ function inferLanguage(prompt: string): 'zh' | 'en' {
   return /[一-龥]/.test(prompt) ? 'zh' : 'en';
 }
 
-// 上传进度气泡的阶段:选图后逐张压缩(可数,done/total),或点发送后单发提交(不定量)。
-type UploadStage = { kind: 'compress'; done: number; total: number } | { kind: 'upload' };
+// 上传进度气泡的阶段:选图后逐张压缩,或点发送后逐张直传 R2。两段都可数 ——
+// 直传把每张照片单发到 R2,50 张在手机上是以分钟计的,不能再让它显示一条不定量的
+// 流动条装作在动。total=0 表示还不知道分母,退回流动条。
+type UploadStage = { kind: 'compress' | 'upload'; done: number; total: number };
 
-// 上传进度气泡:浮在 composer 上方,压缩阶段显示「正在处理照片 N/M」+ 进度条,
-// 提交阶段显示「正在上传…」+ 流动条。给用户一个「事情在动」的实感,不再盲等转圈。
+// 上传进度气泡:浮在 composer 上方,显示「正在处理照片 N/M」/「正在上传 N/M」+ 进度条。
 function UploadBubble({ stage, t }: { stage: UploadStage | null; t: Props['createMessages'] }) {
   if (!stage) return null;
   const isCompress = stage.kind === 'compress';
-  const pct = isCompress && stage.total > 0 ? Math.round((stage.done / stage.total) * 100) : 0;
-  const label = isCompress ? `${t.uploadProcessing} ${stage.done}/${stage.total}` : t.uploadSending;
+  const counted = stage.total > 0;
+  const pct = counted ? Math.round((stage.done / stage.total) * 100) : 0;
+  const prefix = isCompress ? t.uploadProcessing : t.uploadSending;
+  const label = counted ? `${prefix} ${stage.done}/${stage.total}` : prefix;
   return (
     <div
       role="status"
@@ -97,7 +102,7 @@ function UploadBubble({ stage, t }: { stage: UploadStage | null; t: Props['creat
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 128 }}>
         <span>{label}</span>
         <span style={{ position: 'relative', height: 3, borderRadius: 2, background: 'rgba(255,255,255,.22)', overflow: 'hidden' }}>
-          {isCompress ? (
+          {counted ? (
             <span
               style={{
                 position: 'absolute',
@@ -206,6 +211,9 @@ export function HeroComposer({
     const cached = compressedPhotosFromCache(photoIds, cachedPhotos);
     const builtPhotos = cached ? clusterCompressedPhotos(cached) : await photosFromStore(photoIds);
     const trimmed = draft.prompt.trim();
+    // 直传阶段是整条创建里最长的一段(每张照片一个 PUT),把逐张进度接到气泡上;
+    // 否则 50 张在手机上就是几分钟对着一条不动的流动条。
+    setUploadStage({ kind: 'upload', done: 0, total: builtPhotos.length });
     const { albumId, requestId } = await submitAnalyzeV3(
       {
         requestId: crypto.randomUUID(),
@@ -214,7 +222,10 @@ export function HeroComposer({
         ...(trimmed ? { promptHint: trimmed } : {}),
         photos: builtPhotos,
       },
-      { skipCloudBackup: opts.anonymous === true },
+      {
+        skipCloudBackup: opts.anonymous === true,
+        onUploadProgress: (done, total) => setUploadStage({ kind: 'upload', done, total }),
+      },
     );
     generationDraft.clear();
     albumRecipe.save(albumId, { language: draft.language, photoIds, requestId });
@@ -264,6 +275,11 @@ export function HeroComposer({
         if (e instanceof PhotosUnavailableError) {
           generationDraft.clear();
           setErr(t.errPhotosUnavailable);
+        } else if (e instanceof PhotosUploadFailedError) {
+          // 草稿不清:照片还在 IndexedDB,用户重新点发送就能整批重传。
+          setErr(t.errPhotosUploadFailed.replace('{count}', String(e.failedPhotoIds.length)));
+        } else if (e instanceof PhotosUploadIncompleteError) {
+          setErr(t.errPhotosUploadFailed.replace('{count}', String(e.missingCount)));
         } else {
           setErr(e instanceof Error ? e.message : String(e));
         }
@@ -273,7 +289,7 @@ export function HeroComposer({
     return () => {
       cancelled = true;
     };
-  }, [locale, resumeGeneration, router, t.errPhotosUnavailable]);
+  }, [locale, resumeGeneration, router, t.errPhotosUnavailable, t.errPhotosUploadFailed]);
 
   const onFiles = async (files: FileList | null) => {
     if (!files) return;
@@ -331,7 +347,7 @@ export function HeroComposer({
     // step. If blank, the authoring flow asks the theme question first.
     setBusy(true);
     setErr(null);
-    setUploadStage({ kind: 'upload' });
+    setUploadStage({ kind: 'upload', done: 0, total: photos.length });
     const language = inferLanguage(value);
     const photoIds = photos.map((p) => p.photoId);
     const draft = { prompt: value.trim(), language, photoIds };
@@ -359,6 +375,23 @@ export function HeroComposer({
       }
       if (e instanceof PhotosUnavailableError) {
         setErr(t.errPhotosUnavailable);
+        setBusy(false);
+        return;
+      }
+      // 直传 R2 时有照片没传上去:如实报数,不偷偷少建几张。照片还在内存/IndexedDB,
+      // 用户再点一次发送就整批重传 —— 注意是**整批**:每次提交都会重新签一个
+      // sessionId,key 是 analyze-uploads/{userId}/{sessionId}/,所以重试不是覆盖写,
+      // 上一轮传成功的对象会变成孤儿等生命周期规则回收(见 analyze-upload-util.ts)。
+      // 没建成书就没扣积分,重试不会重复计费。
+      if (e instanceof PhotosUploadFailedError) {
+        setErr(t.errPhotosUploadFailed.replace('{count}', String(e.failedPhotoIds.length)));
+        setBusy(false);
+        return;
+      }
+      // 服务端去 R2 取字节时少了几张:文案同上(都是「有 N 张没传上去,重试」),
+      // 但错误来源不同 —— 这个是服务端发现的,e.message 是个裸数字,不能直接显示。
+      if (e instanceof PhotosUploadIncompleteError) {
+        setErr(t.errPhotosUploadFailed.replace('{count}', String(e.missingCount)));
         setBusy(false);
         return;
       }

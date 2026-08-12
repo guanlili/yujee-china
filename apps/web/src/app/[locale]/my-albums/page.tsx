@@ -24,6 +24,8 @@ import {
   submitAnalyzeV3,
   CreditInsufficientError,
   PhotosUnavailableError,
+  PhotosUploadFailedError,
+  PhotosUploadIncompleteError,
 } from '@/lib/generation/client';
 import { generationDraft, albumRecipe } from '@/lib/generation/draft';
 import {
@@ -508,7 +510,18 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
         router.push(`/${locale}/credits?from=home`);
         return;
       }
-      setErr(e instanceof PhotosUnavailableError ? t.create.errPhotosUnavailable : e instanceof Error ? e.message : t.common.error);
+      // 直传 R2 有照片没传上去:如实报数(而不是把 Error.message 的英文原文甩出来)。
+      setErr(
+        e instanceof PhotosUnavailableError
+          ? t.create.errPhotosUnavailable
+          : e instanceof PhotosUploadFailedError
+            ? t.create.errPhotosUploadFailed.replace('{count}', String(e.failedPhotoIds.length))
+            : e instanceof PhotosUploadIncompleteError
+            ? t.create.errPhotosUploadFailed.replace('{count}', String(e.missingCount))
+            : e instanceof Error
+              ? e.message
+              : t.common.error,
+      );
       setErrKind('other');
       setCreating(false);
     }

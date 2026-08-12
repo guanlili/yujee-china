@@ -13,24 +13,33 @@ import { jobService } from '@/services/job/job-service';
 import { SelectLayoutRequest, V3LayoutTree } from '@yujee/contracts';
 import type { V3AnalyzeRequest } from '@yujee/contracts';
 import { ANON_MAX_ALBUMS, ANON_MAX_PHOTOS_PER_GENERATION } from '@/config/anon';
+import { analyzeUploadService } from '@/services/album/analyze-upload-service';
 
 // 游客(匿名)口径:整条创作链零积分变动(不 precheck、不 hold —— 匿名余额被建号
 // 钩子归零,真文案计费推迟到登录后 applyDesign 首跑);照片走 20 张小上限。
 type GenerationOpts = { isAnonymous?: boolean };
 
+// 照片元信息(不含字节)。直传链路里 body 只带这些,字节在 R2。
+type V3AnalyzeMetaPhoto = {
+  photoId: string;
+  width: number;
+  height: number;
+  takenAt?: string | null;
+  // #232 opaque cluster label only — never a coordinate (see contract V3AnalyzePhoto).
+  clusterId?: string | null;
+};
+
+// 发给 agent 前必须凑齐字节。/retry 和 /add-photos 仍走内联,所以它们直接用这个。
+export type V3AnalyzePhotoWithBytes = V3AnalyzeMetaPhoto & { base64: string };
+
 type V3AnalyzeInput = {
   requestId: string;
   language: 'zh' | 'en';
   promptHint?: string;
-  photos: Array<{
-    photoId: string;
-    base64: string;
-    width: number;
-    height: number;
-    takenAt?: string | null;
-    // #232 opaque cluster label only — never a coordinate (see contract V3AnalyzePhoto).
-    clusterId?: string | null;
-  }>;
+  // 直传链路(建书):字节已由浏览器 PUT 到 analyze-uploads/{userId}/{sessionId}/,
+  // 这里只带服务端签发的会话 id。缺省 = 改造前那版客户端,字节内联在 photos[].base64。
+  uploadSessionId?: string;
+  photos: Array<V3AnalyzeMetaPhoto & { base64?: string }>;
 };
 
 type RetryInput = {
@@ -56,6 +65,10 @@ export const generationService = {
     }
     const amount = creditService.cost(input.photos.length);
     if (!anon) await creditService.precheck(userId, amount);
+
+    // 直传链路:字节在 R2,先取回来再动库。顺序是刻意的 —— 缺图就在这一步失败,
+    // 不会留下一本永远发不了车的空相册和一笔挂着的 hold。
+    const photos = await resolveAnalyzePhotos(userId, input);
 
     const placeholderTitle =
       input.promptHint?.trim().slice(0, 40) || (input.language === 'zh' ? '我的故事' : 'My Memoir');
@@ -86,7 +99,7 @@ export const generationService = {
       return album;
     });
 
-    return dispatchAnalyzeV3(albumId, input);
+    return dispatchAnalyzeV3(albumId, { ...input, photos });
   },
 
   async retryAnalyzeV3(userId: string, albumId: string, input: RetryInput) {
@@ -119,7 +132,7 @@ export const generationService = {
   async submitAddPhotosV3(
     userId: string,
     albumId: string,
-    input: { requestId: string; language: 'zh' | 'en'; photos: V3AnalyzeInput['photos'] },
+    input: { requestId: string; language: 'zh' | 'en'; photos: V3AnalyzePhotoWithBytes[] },
     opts: GenerationOpts = {},
   ) {
     const anon = opts.isAnonymous === true;
@@ -281,9 +294,22 @@ export function buildSelectLayoutRequestFromTree(input: {
   return parsed.data;
 }
 
+// 建书 body 里的照片凑齐字节:带 uploadSessionId 就去 R2 取,否则就是改造前那版
+// 客户端把 base64 内联进来了(过渡期分支,见 api/v3/albums/schema.ts 的两种模式)。
+async function resolveAnalyzePhotos(
+  userId: string,
+  input: V3AnalyzeInput,
+): Promise<V3AnalyzePhotoWithBytes[]> {
+  if (input.uploadSessionId === undefined) {
+    // schema 已经保证「无 sessionId ⇒ 每张都带 base64」,这里的断言是类型收窄。
+    return input.photos as V3AnalyzePhotoWithBytes[];
+  }
+  return analyzeUploadService.collect(userId, input.uploadSessionId, input.photos);
+}
+
 async function dispatchAnalyzeV3(
   albumId: string,
-  input: V3AnalyzeInput,
+  input: Omit<V3AnalyzeInput, 'photos'> & { photos: V3AnalyzePhotoWithBytes[] },
 ): Promise<{ albumId: string; requestId: string; accepted: true }> {
   const photos: V3AnalyzeRequest['photos'] = input.photos.map((p) => ({
     photoId: p.photoId,
