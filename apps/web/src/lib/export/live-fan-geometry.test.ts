@@ -17,16 +17,16 @@ import {
 // 跨页上」被证伪:那张纸一进中段就压成细缝,新内容第一帧就摊在底下,整段看着不动。
 
 const P: FanParams = {
-  bookW: 760,
-  bookH: 538,
+  bookW: 560,
+  bookH: 396,
   spineX: 540,
   centerY: 720,
   count: 7,
-  vp: 3.4,
+  vp: 6.7,
   kMin: 0.8,
   gamma: 0.62,
   dark: 0.3,
-  thetaMax: 32,
+  thetaMax: 50,
   gammaA: 0.22,
   vpRamp: 1,
 };
@@ -140,7 +140,7 @@ test('翻页途中:当前页单调收起、下一页单调展开(这就是那个
   // 页堆没了;要两头都要就得把书再收窄,那样页面上的字又糊了。
   const start = widthOf(11, 12, 1) / HW;
   assert.ok(start < 0.85, `起手时下一页已经 ${(start * 100).toFixed(0)}% 宽,展开看不出来`);
-  assert.ok(start > 0.6, '也不能折到几乎没有,那样像凭空长出来');
+  assert.ok(start > 0.45, '也不能折到几乎没有,那样像凭空长出来');
   assert.ok(Math.abs(widthOf(12, 12, 1) - HW) < 1e-9, '落定时下一页必须完全摊平');
 });
 

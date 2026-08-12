@@ -78,13 +78,14 @@ export interface FanCard {
  */
 export const LIVE_FAN_SHAPE = {
   // 这组是解出来的,不是试凑的:要同时满足「深度 1 那张外缘 ≥1×半页(露得出来)」
-  // 与「最外一张 + 投影不出 1080 画幅」,两条不等式把 θmax 卡在 ≤32°、vp 卡在 ≈3.4。
+  // 与「最外一张 + 投影不出 1080 画幅」。书宽 560 时两条不等式给出 θmax ≤50°、
+  // vp ≈6.7,最外一张落在 1.84×半页 —— 参考录屏实测 1.81×,基本重合。
   count: 7,
-  vp: 3.4,
+  vp: 6.7,
   kMin: 0.8,
   gamma: 0.62,
   dark: 0.3,
-  thetaMax: 32,
+  thetaMax: 50,
   gammaA: 0.22,
   vpRamp: 1,
 } as const satisfies Omit<FanParams, 'bookW' | 'bookH' | 'spineX' | 'centerY'>;

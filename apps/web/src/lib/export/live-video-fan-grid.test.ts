@@ -134,8 +134,8 @@ test('缩略图到结尾才渲,不在翻页阶段白占内存', () => {
   assert.ok(flipLoop > 0 && buildThumbs > flipLoop, '缩略图不该在翻页循环之前就建好');
 });
 
-test('书收窄到 760 给页堆腾地方,书脊仍在画布中线(透视原点没被挪歪)', () => {
-  assert.match(src, /const BOOK_W = 760;/);
+test('书收窄到 560 给页堆腾地方,书脊仍在画布中线(透视原点没被挪歪)', () => {
+  assert.match(src, /const BOOK_W = 560;/);
   assert.match(src, /const BOOK_X = \(OUT_W - BOOK_W\) \/ 2;/);
   // paintLeaf 的 originX 取 OUT_W/2,书脊必须与它重合,否则翻页透视会歪。
   assert.match(src, /const SPINE = BOOK_X \+ HALF_W;/);
