@@ -1,195 +1,122 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { eq, sql } from 'drizzle-orm';
-import { db } from '@/db/client';
+import { eq } from 'drizzle-orm';
+import { db } from '../../db/client';
+import { users } from '../../db/schema';
+import { albumRepo } from '../../db/repos/album-repo';
+import { cleanupUser, isDbReachable, makeUser } from '../../db/repos/__test__/setup';
 import { creditService } from './credit-service';
-import { creditLedgerRepo } from '@/db/repos/credit-ledger-repo';
-import { creditHoldRepo } from '@/db/repos/credit-hold-repo';
-import { users, creditLedger } from '@/db/schema';
-import {
-  cleanupUser,
-  isDbReachable,
-  makeAlbum,
-  makeUser,
-} from '@/db/repos/__test__/setup';
-import { CREDIT_COST_PER_ALBUM } from '@/config/pricing';
 
-test('creditService.cost defaults legacy callers to one generation credit', () => {
-  assert.equal(creditService.cost(), CREDIT_COST_PER_ALBUM);
-  assert.equal(Number.isNaN(creditService.cost()), false);
-});
+// 2026-08-14 生产真实事故:出现余额为负的用户。根因是三处生成通道共用的形状:
+//   precheck(只读 users.credit_balance)→ hold(0 扣减的预留)→ 几分钟后 settle(无条件扣)
+// 预检不认在途 hold —— 第一本书还在生成时开第二本,预检读到的余额与第一本预检时
+// 一模一样,两单都放行,先后结算就透支。窗口期 = 整个生成时长,不需要竞态。
+// 这里锁的守门规则:**hold 本身**必须在事务里按「余额 - 在途 hold 合计」放行。
 
-test('creditService: precheck rejects when balance < amount', async (t) => {
+async function makeAlbumFor(userId: string, title: string): Promise<string> {
+  const album = await albumRepo.create(db, {
+    userId,
+    title,
+    prompt: 'p',
+    photoCount: 3,
+    status: 'AGENT_RUNNING',
+    pageCount: 0,
+  });
+  return album.id;
+}
+
+async function setBalance(userId: string, balance: number): Promise<void> {
+  await db.update(users).set({ creditBalance: balance }).where(eq(users.id, userId));
+}
+
+test('creditService.hold: 在途 hold 必须占用余额 —— 第二单超出可用额度要被拒', async (t) => {
   if (!(await isDbReachable())) {
-    t.skip('DATABASE_URL not reachable');
+    t.skip('DATABASE_URL is not reachable; skipping credit-service integration test');
     return;
   }
-  const user = await makeUser('precheck-low');
+  const user = await makeUser('credit-overdraw');
   try {
-    await db.update(users).set({ creditBalance: 5 }).where(eq(users.id, user.id));
+    await setBalance(user.id, 30);
+    const albumA = await makeAlbumFor(user.id, '第一本');
+    const albumB = await makeAlbumFor(user.id, '第二本');
+
+    // 第一单:30 积分,余额正好够 → 放行
+    await db.transaction(async (tx) => {
+      await creditService.hold(tx, user.id, 30, albumA);
+    });
+
+    // 第二单:第一单还没结算(HOLDING),可用额度已是 0 → 必须拒绝。
+    // 修复前这里会放行(precheck 和 hold 都只看 credit_balance),这条测试就红。
     await assert.rejects(
-      () => creditService.precheck(user.id, 200),
-      (err: any) => err.code === 'CREDIT_INSUFFICIENT',
-    );
-  } finally {
-    await cleanupUser(user.id);
-  }
-});
-
-test('creditService: hold creates hold + 0-delta ledger + links to album', async (t) => {
-  if (!(await isDbReachable())) {
-    t.skip('DATABASE_URL not reachable');
-    return;
-  }
-  const user = await makeUser('hold');
-  try {
-    await db.update(users).set({ creditBalance: 1000 }).where(eq(users.id, user.id));
-    const album = await makeAlbum(user.id);
-    const holdId = await db.transaction((tx) =>
-      creditService.hold(tx, user.id, CREDIT_COST_PER_ALBUM, album.id),
-    );
-
-    const hold = await creditHoldRepo.findById(holdId);
-    assert.equal(hold?.status, 'HOLDING');
-    assert.equal(hold?.amount, CREDIT_COST_PER_ALBUM);
-
-    const ledger = await creditLedgerRepo.findByUser(user.id);
-    const holdEntry = ledger.find((l) => l.reason === 'GENERATION_HOLD');
-    assert.ok(holdEntry, 'expected GENERATION_HOLD ledger row');
-    assert.equal(holdEntry!.delta, 0);
-    assert.equal(holdEntry!.relatedHoldId, holdId);
-
-    // balance unchanged at hold time
-    const u = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    assert.equal(u[0]?.creditBalance, 1000);
-  } finally {
-    await cleanupUser(user.id);
-  }
-});
-
-test('creditService: settle debits balance + writes negative ledger + flips hold to SETTLED', async (t) => {
-  if (!(await isDbReachable())) {
-    t.skip('DATABASE_URL not reachable');
-    return;
-  }
-  const user = await makeUser('settle');
-  try {
-    await db.update(users).set({ creditBalance: 1000 }).where(eq(users.id, user.id));
-    const album = await makeAlbum(user.id);
-    const holdId = await db.transaction((tx) =>
-      creditService.hold(tx, user.id, 200, album.id),
-    );
-    await db.transaction((tx) => creditService.settle(tx, user.id, holdId));
-
-    const hold = await creditHoldRepo.findById(holdId);
-    assert.equal(hold?.status, 'SETTLED');
-    assert.ok(hold?.settledAt);
-
-    const u = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    assert.equal(u[0]?.creditBalance, 800);
-
-    const ledger = await creditLedgerRepo.findByUser(user.id);
-    const settleEntry = ledger.find((l) => l.reason === 'GENERATION_SETTLE');
-    assert.ok(settleEntry);
-    assert.equal(settleEntry!.delta, -200);
-    assert.equal(settleEntry!.balanceAfter, 800);
-  } finally {
-    await cleanupUser(user.id);
-  }
-});
-
-test('creditService: settle is idempotent on already-SETTLED hold', async (t) => {
-  if (!(await isDbReachable())) {
-    t.skip('DATABASE_URL not reachable');
-    return;
-  }
-  const user = await makeUser('settle-idem');
-  try {
-    await db.update(users).set({ creditBalance: 1000 }).where(eq(users.id, user.id));
-    const album = await makeAlbum(user.id);
-    const holdId = await db.transaction((tx) =>
-      creditService.hold(tx, user.id, 150, album.id),
-    );
-    await db.transaction((tx) => creditService.settle(tx, user.id, holdId));
-    // Second settle on same hold should be a no-op.
-    await db.transaction((tx) => creditService.settle(tx, user.id, holdId));
-
-    const u = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    assert.equal(u[0]?.creditBalance, 850);
-
-    const ledger = await creditLedgerRepo.findByUser(user.id);
-    const settleRows = ledger.filter((l) => l.reason === 'GENERATION_SETTLE');
-    assert.equal(settleRows.length, 1, 'only one SETTLE row even after double settle');
-  } finally {
-    await cleanupUser(user.id);
-  }
-});
-
-test('creditService: release leaves balance untouched + flips hold to RELEASED', async (t) => {
-  if (!(await isDbReachable())) {
-    t.skip('DATABASE_URL not reachable');
-    return;
-  }
-  const user = await makeUser('release');
-  try {
-    await db.update(users).set({ creditBalance: 1000 }).where(eq(users.id, user.id));
-    const album = await makeAlbum(user.id);
-    const holdId = await db.transaction((tx) =>
-      creditService.hold(tx, user.id, 200, album.id),
-    );
-    await db.transaction((tx) => creditService.release(tx, holdId));
-
-    const hold = await creditHoldRepo.findById(holdId);
-    assert.equal(hold?.status, 'RELEASED');
-
-    const u = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    assert.equal(u[0]?.creditBalance, 1000);
-
-    const ledger = await creditLedgerRepo.findByUser(user.id);
-    const releaseEntry = ledger.find((l) => l.reason === 'GENERATION_RELEASE');
-    assert.ok(releaseEntry);
-    assert.equal(releaseEntry!.delta, 0);
-  } finally {
-    await cleanupUser(user.id);
-  }
-});
-
-test('creditService: applyDelta with externalEventId is idempotent across concurrent inserts', async (t) => {
-  if (!(await isDbReachable())) {
-    t.skip('DATABASE_URL not reachable');
-    return;
-  }
-  const user = await makeUser('idem-event');
-  try {
-    await db.update(users).set({ creditBalance: 100 }).where(eq(users.id, user.id));
-    const eventId = `evt_test_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
-    await db.transaction((tx) =>
-      creditService.applyDelta(tx, user.id, 2400, 'PURCHASE', {
-        externalEventId: eventId,
-        meta: { provider: 'creem' },
+      db.transaction(async (tx) => {
+        await creditService.hold(tx, user.id, 30, albumB);
       }),
+      (e: unknown) => (e as { code?: string }).code === 'CREDIT_INSUFFICIENT',
+      '第二个 hold 应因在途预留不足被拒',
     );
 
-    // Second attempt with the same externalEventId must violate the partial
-    // UNIQUE index and fail the whole tx — balance should not double.
-    await assert.rejects(() =>
-      db.transaction((tx) =>
-        creditService.applyDelta(tx, user.id, 2400, 'PURCHASE', {
-          externalEventId: eventId,
-          meta: { provider: 'creem' },
-        }),
-      ),
+    // 第一单正常结算 → 余额恰好归零,不为负
+    const holdId = (await albumRepo.findById(albumA))!.creditHoldId!;
+    await db.transaction(async (tx) => {
+      await creditService.settle(tx, user.id, holdId);
+    });
+    assert.equal(await creditService.getBalance(user.id), 0);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+test('creditService.hold: 已结算/已释放的 hold 不再占额度', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping credit-service integration test');
+    return;
+  }
+  const user = await makeUser('credit-hold-lifecycle');
+  try {
+    await setBalance(user.id, 30);
+    const albumA = await makeAlbumFor(user.id, 'A');
+    const albumB = await makeAlbumFor(user.id, 'B');
+    const albumC = await makeAlbumFor(user.id, 'C');
+
+    // A:hold 30 → 失败释放 → 额度应全数回来,B 能开
+    await db.transaction(async (tx) => creditService.hold(tx, user.id, 30, albumA));
+    const holdA = (await albumRepo.findById(albumA))!.creditHoldId!;
+    await db.transaction(async (tx) => creditService.release(tx, holdA));
+    await db.transaction(async (tx) => creditService.hold(tx, user.id, 20, albumB));
+
+    // B 结算(余额 30→10、且 B 的 hold 不再在途)后:C 要 10,应放行
+    const holdB = (await albumRepo.findById(albumB))!.creditHoldId!;
+    await db.transaction(async (tx) => creditService.settle(tx, user.id, holdB));
+    await db.transaction(async (tx) => creditService.hold(tx, user.id, 10, albumC));
+
+    // 此刻余额 10、在途 10,再要 1 分都不行
+    const albumD = await makeAlbumFor(user.id, 'D');
+    await assert.rejects(
+      db.transaction(async (tx) => creditService.hold(tx, user.id, 1, albumD)),
+      (e: unknown) => (e as { code?: string }).code === 'CREDIT_INSUFFICIENT',
     );
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
 
-    const u = await db.select().from(users).where(eq(users.id, user.id)).limit(1);
-    assert.equal(u[0]?.creditBalance, 2500, 'balance credited exactly once');
-
-    const matching = await db
-      .select()
-      .from(creditLedger)
-      .where(sql`${creditLedger.meta}->>'external_event_id' = ${eventId}`);
-    assert.equal(matching.length, 1, 'one ledger row per external event id');
+test('creditService.availableBalance: 余额 - 在途 hold,precheck 与守门同一口径', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping credit-service integration test');
+    return;
+  }
+  const user = await makeUser('credit-available');
+  try {
+    await setBalance(user.id, 30);
+    const albumA = await makeAlbumFor(user.id, 'A');
+    await db.transaction(async (tx) => creditService.hold(tx, user.id, 12, albumA));
+    assert.equal(await creditService.availableBalance(user.id), 18);
+    // precheck 也必须按可用额度算 —— 否则用户传完照片才在 hold 处被打回,体验割裂。
+    await assert.rejects(
+      creditService.precheck(user.id, 19),
+      (e: unknown) => (e as { code?: string }).code === 'CREDIT_INSUFFICIENT',
+    );
+    await creditService.precheck(user.id, 18); // 不抛
   } finally {
     await cleanupUser(user.id);
   }

@@ -1,5 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
-import type { DbOrTx } from '@/db/client';
+import { db, type DbOrTx } from '@/db/client';
 import { creditHoldRepo } from '@/db/repos/credit-hold-repo';
 import { creditLedgerRepo } from '@/db/repos/credit-ledger-repo';
 import { albumRepo } from '@/db/repos/album-repo';
@@ -48,10 +48,20 @@ export const creditService = {
     }));
   },
 
-  async precheck(userId: string, amount: number): Promise<void> {
+  /** 可用额度 = 余额 - 在途(HOLDING)预留。**一切放行判断都用它,不用裸余额** ——
+   *  2026-08-14 生产事故:hold 不占余额、precheck 只看裸余额,第一本书还在生成时
+   *  开第二本,两单都放行,先后结算把用户扣成负数。窗口 = 整个生成时长,无需竞态。 */
+  async availableBalance(userId: string): Promise<number> {
     const user = await userRepo.findById(userId);
     if (!user) throw ERRORS.UNAUTHORIZED();
-    if (user.creditBalance < amount) throw ERRORS.CREDIT_INSUFFICIENT();
+    const held = await creditHoldRepo.sumHoldingByUser(db, userId);
+    return user.creditBalance - held;
+  },
+
+  // UX 快速闸:尽早给 402,免得用户传完照片才被打回。真正的守门在 hold() 里
+  // (带行锁的事务),这里的读没有锁,不承担正确性。
+  async precheck(userId: string, amount: number): Promise<void> {
+    if ((await this.availableBalance(userId)) < amount) throw ERRORS.CREDIT_INSUFFICIENT();
   },
 
   // The only sanctioned chokepoint for balance changes. Updates
@@ -106,12 +116,24 @@ export const creditService = {
   // AGENT_RUNNING transition: reserve credit. Creates credit_holds row,
   // links it onto albums.credit_hold_id, drops a 0-delta ledger crumb for
   // audit. Balance does not change yet (settle does that).
+  //
+  // **这里是余额守门的唯一权威。** 行锁(FOR UPDATE)串行化同一用户的并发 hold,
+  // 锁内按「余额 - 在途预留」放行 —— 只要每个 hold 在授予时都不超过可用额度,
+  // 在途合计就恒 ≤ 余额,settle 无条件扣也扣不到负数。precheck 只是无锁的 UX 闸。
   async hold(
     tx: DbOrTx,
     userId: string,
     amount: number,
     albumId: string,
   ): Promise<string> {
+    const locked = await tx
+      .select({ creditBalance: users.creditBalance })
+      .from(users)
+      .where(eq(users.id, userId))
+      .for('update');
+    if (!locked[0]) throw ERRORS.UNAUTHORIZED();
+    const held = await creditHoldRepo.sumHoldingByUser(tx, userId);
+    if (locked[0].creditBalance - held < amount) throw ERRORS.CREDIT_INSUFFICIENT();
     const hold = await creditHoldRepo.create(tx, {
       userId,
       albumId,

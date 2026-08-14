@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, type DbOrTx } from '../client';
 import { creditHolds, type NewCreditHold, type CreditHold } from '../schema';
 
@@ -20,6 +20,16 @@ export const creditHoldRepo = {
 
   update: async (tx: DbOrTx, id: string, patch: Partial<NewCreditHold>): Promise<void> => {
     await tx.update(creditHolds).set(patch).where(eq(creditHolds.id, id));
+  },
+
+  /** 该用户所有在途(HOLDING)预留的合计。可用额度 = credit_balance - 这个数;
+   *  守门方(creditService.hold)必须在锁住用户行的同一事务里调它。 */
+  sumHoldingByUser: async (tx: DbOrTx, userId: string): Promise<number> => {
+    const rows = await tx
+      .select({ total: sql<number>`coalesce(sum(${creditHolds.amount}), 0)::int` })
+      .from(creditHolds)
+      .where(and(eq(creditHolds.userId, userId), eq(creditHolds.status, 'HOLDING')));
+    return rows[0]?.total ?? 0;
   },
 
   // Atomic guard: flip HOLDING → `to` only if the row is still HOLDING, and
