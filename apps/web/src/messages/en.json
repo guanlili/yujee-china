@@ -349,6 +349,13 @@
       "member": "Member",
       "noName": "—",
       "empty": "No users yet.",
+      "guest": "Guest",
+      "showGuests": "Show guests",
+      "hideGuests": "Hide guests",
+      "range": "{from}–{to} of {total}",
+      "prev": "Previous",
+      "next": "Next",
+      "pageOf": "Page {page} of {totalPages}",
       "create": {
         "title": "Add a user",
         "desc": "Manually create an account for users who can't self-register (e.g. no verification email). The account is created verified with the free welcome credits — pass the email and password to the user so they can log in.",

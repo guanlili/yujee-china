@@ -349,6 +349,13 @@
       "member": "Miembro",
       "noName": "—",
       "empty": "Todavía no hay usuarios.",
+      "guest": "Invitado",
+      "showGuests": "Mostrar invitados",
+      "hideGuests": "Ocultar invitados",
+      "range": "{from}–{to} de {total}",
+      "prev": "Anterior",
+      "next": "Siguiente",
+      "pageOf": "Página {page} de {totalPages}",
       "create": {
         "title": "Añadir un usuario",
         "desc": "Crea a mano una cuenta para quienes no pueden registrarse solos (por ejemplo, si no les llega el correo de verificación). La cuenta se crea ya verificada y con los créditos de bienvenida gratuitos: pásale el correo y la contraseña al usuario para que pueda entrar.",

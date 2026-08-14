@@ -349,6 +349,13 @@
       "member": "Membre",
       "noName": "—",
       "empty": "Aucun utilisateur pour l'instant.",
+      "guest": "Invité",
+      "showGuests": "Afficher les invités",
+      "hideGuests": "Masquer les invités",
+      "range": "{from}–{to} sur {total}",
+      "prev": "Précédent",
+      "next": "Suivant",
+      "pageOf": "Page {page} sur {totalPages}",
       "create": {
         "title": "Ajouter un utilisateur",
         "desc": "Créez manuellement un compte pour les utilisateurs qui ne peuvent pas s'inscrire seuls (e-mail de vérification bloqué, par exemple). Le compte est créé déjà vérifié, avec les crédits de bienvenue — transmettez l'e-mail et le mot de passe à l'utilisateur pour qu'il puisse se connecter.",

@@ -47,6 +47,142 @@ test('adminService.listUsers: returns recent users with album counts', async (t)
   }
 });
 
+// 游客账号(better-auth anonymous 插件建的 temp 邮箱行)注册最快、按 createdAt 倒序
+// 排在最前,不筛掉就会把真实用户挤出第一页。默认隐藏,后台想看时显式打开。
+async function makeAnonUser(suffix: string) {
+  return userRepo.upsertById(db, {
+    email: `repo-test-anon-${suffix}-${Date.now()}@yujee.test`,
+    name: 'Anonymous',
+    creditBalance: 0,
+    isAnonymous: true,
+  });
+}
+
+test('adminService.listUsers: hides anonymous guests by default', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping admin-service integration test');
+    return;
+  }
+  const real = await makeUser('admin-anon-default');
+  const anon = await makeAnonUser('admin-anon-default');
+  try {
+    const { users } = await adminService.listUsers(real.id, { limit: 100 });
+    const ids = users.map((u) => u.id);
+    assert.ok(ids.includes(real.id), 'real user should be listed');
+    assert.ok(!ids.includes(anon.id), 'anonymous guest should be hidden by default');
+  } finally {
+    await cleanupUser(real.id);
+    await cleanupUser(anon.id);
+  }
+});
+
+test('adminService.listUsers: includeAnonymous surfaces guests', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping admin-service integration test');
+    return;
+  }
+  const real = await makeUser('admin-anon-on');
+  const anon = await makeAnonUser('admin-anon-on');
+  try {
+    const { users } = await adminService.listUsers(real.id, {
+      limit: 100,
+      includeAnonymous: true,
+    });
+    const ids = users.map((u) => u.id);
+    assert.ok(ids.includes(real.id), 'real user should still be listed');
+    assert.ok(ids.includes(anon.id), 'anonymous guest should be listed when asked for');
+  } finally {
+    await cleanupUser(real.id);
+    await cleanupUser(anon.id);
+  }
+});
+
+test('adminService.listUsers: total counts the whole filtered set, not the page', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping admin-service integration test');
+    return;
+  }
+  const a = await makeUser('admin-total-a');
+  const b = await makeUser('admin-total-b');
+  const c = await makeUser('admin-total-c');
+  try {
+    const page = await adminService.listUsers(a.id, { limit: 2 });
+    assert.equal(page.users.length, 2, 'page should honour limit');
+    assert.ok(page.total > 2, 'total should count beyond the page');
+  } finally {
+    await cleanupUser(a.id);
+    await cleanupUser(b.id);
+    await cleanupUser(c.id);
+  }
+});
+
+test('adminService.listUsers: total follows the anonymous filter', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping admin-service integration test');
+    return;
+  }
+  const anon = await makeAnonUser('admin-total-anon');
+  try {
+    const hidden = await adminService.listUsers(anon.id, { limit: 1 });
+    const shown = await adminService.listUsers(anon.id, { limit: 1, includeAnonymous: true });
+    assert.ok(
+      shown.total > hidden.total,
+      'total must shrink when guests are filtered out, or the pager will show empty pages',
+    );
+  } finally {
+    await cleanupUser(anon.id);
+  }
+});
+
+test('adminService.listUsers: offset moves the window', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping admin-service integration test');
+    return;
+  }
+  const a = await makeUser('admin-offset-a');
+  const b = await makeUser('admin-offset-b');
+  try {
+    // 测试文件并行跑,别的文件插一个用户就会把窗口整体后移,让 offset 1 复读 offset 0
+    // 的那行 —— 那是并发,不是缺陷。用 total 判定两次读之间有没有人动过表,动过就重来。
+    for (let attempt = 0; ; attempt++) {
+      const first = await adminService.listUsers(a.id, { limit: 1, offset: 0 });
+      const second = await adminService.listUsers(a.id, { limit: 1, offset: 1 });
+      if (first.total !== second.total) {
+        assert.ok(attempt < 5, 'table kept changing under the test; giving up');
+        continue;
+      }
+      assert.equal(first.users.length, 1);
+      assert.equal(second.users.length, 1);
+      assert.notEqual(
+        first.users[0]?.id,
+        second.users[0]?.id,
+        'offset 1 must skip the first row, not repeat it',
+      );
+      break;
+    }
+  } finally {
+    await cleanupUser(a.id);
+    await cleanupUser(b.id);
+  }
+});
+
+test('adminService.listUsers: an out-of-range page lands on the last page, not an empty one', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping admin-service integration test');
+    return;
+  }
+  const user = await makeUser('admin-overshoot');
+  try {
+    // 后台收藏了 ?page=9 之后用户变少,或者 URL 被手改成天文数字:都不该翻出空白页,
+    // 更不该把 5e+21 这种 offset 送进 SQL。
+    const res = await adminService.listUsers(user.id, { limit: 1, offset: 10_000_000 });
+    assert.equal(res.users.length, 1, 'should fall back to the last page, not return nothing');
+    assert.equal(res.offset, res.total - 1, 'effective offset should be clamped to the last page');
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('adminService.cleanupAbandoned: deletes only old FAILED albums', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping admin-service integration test');

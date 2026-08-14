@@ -69,11 +69,21 @@ export const adminService = {
     };
   },
 
-  async listUsers(_actorId: string, opts: { limit?: number; offset?: number } = {}) {
+  // 分页读。total 是**筛选后**的全集大小,页面靠它算「第 X–Y / 共 N」和有没有下一页。
+  // 游客默认不列:他们按 createdAt 倒序永远排在最前,不藏就把真实用户挤出第一页。
+  async listUsers(
+    _actorId: string,
+    opts: { limit?: number; offset?: number; includeAnonymous?: boolean } = {},
+  ) {
     const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
-    const offset = Math.max(opts.offset ?? 0, 0);
+    const requested = Math.max(opts.offset ?? 0, 0);
+    const includeAnonymous = opts.includeAnonymous ?? false;
 
-    const users = await userRepo.listRecent(limit, offset);
+    // 先数再取:越界的 offset(收藏的旧 ?page=9、手改的 URL)夹到最后一页,不翻空白页,
+    // 也不让天文数字的 offset 进 SQL。返回的是**生效后**的 offset,页面按它标页码。
+    const total = await userRepo.count({ includeAnonymous });
+    const offset = total === 0 ? 0 : Math.min(requested, Math.floor((total - 1) / limit) * limit);
+    const users = await userRepo.listRecent({ limit, offset, includeAnonymous });
     const albumCounts = await albumRepo.countByUserIds(users.map((u) => u.id));
     const countByUser = new Map(albumCounts.map((c) => [c.userId, c.count]));
 
@@ -83,12 +93,15 @@ export const adminService = {
         email: u.email,
         name: u.name,
         isAdmin: u.isAdmin,
+        isAnonymous: u.isAnonymous,
         creditBalance: u.creditBalance,
         albumCount: countByUser.get(u.id) ?? 0,
         createdAt: u.createdAt,
       })),
+      total,
       limit,
       offset,
+      includeAnonymous,
     };
   },
 

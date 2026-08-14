@@ -3,16 +3,23 @@ import { db, type DbOrTx } from '../client';
 import { users, type NewUser, type User } from '../schema';
 
 
+// 游客(匿名)行的开关。缺省 true = 全量,后台列表按需关掉。count 和 listRecent
+// 必须共用同一个谓词,否则总数与分页窗口对不上,会翻出空白页。
+function anonFilter(includeAnonymous: boolean) {
+  return includeAnonymous ? undefined : eq(users.isAnonymous, false);
+}
+
 export const userRepo = {
   findById: async (id: string): Promise<User | undefined> => {
     const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
     return rows[0];
   },
 
-  count: async (): Promise<number> => {
+  count: async ({ includeAnonymous = true }: { includeAnonymous?: boolean } = {}): Promise<number> => {
     const rows = await db
       .select({ total: sql<number>`count(*)::int` })
-      .from(users);
+      .from(users)
+      .where(anonFilter(includeAnonymous));
     return rows[0]?.total ?? 0;
   },
 
@@ -24,11 +31,19 @@ export const userRepo = {
     return rows[0]?.total ?? 0;
   },
 
-  listRecent: async (limit = 50, offset = 0): Promise<User[]> =>
+  listRecent: async ({
+    limit = 50,
+    offset = 0,
+    includeAnonymous = true,
+  }: { limit?: number; offset?: number; includeAnonymous?: boolean } = {}): Promise<User[]> =>
     db
       .select()
       .from(users)
-      .orderBy(desc(users.createdAt))
+      .where(anonFilter(includeAnonymous))
+      // id 是次序键,不是装饰:同毫秒创建的行(better-auth 的 Date 只到毫秒,批量插入
+      // 更是共用一个事务时间)在 createdAt 上并列,没有唯一 tiebreaker 时 LIMIT/OFFSET
+      // 的取行顺序不保证稳定,翻页边界会重复或漏掉用户。
+      .orderBy(desc(users.createdAt), desc(users.id))
       .limit(limit)
       .offset(offset),
 

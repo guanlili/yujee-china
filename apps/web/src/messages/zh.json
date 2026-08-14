@@ -349,6 +349,13 @@
       "member": "普通用户",
       "noName": "—",
       "empty": "暂无用户。",
+      "guest": "游客",
+      "showGuests": "显示游客",
+      "hideGuests": "隐藏游客",
+      "range": "第 {from}–{to} 条，共 {total} 条",
+      "prev": "上一页",
+      "next": "下一页",
+      "pageOf": "第 {page} / {totalPages} 页",
       "create": {
         "title": "手动加用户",
         "desc": "为无法自助注册的用户(如收不到验证邮件)手动开号。账号创建即为已验证,并附赠新用户免费积分——把邮箱和密码给用户,他们就能登录。",
