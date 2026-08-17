@@ -92,6 +92,28 @@ export interface MarketingMessages {
     breadcrumbExamples: string;
     openLabel: string;
   };
+  /**
+   * The /guides CHROME only — headings, breadcrumbs, CTA. Article prose lives in
+   * lib/guides/content/<locale>.ts, because articles are translated one at a
+   * time while this chrome must exist in all five locales at once (the hub is a
+   * five-locale route even when every article on it is English-only).
+   */
+  guides: {
+    metaTitle: string;
+    metaDesc: string;
+    hubTitle: string;
+    hubIntro: string;
+    breadcrumbHome: string;
+    breadcrumbGuides: string;
+    readLabel: string;
+    updatedLabel: string;
+    /** Shown when the reader's locale has no translation of an article yet. */
+    englishOnlyNote: string;
+    faqHead: string;
+    ctaHead: string;
+    ctaBody: string;
+    ctaButton: string;
+  };
   footer: {
     tagline: string;
     groups: { head: string; items: { label: string; href: string }[] }[];

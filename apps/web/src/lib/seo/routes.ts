@@ -1,10 +1,36 @@
 import { EXAMPLE_SLUGS } from '@/lib/examples/examples';
+import { getGuide, GUIDE_SLUGS } from '@/lib/guides/guides';
+import { defaultLocale, type Locale, locales } from '@/lib/i18n/routing';
 
 /** /examples plus one detail route per example, derived so they can't drift. */
 const EXAMPLE_ROUTES: readonly string[] = [
   '/examples',
   ...EXAMPLE_SLUGS.map((slug) => `/examples/${slug}`),
 ];
+
+const GUIDES_BASE = '/guides';
+
+/** The guides hub plus one detail route per article, derived the same way. */
+const GUIDE_ROUTES: readonly string[] = [
+  GUIDES_BASE,
+  ...GUIDE_SLUGS.map((slug) => `${GUIDES_BASE}/${slug}`),
+];
+
+/**
+ * The locales one route genuinely exists in — the hreflang cluster and the
+ * sitemap rows for that route are both built from this, never from `locales`.
+ *
+ * Everything outside /guides is translated into all five, so the default is the
+ * full set and the marketing pages are unaffected.
+ */
+export function localesForRoute(route: string): readonly Locale[] {
+  const slug = route.startsWith(`${GUIDES_BASE}/`) ? route.slice(GUIDES_BASE.length + 1) : undefined;
+  // Fails CLOSED. Unreachable today (GUIDE_ROUTES derives from GUIDES, so every
+  // /guides/<slug> route has an article), but the whole job of this function is
+  // to avoid claiming languages that do not exist — so an unknown article must
+  // collapse to English, never fan out to all five.
+  return slug ? (getGuide(slug)?.availableLocales ?? [defaultLocale]) : locales;
+}
 
 /**
  * The locale-relative routes that belong in the sitemap.
@@ -21,6 +47,7 @@ export const INDEXABLE_ROUTES: readonly string[] = [
   '/privacy',
   '/terms',
   ...EXAMPLE_ROUTES,
+  ...GUIDE_ROUTES,
 ];
 
 /**

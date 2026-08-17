@@ -287,6 +287,24 @@ export const fr: MarketingMessages = {
     breadcrumbExamples: 'Exemples',
     openLabel: 'Voir l’exemple',
   },
+  guides: {
+    metaTitle: 'Guides du livre photo — Comment en faire un | Yujee',
+    metaDesc:
+      'Des guides pratiques pour créer un livre photo ou un récit de vie : numériser les tirages anciens, choisir les photos, écrire les légendes et obtenir un fichier prêt à imprimer.',
+    hubTitle: 'Guides',
+    hubIntro:
+      'Comment sortir les photos du carton pour en faire un objet qui se garde. Des étapes concrètes, écrites pour ceux qui s’y mettent pour la première fois.',
+    breadcrumbHome: 'Accueil',
+    breadcrumbGuides: 'Guides',
+    readLabel: 'Lire le guide',
+    updatedLabel: 'Mis à jour le',
+    englishOnlyNote: 'Ce guide n’est disponible qu’en anglais pour le moment.',
+    faqHead: 'Questions fréquentes',
+    ctaHead: 'Laissez Yujee faire la mise en page',
+    ctaBody:
+      'Importez vos photos, racontez ce qui se passait, et récupérez un PDF prêt à imprimer avec les pages composées et les légendes déjà rédigées, à corriger si besoin.',
+    ctaButton: 'Commencer gratuitement',
+  },
   footer: {
     tagline: 'Vos photos éparpillées deviennent un magazine à garder.',
     groups: [
@@ -305,6 +323,7 @@ export const fr: MarketingMessages = {
           { label: 'Exemple de livre photo de voyage', href: '/examples/travel-journal' },
           { label: 'Exemple de livre de récit de vie', href: '/examples/life-story' },
           { label: 'Tous les exemples', href: '/examples' },
+          { label: 'Guides du livre photo', href: '/guides' },
         ],
       },
       {

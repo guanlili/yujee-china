@@ -26,10 +26,13 @@
 //      更糟。
 
 import { execFileSync } from 'node:child_process';
-import { ROUTE_FRESHNESS } from '../src/lib/seo/freshness';
+import { FRESHNESS_DECLARATIONS } from '../src/lib/seo/freshness';
 
 const REPO_ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
 const FRESHNESS = 'apps/web/src/lib/seo/freshness.ts';
+// guides.ts 持有每篇的 updatedAt/reviewedAt,和 freshness.ts 同理:改日期这个动作
+// 本身不能触发它自己的闸门。文章正文在 lib/guides/content 下,那才是 sources。
+const GUIDES_DECL = 'apps/web/src/lib/guides/guides.ts';
 
 function git(args: string[]): string {
   return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
@@ -39,7 +42,7 @@ const stale: { route: string; updatedAt: string; reviewedAt: string; commits: st
 const pending: { route: string; dirty: string[] }[] = [];
 const broken: string[] = [];
 
-const routes = Object.entries(ROUTE_FRESHNESS);
+const routes = Object.entries(FRESHNESS_DECLARATIONS);
 if (!routes.length) {
   console.error('✖ ROUTE_FRESHNESS 是空的 —— 每个可收录路由都必须声明 lastmod。');
   process.exit(1);
@@ -58,7 +61,7 @@ for (const [route, { sources, updatedAt, reviewedAt }] of routes) {
   }
 
   // 声明文件自身排除在外,否则改日期这个动作会触发它自己。
-  const pathspec = [...sources, `:(exclude)${FRESHNESS}`];
+  const pathspec = [...sources, `:(exclude)${FRESHNESS}`, `:(exclude)${GUIDES_DECL}`];
 
   let commits = '';
   let dirty = '';

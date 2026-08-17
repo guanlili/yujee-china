@@ -287,6 +287,24 @@ export const en: MarketingMessages = {
     breadcrumbExamples: 'Examples',
     openLabel: 'See example',
   },
+  guides: {
+    metaTitle: 'Photo Book Guides — How to Make One | Yujee',
+    metaDesc:
+      'Practical guides to making a photo book or memoir: digitising old prints, choosing which photos belong, writing captions, and getting a print-ready file.',
+    hubTitle: 'Guides',
+    hubIntro:
+      'How to get photos out of a box and into something worth keeping. Practical steps, written for people doing this for the first time.',
+    breadcrumbHome: 'Home',
+    breadcrumbGuides: 'Guides',
+    readLabel: 'Read guide',
+    updatedLabel: 'Updated',
+    englishOnlyNote: 'This guide is only available in English for now.',
+    faqHead: 'Common questions',
+    ctaHead: 'Let Yujee do the layout',
+    ctaBody:
+      'Upload your photos, describe what was going on, and get a print-ready PDF with the pages designed and the captions drafted for you to correct.',
+    ctaButton: 'Start for free',
+  },
   footer: {
     tagline: 'Turn scattered photos into a magazine worth keeping.',
     groups: [
@@ -305,6 +323,7 @@ export const en: MarketingMessages = {
           { label: 'Travel photo book example', href: '/examples/travel-journal' },
           { label: 'Life story book example', href: '/examples/life-story' },
           { label: 'All memoir examples', href: '/examples' },
+          { label: 'Photo book guides', href: '/guides' },
         ],
       },
       {

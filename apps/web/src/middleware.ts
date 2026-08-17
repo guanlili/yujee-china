@@ -2,6 +2,7 @@ import createMiddleware from 'next-intl/middleware';
 import { type NextRequest, NextResponse } from 'next/server';
 import { detectLocale, localizePath, routing, stripLocale } from '@/lib/i18n/routing';
 
+/** hreflang headers are off at the routing config — see routing.ts for why. */
 const intlMiddleware = createMiddleware(routing);
 
 const protectedPaths = ['/album', '/my-albums', '/credits', '/settings', '/admin'];

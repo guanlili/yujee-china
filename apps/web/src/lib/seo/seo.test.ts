@@ -7,9 +7,9 @@ import { locales, localizePath } from '@/lib/i18n/routing';
 import { SOCIAL_LINKS } from '@/config/social';
 import { EXAMPLES, exampleContent, getExample } from '@/lib/examples/examples';
 import { getFaqEntries } from './faq';
-import { ROUTE_FRESHNESS } from './freshness';
+import { contentUpdatedAt, FRESHNESS_DECLARATIONS, ROUTE_FRESHNESS } from './freshness';
 import { buildLlmsTxt } from './llms';
-import { INDEXABLE_ROUTES, NOINDEX_ROUTES } from './routes';
+import { INDEXABLE_ROUTES, localesForRoute, NOINDEX_ROUTES } from './routes';
 import { articleSchema, faqPageSchema, organizationSchema, softwareApplicationSchema } from './schema';
 import { absoluteUrl, SITE_URL } from './site';
 import { getMarketingMessages } from '@/messages/marketing';
@@ -320,9 +320,14 @@ test('robots.txt still blocks /api/ and advertises the sitemap', () => {
   assert.equal(robots().sitemap, absoluteUrl('/sitemap.xml'));
 });
 
-test('sitemap lists every indexable route in both locales, never an auth route', () => {
+test('sitemap lists every indexable route in the locales it exists in, never an auth route', () => {
+  // Not `INDEXABLE_ROUTES.length * locales.length` any more: a guide contributes
+  // one row per language it was actually translated into. Marketing routes still
+  // contribute five each, which is what makes this sum a real regression guard —
+  // if the narrowing ever leaked onto them, this count drops.
   const entries = sitemap();
-  assert.equal(entries.length, INDEXABLE_ROUTES.length * locales.length);
+  const expected = INDEXABLE_ROUTES.reduce((n, route) => n + localesForRoute(route).length, 0);
+  assert.equal(entries.length, expected);
 
   const urls = entries.map((e) => e.url);
   for (const locale of locales) {
@@ -333,12 +338,20 @@ test('sitemap lists every indexable route in both locales, never an auth route',
   }
 });
 
-test('every sitemap entry carries the full hreflang cluster including x-default', () => {
+test('every sitemap entry declares exactly the locales its route exists in, plus x-default', () => {
+  // Tightened from "carries all five" when guides arrived. Exact equality is the
+  // stronger claim: it catches a cluster that advertises a translation the
+  // sitemap does not list, which is the failure that gets hreflang discounted
+  // sitewide — the old superset check would have passed straight through it.
   for (const entry of sitemap()) {
+    const route = INDEXABLE_ROUTES.find((r) =>
+      localesForRoute(r).some((l) => entry.url === absoluteUrl(localizePath(r, l))),
+    );
+    assert.ok(route, `${entry.url} belongs to no indexable route`);
+
     const languages = entry.alternates?.languages ?? {};
-    for (const locale of locales) {
-      assert.ok(languages[locale], `${entry.url} is missing hreflang=${locale}`);
-    }
+    const declared = Object.keys(languages).filter((k) => k !== 'x-default').sort();
+    assert.deepEqual(declared, [...localesForRoute(route)].sort(), `${entry.url} hreflang cluster drifted`);
     assert.ok(languages['x-default'], `${entry.url} is missing x-default`);
   }
 });
@@ -348,9 +361,38 @@ test('every sitemap entry carries the full hreflang cluster including x-default'
 // learns to ignore a lastmod that always says "just now". It is back now that
 // it is tied to hand-declared content dates (see freshness.ts), which is the
 // condition the old comment set for adding it.
+test('no indexable route escapes the freshness gate', () => {
+  // sitemap-freshness-check.ts iterates FRESHNESS_DECLARATIONS. Anything absent
+  // from it has a lastmod that nothing verifies — edit the prose, forget the
+  // date, and the sitemap tells Google the page is unchanged forever.
+  //
+  // Guides opt out of the hand-kept ROUTE_FRESHNESS map (they own their content
+  // files, so the shared-source judgement call does not apply) but they must NOT
+  // opt out of the gate. This test is what keeps those two facts separate — an
+  // earlier version let guides skip both, and the script cheerfully reported
+  // "7 routes" while the sitemap carried 9.
+  const declared = Object.keys(FRESHNESS_DECLARATIONS).sort();
+  assert.deepEqual(declared, [...INDEXABLE_ROUTES].sort(), 'a route is in the sitemap but not the gate');
+
+  for (const [route, d] of Object.entries(FRESHNESS_DECLARATIONS)) {
+    assert.ok(d.sources.length > 0, `${route} declares no sources, so the gate can never fire`);
+    assert.ok(d.reviewedAt.length > 0, `${route} has no reviewedAt commit`);
+    assert.equal(d.updatedAt, contentUpdatedAt(route), `${route} gate and sitemap disagree on lastmod`);
+  }
+});
+
 test('every indexable route declares when its content last changed, and nothing else does', () => {
-  const declared = Object.keys(ROUTE_FRESHNESS).sort();
-  assert.deepEqual(declared, [...INDEXABLE_ROUTES].sort(), 'freshness map and sitemap routes disagree');
+  // Two sources now: the hand-kept map for pages with shared content files, and
+  // the guide's own `updatedAt` (see freshness.ts for why guides opt out). What
+  // still must hold is total coverage — every sitemap row needs a real lastmod —
+  // and no stale rows for routes that left the sitemap.
+  for (const route of INDEXABLE_ROUTES) {
+    assert.ok(contentUpdatedAt(route), `${route} is in the sitemap with no content date`);
+  }
+  for (const route of Object.keys(ROUTE_FRESHNESS)) {
+    assert.ok(INDEXABLE_ROUTES.includes(route), `${route} has a freshness row but is not indexable`);
+    assert.ok(!route.startsWith('/guides'), `${route} must carry its date on the article, not here`);
+  }
 });
 
 test('content dates are real calendar dates, never in the future', () => {
@@ -367,13 +409,13 @@ test('content dates are real calendar dates, never in the future', () => {
   }
 });
 
-test('sitemap emits each route content date as lastModified, both locales', () => {
+test('sitemap emits each route content date as lastModified, every locale', () => {
   for (const entry of sitemap()) {
-    const route = Object.keys(ROUTE_FRESHNESS).find((r) =>
-      locales.some((l) => entry.url === absoluteUrl(localizePath(r, l))),
+    const route = INDEXABLE_ROUTES.find((r) =>
+      localesForRoute(r).some((l) => entry.url === absoluteUrl(localizePath(r, l))),
     );
     assert.ok(route, `${entry.url} maps to no declared route`);
-    assert.equal(entry.lastModified, ROUTE_FRESHNESS[route].updatedAt, `${entry.url} has the wrong lastmod`);
+    assert.equal(entry.lastModified, contentUpdatedAt(route), `${entry.url} has the wrong lastmod`);
   }
 });
 

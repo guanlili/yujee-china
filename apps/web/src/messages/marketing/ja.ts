@@ -286,6 +286,24 @@ export const ja: MarketingMessages = {
     breadcrumbExamples: '作例',
     openLabel: '作例を見る',
   },
+  guides: {
+    metaTitle: 'フォトブックの作り方ガイド | Yujee',
+    metaDesc:
+      'フォトブックや自分史をつくるための実践ガイド。古いプリントのデジタル化、写真の選び方、キャプションの書き方、印刷用データの用意まで。',
+    hubTitle: 'ガイド',
+    hubIntro:
+      '箱に眠っている写真を、とっておける一冊にするまで。はじめてつくる人のための、具体的な手順です。',
+    breadcrumbHome: 'ホーム',
+    breadcrumbGuides: 'ガイド',
+    readLabel: 'ガイドを読む',
+    updatedLabel: '更新日',
+    englishOnlyNote: 'このガイドは現在、英語版のみです。',
+    faqHead: 'よくある質問',
+    ctaHead: 'レイアウトは Yujee にまかせる',
+    ctaBody:
+      '写真をアップロードして、そのときの出来事を書くだけ。ページが組まれ、キャプションの下書きまで入った印刷用 PDF ができあがります。',
+    ctaButton: '無料ではじめる',
+  },
   footer: {
     tagline: 'ばらばらの写真を、とっておきの一冊の雑誌に。',
     groups: [
@@ -304,6 +322,7 @@ export const ja: MarketingMessages = {
           { label: '旅のフォトブックの作例', href: '/examples/travel-journal' },
           { label: '人生の物語の作例', href: '/examples/life-story' },
           { label: 'すべての作例', href: '/examples' },
+          { label: 'フォトブックの作り方ガイド', href: '/guides' },
         ],
       },
       {

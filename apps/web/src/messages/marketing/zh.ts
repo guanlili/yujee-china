@@ -283,6 +283,22 @@ export const zh: MarketingMessages = {
     breadcrumbExamples: '作品示例',
     openLabel: '看示例',
   },
+  guides: {
+    metaTitle: '照片书制作指南 — 从整理到成书 | Yujee',
+    metaDesc:
+      '做一本照片书或纪念册的实用指南：老照片怎么数字化、该留哪些、说明文字怎么写，以及怎么拿到可直接付印的文件。',
+    hubTitle: '指南',
+    hubIntro: '怎么把照片从纸箱里拿出来，做成一本值得留下的东西。给第一次做的人看的实操步骤。',
+    breadcrumbHome: '首页',
+    breadcrumbGuides: '指南',
+    readLabel: '阅读指南',
+    updatedLabel: '更新于',
+    englishOnlyNote: '这篇指南目前只有英文版。',
+    faqHead: '常见问题',
+    ctaHead: '排版交给 Yujee',
+    ctaBody: '传照片，说说当时发生了什么，拿到一份排好版、说明文字也写好初稿的可付印 PDF。',
+    ctaButton: '免费开始',
+  },
   footer: {
     tagline: '把散落的照片，变成一本可以收藏的杂志。',
     groups: [
@@ -301,6 +317,7 @@ export const zh: MarketingMessages = {
           { label: '旅行照片书示例', href: '/examples/travel-journal' },
           { label: '人生故事纪念册示例', href: '/examples/life-story' },
           { label: '全部作品示例', href: '/examples' },
+          { label: '照片书制作指南', href: '/guides' },
         ],
       },
       {

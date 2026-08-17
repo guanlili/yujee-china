@@ -26,6 +26,23 @@ export const routing = defineRouting({
     name: localeCookieName,
   },
   localePrefix: 'always',
+  /**
+   * OFF, and it must stay off. next-intl defaults this to true, which makes the
+   * middleware attach an hreflang `Link:` header listing every locale above.
+   *
+   * That header is path-agnostic — it cannot know that a /guides article exists
+   * in English only. It advertised four translations that 307 away and appear in
+   * no sitemap, on the very response whose <head> correctly claimed one, and its
+   * x-default pointed at the unprefixed URL, which 308s to /en. Google treats
+   * the header, the <head> tags and the sitemap as three statements of one
+   * cluster and discounts hreflang site-wide when they contradict each other, so
+   * this would have cost the landing page and /examples their clusters too.
+   *
+   * Nothing is lost: every indexable page emits real <link rel="alternate"> tags
+   * through publicPageMetadata → localeAlternates, which narrows per route via
+   * localesForRoute. middleware.test.ts guards this.
+   */
+  alternateLinks: false,
 });
 
 export function isLocale(value: string): value is Locale {

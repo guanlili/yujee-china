@@ -1,4 +1,5 @@
 import { EXAMPLE_SLUGS } from '@/lib/examples/examples';
+import { GUIDES, getGuide } from '@/lib/guides/guides';
 
 /**
  * When each indexable page's CONTENT last actually changed.
@@ -41,6 +42,10 @@ export interface RouteFreshness {
 // 任何语言的译文改动都会把对应路由拽进这道闸门。
 const MARKETING = 'apps/web/src/messages/marketing';
 const EXAMPLES = ['apps/web/src/lib/examples/examples.ts', 'apps/web/src/lib/examples/content'] as const;
+/** Guide prose only. guides.ts is excluded on purpose — see FRESHNESS_DECLARATIONS. */
+const GUIDES_CONTENT = 'apps/web/src/lib/guides/content';
+/** The hub has no article of its own to carry a reviewedAt, so it lives here. */
+const GUIDES_HUB_REVIEWED_AT = '9c34faea';
 
 /** Every example detail page is one row of the same array, so they share sources. */
 const exampleDetailFreshness: Record<string, RouteFreshness> = Object.fromEntries(
@@ -54,7 +59,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/': {
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
     updatedAt: '2026-08-08',
-    reviewedAt: 'bd254fcd',
+    reviewedAt: '9c34faea',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback
@@ -62,25 +67,84 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/about/story': {
     sources: [MARKETING, 'apps/web/src/app/[locale]/about/story/page.tsx'],
     updatedAt: '2026-08-10',
-    reviewedAt: 'bd254fcd',
+    reviewedAt: '9c34faea',
   },
   // Privacy prose last moved in the pre-launch pass that aligned it with what the
   // product actually does (b69eb438). marketing.ts has moved several times since —
   // including b3d095bc, which rewrote the TERMS sections next door and left this
   // page untouched. That is exactly the case the reviewedAt/updatedAt split exists
   // for: reviewed again, still 2026-07-12.
-  '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: 'bd254fcd' },
+  '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: '9c34faea' },
   // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
   // refund rule) in both locales — a genuine content change, so this one moves.
-  '/terms': { sources: [MARKETING], updatedAt: '2026-08-08', reviewedAt: 'bd254fcd' },
+  '/terms': { sources: [MARKETING], updatedAt: '2026-08-08', reviewedAt: '9c34faea' },
+  // 这五个路由被闸门捞出来,是因为 messages/marketing 被动过两次:19093baf 往
+  // footer 的 Photo Books 组加了一条 /guides 链接,9c34faea 加了 guides.faqHead。
+  // 前者是导航;后者更轻 —— faqHead 只在 guides/[slug]/page.tsx 渲染,这几个营销页
+  // 根本不读它。两次读者看到的 prose 都一个字没动,所以只推 reviewedAt。真去刷新
+  // updatedAt,等于告诉 Google 隐私政策也改了。
+  //
+  // 改 SHA 时这段话必须跟着核对:上一轮机械替换了 SHA 却留着旧句子,于是这份
+  // 审计记录指着一个没干这件事的提交。写错的审计记录比没有更糟。
   // The hub renders each example's `title`, not its meta — the keyword pass
   // rewrote titles/descriptions on the detail pages only, so the hub is unchanged.
-  '/examples': { sources: [...EXAMPLES, MARKETING], updatedAt: '2026-08-04', reviewedAt: 'bd254fcd' },
+  '/examples': { sources: [...EXAMPLES, MARKETING], updatedAt: '2026-08-04', reviewedAt: '9c34faea' },
   ...exampleDetailFreshness,
 };
+
+/**
+ * Every indexable route's freshness declaration, hand-kept rows and guides
+ * alike. `scripts/sitemap-freshness-check.ts` iterates THIS, not
+ * ROUTE_FRESHNESS — a route missing here has a lastmod nothing verifies.
+ *
+ * Guides opt out of the hand-kept map above but not out of the gate. The two
+ * are different questions and conflating them left guides unguarded once
+ * already: the script reported "7 routes" while the sitemap carried 9, which
+ * reads as full coverage and is not.
+ *
+ * A guide's `sources` is the content directory only, deliberately excluding
+ * guides.ts — that file holds `updatedAt` itself, so including it would make
+ * every date bump trip its own gate (the same reason the script excludes this
+ * file from its own pathspecs).
+ */
+export const FRESHNESS_DECLARATIONS: Record<string, RouteFreshness> = {
+  ...ROUTE_FRESHNESS,
+  '/guides': {
+    // The hub renders each article's title and excerpt, plus its own chrome
+    // from the marketing messages — so both can change what a reader sees.
+    sources: [GUIDES_CONTENT, MARKETING],
+    updatedAt: GUIDES.map((g) => g.updatedAt).sort().at(-1) ?? '',
+    reviewedAt: GUIDES_HUB_REVIEWED_AT,
+  },
+  ...Object.fromEntries(
+    GUIDES.map((guide) => [
+      `/guides/${guide.slug}`,
+      { sources: [GUIDES_CONTENT], updatedAt: guide.updatedAt, reviewedAt: guide.reviewedAt },
+    ]),
+  ),
+};
+
+/**
+ * Guides are deliberately NOT rows in ROUTE_FRESHNESS.
+ *
+ * That map exists to arbitrate SHARED sources: messages/marketing.ts backs the
+ * landing and the legal pages at once, so "did this page's prose change" needs a
+ * human to answer. A guide owns exactly one content entry, so the question has a
+ * mechanical answer and the date lives on the article itself — editing one guide
+ * can never implicate another, and adding an article does not mean remembering
+ * to add a row here.
+ *
+ * The hub is the newest article's date because it renders their titles and
+ * excerpts: it genuinely changes whenever the newest one does.
+ */
+function guideUpdatedAt(route: string): string | undefined {
+  if (route === '/guides') return GUIDES.map((g) => g.updatedAt).sort().at(-1);
+  const slug = route.startsWith('/guides/') ? route.slice('/guides/'.length) : undefined;
+  return slug ? getGuide(slug)?.updatedAt : undefined;
+}
 
 /** The `<lastmod>` for a route, as a plain date string — never a Date, whose
  *  serialisation would shift the day across timezones. */
 export function contentUpdatedAt(route: string): string | undefined {
-  return ROUTE_FRESHNESS[route]?.updatedAt;
+  return guideUpdatedAt(route) ?? ROUTE_FRESHNESS[route]?.updatedAt;
 }

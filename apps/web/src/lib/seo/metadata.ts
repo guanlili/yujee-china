@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { defaultLocale, type Locale, locales, localizePath } from '@/lib/i18n/routing';
+import { localesForRoute } from './routes';
 import { absoluteUrl } from './site';
 
 const OG_LOCALE: Record<Locale, string> = {
@@ -18,17 +19,23 @@ export const OG_IMAGE = {
 };
 
 /**
- * Canonical + the full hreflang cluster for one locale-relative route.
+ * Canonical + the hreflang cluster for one locale-relative route.
  *
  * Both are required and they work as a pair: without them /en and /zh are two
  * near-identical pages competing for the same rankings, and www vs apex made it
  * four. Next renders `alternates.languages` as real <link rel="alternate"> tags
  * in <head> — next-intl only ever emitted them as an HTTP Link header, which
  * Google does read but which nothing else does.
+ *
+ * The cluster covers the locales the route ACTUALLY exists in, not all five —
+ * `localesForRoute` is the same source the sitemap uses, on purpose. The two
+ * emitters disagreeing is worse than either being wrong alone: a head tag
+ * promising a Spanish version the sitemap omits is exactly the unverifiable
+ * cluster Google responds to by discounting hreflang across the whole site.
  */
 export function localeAlternates(route: string, locale: Locale): Metadata['alternates'] {
   const languages: Record<string, string> = Object.fromEntries(
-    locales.map((l) => [l, absoluteUrl(localizePath(route, l))]),
+    localesForRoute(route).map((l) => [l, absoluteUrl(localizePath(route, l))]),
   );
   languages['x-default'] = absoluteUrl(localizePath(route, defaultLocale));
 
@@ -68,7 +75,12 @@ export function socialMetadata(
       description,
       url,
       locale: OG_LOCALE[locale],
-      alternateLocale: locales.filter((l) => l !== locale).map((l) => OG_LOCALE[l]),
+      // Narrowed like the hreflang cluster above. Not an hreflang signal, so it
+      // cannot poison the cluster, but it is the same claim in OG vocabulary and
+      // gets read by social and AI crawlers.
+      alternateLocale: localesForRoute(route)
+        .filter((l) => l !== locale)
+        .map((l) => OG_LOCALE[l]),
       images: [image],
     },
     twitter: {

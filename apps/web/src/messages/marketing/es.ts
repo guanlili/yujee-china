@@ -287,6 +287,24 @@ export const es: MarketingMessages = {
     breadcrumbExamples: 'Ejemplos',
     openLabel: 'Ver el ejemplo',
   },
+  guides: {
+    metaTitle: 'Guías de fotolibros — Cómo hacer uno | Yujee',
+    metaDesc:
+      'Guías prácticas para hacer un fotolibro o unas memorias: digitalizar copias antiguas, elegir qué fotos entran, escribir los pies y obtener un archivo listo para imprenta.',
+    hubTitle: 'Guías',
+    hubIntro:
+      'Cómo sacar las fotos de la caja y convertirlas en algo que merezca la pena guardar. Pasos prácticos, escritos para quien lo hace por primera vez.',
+    breadcrumbHome: 'Inicio',
+    breadcrumbGuides: 'Guías',
+    readLabel: 'Leer la guía',
+    updatedLabel: 'Actualizado',
+    englishOnlyNote: 'Esta guía solo está disponible en inglés por ahora.',
+    faqHead: 'Preguntas frecuentes',
+    ctaHead: 'Deja la maquetación a Yujee',
+    ctaBody:
+      'Sube tus fotos, cuenta qué estaba pasando y recibe un PDF listo para imprenta con las páginas maquetadas y los pies redactados para que los corrijas.',
+    ctaButton: 'Empezar gratis',
+  },
   footer: {
     tagline: 'Convierte las fotos dispersas en una revista que merece guardarse.',
     groups: [
@@ -305,6 +323,7 @@ export const es: MarketingMessages = {
           { label: 'Ejemplo de fotolibro de viaje', href: '/examples/travel-journal' },
           { label: 'Ejemplo de libro de historia de vida', href: '/examples/life-story' },
           { label: 'Todos los ejemplos de memorias', href: '/examples' },
+          { label: 'Guías de fotolibros', href: '/guides' },
         ],
       },
       {
