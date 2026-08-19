@@ -292,7 +292,10 @@ Defaults live in `src/lib/env.ts`. Common fields:
 | `BETTER_AUTH_SECRET` | Auth signing secret |
 | `WAFFO_*` | Billing(主通道,2026-08 起) |
 | `CREEM_*` | Billing(仅在途订单 webhook 兜底) |
-| `R2_*` | PDF/thumbnail storage |
+| `R2_*` | PDF/thumbnail storage,以及 AI 生图产出的原图 |
+| `IMAGE_PROVIDER` | AI 生图走哪家:`gemini`(默认,生产)/ `ark`(本地开发更快) |
+| `GEMINI_API_KEY` | 生图 provider = gemini 时必需;缺则生图入口返回 501 |
+| `ARK_API_KEY` | 生图 provider = ark 时必需;同时给 `scripts/gen-board-bg.ts` 用 |
 
 **真生产**下,这七个变量必须显式提供,缺任何一个当场抛(一次报全):
 `DATABASE_URL` · `WEB_BASE_URL` · `BETTER_AUTH_SECRET` · `AGENT_BASE_URL` ·
@@ -335,5 +338,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: f8693b63
+checked-at: 712ac44c
 -->

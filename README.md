@@ -25,7 +25,7 @@ Postgres + Cloudflare R2
 |---|---|
 | Browser | 持有原图, 压缩/缓存照片, 读取 EXIF, 用浏览器 WebGL 引擎应用照片滤镜, 为 `/v3/select-layout` 和 `/v3/compose` 随请求带上 200px 缩略图 refs, 渲染编辑器, 本地生成 PDF 后直传 R2 |
 | Web | 登录、支付、积分、相册状态、`draft_json`、`photo_filter`、V3 API 编排、Agent callback 合并、R2 presign |
-| Agent | 确定性分章(零 AI)、确定性排版(一次出 pages)、一次性成稿 `/v3/compose`(生成链路唯一的 AI 调用) |
+| Agent | 确定性分章(零 AI)、确定性排版(一次出 pages)、一次性成稿 `/v3/compose`(生成链路唯一的 AI 调用;编辑器的 AI 生图是另一处,不走 Agent) |
 | Design Agent | 生成**之后**的对话式改书(七个写工具改文字/HTML/换版/换图/配色/字体/页序)。独立 base URL 与鉴权,**必须单机**(session 在进程内存) |
 | contracts | Web 和 Agent 共用的 Zod 契约、模板 JSON、生成类型和 fixtures |
 
@@ -67,7 +67,8 @@ memoir-agent-rebuild/
 7. Web **异步派发**(`agent_jobs.kind='compose'`)`POST /v3/compose`(202 + callback):
    Agent 按章并发让 Gemini **看真实照片** + 读用户讲的故事写满全书文案,并出封面/封尾文案
    与字体(缺字体时 Web 侧确定性兜底);逐章发 progress 心跳。回调后 Web 组页落库并把
-   `stage` 推到 `ready`。**这是全链路唯一的 AI 调用。**
+   `stage` 推到 `ready`。**这是生成链路唯一的 AI 调用。**(产品另有一处 AI 调用:编辑器里的 AI 生图,
+   与生成链路完全分开,见 `docs/specs/2026-08-18-ai-image-generation-design.md`。)
 
 生成 Agent 对外只有四个端点:`GET /health`、`POST /v3/analyze`、`POST /v3/select-layout`、
 `POST /v3/compose`。**生成之后的编辑走另一条链路** —— 用户在编辑器里对话改书,由 Web 的
@@ -191,5 +192,5 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 71b9603c
+checked-at: 712ac44c
 -->

@@ -82,6 +82,12 @@ export const creditLedgerReasonEnum = pgEnum('credit_ledger_reason', [
   'REFUND',
   'ADMIN_ADJUST',
   'INVITE_REDEEM', // 兑换邀请码 → 加积分(见 invite_codes / invite_redemptions)
+  // AI 生图。**刻意不复用 GENERATION_* 那三个**:admin-service 在按
+  // GENERATION_SETTLE 求和算营收,生图混进去会把那个指标搅浑。
+  // 也不走 creditService.hold() —— 它会往 albums.credit_hold_id 写值,
+  // 会覆盖掉正在进行的建书扣费预留。生图是秒级操作,短事务内直接扣、失败退回。
+  'IMAGE_GEN_CHARGE',
+  'IMAGE_GEN_REFUND',
 ]);
 
 // ============================================
@@ -616,6 +622,37 @@ export type AlbumPage = typeof albumPages.$inferSelect;
 export type NewAlbumPage = typeof albumPages.$inferInsert;
 export type DraftPage = typeof draftPages.$inferSelect;
 export type NewDraftPage = typeof draftPages.$inferInsert;
+// AI 生图留痕。两个用途,缺一不可:
+// 1. **可追责** —— 自由描述意味着用户能让模型生成任何东西,prompt 必须存下来,
+//    出事时能查是谁在什么时候用什么描述生成的。
+// 2. **免费重生成计数** —— 每笔付费生成附带 1 次免费重来(见 spec「尺寸与成本」,
+//    次数是按毛利算出来的)。计数存在这里,不存在客户端。
+// photoId 指向 album_photos 里那张图;生成失败(退了积分)的那次不落行。
+export const imageGenerations = pgTable(
+  'image_generations',
+  {
+    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    albumId: text('album_id')
+      .notNull()
+      .references(() => albums.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    photoId: text('photo_id').notNull(),
+    // 用户填的原文(清洗后、拼进承重墙之前的那段),不是最终发给上游的整串。
+    prompt: text('prompt').notNull(),
+    provider: text('provider').notNull(),
+    freeRetriesUsed: integer('free_retries_used').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    albumCreated: index('idx_image_generations_album_created').on(t.albumId, t.createdAt.desc()),
+  }),
+);
+
+export type ImageGeneration = typeof imageGenerations.$inferSelect;
+export type NewImageGeneration = typeof imageGenerations.$inferInsert;
+
 export type AlbumPhoto = typeof albumPhotos.$inferSelect;
 export type NewAlbumPhoto = typeof albumPhotos.$inferInsert;
 export type AlbumShare = typeof albumShares.$inferSelect;

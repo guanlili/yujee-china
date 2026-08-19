@@ -77,6 +77,14 @@ const EnvSchema = z.object({
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_BUCKET: z.string().default('yujee-pdfs'),
+
+  // 生图(AI 图片生成)。生产走 gemini —— Web 在 Vercel(美国),Ark 在北京,跨境
+  // 一张要 17s(实测),而 Gemini 同大洲且直接回 inlineData 免掉第二趟下载。
+  // 本地开发把 IMAGE_PROVIDER 设成 ark 更快(国内直连 5.6s)。
+  // 两把 key 都可缺省:缺了对应 provider 就不可用,生图入口关掉,其余功能不受影响。
+  IMAGE_PROVIDER: z.enum(['gemini', 'ark']).default('gemini'),
+  GEMINI_API_KEY: z.string().optional(),
+  ARK_API_KEY: z.string().optional(),
   R2_PUBLIC_BASE_URL: z.string().url().default('https://cdn.yujeeai.com'),
 });
 

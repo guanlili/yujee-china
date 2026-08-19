@@ -65,6 +65,26 @@ export const r2 = {
     }
   },
 
+  // 服务端直接写字节。**这是「不代理字节」那条立场的唯一破例**,只给 AI 生图用:
+  // 生成图的字节天生在服务端(上游回给我们的),让浏览器绕一趟意味着海外用户要去
+  // 下载国内 TOS 的图,不可行。用户上传的照片仍然一律走预签名 PUT,不许走这里。
+  // 设计依据:docs/specs/2026-08-18-ai-image-generation-design.md「实现触点」。
+  async putObject(key: string, bytes: Uint8Array, contentType: string): Promise<void> {
+    try {
+      await client().send(
+        new PutObjectCommand({
+          Bucket: env.R2_BUCKET,
+          Key: key,
+          Body: bytes,
+          ContentType: contentType,
+        }),
+      );
+    } catch (e) {
+      logger.error({ err: String(e), key }, 'r2 putObject failed');
+      throw e;
+    }
+  },
+
   // 唯一一处服务端真的把字节读回来的地方(建书直传:浏览器 PUT 完 800px 预览,
   // Web 取回来拼成 base64 转发给 engine)。其余链路一律只发预签名 URL,不代理字节。
   //

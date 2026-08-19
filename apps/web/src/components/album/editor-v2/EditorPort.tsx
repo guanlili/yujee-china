@@ -30,6 +30,8 @@ import { boundPick, pick, type AT } from '@/lib/i18n/pick';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
+import { fetchPhotoOriginalUrls } from '@/lib/album/photo-original-client';
+import { generateImageIntoSlot } from '@/lib/imagegen/generate-client';
 import { lutEngine } from '@/lib/photo/lut/engine';
 import type { PhotoFilterState } from '@/lib/photo/filter-state';
 import { IMAGE_INPUT_ACCEPT, prepareImageBlobForBrowserDecode } from '@/lib/photo/heic';
@@ -914,6 +916,37 @@ function EditorModals({ locale }: { locale: Locale }) {
           </div>
           <div className="px-6 py-4 border-t border-bdsoft shrink-0 flex items-center justify-end">
             <button className="px-5 py-2.5 rounded-pill text-[13px] font-medium text-fg2 border border-bd transition-colors hover:bg-bg" data-action="closePhotoSwap" data-i18n="swapCancel">取消</button>
+          </div>
+        </div>
+      </div>
+
+      {/* AI 生图(2026-08-18,docs/specs/2026-08-18-ai-image-generation-design.md):
+          用户写一句描述,生成一张图填进当前图槽。产出是一张普通照片(photoId),
+          所以导出/分享/备份下游零改动。每次付费生成附带 1 次免费重来 —— 次数是
+          按毛利算出来的,不是随手定的。 */}
+      <div className="modal-overlay" id="imageGenModal" data-overlay-close>
+        <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="imageGenTitle">
+          <div className="px-6 pt-5 pb-4 border-b border-bdsoft shrink-0">
+            <div className="flex items-center justify-between">
+              <h3 id="imageGenTitle" className="font-display text-[17px] font-bold">{aT('AI 生成一张图', 'Generate an image')}</h3>
+              <button className="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg transition-colors" data-action="closeImageGen" aria-label="close">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+            <p className="text-[12.5px] text-muted mt-1">{aT('描述你想要的画面,生成的图会放进当前这个位置。每次生成消耗 1 积分。', 'Describe what you want. The image goes into the selected slot. Each generation costs 1 credit.')}</p>
+          </div>
+          <div className="px-6 py-5 overflow-y-auto flex-1">
+            <textarea
+              id="imageGenPrompt"
+              className="w-full min-h-[110px] rounded-lg border border-bd bg-bg px-3 py-2.5 text-[14px] leading-relaxed outline-none focus:border-fg2"
+              maxLength={200}
+              placeholder={aT('例如:黄昏时海边的礁石,暖色调,安静', 'e.g. sea rocks at dusk, warm tones, quiet')}
+            />
+            <p className="mt-2 text-[12px] text-muted" id="imageGenHint" />
+          </div>
+          <div className="px-6 py-4 border-t border-bdsoft shrink-0 flex items-center justify-end gap-2">
+            <button className="px-5 py-2.5 rounded-pill text-[13px] font-medium text-fg2 border border-bd transition-colors hover:bg-bg" data-action="closeImageGen">{aT('取消', 'Cancel')}</button>
+            <button className="px-5 py-2.5 rounded-pill text-[13px] font-semibold bg-fg text-white transition-transform hover:-translate-y-px disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0" id="imageGenSubmit" data-action="submitImageGen">{aT('生成', 'Generate')}</button>
           </div>
         </div>
       </div>
@@ -2194,6 +2227,16 @@ function EditorBook({
         e.stopPropagation();
         openPhotoSwap();
       });
+      // AI 生成:按用户描述出一张图填进这个槽。产出是一张普通照片(photoId),
+      // 所以走的还是 swapImage 那条「只动数据层」的路,html 一个字不改。
+      const gen = document.createElement('button');
+      gen.type = 'button';
+      gen.className = 'img-edit-gen';
+      gen.textContent = aT('AI 生成', 'Generate');
+      gen.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openImageGen();
+      });
       const style = document.createElement('button');
       style.type = 'button';
       style.className = 'img-edit-style';
@@ -2309,6 +2352,7 @@ function EditorBook({
       actions.className = 'img-edit-actions';
       actions.appendChild(rotateBtn);
       actions.appendChild(swap);
+      actions.appendChild(gen);
       if (lutSupported) actions.appendChild(style);
       actions.appendChild(reset);
       actions.appendChild(del);
@@ -2536,6 +2580,132 @@ function EditorBook({
       // 落库走与改字/改样式同一条单页 PATCH(images 整体替换,服务端 updatePage 同口径)。
       persistPagePatch(page);
     }
+    // ── AI 生图 ────────────────────────────────────────────────────────────
+    // 生成成功后走 swapImage,与「换图」同一条只动数据层的路。
+    // 弹窗生成后**不关**:每笔付费生成附带 1 次免费重来,关掉就等于让用户放弃它。
+    let imageGenState: { generationId: string; freeRetriesLeft: number } | null = null;
+
+    function imageGenEls() {
+      return {
+        modal: byId('imageGenModal'),
+        input: byId('imageGenPrompt') as HTMLTextAreaElement | null,
+        hint: byId('imageGenHint'),
+        submit: byId('imageGenSubmit') as HTMLButtonElement | null,
+      };
+    }
+
+    function openImageGen() {
+      if (!imgEdit) return;
+      const { modal, input, hint, submit } = imageGenEls();
+      imageGenState = null;
+      if (input) input.value = '';
+      if (hint) hint.textContent = '';
+      if (submit) {
+        submit.disabled = false;
+        submit.textContent = aT('生成', 'Generate');
+      }
+      modal?.classList.add('open');
+      input?.focus();
+    }
+
+    function closeImageGen() {
+      byId('imageGenModal')?.classList.remove('open');
+      imageGenState = null;
+    }
+
+    async function submitImageGen() {
+      if (!imgEdit) return;
+      const { input, hint, submit } = imageGenEls();
+      const prompt = (input?.value ?? '').trim();
+      if (!prompt) {
+        if (hint) hint.textContent = aT('先写一句描述。', 'Describe the image first.');
+        return;
+      }
+      const { pageIndex, slotId, imgEl } = imgEdit;
+      // 按槽位实际显示尺寸的 2 倍要图,够 PDF 栅格导出用;服务端还会再夹一次上限。
+      const width = Math.max(2, Math.round((imgEl?.offsetWidth || 400) * 2));
+      const height = Math.max(2, Math.round((imgEl?.offsetHeight || 600) * 2));
+
+      if (submit) {
+        submit.disabled = true;
+        submit.textContent = aT('生成中…', 'Generating…');
+      }
+      if (hint) hint.textContent = aT('大概十几秒,别关窗口。', 'This takes a few seconds — keep this open.');
+
+      try {
+        const result = await generateImageIntoSlot(
+          {
+            albumId: detail.album.id,
+            prompt,
+            width,
+            height,
+            ...(imageGenState && imageGenState.freeRetriesLeft > 0
+              ? { retryOf: imageGenState.generationId }
+              : {}),
+          },
+          {
+            postGenerate: async (body) => {
+              const res = await fetch(`/api/v1/albums/${detail.album.id}/generate-image`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+              });
+              const json = (await res.json().catch(() => null)) as
+                | { ok?: boolean; data?: unknown; error?: { message?: string } }
+                | null;
+              if (!res.ok || !json?.ok) {
+                throw new Error(json?.error?.message ?? `request failed (${res.status})`);
+              }
+              return json.data as Awaited<ReturnType<typeof generateImageIntoSlot>>;
+            },
+            fetchUrls: (ids) => fetchPhotoOriginalUrls(detail.album.id, ids),
+            fetchBlob: async (url) => {
+              const res = await fetch(url);
+              if (!res.ok) throw new Error(`download failed (${res.status})`);
+              return res.blob();
+            },
+            storeBlob: (photoId, blob) => photoStore.put(photoId, blob),
+          },
+        );
+
+        // 先把新图解成 display 档 URL 并进 imageUrls —— resolveImage 读的是这张表,
+        // 只写 photoStore 不够:表里没有这个 id,槽位会画成透明占位,用户花了 1 积分
+        // 却看见一个空框,直到下次整册重载才出图。
+        const fresh = await photoStore.getTierUrls([result.photoId], 'display', currentPhotoFilter);
+        imageUrls = { ...imageUrls, ...fresh };
+
+        // 图槽指过去。位置/缩放沿用当前构图,与换图同口径。
+        const page = pageByIndex(pageIndex);
+        if (page) {
+          page.imagesJson = { ...page.imagesJson, [slotId]: result.photoId };
+          repaintPages([pageIndex]);
+          persistPagePatch(page);
+        }
+
+        imageGenState = { generationId: result.generationId, freeRetriesLeft: result.freeRetriesLeft };
+        if (submit) {
+          submit.disabled = false;
+          submit.textContent =
+            result.freeRetriesLeft > 0
+              ? aT('免费再来一张', 'Try again — free')
+              : aT('再来一张(1 积分)', 'Another (1 credit)');
+        }
+        if (hint) {
+          hint.textContent =
+            result.freeRetriesLeft > 0
+              ? aT('已放进书里。不满意可以免费再来一张。', 'Placed. Not happy? One more is on us.')
+              : aT('已放进书里。再生成会再扣 1 积分。', 'Placed. Another one costs 1 more credit.');
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (hint) hint.textContent = message;
+        if (submit) {
+          submit.disabled = false;
+          submit.textContent = aT('重试', 'Retry');
+        }
+      }
+    }
+
     /** 删除:清空这个图槽 —— **版式不变**,框还占着位(token 还在 html 里),
      *  以后放张图回去就复原。删 key 而不是置空串:空串会在数据里留一条指向
      *  「空照片」的假记录,读侧(collectPhotoIds 之类)还得再判一次。
@@ -5804,6 +5974,8 @@ function EditorBook({
        modals) so it never double-binds the chat-owned actions that ChatPanel binds
        inside its aside (buyShells / pickAddPhotos / toggleChat-collapse). */
     const actions: Record<string, () => void> = {
+      closeImageGen,
+      submitImageGen: () => { void submitImageGen(); },
       backupPhotos,
       // .chat-fold-expand lives in the shell (canvas scope) and toggles the shared
       // body class; the .chat-fold-collapse button in the aside is
@@ -5876,7 +6048,7 @@ function EditorBook({
       actionHandlers.push({ el: exportFailOverlay, fn });
     }
     // 导出菜单/拼图弹窗/垫底背景:点背景关闭(进度浮层不给关,渲染中)。
-    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['nineGridModal', closeNineGridModal], ['boardBgModal', closeBoardBgModal], ['pageReorderModal', closePageReorder], ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')], ['photoSwapModal', closePhotoSwap]].forEach(([id, close]) => {
+    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['nineGridModal', closeNineGridModal], ['boardBgModal', closeBoardBgModal], ['pageReorderModal', closePageReorder], ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')], ['photoSwapModal', closePhotoSwap], ['imageGenModal', closeImageGen]].forEach(([id, close]) => {
       const ov = byId(id as string);
       if (!ov) return;
       const fn = (e: Event) => { if (e.target === ov) (close as () => void)(); };

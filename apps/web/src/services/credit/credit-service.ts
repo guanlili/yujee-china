@@ -16,7 +16,9 @@ type LedgerReason =
   | 'PURCHASE'
   | 'REFUND'
   | 'ADMIN_ADJUST'
-  | 'INVITE_REDEEM';
+  | 'INVITE_REDEEM'
+  | 'IMAGE_GEN_CHARGE'
+  | 'IMAGE_GEN_REFUND';
 
 type ApplyDeltaRefs = {
   albumId?: string;
