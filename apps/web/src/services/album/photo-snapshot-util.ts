@@ -15,7 +15,17 @@ export function isValidPhotoId(id: unknown): id is string {
   return typeof id === 'string' && PHOTO_ID_RE.test(id);
 }
 
-const RENDER_VERSION_RE = /^pf-v1__[a-z0-9-]+(?:__(?:0|5|[1-9][0-9]|100))?$/;
+// `__cut1` 是抠图尾段(见 lib/photo/filter-state.ts)。刻意做成可选后缀而不是升
+// pf-v2 —— 存量版本串因此逐字节不变,已分享的相册不会集体撞 409。
+// 字符类 [a-z0-9-] 不含下划线,所以 lutId 不会贪婪吃掉 `__cut1`,结构无需改写。
+const RENDER_VERSION_RE = /^pf-v1__[a-z0-9-]+(?:__(?:0|5|[1-9][0-9]|100))?(?:__cut1)?$/;
+
+// 抠图产物带 alpha,JPEG 装不下。用有损 WebP 而不是 PNG:3400px 的抠图 PNG 动辄
+// 5-15MB,WebP 与 JPEG 同量级,R2 存储和流量差一个数量级。
+const CUTOUT_SUFFIX = '__cut1';
+function snapshotExt(renderVersion: string): 'jpg' | 'webp' {
+  return renderVersion.endsWith(CUTOUT_SUFFIX) ? 'webp' : 'jpg';
+}
 
 export function isValidRenderVersion(value: unknown): value is string {
   return typeof value === 'string' && RENDER_VERSION_RE.test(value);
@@ -61,7 +71,7 @@ export function photoSnapshotKey(
     throw new Error('invalid renderVersion');
   }
   return renderVersion
-    ? `photo-snapshots/${userId}/${albumId}/${photoId}/${renderVersion}.jpg`
+    ? `photo-snapshots/${userId}/${albumId}/${photoId}/${renderVersion}.${snapshotExt(renderVersion)}`
     : `photo-snapshots/${userId}/${albumId}/${photoId}.jpg`;
 }
 

@@ -42,6 +42,12 @@ export type PhotoFilterRef = z.infer<typeof PhotoFilterRefSchema>;
 export const PhotoFilterStateSchema = z.object({
   default: PhotoFilterRefSchema.nullable(),
   overrides: z.record(z.string(), PhotoFilterRefSchema.nullable()).optional(),
+  // 抠图与 LUT 同属「每张照片的派生像素状态」,所以共用 albums.photo_filter 这一列:
+  // 一个真相源、一次行锁、一个 normalize,且不动 Page 契约、不加迁移。
+  // 只认 true —— 关掉抠图是删键。允许 false 会让「没抠」有两种表示,
+  // renderVersion 和派生缓存 key 立刻产生歧义。
+  // 没有 album 级默认值:不存在「整本每张都抠」这种需求,只有 per-photo。
+  cutouts: z.record(z.string(), z.literal(true)).optional(),
 }).strict();
 export type PhotoFilterState = z.infer<typeof PhotoFilterStateSchema>;
 
@@ -65,6 +71,9 @@ export function normalizePhotoFilterState(
   return {
     default: normalizeFilterRef(state.default),
     ...(overrides && { overrides }),
+    // cutouts 没有可归一化的量(只有 true),但必须原样带过去 —— 归一化时丢掉它
+    // 等于用户一改滤镜就把抠图状态清了。
+    ...(state.cutouts && { cutouts: state.cutouts }),
   };
 }
 
@@ -79,12 +88,40 @@ export function resolveEffectiveFilter(
   return state?.default ?? null;
 }
 
+/**
+ * 开/关某张照片的抠图。**关掉是删键,不是写 false** —— 契约里 cutouts 只认 true,
+ * 允许 false 会让「没抠」有两种表示,renderVersion 和派生缓存 key 立刻产生歧义。
+ * 全关之后连 cutouts 这个壳一起删掉,免得存库 JSON 里留一个空对象。
+ */
+export function toggleCutout(
+  state: PhotoFilterState,
+  photoId: string,
+): PhotoFilterState {
+  const next = { ...(state.cutouts ?? {}) };
+  if (next[photoId]) delete next[photoId];
+  else next[photoId] = true;
+
+  const { cutouts: _dropped, ...rest } = state;
+  return Object.keys(next).length > 0 ? { ...rest, cutouts: next } : rest;
+}
+
+export function isCutout(
+  state: PhotoFilterState | null | undefined,
+  photoId: string,
+): boolean {
+  return state?.cutouts?.[photoId] === true;
+}
+
+// 抠图**追加尾段**,不升 pf-v2。升版本号会让所有存量快照的 renderVersion 一次性
+// 失配,每个已分享的相册都撞 409 PHOTO_SNAPSHOT_VERSION_MISSING,用户得重备全书。
+// 追加尾段则让未抠图的版本串逐字节不变。
 export function effectiveRenderVersion(
   state: PhotoFilterState | null | undefined,
   photoId: string,
 ): string {
   const filter = resolveEffectiveFilter(state, photoId);
-  if (!filter) return 'pf-v1__original';
+  const cut = isCutout(state, photoId) ? '__cut1' : '';
+  if (!filter) return `pf-v1__original${cut}`;
 
-  return `pf-v1__${filter.lutId}__${quantizeStrength(filter.strength)}`;
+  return `pf-v1__${filter.lutId}__${quantizeStrength(filter.strength)}${cut}`;
 }

@@ -181,3 +181,30 @@ test('corrupt stored render versions fall back to safe legacy keys and are not e
 test('PHOTO_SNAPSHOT_MAX_COUNT is a sane per-save cap', () => {
   assert.ok(PHOTO_SNAPSHOT_MAX_COUNT >= 100 && PHOTO_SNAPSHOT_MAX_COUNT <= 1000);
 });
+
+// ── 抠图 renderVersion 与快照扩展名 ───────────────────────────────────────
+// 抠图产物带 alpha,JPEG 装不下。做法是给版本串追加 `__cut1` 尾段(不升 pf-v2 ——
+// 升版本号会让所有存量快照一次性失配,每个已分享的相册都撞 409),快照 key 按尾段
+// 决定扩展名,抠图走有损 WebP(带 alpha,体积与 JPEG 同量级,PNG 会大一个数量级)。
+
+test('renderVersion 正则接受抠图尾段,存量版本串一个不落', () => {
+  const { isValidRenderVersion } = snapshotUtil;
+  assert.equal(isValidRenderVersion('pf-v1__original'), true);
+  assert.equal(isValidRenderVersion('pf-v1__fuji-portrait__80'), true);
+  assert.equal(isValidRenderVersion('pf-v1__original__cut1'), true);
+  assert.equal(isValidRenderVersion('pf-v1__fuji-portrait__80__cut1'), true);
+  assert.equal(isValidRenderVersion('pf-v1__original__cut2'), false);
+  assert.equal(isValidRenderVersion('pf-v2__original'), false);
+});
+
+test('抠图版本的快照 key 走 .webp,未抠图仍是 .jpg', () => {
+  assert.ok(photoSnapshotKey('u1', 'a1', 'p1', 'pf-v1__original').endsWith('/pf-v1__original.jpg'));
+  assert.ok(
+    photoSnapshotKey('u1', 'a1', 'p1', 'pf-v1__original__cut1')
+      .endsWith('/pf-v1__original__cut1.webp'),
+  );
+});
+
+test('legacy 无版本 key 不受影响,仍是 .jpg', () => {
+  assert.equal(photoSnapshotKey('u1', 'a1', 'p1'), 'photo-snapshots/u1/a1/p1.jpg');
+});
