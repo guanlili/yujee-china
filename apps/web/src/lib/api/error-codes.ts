@@ -76,6 +76,12 @@ export const ERRORS = {
   // diagnosable from the client response instead of a generic 500. A 401/403 here
   // almost always means test-vs-live key/URL mismatch; a 404 means a bad base URL
   // or product id.
+  // AI 生图。三类分开是因为前端处置不同:UNAVAILABLE 藏入口;
+  // BLOCKED 让用户改描述(重试多少次都一样);FAILED 给「重试」按钮。
+  IMAGE_GEN_UNAVAILABLE: () => new AppError('IMAGE_GEN_UNAVAILABLE', 'Image generation is not configured', 501),
+  IMAGE_GEN_BLOCKED:     () => new AppError('IMAGE_GEN_BLOCKED',     'That description was rejected — try describing it differently', 422),
+  IMAGE_GEN_FAILED:      () => new AppError('IMAGE_GEN_FAILED',      'Image generation failed, please try again', 502),
+
   BILLING_UPSTREAM_ERROR: (status: number) =>
     new AppError('BILLING_UPSTREAM_ERROR', `Checkout provider returned ${status}`, 502),
 

@@ -74,6 +74,10 @@ test('web keeps the v1 infrastructure route whitelist used by V3', () => {
     // sensitive env 本地拉不出,只能由生产运行时自己执行)
     'apps/web/src/app/api/v1/admin/repair-draft-pages/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/chapters/route.ts',
+    // AI 生图(2026-08-18,docs/specs/2026-08-18-ai-image-generation-design.md)。
+    // 放 v1 与 photo-originals 同族:产出就是一张普通照片,走同一套 photoId / R2 /
+    // album_photos 台账,下游导出分享备份因此零改动。
+    'apps/web/src/app/api/v1/albums/[uuid]/generate-image/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/cover-thumbnail-upload-url/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/cover-thumbnail/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/share/route.ts',
