@@ -41,6 +41,11 @@ Postgres + Cloudflare R2
   落地时自动再发一单**范围收窄**的 `/v3/compose`(空 `coverSlots`/`endingSlots`、只送
   新章;engine 侧全局批次因此直接跳过,不写封面不动字体)—— 仍是同一个端点、同一种
   AI 调用,只是多了一个触发点(`composeAppend` 服务/路由),不是第二种生成能力。
+- 以上说的都是**生成链路**。产品里另有一处 AI 调用:编辑器里的 **AI 生图**
+  (`POST /api/v1/albums/[uuid]/generate-image`),按用户描述出一张图填进图槽,
+  产出当作一张普通照片存(photoId → R2 → `album_photos`),因此导出/分享/备份
+  零改动。生产 provider 是 Gemini、本地是火山 Ark,靠 `IMAGE_PROVIDER` 切。
+  它与 Agent、Design Agent 都无关,别把它算进生成链路的调用计数。
 - 判断端到端能力时必须同时看 Web caller 和 `engine/src/api/routes.py`。
 
 ### 设计 Agent(yujee-design-agent)
@@ -126,5 +131,5 @@ Postgres + Cloudflare R2
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 6b945a3e
+checked-at: 712ac44c
 -->
