@@ -7,8 +7,10 @@ import {
   resolveEffectiveFilter,
   type PhotoFilterRef,
   type PhotoFilterState,
+  isCutout as isCutoutPhoto,
 } from './filter-state';
 import { lutEngine } from './lut/engine';
+import { cutoutEngine } from './cutout/engine';
 import { isValidPhotoId } from '../../services/album/photo-snapshot-util';
 
 // Original photos live only in the browser (architecture invariant 1). They are
@@ -57,14 +59,22 @@ export function filteredVariantPrefix(photoId: string, tier: PhotoTier): string 
   return `${filteredPhotoNamespace(photoId)}@${tier}@pf-v1@`;
 }
 
+// `cut`=这张照片抠了图。它必须参与 key —— 否则「抠了图但没上 LUT」会落进下面那个
+// 早退分支,拿到 `{photoId}@{tier}`,而那正是**未处理原图**的 key,两者互相覆盖。
+// 这是静默串味(不报错、不崩),排查成本极高。
+// 已有两种 key 的产出逐字节不变(未抠图时),所以升级不会作废任何存量缓存。
 export function derivedCacheKey(
   photoId: string,
   tier: PhotoTier,
   ref: PhotoFilterRef | null | undefined,
+  cut = false,
 ): string {
   const strength = ref ? quantizeStrength(ref.strength) : 0;
-  if (!ref || strength <= 0) return `${photoId}@${tier}`;
-  return `${filteredVariantPrefix(photoId, tier)}${ref.lutId}@${strength}`;
+  const filtered = Boolean(ref) && strength > 0;
+  if (!filtered && !cut) return `${photoId}@${tier}`;
+  // 抠图变体也挂在 filteredVariantPrefix 下,现有的 LRU 回收扫描才能覆盖到它。
+  const lutPart = filtered ? `${ref!.lutId}@${strength}` : 'original@0';
+  return `${filteredVariantPrefix(photoId, tier)}${lutPart}${cut ? '@cut1' : ''}`;
 }
 
 function effectiveFilter(
@@ -501,14 +511,17 @@ async function getTierBlobResult(
   photoFilter?: PhotoFilterState | null,
 ): Promise<TierBlobResult> {
   const ref = effectiveFilter(photoFilter, photoId);
-  if (!ref) {
+  // 抠图与 LUT 各自独立:一张照片可以只抠不调色,也可以只调色不抠,还可以两样都来。
+  // 所以这里不能像从前那样「没有 LUT 就直接回原图」——那会把只抠图的那种情况漏掉。
+  const cut = isCutoutPhoto(photoFilter, photoId);
+  if (!ref && !cut) {
     return {
       blob: await getBaseTierBlob(owner, photoId, tier),
       filteredFallback: false,
     };
   }
 
-  const key = derivedCacheKey(photoId, tier, ref);
+  const key = derivedCacheKey(photoId, tier, ref, cut);
   const cached = await getDerivedValue(key);
   if (cached instanceof Blob) {
     try {
@@ -525,7 +538,11 @@ async function getTierBlobResult(
 
   const base = await getBaseTierBlob(owner, photoId, tier);
   if (!base) return { blob: undefined, filteredFallback: false };
-  const filtered = await lutEngine.applyToBlob(base, ref, 'full');
+  // 顺序是先调色再抠图:LUT 要在完整的 RGB 上算,抠图只是把背景的 alpha 打成 0。
+  // 反过来先抠再调色,LUT 会把透明区域也一起算进去。
+  const toned = ref ? await lutEngine.applyToBlob(base, ref, 'full') : base;
+  // 抠不动时 cutoutEngine 原样退回入参(它自己吞掉异常),所以这里不用再包一层 try。
+  const filtered = cut ? await cutoutEngine.applyToBlob(toned) : toned;
   if (filtered === base) {
     console.warn('Filtered tier render returned the base Blob; variant not cached', {
       photoId,

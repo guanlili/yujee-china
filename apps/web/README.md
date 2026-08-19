@@ -182,6 +182,14 @@ The closed 26-LUT manifest lives in `src/lib/photo/filter-state.ts`. Generated s
 assets are deterministic: one combined 17³ thumbnail payload plus 26 individual 33³
 full payloads under `public/luts/`; source `.cube` files are intentionally not tracked.
 
+抠图(cutout)与 LUT 并列,同住 `albums.photo_filter` 的 `cutouts` 记录里 —— 一个真相源、
+一次行锁、一个 normalize。它**只认 `true`**,关掉是删键(允许 `false` 会让「没抠」有两种
+表示,`renderVersion` 与派生缓存 key 立刻有歧义),且没有 album 级默认值。派生管线里的
+顺序是**先 LUT 后抠图**(LUT 要在完整 RGB 上算);抠图产物带 alpha,所以快照存 WebP
+而不是 JPEG。算法在 `src/lib/photo/cutout/cutout-math.ts`(边缘漫水填充,浏览器内跑,
+不上传照片、零边际成本),引擎抠不动时原样退回原图。已知局限:主体与背景同色、或背景
+杂乱时基本吃不动 —— 这是像素法的天花板,接口留窄了,换分割模型只动 `cutout-math.ts`。
+
 Changing the filter row-locks the album, persists only normalized filter state,
 invalidates stored PDF and cover-thumbnail metadata, and moves a `COMPLETED` album
 back to `EDITING`. Cover thumbnail signing returns an opaque SHA-256
@@ -338,5 +346,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 712ac44c
+checked-at: 59940b63
 -->

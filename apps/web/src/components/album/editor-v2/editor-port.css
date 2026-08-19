@@ -2681,6 +2681,17 @@
 }
 .editor-port .filter-bar-head{ display:flex; align-items:center; gap:12px; padding-right:12px; }
 .editor-port .filter-bar-head strong{ flex:0 0 auto; font-size:15px; }
+/* 抠图开关:与 scope 切换器同一排,靠右。按下态用品牌青描边,和滤镜卡的选中态同族。 */
+.editor-port .filter-cutout-toggle{
+  margin-left:auto; flex:0 0 auto;
+  border:1px solid var(--border-soft); background:var(--bg); color:var(--fg);
+  border-radius:9999px; padding:3px 12px; font-size:12px; cursor:pointer;
+  transition:background var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
+}
+.editor-port .filter-cutout-toggle:hover{ background:var(--border-soft); }
+.editor-port .filter-cutout-toggle[aria-pressed="true"]{
+  border-color:#13B8A6; color:#0f8e80; background:rgba(19,184,166,.08);
+}
 .editor-port .filter-state{ color:var(--muted); font-size:12px; }
 /* 没有切换器时(移动端)的静态 scope 标签 —— 与切换器互斥,不会两份并存。 */
 .editor-port .filter-scope-label{

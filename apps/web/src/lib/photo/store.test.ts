@@ -1217,3 +1217,25 @@ test('getCanonicalUploadBlob returns undefined without calling the fetcher when 
     photoStore.setRemoteOriginalFetcher(null);
   }
 });
+
+// ── 抠图变体的缓存 key ────────────────────────────────────────────────────
+// derivedCacheKey 原本在「没有 LUT」时早退回 `{photoId}@{tier}` —— 那正是未处理
+// 原图的 key。抠了图但没上 LUT 的照片如果也走这个分支,抠图产物会和原图写进同一
+// 个 key,互相覆盖。这是静默串味,不报错,最难查。
+test('抠了图但没上 LUT 时,缓存 key 不能和原图撞车', () => {
+  assert.equal(derivedCacheKey('p1', 'display', null), 'p1@display');
+  assert.notEqual(derivedCacheKey('p1', 'display', null, true), 'p1@display');
+});
+
+test('抠图变体和同 LUT 的未抠变体是不同的 key', () => {
+  const ref = { lutId: 'cloudy-cool', strength: 80 } as const;
+  assert.notEqual(
+    derivedCacheKey('p1', 'display', ref, true),
+    derivedCacheKey('p1', 'display', ref, false),
+  );
+});
+
+test('抠图变体仍落在 filteredVariantPrefix 下 —— 否则 LRU 回收扫不到它', () => {
+  const key = derivedCacheKey('p1', 'display', null, true);
+  assert.ok(key.startsWith(filteredVariantPrefix('p1', 'display')));
+});

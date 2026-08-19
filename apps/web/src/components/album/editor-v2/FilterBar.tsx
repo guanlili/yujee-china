@@ -21,6 +21,8 @@ import {
   type LutId,
   type PhotoFilterRef,
   type PhotoFilterState,
+  isCutout,
+  toggleCutout,
 } from '@/lib/photo/filter-state';
 import { boundPick } from '@/lib/i18n/pick';
 import type { Locale } from '@/lib/i18n/routing';
@@ -174,6 +176,20 @@ export function FilterBar({
     >
       <div className="filter-bar-head">
         <strong>{aT('风格', 'Style')}</strong>
+        {/* 抠图开关只在「这张照片」这一档出现:契约里 cutouts 没有 album 级默认值
+            —— 不存在「整本每张都抠」这种需求(见 filter-state.ts 的注释)。
+            开关只改 state,存库与全画布重绘由 EditorPort 那两个 effect 自动接手。 */}
+        {scope === 'photo' && photoId != null ? (
+          <button
+            type="button"
+            className="filter-cutout-toggle"
+            aria-pressed={isCutout(state, photoId)}
+            onClick={() => onChange(toggleCutout(state ?? { default: null }, photoId))}
+            title={aT('去掉背景,只留主体', 'Remove the background, keep the subject')}
+          >
+            {aT('抠图', 'Cut out')}
+          </button>
+        ) : null}
         {/* scope 只在一个地方表达。给了切换器 → 切换器自己就说明了当前在哪一档;
             没给 → 退回静态标签。两者互斥 —— 早先是「标签 + 切换器 + 跟随链接」三份并存。
             谁给谁不给:桌面永远给(它只有「点选中的图 → 风格」一个入口);移动端只在
