@@ -57,6 +57,7 @@ import { PAGE, pageBox } from '../templates/constants';
 // 双宽页 pageBox / 跨页 folio 都已折进 page-face,这里不再持第二份实现。
 import { editableTextOf } from './editable-text';
 import { pageFaceInner, pageFaceHTML, type PageFaceCtx } from './page-face';
+import { coverOptionImages, fitFaceBox } from './cover-option';
 import { clampZoom, paintDecision } from './zoom-util';
 import { resolveDeviceMode, initMobileCanvas } from './mobile-canvas';
 import {
@@ -2577,7 +2578,9 @@ function EditorBook({
     // ── AI 生图 ────────────────────────────────────────────────────────────
     // 生成成功后走 swapImage,与「换图」同一条只动数据层的路。
     // 弹窗生成后**不关**:每笔付费生成附带 1 次免费重来,关掉就等于让用户放弃它。
-    let imageGenState: { generationId: string; freeRetriesLeft: number } | null = null;
+    // slotKey 是「这次生成属于哪个图槽」。带上它,关窗才敢不清状态:换到别的槽再打开
+    // 时按键不匹配自然丢弃,同一个槽重开则把已付费附赠的免费重来次数留着。
+    let imageGenState: { slotKey: string; generationId: string; freeRetriesLeft: number } | null = null;
 
     function imageGenEls() {
       return {
@@ -2591,20 +2594,37 @@ function EditorBook({
     function openImageGen() {
       if (!imgEdit) return;
       const { modal, input, hint, submit } = imageGenEls();
-      imageGenState = null;
+      // 换了图槽才丢弃上次的生成状态。键必须同时含页码和槽 id —— 只按 slotId 的话,
+      // 不同页的同名槽会互相串用免费次数。
+      const slotKey = `${imgEdit.pageIndex}:${imgEdit.slotId}`;
+      if (imageGenState?.slotKey !== slotKey) imageGenState = null;
+      const freeRetriesLeft = imageGenState?.freeRetriesLeft ?? 0;
       if (input) input.value = '';
-      if (hint) hint.textContent = '';
+      // 重开时如实说还有免费次数,否则用户以为关窗就没了,干脆不点 —— 那次重来是他
+      // 已经付过费的。
+      if (hint) {
+        hint.textContent =
+          freeRetriesLeft > 0
+            ? aT('这个位置还有 1 次免费重来。', 'One free retry left for this slot.')
+            : '';
+      }
       if (submit) {
         submit.disabled = false;
-        submit.textContent = aT('生成', 'Generate');
+        submit.textContent =
+          freeRetriesLeft > 0
+            ? aT('免费再来一张', 'Try again — free')
+            : aT('生成', 'Generate');
       }
       modal?.classList.add('open');
       input?.focus();
     }
 
     function closeImageGen() {
+      // 只收 UI,不清 imageGenState —— 用户为这次生成付过 1 积分、附赠 1 次免费重来,
+      // 点 ×/取消/背景/按 Esc 任一个都不该让那次权益蒸发(弹窗自己还写着「不满意可以
+      // 免费再来一张」)。换到别的图槽时由 openImageGen 丢弃。
+      // 状态仍只在内存里:刷新页面依然会丢,要彻底得落库,尚未做。
       byId('imageGenModal')?.classList.remove('open');
-      imageGenState = null;
     }
 
     async function submitImageGen() {
@@ -2676,7 +2696,11 @@ function EditorBook({
           persistPagePatch(page);
         }
 
-        imageGenState = { generationId: result.generationId, freeRetriesLeft: result.freeRetriesLeft };
+        imageGenState = {
+          slotKey: `${pageIndex}:${slotId}`,
+          generationId: result.generationId,
+          freeRetriesLeft: result.freeRetriesLeft,
+        };
         if (submit) {
           submit.disabled = false;
           submit.textContent =
@@ -5145,16 +5169,13 @@ function EditorBook({
     function templateIdsByCategory(category: 'cover' | 'ending'): string[] {
       return TEMPLATE_IDS.filter((id) => getTemplate(id)?.category === category);
     }
-    // The hero image-slot id of a template (its first declared image slot), or 'image'.
-    function heroSlotId(templateId: string): string {
-      const slots = getTemplate(templateId)?.images ?? [];
-      return slots[0]?.id ?? 'image';
-    }
-    // Render a {template, photo} choice through its real web template into the .cv-opt box.
+    // Render a {template, photos} choice through its real web template into the .cv-opt box.
     // boxW/boxH 可选:设计选择卡的封面+封底并排小预览用更小的盒(默认保持 132×176)。
+    // photoIds 收多张:封底模板可能有多个图槽(mag-22 两图),只喂一张会让第二槽在预览里
+    // 恒渲灰色缺图占位 —— 而真成书是把槽填满的(assembleDesignedPages 的 endingPool)。
     function coverOptionHTML(
       templateId: string,
-      photoId: string | null,
+      photoIds: string | readonly (string | null | undefined)[] | null,
       boxW = 132,
       boxH = 176,
       pageBackground?: string,
@@ -5163,11 +5184,15 @@ function EditorBook({
       const page: EditorPage = {
         pageIndex: 0,
         templateId,
-        imagesJson: photoId ? { [heroSlotId(templateId)]: photoId } : {},
+        imagesJson: coverOptionImages(templateId, photoIds),
         // 选择卡传空(那时还没文案,渲模板 sample 是对的);回执卡传真页 textsJson。
         textsJson: texts ?? {},
       };
-      const html = faceHTML(page, boxW, boxH);
+      // 框先收到页面真实比例再渲:794×1123 的页贴左上角等比缩放,框比例对不上就会在
+      // 右(或下)留一条底色空白,而 .cv-face 的圆角是切在框上的 —— 于是圆角只吃到页面
+      // 的左两角,右两角圆的是那条空白(用户看到的「圆角跑到左边去了」)。
+      const fit = fitFaceBox(templateId, boxW, boxH);
+      const html = faceHTML(page, fit.width, fit.height);
       // 推荐封面自带的书页底色:染进预览页根(和真页同一 patchHtmlPageStyle 原语)。
       // 纯白/未传 = 不写,留模板默认;锚点失配则原样返回。
       if (pageBackground && !isDefaultPageBackground(pageBackground)) {
