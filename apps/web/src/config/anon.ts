@@ -13,5 +13,6 @@ export const ANON_MAX_ALBUMS = 1;
 /** 匿名注册(/sign-in/anonymous)每 IP 每小时上限,挡脚本刷账号行。 */
 export const ANON_SIGNUP_PER_IP_PER_HOUR = 5;
 
-/** 创建超过这么多天仍未转正的匿名账号被 cron 清理(级联删相册)。 */
+/** 创建超过这么多天、仍未转正、**且一本书都没做**的匿名账号被 cron 清理。
+ *  做过书的游客不受此限,永久保留(他们是转化漏斗上唯一的样本)。 */
 export const ANON_CLEANUP_DAYS = 7;

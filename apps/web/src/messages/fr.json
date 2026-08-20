@@ -350,8 +350,6 @@
       "noName": "—",
       "empty": "Aucun utilisateur pour l'instant.",
       "guest": "Invité",
-      "showGuests": "Afficher les invités",
-      "hideGuests": "Masquer les invités",
       "range": "{from}–{to} sur {total}",
       "prev": "Précédent",
       "next": "Suivant",
@@ -382,7 +380,10 @@
         "submitting": "Application…",
         "success": "{delta} crédits attribués à {email} — solde actuel : {balance}.",
         "error": "Une erreur est survenue. Réessayez."
-      }
+      },
+      "viewMembers": "Membres",
+      "viewAll": "Tous",
+      "viewGuestsWithAlbums": "Livre créé, sans compte"
     },
     "analytics": {
       "title": "Statistiques",
@@ -427,6 +428,13 @@
       "recoverResult": "Analysés : {scanned} · en échec : {failed} · {released} réservations libérées",
       "cleanupResult": "Analysés : {scanned} · supprimés : {deleted}",
       "error": "L'action a échoué."
+    },
+    "albumPreview": {
+      "readOnly": "Aperçu en lecture seule",
+      "pageCount": "{count} pages",
+      "back": "Retour aux utilisateurs",
+      "empty": "Ce livre n'a pas encore de pages — l'utilisateur est parti en cours de route.",
+      "photosUnavailable": "{missing} des {total} photos n'ont aucune copie côté serveur, d'où les emplacements vides — les invités n'écrivent jamais sur R2 ; les originaux ne vivent que dans leur propre navigateur. La mise en page et les textes sont réels."
     }
   }
 }

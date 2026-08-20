@@ -350,8 +350,6 @@
       "noName": "—",
       "empty": "暂无用户。",
       "guest": "游客",
-      "showGuests": "显示游客",
-      "hideGuests": "隐藏游客",
       "range": "第 {from}–{to} 条，共 {total} 条",
       "prev": "上一页",
       "next": "下一页",
@@ -382,7 +380,10 @@
         "submitting": "处理中…",
         "success": "已给 {email} {delta} 积分,当前余额 {balance}。",
         "error": "操作失败,请重试。"
-      }
+      },
+      "viewMembers": "正式用户",
+      "viewAll": "全部",
+      "viewGuestsWithAlbums": "做了书没注册"
     },
     "analytics": {
       "title": "数据",
@@ -427,6 +428,13 @@
       "recoverResult": "扫描 {scanned} · 失败 {failed} · 释放 {released} 笔冻结",
       "cleanupResult": "扫描 {scanned} · 删除 {deleted}",
       "error": "操作失败。"
+    },
+    "albumPreview": {
+      "readOnly": "只读预览",
+      "pageCount": "共 {count} 页",
+      "back": "返回用户列表",
+      "empty": "这本书还没有页面 —— 用户中途就走了。",
+      "photosUnavailable": "{total} 张照片中有 {missing} 张在服务端没有副本,所以图位是空的 —— 游客不写 R2,原图只在他自己浏览器里。版式和文案是真实的。"
     }
   }
 }

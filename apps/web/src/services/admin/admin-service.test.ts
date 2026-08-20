@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client';
-import { accounts } from '../../db/schema';
+import { accounts, albums as albumsTable, users as usersTable } from '../../db/schema';
 import { albumRepo } from '../../db/repos/album-repo';
 import { userRepo } from '../../db/repos/user-repo';
 import { creditLedgerRepo } from '../../db/repos/credit-ledger-repo';
@@ -76,7 +76,7 @@ test('adminService.listUsers: hides anonymous guests by default', async (t) => {
   }
 });
 
-test('adminService.listUsers: includeAnonymous surfaces guests', async (t) => {
+test('adminService.listUsers: view=all surfaces guests', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping admin-service integration test');
     return;
@@ -86,7 +86,7 @@ test('adminService.listUsers: includeAnonymous surfaces guests', async (t) => {
   try {
     const { users } = await adminService.listUsers(real.id, {
       limit: 100,
-      includeAnonymous: true,
+      view: 'all',
     });
     const ids = users.map((u) => u.id);
     assert.ok(ids.includes(real.id), 'real user should still be listed');
@@ -124,7 +124,7 @@ test('adminService.listUsers: total follows the anonymous filter', async (t) => 
   const anon = await makeAnonUser('admin-total-anon');
   try {
     const hidden = await adminService.listUsers(anon.id, { limit: 1 });
-    const shown = await adminService.listUsers(anon.id, { limit: 1, includeAnonymous: true });
+    const shown = await adminService.listUsers(anon.id, { limit: 1, view: 'all' });
     assert.ok(
       shown.total > hidden.total,
       'total must shrink when guests are filtered out, or the pager will show empty pages',
@@ -442,5 +442,81 @@ test('repairDraftPages:按 legacy 数组序重建行,字段稀疏/重复的老�
     assert.equal(untouched[0]!.version, 7, 'version 不被重写');
   } finally {
     await cleanupUser(user.id);
+  }
+});
+
+test('adminService.listUsers: guests 视图只出「做了书但没注册」的游客', async (t) => {
+  if (!(await isDbReachable())) { t.skip('DATABASE_URL is not reachable'); return; }
+  const admin = await makeUser('view-admin');
+  const guestWithBook = await makeAnonUser('view-guest-book');
+  const guestEmpty = await makeAnonUser('view-guest-empty');
+  try {
+    await makeAlbum(guestWithBook.id, { title: 'guest work' });
+
+    const { users, total } = await adminService.listUsers(admin.id, { limit: 100, view: 'guests' });
+    const ids = users.map((u) => u.id);
+
+    assert.ok(ids.includes(guestWithBook.id), '做了书的游客必须出现');
+    assert.ok(!ids.includes(guestEmpty.id), '没做书的游客不该出现 —— 优化没有抓手');
+    assert.ok(!ids.includes(admin.id), '正式用户不该混进游客视图');
+    assert.ok(users.every((u) => u.isAnonymous && u.albumCount > 0), '视图内每一行都应是有书的游客');
+    // 相册数要能点进去看那本书,所以列表必须带上最新一本的 id。
+    const row = users.find((u) => u.id === guestWithBook.id)!;
+    assert.ok(row.latestAlbumId, '有书的行必须带 latestAlbumId,否则前端点不进去');
+    // total 与列表同源(见 user-repo 的 viewFilter 注释)。这里不比 users.length ——
+    // 真实数据一旦超过 limit 就必然对不上,那是分页不是 bug。
+    assert.ok(total >= 1, 'total 必须来自同一个谓词');
+  } finally {
+    await cleanupUser(guestWithBook.id);
+    await cleanupUser(guestEmpty.id);
+    await cleanupUser(admin.id);
+  }
+});
+
+test('adminService.previewAlbum: admin 只读看别人的书;非 admin 一律拒绝', async (t) => {
+  if (!(await isDbReachable())) { t.skip('DATABASE_URL is not reachable'); return; }
+  const admin = await makeUser('preview-admin');
+  await db.update(usersTable).set({ isAdmin: true }).where(eq(usersTable.id, admin.id));
+  const guest = await makeAnonUser('preview-guest');
+  try {
+    const album = await makeAlbum(guest.id, { title: 'guest book' });
+
+    // 这条通道能读任何人的私人相册,所以 service 层自己也要把门,不只靠页面层的
+    // currentAdmin() —— 少一道就等于把隐私押在调用方记得校验上。
+    await assert.rejects(
+      () => adminService.previewAlbum(guest.id, album.id),
+      /FORBIDDEN|ADMIN/i,
+      '非 admin 不许预览别人的相册',
+    );
+
+    const preview = await adminService.previewAlbum(admin.id, album.id);
+    assert.equal(preview.title, 'guest book');
+    assert.ok(Array.isArray(preview.pages), '空书也要能打开,不能抛「没有可分享的页面」');
+    assert.ok(preview.photoUrls && typeof preview.photoUrls === 'object');
+  } finally {
+    await cleanupUser(guest.id);
+    await cleanupUser(admin.id);
+  }
+});
+
+test('cleanupAbandoned: 游客的 FAILED 书不删 —— 否则两步绕过「做过书的游客永久保留」', async (t) => {
+  if (!(await isDbReachable())) { t.skip('DATABASE_URL is not reachable'); return; }
+  const guest = await makeAnonUser('failed-book-guest');
+  const real = await makeUser('failed-book-real');
+  try {
+    const guestAlbum = await makeAlbum(guest.id, { title: 'guest failed' });
+    const realAlbum = await makeAlbum(real.id, { title: 'real failed' });
+    const old = new Date(Date.now() - 90 * DAY);
+    for (const id of [guestAlbum.id, realAlbum.id]) {
+      await db.update(albumsTable).set({ status: 'FAILED', createdAt: old }).where(eq(albumsTable.id, id));
+    }
+
+    await adminService.cleanupAbandoned('test', { olderThanDays: 30 });
+
+    assert.ok(await albumRepo.findById(guestAlbum.id), '游客的 FAILED 书必须留着 —— 生成失败正是最该看的样本');
+    assert.equal(await albumRepo.findById(realAlbum.id), undefined, '正式用户的死 FAILED 书照常清');
+  } finally {
+    await cleanupUser(guest.id);
+    await cleanupUser(real.id);
   }
 });

@@ -350,8 +350,6 @@
       "noName": "—",
       "empty": "ユーザーはまだいません。",
       "guest": "ゲスト",
-      "showGuests": "ゲストを表示",
-      "hideGuests": "ゲストを非表示",
       "range": "{total} 件中 {from}–{to} 件",
       "prev": "前へ",
       "next": "次へ",
@@ -382,7 +380,10 @@
         "submitting": "適用中…",
         "success": "{email} に {delta} クレジットを付与しました。残高は {balance} です。",
         "error": "問題が発生しました。もう一度お試しください。"
-      }
+      },
+      "viewMembers": "正規ユーザー",
+      "viewAll": "すべて",
+      "viewGuestsWithAlbums": "本を作って未登録"
     },
     "analytics": {
       "title": "分析",
@@ -427,6 +428,13 @@
       "recoverResult": "スキャン {scanned} · 失敗 {failed} · 解放 {released} 件",
       "cleanupResult": "スキャン {scanned} · 削除 {deleted}",
       "error": "実行できませんでした。"
+    },
+    "albumPreview": {
+      "readOnly": "読み取り専用プレビュー",
+      "pageCount": "全 {count} ページ",
+      "back": "ユーザー一覧へ戻る",
+      "empty": "このブックにはまだページがありません —— 途中で離脱しています。",
+      "photosUnavailable": "{total} 枚中 {missing} 枚はサーバー側に複製がないため、枠が空です —— ゲストは R2 に書き込まず、原本は本人のブラウザのみにあります。レイアウトと文章は実物です。"
     }
   }
 }

@@ -4,7 +4,7 @@ import { accounts, inviteCodes } from '@/db/schema';
 import { getAuth } from '@/lib/auth/better-auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
 import { ANON_CLEANUP_DAYS } from '@/config/anon';
-import { userRepo } from '@/db/repos/user-repo';
+import { userRepo, type UsersView } from '@/db/repos/user-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { creditLedgerRepo } from '@/db/repos/credit-ledger-repo';
@@ -12,10 +12,19 @@ import { creditService } from '@/services/credit/credit-service';
 import { zombieSweeper } from '@/services/job/zombie-sweeper';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { ERRORS } from '@/lib/api/error-codes';
+import { buildSnapshotPages } from '@/services/album/share-service';
+import { albumPhotoRepo } from '@/db/repos/album-photo-repo';
+import { photoOriginalKey } from '@/services/album/photo-original-util';
+import { r2 } from '@/lib/r2/r2-client';
+import { isAdminUser } from '@/lib/auth/admin-allowlist';
 import { logger } from '@/lib/log/logger';
 
 const STUCK_CUTOFF_MS = 5 * 60 * 1000;
 const DEFAULT_CLEANUP_DAYS = 30;
+/** 后台预览的图片签名有效期。FlipBook 只渲当前跨页、不预加载全书,300s 会让翻到
+ *  五分钟后的页全变裂图;后台页已 noindex,拉到 1 小时没有额外暴露面。 */
+const PREVIEW_URL_TTL_SECONDS = 3600;
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Fat-finger guard on manual grants: one click can never move more than this in
@@ -73,19 +82,23 @@ export const adminService = {
   // 游客默认不列:他们按 createdAt 倒序永远排在最前,不藏就把真实用户挤出第一页。
   async listUsers(
     _actorId: string,
-    opts: { limit?: number; offset?: number; includeAnonymous?: boolean } = {},
+    opts: { limit?: number; offset?: number; view?: UsersView } = {},
   ) {
     const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
     const requested = Math.max(opts.offset ?? 0, 0);
-    const includeAnonymous = opts.includeAnonymous ?? false;
+    const view: UsersView = opts.view ?? 'members';
 
     // 先数再取:越界的 offset(收藏的旧 ?page=9、手改的 URL)夹到最后一页,不翻空白页,
     // 也不让天文数字的 offset 进 SQL。返回的是**生效后**的 offset,页面按它标页码。
-    const total = await userRepo.count({ includeAnonymous });
+    const total = await userRepo.count({ view });
     const offset = total === 0 ? 0 : Math.min(requested, Math.floor((total - 1) / limit) * limit);
-    const users = await userRepo.listRecent({ limit, offset, includeAnonymous });
-    const albumCounts = await albumRepo.countByUserIds(users.map((u) => u.id));
+    const users = await userRepo.listRecent({ limit, offset, view });
+    const ids = users.map((u) => u.id);
+    const albumCounts = await albumRepo.countByUserIds(ids);
     const countByUser = new Map(albumCounts.map((c) => [c.userId, c.count]));
+    // 后台要能从列表直接点进那本书看用户做到哪一步 —— 尤其是「做了书没注册」那批。
+    const latestAlbums = await albumRepo.latestIdByUserIds(ids);
+    const latestByUser = new Map(latestAlbums.map((a) => [a.userId, a.albumId]));
 
     return {
       users: users.map((u) => ({
@@ -96,12 +109,13 @@ export const adminService = {
         isAnonymous: u.isAnonymous,
         creditBalance: u.creditBalance,
         albumCount: countByUser.get(u.id) ?? 0,
+        latestAlbumId: latestByUser.get(u.id) ?? null,
         createdAt: u.createdAt,
       })),
       total,
       limit,
       offset,
-      includeAnonymous,
+      view,
     };
   },
 
@@ -339,10 +353,59 @@ export const adminService = {
     return { scanned: stale.length, deleted };
   },
 
-  // 游客(匿名影子账号)清理:创建超过 N 天仍未转正的匿名用户,连同名下相册/任务/
-  // 消息一起删(schema 里 11 处 onDelete:'cascade' 收尾)。转正过的用户在
-  // onLinkAccount 时已被 anonymous 插件删除并过户,这里扫到的只剩「来了没登录」的。
-  // 游客零积分变动、零 R2 写入,删行即删干净 —— 没有对象存储要跟着清。
+  /** admin 只读预览任意相册(后台从用户列表点进来看游客做了什么书)。
+   *
+   *  这是一条能读**任何人私人相册**的通道,所以:
+   *   · 只读。不复用 album-service 的任何写路径,拿不到改/删能力。
+   *   · service 层自己校验 isAdmin,不只靠页面层 currentAdmin() —— 少一道就等于把
+   *     隐私押在「每个调用方都记得校验」上。
+   *   · 照片走 photo-originals 私有桶的 300s 预签名,不走分享快照:快照要用户主动点过
+   *     「保存」才有,游客基本没点过,复用它会得到一本空图的书。
+   *  空书不抛错,返回空页数组 —— 后台要看的正是「他做到哪一步」,半途而废也得能打开。 */
+  async previewAlbum(actorId: string, albumId: string) {
+    const actor = await userRepo.findById(actorId);
+    if (!actor || !isAdminUser(actor)) throw ERRORS.FORBIDDEN();
+
+    const album = await albumRepo.findById(albumId);
+    if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+
+    const pages = await buildSnapshotPages(album, db);
+    const referenced = new Set(
+      pages.flatMap((p) => Object.values(p.imagesJson).filter((v): v is string => Boolean(v))),
+    );
+    const rows = await albumPhotoRepo.findByAlbum(albumId);
+    const photoUrls: Record<string, string> = {};
+    for (const row of rows) {
+      if (row.status !== 'uploaded' || !referenced.has(row.photoId)) continue;
+      try {
+        // 逐张兜错:一张签不出来不该把整页打成 404 —— 诊断工具被一张坏图整体打死,
+        // 现场看到的还是「相册不存在」,最难查。
+        photoUrls[row.photoId] = await r2.signGetUrl(
+          photoOriginalKey(albumId, row.photoId),
+          PREVIEW_URL_TTL_SECONDS,
+        );
+      } catch (e) {
+        logger.error({ albumId, photoId: row.photoId, err: e }, 'admin preview sign failed');
+      }
+    }
+
+    return {
+      title: album.title,
+      pages,
+      photoUrls,
+      boardBackground: album.boardBackground ?? null,
+      ownerId: album.userId,
+      // 页面据此如实告知「图为什么是空的」。游客相册这里恒等于 referenced.size ——
+      // album_photos 的唯一写入者挂 requireRealUser,游客零 R2 写入(见下方注释)。
+      referencedPhotoCount: referenced.size,
+      missingPhotoCount: referenced.size - Object.keys(photoUrls).length,
+    };
+  },
+
+  // 游客(匿名影子账号)清理:只删创建超过 N 天、仍未转正、**且一本书都没做**的空账号
+  // (名单谓词见 userRepo.findAnonymousCreatedBefore)。做过书的游客永久保留 —— 他们是
+  // 转化漏斗上唯一的样本。转正过的用户在 onLinkAccount 时已被 anonymous 插件删除并过户,
+  // 这里扫到的只剩「来了没动手」的。游客零积分变动、零 R2 写入,删行即删干净。
   async cleanupAnonymous(actorId: string, opts: { olderThanDays?: number } = {}) {
     const days = Math.min(Math.max(opts.olderThanDays ?? ANON_CLEANUP_DAYS, 1), 365);
     const cutoff = new Date(Date.now() - days * DAY_MS);

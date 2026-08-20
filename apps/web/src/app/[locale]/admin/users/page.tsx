@@ -8,6 +8,7 @@ import { AdminForbidden } from '@/components/admin/AdminForbidden';
 import { GrantCreditForm } from '@/components/admin/GrantCreditForm';
 import { CreateUserForm } from '@/components/admin/CreateUserForm';
 import { parseUsersQuery, usersPageRange } from '@/lib/admin/users-pagination';
+import type { UsersView } from '@/db/repos/user-repo';
 
 export default async function AdminUsersPage({
   params,
@@ -24,7 +25,7 @@ export default async function AdminUsersPage({
   const { users, total, offset } = await adminService.listUsers(admin.id, {
     limit: query.limit,
     offset: query.offset,
-    includeAnonymous: query.includeAnonymous,
+    view: query.view,
   });
   // 用服务端夹过的 offset 反推页码,不用 URL 里那个 —— 越界的 ?page=9 已经被拉回
   // 最后一页,标签再拿原值就会写出「第 0–0 条 / 第 9 / 2 页」这种自相矛盾的话。
@@ -32,18 +33,28 @@ export default async function AdminUsersPage({
   const range = usersPageRange({ total, offset, count: users.length });
   const t = getMessages(locale).admin.users;
 
-  // 页码与游客开关都走 URL,服务端组件因此不需要任何 client state;换开关时回到第 1 页,
-  // 否则从「含游客的第 5 页」切到「不含游客」很容易落在超出范围的空白页上。
-  const href = (targetPage: number, includeAnonymous: boolean) => {
+  // 页码与视图都走 URL,服务端组件因此不需要任何 client state;换视图时回到第 1 页,
+  // 否则从「含游客的第 5 页」切到别的视图很容易落在超出范围的空白页上。
+  const href = (targetPage: number, view: UsersView) => {
     const sp = new URLSearchParams();
     if (targetPage > 1) sp.set('page', String(targetPage));
-    if (includeAnonymous) sp.set('anon', '1');
+    if (view !== 'members') sp.set('view', view);
     const qs = sp.toString();
     return `/${locale}/admin/users${qs ? `?${qs}` : ''}`;
   };
 
+  // 三态:正式用户(缺省) / 全部 / 做了书但没注册的游客。第三个是定点优化的抓手 ——
+  // 这批人传过照片、等过生成、翻过成品,却没留下账号,是漏斗上最该盯的一段。
+  const VIEW_TABS: { view: UsersView; label: string }[] = [
+    { view: 'members', label: t.viewMembers },
+    { view: 'all', label: t.viewAll },
+    { view: 'guests', label: t.viewGuestsWithAlbums },
+  ];
+
   const pagerLink =
     'px-3 py-1.5 rounded-lg border border-[var(--border)] bg-white hover:border-[var(--accent)]';
+  const pagerActive =
+    'px-3 py-1.5 rounded-lg border border-[var(--accent)] bg-[var(--accent)] text-white cursor-default';
   const pagerDisabled =
     'px-3 py-1.5 rounded-lg border border-[var(--border)] text-[var(--muted)] opacity-50 cursor-default';
 
@@ -62,9 +73,19 @@ export default async function AdminUsersPage({
             .replace('{to}', range.to.toLocaleString(locale))
             .replace('{total}', total.toLocaleString(locale))}
         </p>
-        <Link href={href(1, !query.includeAnonymous)} className={pagerLink}>
-          {query.includeAnonymous ? t.hideGuests : t.showGuests}
-        </Link>
+        <div className="flex items-center gap-2">
+          {VIEW_TABS.map((tab) =>
+            tab.view === query.view ? (
+              <span key={tab.view} className={pagerActive}>
+                {tab.label}
+              </span>
+            ) : (
+              <Link key={tab.view} href={href(1, tab.view)} className={pagerLink}>
+                {tab.label}
+              </Link>
+            ),
+          )}
+        </div>
       </div>
 
       {users.length === 0 ? (
@@ -101,7 +122,20 @@ export default async function AdminUsersPage({
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">{u.creditBalance.toLocaleString(locale)}</td>
-                  <td className="px-4 py-3 text-right">{u.albumCount.toLocaleString(locale)}</td>
+                  <td className="px-4 py-3 text-right">
+                    {/* 相册数可点 = 直接进那本书看用户做到哪一步。一个人可能有多本,
+                        这里进的是最新一本(游客上限 1 本,对他们即全部)。 */}
+                    {u.albumCount > 0 && u.latestAlbumId ? (
+                      <Link
+                        href={`/${locale}/admin/albums/${u.latestAlbumId}`}
+                        className="underline decoration-dotted underline-offset-4 hover:text-[var(--accent)]"
+                      >
+                        {u.albumCount.toLocaleString(locale)}
+                      </Link>
+                    ) : (
+                      u.albumCount.toLocaleString(locale)
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right text-[var(--muted)]">
                     {new Date(u.createdAt).toLocaleDateString(locale)}
                   </td>
@@ -115,7 +149,7 @@ export default async function AdminUsersPage({
       {range.totalPages > 1 && (
         <div className="flex items-center justify-between gap-3 mt-4 text-sm">
           {range.hasPrev ? (
-            <Link href={href(page - 1, query.includeAnonymous)} className={pagerLink}>
+            <Link href={href(page - 1, query.view)} className={pagerLink}>
               {t.prev}
             </Link>
           ) : (
@@ -127,7 +161,7 @@ export default async function AdminUsersPage({
               .replace('{totalPages}', range.totalPages.toLocaleString(locale))}
           </span>
           {range.hasNext ? (
-            <Link href={href(page + 1, query.includeAnonymous)} className={pagerLink}>
+            <Link href={href(page + 1, query.view)} className={pagerLink}>
               {t.next}
             </Link>
           ) : (

@@ -20,7 +20,12 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
   403 `ANON_UPGRADE_REQUIRED`,前端统一弹登录。登录时 `onLinkAccount` 过户相册并删匿名
   号,前端检测 `copySource='placeholder'` 自动重发 POST /design 补跑真 compose(此时才
   precheck+hold 计费)。游客硬上限:20 张/本、1 本/号、匿名注册每 IP 每小时 5 次
-  (`src/config/anon.ts`);超 7 天未转正由 cron `/api/v1/admin/cleanup-anon` 级联清理。
+  (`src/config/anon.ts`)。清理只扫**一本书都没做**的空游客(超 7 天未转正,cron
+  `/api/v1/admin/cleanup-anon`);**做过书的游客永久保留** —— 他传过照片、等过生成、
+  翻过成品,是转化漏斗上最强的意向信号,删掉等于连召回话术一起扔了。后台用户列表
+  因此有三态视图(正式用户 / 全部 / 做了书没注册),相册数可点进只读预览
+  (`/{locale}/admin/albums/[uuid]`,`adminService.previewAlbum`,照片走 photo-originals
+  私有桶预签名,不依赖用户主动保存的分享快照)。
 - Album/job persistence in Postgres via Drizzle.
 - Album-level default and per-photo override filter persistence in `albums.photo_filter`.
 - Browser -> Web -> Agent orchestration for V3 generation.

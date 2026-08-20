@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { db, type DbOrTx } from '../client';
-import { albums, creditHolds, type NewAlbum, type Album } from '../schema';
+import { albums, creditHolds, users, type NewAlbum, type Album } from '../schema';
 
 type AlbumStatus = Album['status'];
 
@@ -53,11 +53,33 @@ export const albumRepo = {
       .groupBy(albums.userId);
   },
 
+  /** 每个用户最新一本相册的 id。后台用户列表把「相册数」做成可点链接用 ——
+   *  一个用户可能有多本,这里只给最新的那本(游客上限就是 1 本,对他们即全部)。
+   *  DISTINCT ON 一次查完,不按用户数发 N 条查询。 */
+  latestIdByUserIds: async (userIds: string[]): Promise<{ userId: string; albumId: string }[]> => {
+    if (userIds.length === 0) return [];
+    const rows = await db
+      .selectDistinctOn([albums.userId], { userId: albums.userId, albumId: albums.id })
+      .from(albums)
+      .where(inArray(albums.userId, userIds))
+      .orderBy(albums.userId, desc(albums.createdAt), desc(albums.id));
+    return rows;
+  },
+
+  /** 待清理的死 FAILED 相册。**游客名下的一律排除** —— 否则是个两步后门:游客唯一那本
+   *  书 FAILED → 第 30 天被这里删掉 → 次日他就变成「空游客」被 cleanupAnonymous 清掉,
+   *  绕过了「做过书的游客永久保留」。而生成失败的那批恰恰是转化诊断价值最高的样本。 */
   findFailedOlderThan: async (cutoff: Date): Promise<Album[]> =>
     db
       .select()
       .from(albums)
-      .where(and(eq(albums.status, 'FAILED'), lt(albums.createdAt, cutoff))),
+      .where(
+        and(
+          eq(albums.status, 'FAILED'),
+          lt(albums.createdAt, cutoff),
+          sql`NOT EXISTS (SELECT 1 FROM ${users} WHERE ${users.id} = ${albums.userId} AND ${users.isAnonymous})`,
+        ),
+      ),
 
   // draft-expiry sweep (rebuild-tech-plan §12): an init succeeded (album EDITING,
   // draft_json written, NOT yet finalized so layout_json is null) but the user

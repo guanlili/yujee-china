@@ -350,8 +350,6 @@
       "noName": "—",
       "empty": "Todavía no hay usuarios.",
       "guest": "Invitado",
-      "showGuests": "Mostrar invitados",
-      "hideGuests": "Ocultar invitados",
       "range": "{from}–{to} de {total}",
       "prev": "Anterior",
       "next": "Siguiente",
@@ -382,7 +380,10 @@
         "submitting": "Aplicando…",
         "success": "Se dieron {delta} créditos a {email}; el saldo ahora es {balance}.",
         "error": "Algo salió mal. Inténtalo de nuevo."
-      }
+      },
+      "viewMembers": "Miembros",
+      "viewAll": "Todos",
+      "viewGuestsWithAlbums": "Hizo un libro, sin registro"
     },
     "analytics": {
       "title": "Analíticas",
@@ -427,6 +428,13 @@
       "recoverResult": "Revisadas {scanned} · fallidas {failed} · {released} retenciones liberadas",
       "cleanupResult": "Revisados {scanned} · eliminados {deleted}",
       "error": "La acción falló."
+    },
+    "albumPreview": {
+      "readOnly": "Vista previa de solo lectura",
+      "pageCount": "{count} páginas",
+      "back": "Volver a usuarios",
+      "empty": "Este libro aún no tiene páginas: el usuario se fue a medias.",
+      "photosUnavailable": "{missing} de {total} fotos no tienen copia en el servidor, por eso los huecos están vacíos: los invitados nunca escriben en R2; los originales solo viven en su propio navegador. El diseño y los textos son reales."
     }
   }
 }

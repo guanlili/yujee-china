@@ -12,7 +12,7 @@ test('parseUsersQuery: no params means page 1, guests hidden', () => {
   assert.equal(q.page, 1);
   assert.equal(q.offset, 0);
   assert.equal(q.limit, USERS_PAGE_SIZE);
-  assert.equal(q.includeAnonymous, false);
+  assert.equal(q.view, 'members');
 });
 
 test('parseUsersQuery: page 3 skips two full pages', () => {
@@ -28,9 +28,9 @@ test('parseUsersQuery: junk and out-of-range pages fall back to page 1', () => {
 });
 
 test('parseUsersQuery: anon=1 opts guests in, anything else keeps them out', () => {
-  assert.equal(parseUsersQuery({ anon: '1' }).includeAnonymous, true);
-  assert.equal(parseUsersQuery({ anon: '0' }).includeAnonymous, false);
-  assert.equal(parseUsersQuery({ anon: 'yes' }).includeAnonymous, false);
+  assert.equal(parseUsersQuery({ anon: '1' }).view, 'all');
+  assert.equal(parseUsersQuery({ anon: '0' }).view, 'members');
+  assert.equal(parseUsersQuery({ anon: 'yes' }).view, 'members');
 });
 
 // 超大页码不截会让 offset 溢出到科学计数法(5e+21),drizzle 原样绑成参数,
@@ -46,7 +46,7 @@ test('parseUsersQuery: absurd page numbers are capped to a bindable offset', () 
 test('parseUsersQuery: repeated params take the first value', () => {
   const q = parseUsersQuery({ page: ['2', '9'], anon: ['1', '0'] });
   assert.equal(q.page, 2);
-  assert.equal(q.includeAnonymous, true);
+  assert.equal(q.view, 'all');
 });
 
 test('usersPageRange: middle page reports a 1-based inclusive span with both arrows', () => {
@@ -88,4 +88,19 @@ test('usersPageRange: empty result reports 0–0 and no arrows', () => {
   assert.equal(r.hasPrev, false);
   assert.equal(r.hasNext, false);
   assert.equal(r.totalPages, 1);
+});
+
+test('parseUsersQuery: 视图三态,缺省只看正式用户', () => {
+  assert.equal(parseUsersQuery({}).view, 'members');
+  assert.equal(parseUsersQuery({ view: 'all' }).view, 'all');
+  assert.equal(parseUsersQuery({ view: 'guests' }).view, 'guests');
+  // 非法值回落缺省,别让脏 URL 决定后台看到什么。
+  assert.equal(parseUsersQuery({ view: 'drop table' }).view, 'members');
+  assert.equal(parseUsersQuery({ view: ['guests', 'all'] }).view, 'guests');
+});
+
+test('parseUsersQuery: 旧书签 ?anon=1 仍映射到「全部」', () => {
+  // 分页改造那版的链接形状,别让存过的后台书签点开变空。
+  assert.equal(parseUsersQuery({ anon: '1' }).view, 'all');
+  assert.equal(parseUsersQuery({ anon: '1', view: 'guests' }).view, 'guests', 'view 显式给出时优先');
 });

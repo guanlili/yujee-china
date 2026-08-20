@@ -9,7 +9,8 @@ const schema = z.object({
   olderThanDays: z.number().int().min(1).max(365).optional(),
 });
 
-// 游客(匿名影子账号)清理:创建超 N 天未转正 → 删号级联删相册。
+// 游客(匿名影子账号)清理:创建超 N 天未转正、且一本书都没做 → 删号。
+// 做过书的游客永久保留,不进扫描名单(见 user-repo.findAnonymousCreatedBefore)。
 // GET: Vercel cron。No JSON body — olderThanDays 走 query(?olderThanDays=N),
 // 缺省用 ANON_CLEANUP_DAYS(7)。
 export async function GET(req: Request) {

@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { loadStoryDraft } from './draft-store';
-import { db } from '@/db/client';
+import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
 import { albumShareRepo } from '@/db/repos/album-share-repo';
@@ -12,7 +12,7 @@ import {
 import { effectiveRenderVersion } from '@/lib/photo/filter-state';
 import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
-import type { AlbumShare } from '@/db/schema';
+import type { Album, AlbumShare } from '@/db/schema';
 
 // 随机不可猜的分享令牌:18 字节 → 24 位 URL-safe 字符。
 function newShareToken(): string {
@@ -38,6 +38,38 @@ function referencedPhotoIds(pages: AlbumShare['snapshotJson']['pages']): string[
   return [...ids];
 }
 
+/** 把相册当前页面组装成快照页形状。分享冻结与 admin 只读预览共用同一份 —— 两处各写
+ *  一遍的话,「草稿优先、定稿回退」这条规则迟早在一边漂掉。
+ *
+ *  页面来源:编辑态页真相在 draft_pages 行(2026-08-03 拆表;loadStoryDraft 对未播种的
+ *  存量书回退 legacy draftJson.pages)。冻结读不烘(bake:false)—— 页面字节原样进快照。
+ *  定稿相册才在 album_pages。优先草稿,回退定稿。 */
+export async function buildSnapshotPages(
+  album: Album,
+  tx: DbOrTx,
+): Promise<AlbumShare['snapshotJson']['pages']> {
+  const draft = await loadStoryDraft(album, { tx, bake: false });
+  const draftPages = draft?.pages ?? [];
+  if (draftPages.length > 0) {
+    return draftPages.map((p) => ({
+      pageIndex: p.pageIndex,
+      templateId: p.templateId,
+      imagesJson: p.images,
+      textsJson: p.texts,
+      imagePosJson: p.imagePos ?? {},
+      ...(p.html ? { htmlJson: p.html } : {}),
+    }));
+  }
+  const finalized = await albumPageRepo.findByAlbum(tx, album.id);
+  return finalized.map((p) => ({
+    pageIndex: p.pageIndex,
+    templateId: p.templateId,
+    imagesJson: p.imagesJson as Record<string, string>,
+    textsJson: p.textsJson as Record<string, string>,
+    imagePosJson: p.imagePosJson as Record<string, { x: number; y: number; scale: number }>,
+  }));
+}
+
 export const shareService = {
   // 生成/重新生成分享:校验归属 → 把当前定稿页数据 + 每张照片的「公开快照 URL」冻结进
   // album_shares(一相册一条,覆盖)。分享页用 FlipBook 按这套数据渲染真翻书;图片走公开
@@ -54,28 +86,7 @@ export const shareService = {
       // 页面来源:编辑态页真相在 draft_pages 行(2026-08-03 拆表;loadStoryDraft 对未
       // 播种的存量书回退 legacy draftJson.pages)。冻结读在行锁事务内且不烘
       // (bake:false)—— 页面字节原样进快照。定稿相册才在 album_pages。优先草稿,回退定稿。
-      const draft = await loadStoryDraft(album, { tx, bake: false });
-      const draftPages = draft?.pages ?? [];
-      let snapshotPages: AlbumShare['snapshotJson']['pages'];
-      if (draftPages.length > 0) {
-        snapshotPages = draftPages.map((p) => ({
-          pageIndex: p.pageIndex,
-          templateId: p.templateId,
-          imagesJson: p.images,
-          textsJson: p.texts,
-          imagePosJson: p.imagePos ?? {},
-          ...(p.html ? { htmlJson: p.html } : {}),
-        }));
-      } else {
-        const finalized = await albumPageRepo.findByAlbum(tx, albumId);
-        snapshotPages = finalized.map((p) => ({
-          pageIndex: p.pageIndex,
-          templateId: p.templateId,
-          imagesJson: p.imagesJson as Record<string, string>,
-          textsJson: p.textsJson as Record<string, string>,
-          imagePosJson: p.imagePosJson as Record<string, { x: number; y: number; scale: number }>,
-        }));
-      }
+      const snapshotPages = await buildSnapshotPages(album, tx);
       if (snapshotPages.length === 0) {
         throw ERRORS.VALIDATION_FAILED('相册还没有可分享的页面');
       }

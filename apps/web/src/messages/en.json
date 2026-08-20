@@ -350,8 +350,6 @@
       "noName": "—",
       "empty": "No users yet.",
       "guest": "Guest",
-      "showGuests": "Show guests",
-      "hideGuests": "Hide guests",
       "range": "{from}–{to} of {total}",
       "prev": "Previous",
       "next": "Next",
@@ -382,7 +380,10 @@
         "submitting": "Applying…",
         "success": "Gave {email} {delta} credits — balance now {balance}.",
         "error": "Something went wrong. Please try again."
-      }
+      },
+      "viewMembers": "Members",
+      "viewAll": "All",
+      "viewGuestsWithAlbums": "Made a book, no signup"
     },
     "analytics": {
       "title": "Analytics",
@@ -427,6 +428,13 @@
       "recoverResult": "Scanned {scanned} · failed {failed} · released {released} holds",
       "cleanupResult": "Scanned {scanned} · deleted {deleted}",
       "error": "Action failed."
+    },
+    "albumPreview": {
+      "readOnly": "Read-only preview",
+      "pageCount": "{count} pages",
+      "back": "Back to users",
+      "empty": "This book has no pages yet — the user left partway.",
+      "photosUnavailable": "{missing} of {total} photos have no server-side copy, so those slots are empty — guests never write to R2; the originals live only in their own browser. The layout and copy are real."
     }
   }
 }
