@@ -57,7 +57,6 @@ import { PAGE, pageBox } from '../templates/constants';
 // 双宽页 pageBox / 跨页 folio 都已折进 page-face,这里不再持第二份实现。
 import { editableTextOf } from './editable-text';
 import { pageFaceInner, pageFaceHTML, type PageFaceCtx } from './page-face';
-import { coverOptionImages, fitFaceBox } from './cover-option';
 import { clampZoom, paintDecision } from './zoom-util';
 import { resolveDeviceMode, initMobileCanvas } from './mobile-canvas';
 import {
@@ -5169,13 +5168,16 @@ function EditorBook({
     function templateIdsByCategory(category: 'cover' | 'ending'): string[] {
       return TEMPLATE_IDS.filter((id) => getTemplate(id)?.category === category);
     }
-    // Render a {template, photos} choice through its real web template into the .cv-opt box.
+    // The hero image-slot id of a template (its first declared image slot), or 'image'.
+    function heroSlotId(templateId: string): string {
+      const slots = getTemplate(templateId)?.images ?? [];
+      return slots[0]?.id ?? 'image';
+    }
+    // Render a {template, photo} choice through its real web template into the .cv-opt box.
     // boxW/boxH 可选:设计选择卡的封面+封底并排小预览用更小的盒(默认保持 132×176)。
-    // photoIds 收多张:封底模板可能有多个图槽(mag-22 两图),只喂一张会让第二槽在预览里
-    // 恒渲灰色缺图占位 —— 而真成书是把槽填满的(assembleDesignedPages 的 endingPool)。
     function coverOptionHTML(
       templateId: string,
-      photoIds: string | readonly (string | null | undefined)[] | null,
+      photoId: string | null,
       boxW = 132,
       boxH = 176,
       pageBackground?: string,
@@ -5184,15 +5186,11 @@ function EditorBook({
       const page: EditorPage = {
         pageIndex: 0,
         templateId,
-        imagesJson: coverOptionImages(templateId, photoIds),
+        imagesJson: photoId ? { [heroSlotId(templateId)]: photoId } : {},
         // 选择卡传空(那时还没文案,渲模板 sample 是对的);回执卡传真页 textsJson。
         textsJson: texts ?? {},
       };
-      // 框先收到页面真实比例再渲:794×1123 的页贴左上角等比缩放,框比例对不上就会在
-      // 右(或下)留一条底色空白,而 .cv-face 的圆角是切在框上的 —— 于是圆角只吃到页面
-      // 的左两角,右两角圆的是那条空白(用户看到的「圆角跑到左边去了」)。
-      const fit = fitFaceBox(templateId, boxW, boxH);
-      const html = faceHTML(page, fit.width, fit.height);
+      const html = faceHTML(page, boxW, boxH);
       // 推荐封面自带的书页底色:染进预览页根(和真页同一 patchHtmlPageStyle 原语)。
       // 纯白/未传 = 不写,留模板默认;锚点失配则原样返回。
       if (pageBackground && !isDefaultPageBackground(pageBackground)) {
