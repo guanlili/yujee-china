@@ -8,17 +8,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const port = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
 const mobile = readFileSync(join(here, 'mobile/use-share-link.ts'), 'utf8');
 
-// 分享链接弹窗的 data-action 按钮(closeShareLink/confirmShareLink/copyShareLink)只有在
-// canvasScopes() 把 shareLinkModal 纳入扫描范围时才会被 $$scoped('[data-action]') 绑上 click。
-// 漏了 shareLinkModal → 弹窗能开(topbar 的 shareLink 在 .topbar 域内)但里面的按钮全哑,
-// 「关闭」点了没反应(实测 bug)。这里锁死:canvasScopes 必须列 shareLinkModal。
-test('canvasScopes 必须包含 shareLinkModal(否则弹窗内按钮不接线)', () => {
-  const scopes = port.match(/const canvasScopes = \(\)[\s\S]*?return out;/)?.[0] ?? '';
-  assert.ok(scopes, 'canvasScopes should exist');
-  assert.match(scopes, /add\(byId\('shareLinkModal'\)\)/, 'canvasScopes 必须扫描 shareLinkModal');
-  // 参照物:能用的导出弹窗一直在域内。
-  assert.match(scopes, /add\(byId\('exportMenuModal'\)\)/, 'exportMenuModal 仍应在域内');
-});
+// 分享链接弹窗的按钮(closeShareLink/confirmShareLink/copyShareLink)曾因为漏进
+// canvasScopes 白名单而全哑,「关闭」点了没反应(实测 bug)。那份白名单已经删除,
+// 扫描改成「整棵 root 扫、只排对话栏子树」,新弹窗不再需要登记 —— 这条保证现在是
+// modal-action-wiring.test.ts 统一守(源码形状断言,已用 mutation testing 逐条验证),
+// 不再逐个弹窗写断言。
 
 // 弹窗内四条出口路径都要通:生成(confirmShareLink)、复制(copyShareLink)、
 // 关闭(closeShareLink)三条走 data-action dispatch,背景点关(data-overlay-close)走

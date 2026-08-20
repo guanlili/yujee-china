@@ -140,7 +140,7 @@ test('chat collapse button is clickable inside the draggable header', () => {
 });
 
 test('Live 图导出共用一个出口,九宫格只出单页', () => {
-  assert.match(editorPort, /add\(byId\('nineGridModal'\)\)/, 'nine-grid modal must be included when binding data-action controls');
+  // 「弹窗里的按钮要能绑上」改由 modal-action-wiring.test.ts 统一守(手工白名单已删除)。
   // 术语按产品要求统一成「Live」——「动态图片 / motion」用户看不懂。
   // 这里原本钉的是「动态图片」,理由是「桌面导出的是普通视频、不是苹果原生 Live Photo,
   // 叫 Live 会过度承诺」。那个顾虑是真的,但产品拍板用 Live:文案里只说「Live 视频」、

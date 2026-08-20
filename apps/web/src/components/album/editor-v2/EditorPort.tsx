@@ -1529,33 +1529,27 @@ function EditorBook({
     const $ = (s: string) => root.querySelector(s) as HTMLElement | null;
     const $$ = (s: string) => root.querySelectorAll(s);
     const byId = (id: string) => root.querySelector('#' + CSS.escape(id)) as HTMLElement | null;
-    // Restrict the canvas data-action sweep to its OWN subtree (topbar + #paneCenter +
-    // modals) so it never double-binds the chat-owned actions in the ChatPanel aside.
-    const canvasScopes = (): Element[] => {
-      const out: Element[] = [];
-      const add = (el: Element | null) => { if (el) out.push(el); };
-      add(root.querySelector('.topbar'));
-      add(byId('paneCenter'));
-      add(root.querySelector('.chat-fold-expand'));
-      add(byId('photoModal'));
-      add(byId('photoSwapModal'));
-      add(byId('exportFailModal'));
-      add(byId('exportMenuModal'));
-      add(byId('shareLinkModal'));
-      add(byId('collageModal'));
-      add(byId('nineGridModal'));
-      add(byId('boardBgModal'));
-      add(byId('pageReorderModal'));
-      return out;
-    };
-    const $$scoped = (sel: string): Element[] => {
-      const seen = new Set<Element>();
-      for (const scope of canvasScopes()) {
-        if (scope.matches(sel)) seen.add(scope);
-        scope.querySelectorAll(sel).forEach((el) => seen.add(el));
-      }
-      return [...seen];
-    };
+    // canvas 侧的 data-action 扫描:整棵 root 扫,只把对话栏子树排掉。
+    //
+    // 这里原本是一份手工维护的弹窗白名单(canvasScopes):新加弹窗漏补一行 = 弹窗里
+    // 每个按钮都绑不上监听器、点了毫无反应,而类型检查和既有测试都拦不住。这个坑
+    // 踩过三次 —— shareLinkModal、pdfStyleModal(8/06 上线,导出主路锁死两周)、
+    // imageGenModal(8/19 上线)。三次都是「补一行白名单」了事,于是下次接着踩。
+    // 改成按归属容器排除后,新加弹窗零维护,这条路根上断掉。
+    //
+    // 为什么排掉的是 .pane-chat-col:那棵子树的 data-action 由 ChatPanel 自己扫描
+    // 绑定(ChatPanel.tsx 锁的是同一个选择器),两边零重叠。toggleChat 这个名字两边
+    // 都有 —— aside 内那枚归 ChatPanel;.chat-fold-expand 那枚是 .workspace 的直接
+    // 子节点、不在 aside 内,仍归这里绑,所以不会双绑。
+    //
+    // 边界(别当成「并集覆盖一切」):ChatPanel 渲染在 .pane-chat-col **之外**的东西
+    // (如 CreditsPurchaseModal)两边都不会绑 —— 这里扫得到但名字不在 actions 表里,
+    // ChatPanel 那边又不在它的扫描根内。给那类节点加 data-action 前先想清楚归谁。
+    //
+    // 仍是挂载时一次性扫描,只绑当时已在 DOM 里的节点:运行时 createElement 出来的
+    // 按钮(img-edit-gen 等)必须各自 addEventListener,别给它们写 data-action。
+    const $$scoped = (sel: string): Element[] =>
+      [...root.querySelectorAll(sel)].filter((el) => !el.closest('.pane-chat-col'));
     const bodyEl = root; // original toggled body classes (overview-on / chat-collapsed / rail-collapsed); scoped to root here.
 
     /* ─── i18n translations (verbatim; shared module dict) ─── */
@@ -6048,7 +6042,9 @@ function EditorBook({
       actionHandlers.push({ el: exportFailOverlay, fn });
     }
     // 导出菜单/拼图弹窗/垫底背景:点背景关闭(进度浮层不给关,渲染中)。
-    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['nineGridModal', closeNineGridModal], ['boardBgModal', closeBoardBgModal], ['pageReorderModal', closePageReorder], ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')], ['photoSwapModal', closePhotoSwap], ['imageGenModal', closeImageGen]].forEach(([id, close]) => {
+    // 凡是 JSX 上标了 data-overlay-close 的弹窗都必须在这份表里,否则关不掉只能刷新。
+    /* @wiring:backdrop-close */
+    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['nineGridModal', closeNineGridModal], ['boardBgModal', closeBoardBgModal], ['pageReorderModal', closePageReorder], ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')], ['photoSwapModal', closePhotoSwap], ['imageGenModal', closeImageGen], ['pdfStyleModal', closePdfStyleModal]].forEach(([id, close]) => {
       const ov = byId(id as string);
       if (!ov) return;
       const fn = (e: Event) => { if (e.target === ov) (close as () => void)(); };

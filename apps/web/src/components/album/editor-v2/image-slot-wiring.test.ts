@@ -74,8 +74,7 @@ test('删图清 key + 把框位抹回默认(必须发 DEFAULT,不能只删 key)'
 test('换图选择器挂进了弹窗层、扫描域和关闭出口', () => {
   assert.match(editorPort, /id="photoSwapModal"/, '换图选择器要有自己的 modal-overlay');
   assert.match(editorPort, /id="swapGrid"/, '照片网格容器');
-  // 不进 canvasScopes 的话,弹窗里的 data-action 一个都不会被绑上(按钮全是死的)。
-  assert.match(editorPort, /add\(byId\('photoSwapModal'\)\)/, 'photoSwapModal 必须进 canvasScopes');
+  // 「按钮绑不上」这条改由 modal-action-wiring.test.ts 统一守(手工白名单已删除)。
   assert.match(editorPort, /^\s*closePhotoSwap,$/m, 'closePhotoSwap 必须登记进 actions');
   assert.match(editorPort, /\['photoSwapModal', closePhotoSwap\]/, '点背景要能关掉');
   // 选择器不复用 pickGrid(那是「创建分组」那套,带多选 + 确认按钮)。换图是可逆动作,
