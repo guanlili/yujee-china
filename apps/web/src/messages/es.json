@@ -427,7 +427,9 @@
       "running": "Ejecutando…",
       "recoverResult": "Revisadas {scanned} · fallidas {failed} · {released} retenciones liberadas",
       "cleanupResult": "Revisados {scanned} · eliminados {deleted}",
-      "error": "La acción falló."
+      "error": "La acción falló.",
+      "imageGen": "Generación de imágenes IA",
+      "imageGenBroken": "falta la clave: desactivado"
     },
     "albumPreview": {
       "readOnly": "Vista previa de solo lectura",

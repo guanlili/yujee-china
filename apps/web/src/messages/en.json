@@ -427,7 +427,9 @@
       "running": "Running…",
       "recoverResult": "Scanned {scanned} · failed {failed} · released {released} holds",
       "cleanupResult": "Scanned {scanned} · deleted {deleted}",
-      "error": "Action failed."
+      "error": "Action failed.",
+      "imageGen": "AI image generation",
+      "imageGenBroken": "key missing — disabled"
     },
     "albumPreview": {
       "readOnly": "Read-only preview",

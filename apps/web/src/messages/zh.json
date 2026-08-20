@@ -427,7 +427,9 @@
       "running": "执行中…",
       "recoverResult": "扫描 {scanned} · 失败 {failed} · 释放 {released} 笔冻结",
       "cleanupResult": "扫描 {scanned} · 删除 {deleted}",
-      "error": "操作失败。"
+      "error": "操作失败。",
+      "imageGen": "AI 生图",
+      "imageGenBroken": "缺 key,入口已关"
     },
     "albumPreview": {
       "readOnly": "只读预览",

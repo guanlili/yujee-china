@@ -427,7 +427,9 @@
       "running": "Exécution…",
       "recoverResult": "Analysés : {scanned} · en échec : {failed} · {released} réservations libérées",
       "cleanupResult": "Analysés : {scanned} · supprimés : {deleted}",
-      "error": "L'action a échoué."
+      "error": "L'action a échoué.",
+      "imageGen": "Génération d'images IA",
+      "imageGenBroken": "clé manquante — désactivé"
     },
     "albumPreview": {
       "readOnly": "Aperçu en lecture seule",

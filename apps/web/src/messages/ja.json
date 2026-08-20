@@ -427,7 +427,9 @@
       "running": "実行中…",
       "recoverResult": "スキャン {scanned} · 失敗 {failed} · 解放 {released} 件",
       "cleanupResult": "スキャン {scanned} · 削除 {deleted}",
-      "error": "実行できませんでした。"
+      "error": "実行できませんでした。",
+      "imageGen": "AI 画像生成",
+      "imageGenBroken": "キー未設定 — 無効"
     },
     "albumPreview": {
       "readOnly": "読み取り専用プレビュー",
