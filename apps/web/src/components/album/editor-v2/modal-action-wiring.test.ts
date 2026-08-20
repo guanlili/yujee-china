@@ -17,6 +17,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const editor = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
 const chat = readFileSync(join(here, 'ChatPanel.tsx'), 'utf8');
 
+/** 断言只看代码,不看注释 —— 注释里出现某个标识符不能算它「接线了」。 */
+const stripComments = (t: string) =>
+  t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1'); // [^:] 躲开 https://
+
 test('扫描范围按容器排除,不得退回手工白名单', () => {
   assert.doesNotMatch(
     editor,
@@ -77,15 +81,56 @@ test('标了 data-overlay-close 的弹窗必须真绑上点背景关闭,否则�
 
   // 锚在代码标记上(不锚注释文案),范围切到 .forEach 为止(别把后面别的数组也算进来),
   // 且只认数组字面量项 —— 内联回调里提到某个 id 不算已接线。
-  const block = (editor.split('/* @wiring:backdrop-close */')[1] ?? '').split('.forEach')[0];
+  const block = (editor.split('/* @wiring:backdrop-close */')[1] ?? '').split('];')[0];
   assert.ok(block, '@wiring:backdrop-close 标记应存在');
   const bound = new Set([...block.matchAll(/\['([\w-]+)',/g)].map((m) => m[1]));
 
-  // 这两个不进那张表,各自单独绑;判据钉到真正的 backdrop 卫兵上,不是「文件里提过这个 id」。
-  for (const [id, v] of [['photoModal', 'overlayEl'], ['exportFailModal', 'exportFailOverlay']]) {
-    if (new RegExp(`const ${v} = byId\\('${id}'\\);[\\s\\S]{0,240}e\\.target === ${v}`).test(editor)) bound.add(id);
-  }
+  // 反向:唯一的豁免项不许混进表里 —— 混进去就能被 Esc/点背景关掉,而导出还在跑,
+  // 界面看着「正常」了,实际什么都没结束。
+  assert.doesNotMatch(block, /\['exportProgressModal'/, '进度浮层不许进关闭表');
 
   const missing = ids.filter((id) => !bound.has(id));
   assert.deepEqual(missing, [], `这些弹窗声明了点背景可关却没绑,关不掉只能刷新: ${missing.join(', ')}`);
 });
+
+test('Esc 与点背景共用同一张关闭表,两条路的可关集合不可能各走各的', () => {
+  // 「共用一个常量」不等于「行为一致」:遍历同一张表但 .slice(0,1)、或者 close() 被删掉,
+  // 常量名照样在、断言照样绿,而 Esc 已经废了(实测:16 个变异里 13 个是这么逃掉的)。
+  // 所以下面钉的是**代码形状**,不是标识符出现过没有。
+  assert.match(editor, /const OVERLAY_CLOSERS/, '关闭表必须提成共享常量');
+
+  const code = stripComments(editor.match(/const onSwapKeydown[\s\S]*?\n    \};/)?.[0] ?? '');
+  assert.ok(code, 'Esc handler 应存在');
+  const all = stripComments(editor);
+
+  assert.match(all, /window\.addEventListener\('keydown', onSwapKeydown, true\)/, '监听器必须挂上');
+  assert.match(all, /window\.removeEventListener\('keydown', onSwapKeydown, true\)/, '卸载时必须摘掉');
+  assert.match(code, /e\.key !== 'Escape'/, '键名写错整条路会静默失效');
+  assert.match(code, /for \(const \[id, close\] of OVERLAY_CLOSERS\) \{/, 'Esc 必须遍历整张表,不许切片或另列');
+  assert.match(code, /if \(!byId\(id\)\?\.classList\.contains\('open'\)\) continue;/, 'open 判据不许取反');
+  // 三行必须连着:吞了按键却不关窗 = 原病复发,还顺带把滤镜面板的 Esc 一起吞掉。
+  assert.match(code, /e\.stopPropagation\(\);\s*\n\s+close\(\);\s*\n\s+return;/, 'Esc 必须真的关窗');
+
+  // 点背景侧:同一张表 + backdrop 卫兵 + 进 cleanup 名册(丢了会在重挂时叠加监听器)。
+  assert.match(all, /OVERLAY_CLOSERS\.forEach/, '点背景也必须遍历同一张表');
+  assert.match(all, /if \(e\.target === ov\) close\(\);/, '必须只在点中背景本身时才关');
+  assert.match(all, /actionHandlers\.push\(\{ el: ov, fn \}\);/, 'backdrop 监听必须进 cleanup 名册');
+  assert.match(
+    all,
+    /actionHandlers\.forEach\(\(\{ el, fn \}\) => el\.removeEventListener\('click', fn\)\);/,
+    '名册必须真的在 cleanup 里被解绑,否则 effect 重挂一次监听器就叠一层',
+  );
+});
+
+/* 这份守卫能挡什么、挡不住什么(别高估它,高估会让人不再手工核对):
+   挡得住 —— 白名单被改回来、扫描范围被改坏(含 filter 取反)、调用点掉包、整块被删、
+   ChatPanel 改 class 名、弹窗漏登记、漏绑背景关闭、进度浮层被混进可关表、Esc 键名写错、
+   Esc 遍历被切片、Esc 吞键不关窗、stopPropagation 丢失、监听器没挂/没摘、cleanup 丢解绑。
+   (以上每条都用 mutation testing 实证过会红。)
+
+   挡不住 —— 它是**文本形状**断言,查得了拼写查不了语义:
+     · 表里给某个弹窗配错了关闭函数(['imageGenModal', closePhotoPicker] 照样绿)
+     · Esc 分支前面加个无关条件(如 if (!e.shiftKey) return)
+     · pageReorder 那条专用分支被短路(它与表里第 7 项等价,短路后由表接管,今天无害)
+   要堵这三类,得把判定抽成纯函数(如 pickOverlayCloser(entries, isOpen))单独单测,
+   让测试拿假表真跑一遍。今天没做,别当它已经保了。 */

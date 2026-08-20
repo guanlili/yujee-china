@@ -3017,9 +3017,27 @@ function EditorBook({
         endSwapDrag(false);
         return;
       }
+      // 与下面表里的 ['pageReorderModal', closePageReorder] 等价,留在这里是因为它和
+      // 上面那条拖拽分支是一组语义(都属于「页序模式」的退出路径)。改一处记得看另一处。
       if (byId('pageReorderModal')?.classList.contains('open')) {
         e.stopPropagation();
         closePageReorder();
+        return;
+      }
+      /* 其余弹窗:Esc 等同点背景,共用 OVERLAY_CLOSERS,不另列一份名单。
+         命中一个就收工 —— 这依赖「同时只有一个弹窗 open」。别把这条归因错:12 个
+         openXxx 里只有 3 个会先关掉上一个(collage/nineGrid/pdfStyle 关导出菜单),
+         真正撑住不叠窗的是 .modal-overlay 的 z-index:300 全屏遮罩(editor-port.css),
+         它盖死了所有触发点(顶栏 200 / el-bar 130 / img-edit 110 / chat 70)。所以
+         **新加入口的 z-index 必须 < 300**:高于它,用户看得见点得着的那个弹窗反而
+         不会被 Esc 关掉,关掉的是底下看不见的那个。
+         这里引用的是下面定义的 const,但只在按键时才求值,那时 effect 早已跑完(整个
+         effect 回调没有顶层 await,keydown 是 task,插不进同步执行),不是 TDZ。 */
+      for (const [id, close] of OVERLAY_CLOSERS) {
+        if (!byId(id)?.classList.contains('open')) continue;
+        e.stopPropagation();
+        close();
+        return;
       }
     };
 
@@ -6027,27 +6045,28 @@ function EditorBook({
       el.addEventListener('click', fn);
       actionHandlers.push({ el, fn });
     });
-    // modal overlay: click on the backdrop (target === overlay) closes it
-    const overlayEl = byId('photoModal');
-    if (overlayEl) {
-      const fn = (e: Event) => { if (e.target === overlayEl) closePhotoPicker(); };
-      overlayEl.addEventListener('click', fn);
-      actionHandlers.push({ el: overlayEl, fn });
-    }
-    // WP5.3 / §4.5d: same backdrop-click-to-close for the export-failure modal.
-    const exportFailOverlay = byId('exportFailModal');
-    if (exportFailOverlay) {
-      const fn = (e: Event) => { if (e.target === exportFailOverlay) closeExportFailModal(); };
-      exportFailOverlay.addEventListener('click', fn);
-      actionHandlers.push({ el: exportFailOverlay, fn });
-    }
-    // 导出菜单/拼图弹窗/垫底背景:点背景关闭(进度浮层不给关,渲染中)。
-    // 凡是 JSX 上标了 data-overlay-close 的弹窗都必须在这份表里,否则关不掉只能刷新。
+    // 弹窗关闭表:**点背景和按 Esc 共用这一份**。分成两份名单迟早会漂成「能点背景关、
+    // Esc 关不掉」,那是 pdfStyleModal 那种病的变体;共用一个常量,不一致在结构上就
+    // 不可能发生。凡是 JSX 上标了 data-overlay-close 的弹窗都必须在表里。
+    // 唯一不在表里的是 exportProgressModal —— 渲染中故意不给关。
     /* @wiring:backdrop-close */
-    [['exportMenuModal', closeExportMenu], ['collageModal', closeCollageModal], ['nineGridModal', closeNineGridModal], ['boardBgModal', closeBoardBgModal], ['pageReorderModal', closePageReorder], ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')], ['photoSwapModal', closePhotoSwap], ['imageGenModal', closeImageGen], ['pdfStyleModal', closePdfStyleModal]].forEach(([id, close]) => {
-      const ov = byId(id as string);
+    const OVERLAY_CLOSERS: [string, () => void][] = [
+      ['photoModal', closePhotoPicker],
+      ['exportFailModal', closeExportFailModal],
+      ['exportMenuModal', closeExportMenu],
+      ['collageModal', closeCollageModal],
+      ['nineGridModal', closeNineGridModal],
+      ['boardBgModal', closeBoardBgModal],
+      ['pageReorderModal', closePageReorder],
+      ['shareLinkModal', () => byId('shareLinkModal')?.classList.remove('open')],
+      ['photoSwapModal', closePhotoSwap],
+      ['imageGenModal', closeImageGen],
+      ['pdfStyleModal', closePdfStyleModal],
+    ];
+    OVERLAY_CLOSERS.forEach(([id, close]) => {
+      const ov = byId(id);
       if (!ov) return;
-      const fn = (e: Event) => { if (e.target === ov) (close as () => void)(); };
+      const fn = (e: Event) => { if (e.target === ov) close(); };
       ov.addEventListener('click', fn);
       actionHandlers.push({ el: ov, fn });
     });
