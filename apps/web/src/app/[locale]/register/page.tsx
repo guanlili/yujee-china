@@ -3,6 +3,7 @@ import { Brand } from '@/components/app/Brand';
 import { getMessages } from '@/lib/i18n/messages';
 import { type Locale } from '@/lib/i18n/routing';
 import { NOINDEX } from '@/lib/seo/metadata';
+import { AUTH_BACKGROUND } from '../auth-styles';
 import { RegisterForm } from './register-form';
 
 export async function generateMetadata({
@@ -17,13 +18,6 @@ export async function generateMetadata({
   };
 }
 
-// Layered radial wash keeps /register and /login on one auth surface.
-const authBackground =
-  'radial-gradient(ellipse 80% 60% at 0% 0%, rgba(19,184,166,0.07) 0%, transparent 70%),' +
-  'radial-gradient(ellipse 60% 70% at 50% 100%, rgba(19,184,166,0.06) 0%, transparent 70%),' +
-  'radial-gradient(ellipse 70% 50% at 100% 20%, rgba(218,244,94,0.06) 0%, transparent 70%),' +
-  'var(--bg)';
-
 export default async function RegisterPage({
   params,
   searchParams,
@@ -36,7 +30,7 @@ export default async function RegisterPage({
   const messages = getMessages(locale).auth;
 
   return (
-    <div className="flex min-h-screen flex-col" style={{ background: authBackground }}>
+    <div className="flex min-h-screen flex-col" style={{ background: AUTH_BACKGROUND }}>
       <header className="flex items-center justify-between px-7 py-5">
         <Brand href={`/${locale}`} />
       </header>

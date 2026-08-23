@@ -151,6 +151,13 @@ test('login and register are explicitly marked noindex', () => {
   assert.ok(NOINDEX_ROUTES.includes('/register'));
 });
 
+test('the password reset pages are noindex too', () => {
+  // /reset-password is reached with a one-time token in the query string; an
+  // indexed copy is a dead page at best and a leaked token at worst.
+  assert.ok(NOINDEX_ROUTES.includes('/forgot-password'));
+  assert.ok(NOINDEX_ROUTES.includes('/reset-password'));
+});
+
 test('a route is never both indexable and noindex', () => {
   for (const route of NOINDEX_ROUTES) {
     assert.ok(!INDEXABLE_ROUTES.includes(route), `${route} is in both lists`);

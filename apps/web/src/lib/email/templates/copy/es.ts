@@ -11,6 +11,16 @@ export const es: EmailCopy = {
     fallback: 'Si el botón no funciona, pega este enlace en tu navegador:',
     ignore: 'Si no creaste ninguna cuenta de Yujee, puedes ignorar este correo.',
   },
+  passwordReset: {
+    subject: 'Restablece tu contraseña de Yujee',
+    title: 'Restablece tu contraseña',
+    greeting: (name: string) => `Hola ${name}:`,
+    body: 'Hemos recibido una solicitud para establecer una nueva contraseña en tu cuenta de Yujee. Usa el botón de abajo para elegirla.',
+    button: 'Establecer una contraseña nueva',
+    validity: 'Este enlace caduca en una hora y solo se puede usar una vez.',
+    fallback: 'Si el botón no funciona, pega este enlace en tu navegador:',
+    ignore: 'Si no pediste restablecer la contraseña, puedes ignorar este correo: tu contraseña seguirá igual.',
+  },
   order: {
     subject: 'Confirmación de tu pedido de Yujee',
     title: 'Pedido confirmado',

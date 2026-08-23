@@ -11,8 +11,10 @@ import { anonTransferService } from '@/services/user/anon-transfer-service';
 import { clientIpFrom } from '@/lib/api/client-ip';
 import { ANON_SIGNUP_PER_IP_PER_HOUR } from '@/config/anon';
 import { sendEmail } from '@/lib/email/send-email';
-import { renderVerificationEmail } from '@/lib/email/templates';
+import { renderPasswordResetEmail, renderVerificationEmail } from '@/lib/email/templates';
+import { defaultLocale, detectLocale, type Locale } from '@/lib/i18n/routing';
 import { env } from '@/lib/env';
+import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/config/auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
 import { generateAppleClientSecret, getAppleCredentials } from './apple-client-secret';
 
@@ -130,6 +132,42 @@ const linkAnonymousOnVerifyEmail = createAuthMiddleware(async (ctx) => {
   await ctx.context.internalAdapter.deleteUser(oldUser.id);
 });
 
+/**
+ * better-auth hands `sendResetPassword` one absolute URL and nothing else — no
+ * request locale, no user preference. The only language signal on it is the
+ * `callbackURL` we asked for from the browser (`/zh/reset-password`), so we read
+ * the locale back out of that. A miss falls back to English rather than throwing:
+ * an English reset mail still gets someone back into their account.
+ */
+export function localeFromResetUrl(url: string): Locale {
+  try {
+    const callbackURL = new URL(url).searchParams.get('callbackURL');
+    if (!callbackURL) return defaultLocale;
+    // originCheck accepts absolute same-origin URLs as well as relative paths,
+    // and detectLocale splits on '/' — hand it a whole URL and it reads 'https:'
+    // as the locale segment. Normalise to a pathname first.
+    return detectLocale(new URL(callbackURL, url).pathname);
+  } catch {
+    return defaultLocale;
+  }
+}
+
+export function buildPasswordResetEmail(
+  user: { email: string; name?: string | null },
+  url: string,
+): { to: string } & ReturnType<typeof renderPasswordResetEmail> {
+  return {
+    to: user.email,
+    ...renderPasswordResetEmail({
+      locale: localeFromResetUrl(url),
+      // `??` alone lets an empty name through to the template's English
+      // 'there' fallback, which then greets a Japanese reader as 'there さん'.
+      name: user.name?.trim() || user.email,
+      actionUrl: url,
+    }),
+  };
+}
+
 export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAuthOptions {
   return {
     baseURL: env.WEB_BASE_URL,
@@ -172,12 +210,44 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
         },
       },
     },
+    // /request-password-reset 是**未登录可调、直接发真实邮件**的端点,而
+    // better-auth 自带的特殊限流只覆盖 /sign-in /sign-up /change-password
+    // /change-email(api/rate-limiter/index.mjs:159),它会落到默认的 100 次/10 秒
+    // —— 每分钟 600 封砸向受害者的收件箱,顺带烧 Resend 的账单。
+    // 局限:storage 默认是进程内存,Vercel 多实例各算各的;真要收死得配
+    // secondaryStorage 或 database storage(需要新表)。这里先把量级压下来。
+    rateLimit: {
+      customRules: {
+        '/request-password-reset': { window: 3600, max: 3 },
+      },
+    },
     socialProviders: buildSocialProviders(),
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
-      minPasswordLength: 8,
-      maxPasswordLength: 128,
+      minPasswordLength: MIN_PASSWORD_LENGTH,
+      maxPasswordLength: MAX_PASSWORD_LENGTH,
+      // 没有这个函数,/request-password-reset 一律 400「Reset password isn't enabled」
+      // —— 登录页的「忘记密码」链接从上线起就通向 404,后端也从未真的开过这条路。
+      resetPasswordTokenExpiresIn: 3600,
+      sendResetPassword: async ({ user, url }) => {
+        await sendEmail(buildPasswordResetEmail(user, url));
+      },
+      // 重置密码是账号被盗后的收回手段:攻击者手上的 session 必须一起作废。
+      // 注意 cookieCache(见下面 session 段)有 5 分钟窗口:库里的 session 行立刻删,
+      // 但已签发的 cookie 在缓存期内仍会被当作有效,最多再答 5 分钟。
+      revokeSessionsOnPasswordReset: true,
+      // requireEmailVerification 下,不补这一刀就是死循环:验证邮件进垃圾箱的人
+      // 登不进去 → 来点「忘记密码」→ 重置成功 → 依旧 403 EMAIL_NOT_VERIFIED,
+      // 而页面还告诉他「现在可以用新密码登录了」。这条路正是为这批人修的。
+      // 收到并用掉重置 token 本身就证明了邮箱控制权,和点验证链接是同一件事。
+      onPasswordReset: async ({ user }) => {
+        if (user.emailVerified) return;
+        await db
+          .update(schema.users)
+          .set({ emailVerified: true })
+          .where(eq(schema.users.id, user.id));
+      },
     },
     emailVerification: {
       sendOnSignUp: true,

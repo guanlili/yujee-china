@@ -36,8 +36,9 @@ export function localesForRoute(route: string): readonly Locale[] {
  * The locale-relative routes that belong in the sitemap.
  *
  * Everything else is deliberately absent:
- *   - /login, /register — crawlable (so the crawler can read it) but emit a
- *     `noindex` meta from their own page. Never add them here.
+ *   - /login, /register, /forgot-password, /reset-password — crawlable (so the
+ *     crawler can read it) but emit a `noindex` meta from their own page. Never
+ *     add them here.
  *   - /my-albums, /credits, /settings, /admin — middleware 307s anonymous
  *     requests to /login, so a crawler can never reach them.
  */
@@ -56,7 +57,12 @@ export const INDEXABLE_ROUTES: readonly string[] = [
  * seeing that meta tag. This list exists so the test below can assert the two
  * sets never overlap.
  */
-export const NOINDEX_ROUTES: readonly string[] = ['/login', '/register'];
+export const NOINDEX_ROUTES: readonly string[] = [
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+];
 
 /** Pages that change often enough to be worth re-crawling frequently. */
 export const CHANGE_FREQUENCY: Record<string, 'weekly' | 'monthly' | 'yearly'> = {

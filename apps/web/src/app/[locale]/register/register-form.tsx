@@ -4,14 +4,12 @@ import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 import { BrandMark } from '@/components/app/Brand';
 import { authClient } from '@/lib/auth/client';
+import { AUTH_FIELD_CLASS } from '../auth-styles';
 import { authHrefWithFrom, safeAuthRedirect } from '@/lib/auth/redirect';
 import { stashPendingInvite } from '@/lib/invite/pending-invite';
 import type { AppMessages } from '@/lib/i18n/messages';
 
 type AuthMessages = AppMessages['auth'];
-
-const fieldClass =
-  'w-full rounded-[var(--radius-pill)] border border-[var(--border-soft)] bg-[var(--surface)] px-[18px] py-3 text-[var(--text-base)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-color,box-shadow] duration-[var(--motion-fast)] placeholder:text-[var(--meta)] focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(19,184,166,0.12)] focus:outline-none';
 
 // /sign-up/email returns JSON, not a redirect. With requireEmailVerification the
 // signup creates no session, so on success we show a "check your email" panel
@@ -102,7 +100,7 @@ export function RegisterForm({
             autoComplete="name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className={fieldClass}
+            className={AUTH_FIELD_CLASS}
           />
         </label>
         <label className="flex flex-col gap-[7px]">
@@ -115,7 +113,7 @@ export function RegisterForm({
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={fieldClass}
+            className={AUTH_FIELD_CLASS}
           />
         </label>
         <label className="flex flex-col gap-[7px]">
@@ -127,7 +125,7 @@ export function RegisterForm({
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className={fieldClass}
+            className={AUTH_FIELD_CLASS}
           />
         </label>
         <label className="flex flex-col gap-[7px]">
@@ -140,7 +138,7 @@ export function RegisterForm({
             placeholder={messages.inviteCodePlaceholder}
             value={inviteCode}
             onChange={(e) => setInviteCode(e.target.value)}
-            className={fieldClass}
+            className={AUTH_FIELD_CLASS}
           />
         </label>
         {error && <p className="text-[var(--text-sm)] text-red-600">{error}</p>}

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { createAuthOptions, getBetterAuthSchema } from './better-auth';
+import { buildPasswordResetEmail, createAuthOptions, getBetterAuthSchema, localeFromResetUrl } from './better-auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
 
 describe('better-auth schema bridge', () => {
@@ -110,5 +110,100 @@ describe('better-auth schema bridge', () => {
       // Apple 登录:appleid.apple.com 以 form_post 跨站回调,必须列入信任(见 better-auth.ts)。
       'https://appleid.apple.com',
     ]);
+  });
+
+  it('enables password reset and revokes every session once the password changes', () => {
+    const options = createAuthOptions({
+      users: {},
+      sessions: {},
+      accounts: {},
+      verifications: {},
+    });
+
+    // Without sendResetPassword better-auth answers /request-password-reset with
+    // a flat 400 "Reset password isn't enabled" — the link on /login went nowhere.
+    assert.equal(typeof options.emailAndPassword?.sendResetPassword, 'function');
+    assert.equal(options.emailAndPassword?.resetPasswordTokenExpiresIn, 3600);
+    // A reset is how someone recovers a hijacked account; the attacker's session
+    // must not survive it. (cookieCache means the revoked cookie still answers
+    // for up to its 5-minute maxAge — see the comment at the config.)
+    assert.equal(options.emailAndPassword?.revokeSessionsOnPasswordReset, true);
+  });
+
+  it('clears the unverified flag on reset instead of stranding the account', () => {
+    const options = createAuthOptions({
+      users: {},
+      sessions: {},
+      accounts: {},
+      verifications: {},
+    });
+
+    // requireEmailVerification + a reset that leaves emailVerified=false is a
+    // closed loop: the reset "succeeds" and the next login still 403s, forever.
+    assert.equal(typeof options.emailAndPassword?.onPasswordReset, 'function');
+  });
+
+  it('throttles the reset mailer, which is unauthenticated and sends real email', () => {
+    const options = createAuthOptions({
+      users: {},
+      sessions: {},
+      accounts: {},
+      verifications: {},
+    });
+
+    // better-auth's built-in special rules cover /sign-in, /sign-up,
+    // /change-password and /change-email only — this path would otherwise fall
+    // to the default 100-per-10s, i.e. ~600 mails a minute at someone's inbox.
+    assert.deepEqual(options.rateLimit?.customRules?.['/request-password-reset'], {
+      window: 3600,
+      max: 3,
+    });
+  });
+});
+
+describe('password reset email', () => {
+  const url = (callback: string) =>
+    `https://yujeeai.com/api/auth/reset-password/tok123?callbackURL=${encodeURIComponent(callback)}`;
+
+  it('reads the locale back out of the callbackURL better-auth built', () => {
+    assert.equal(localeFromResetUrl(url('/zh/reset-password')), 'zh');
+    assert.equal(localeFromResetUrl(url('/ja/reset-password')), 'ja');
+  });
+
+  it('reads the locale from an absolute same-origin callbackURL too', () => {
+    // originCheck accepts absolute same-origin URLs, not just relative paths,
+    // so detectLocale must not be handed a whole URL — it splits on '/' and
+    // would read the scheme as the locale segment.
+    assert.equal(
+      localeFromResetUrl(url('https://yujeeai.com/ja/reset-password')),
+      'ja',
+    );
+  });
+
+  it('falls back to English for a missing, unknown or malformed callbackURL', () => {
+    assert.equal(localeFromResetUrl('https://yujeeai.com/api/auth/reset-password/tok123'), 'en');
+    assert.equal(localeFromResetUrl(url('/reset-password')), 'en');
+    assert.equal(localeFromResetUrl('not a url'), 'en');
+  });
+
+  it('addresses the reset email to the user and carries the reset link', () => {
+    const email = buildPasswordResetEmail(
+      { email: 'ava@example.com', name: 'Ava' },
+      url('/zh/reset-password'),
+    );
+
+    assert.equal(email.to, 'ava@example.com');
+    assert.equal(email.subject, '重置你的 Yujee 密码');
+    assert.match(email.html, /Ava/);
+    assert.match(email.html, /reset-password\/tok123/);
+  });
+
+  it('greets by email when the account has no name', () => {
+    const email = buildPasswordResetEmail(
+      { email: 'ava@example.com', name: null },
+      url('/en/reset-password'),
+    );
+
+    assert.match(email.html, /ava@example\.com/);
   });
 });

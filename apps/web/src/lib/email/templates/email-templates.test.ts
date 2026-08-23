@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { renderOrderReceiptEmail } from './order-receipt';
+import { renderPasswordResetEmail } from './password-reset';
 import { renderVerificationEmail } from './verification';
 
 describe('email templates', () => {
@@ -31,5 +32,31 @@ describe('email templates', () => {
     assert.match(email.html, /ord_123/);
     assert.match(email.html, /\$19\.00/);
     assert.match(email.text, /Family Spring/);
+  });
+
+  it('renders a localized password reset email with the reset URL', () => {
+    const email = renderPasswordResetEmail({
+      locale: 'en',
+      name: 'Ava',
+      actionUrl: 'https://yujeeai.com/api/auth/reset-password/tok?callbackURL=%2Fen%2Freset-password',
+    });
+
+    assert.equal(email.subject, 'Reset your Yujee password');
+    assert.match(email.html, /Ava/);
+    assert.match(email.html, /reset-password\/tok/);
+    // The URL carries a query string — it must survive HTML escaping intact.
+    assert.match(email.html, /callbackURL=%2Fen%2Freset-password/);
+    assert.match(email.text, /Reset your password/);
+  });
+
+  it('renders the password reset email in the requested locale', () => {
+    const email = renderPasswordResetEmail({
+      locale: 'zh',
+      name: null,
+      actionUrl: 'https://yujeeai.com/api/auth/reset-password/tok?callbackURL=%2Fzh%2Freset-password',
+    });
+
+    assert.equal(email.subject, '重置你的 Yujee 密码');
+    assert.match(email.text, /重置密码/);
   });
 });

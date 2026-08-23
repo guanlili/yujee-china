@@ -10,6 +10,16 @@ export interface EmailCopy {
     fallback: string;
     ignore: string;
   };
+  passwordReset: {
+    subject: string;
+    title: string;
+    greeting: (name: string) => string;
+    body: string;
+    button: string;
+    validity: string;
+    fallback: string;
+    ignore: string;
+  };
   order: {
     subject: string;
     title: string;

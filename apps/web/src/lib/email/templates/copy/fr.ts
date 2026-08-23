@@ -11,6 +11,16 @@ export const fr: EmailCopy = {
     fallback: 'Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :',
     ignore: 'Si vous n’avez pas créé de compte Yujee, vous pouvez ignorer cet e-mail.',
   },
+  passwordReset: {
+    subject: 'Réinitialisez votre mot de passe Yujee',
+    title: 'Réinitialisez votre mot de passe',
+    greeting: (name: string) => `Bonjour ${name},`,
+    body: 'Nous avons reçu une demande de nouveau mot de passe pour votre compte Yujee. Utilisez le bouton ci-dessous pour le choisir.',
+    button: 'Définir un nouveau mot de passe',
+    validity: 'Ce lien expire dans une heure et ne peut être utilisé qu’une seule fois.',
+    fallback: 'Si le bouton ne fonctionne pas, copiez ce lien dans votre navigateur :',
+    ignore: 'Si vous n’avez pas demandé cette réinitialisation, ignorez cet e-mail : votre mot de passe reste inchangé.',
+  },
   order: {
     subject: 'Confirmation de commande Yujee',
     title: 'Commande confirmée',

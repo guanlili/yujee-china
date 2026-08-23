@@ -11,6 +11,16 @@ export const en: EmailCopy = {
     fallback: 'If the button does not work, paste this link into your browser:',
     ignore: 'If you did not create a Yujee account, you can ignore this email.',
   },
+  passwordReset: {
+    subject: 'Reset your Yujee password',
+    title: 'Reset your password',
+    greeting: (name: string) => `Hi ${name},`,
+    body: 'We received a request to set a new password for your Yujee account. Use the button below to choose one.',
+    button: 'Set a new password',
+    validity: 'This link expires in one hour and can only be used once.',
+    fallback: 'If the button does not work, paste this link into your browser:',
+    ignore: 'If you did not ask to reset your password, you can ignore this email — your password stays as it is.',
+  },
   order: {
     subject: 'Yujee order confirmation',
     title: 'Order confirmed',
