@@ -27,6 +27,14 @@ technical context lives in the root `README.md`.
 `registry-parity.test.ts` 和 `templates:check` 只挡得住其中一部分,提交前跑
 `pnpm typecheck && pnpm --filter @yujee/contracts test`。
 
+**槽元素必须是模板根的直接子元素。** HTML 模板里的 `left/top` 一律是整页坐标,槽与根
+之间不许再有定位祖先(absolute/relative/fixed/sticky)——否则浏览器把两层坐标叠加,
+槽被推离你写的位置。mag-09 曾把三个 `<p>` 套进绝对定位外层,`body` 被推到 x=1008、
+`explain2` 被推到 y=1284,在 794×1123 的页面上等于三段字消失(屏幕/PDF/Live 全中,
+2026-08-22 修)。图槽的 `<img>` 待在同 slotId 的图框 div 里是唯一例外(锚点契约要求的
+双层结构,靠 100% 铺满,不带自己的 `left/top`)。守卫在 `html-template-lint.ts`,已挂进
+`templates:check` 与冒烟测试。
+
 **文字槽 id 必须按 role 派号**,不能自己起名:`title/title2…`、`body/body2…`、
 `explain/explain2…`、`label/label2…`(顺序即出现顺序)。`templates.test.ts` 里
 「text slot ids follow the role-derived naming rule」会校验这条。
@@ -85,5 +93,5 @@ under `packages/contracts/fixtures/skeleton/`.
 
 <!-- doc-scope
 paths: packages/contracts/templates/*.json, packages/contracts/src/templates.ts, packages/contracts/src/render/html-templates/**, apps/web/src/components/album/web-registry.ts
-checked-at: 293b1d2d
+checked-at: ed9a25e6
 -->

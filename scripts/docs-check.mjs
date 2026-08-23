@@ -25,6 +25,11 @@ const REPO_ROOT = process.cwd();
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '.next', '.turbo', 'dist', 'build',
   '.venv', '__pycache__', '.pytest_cache', '.worktrees', '.superpowers',
+  // 别的分支的 worktree 检出:它们是同一个仓在另一个提交上的副本,doc-scope 里的
+  // 路径会被拿到**主仓历史**上比对,于是主线一提交就把人家的文档判成过期 —— 纯误报,
+  // 那条分支自己跑 docs:check 时会管好自己的 checked-at。`.worktrees` 早就在名单里,
+  // 这里补上 `.claude/worktrees/` 这个位置(git worktree add 的落点不止一处)。
+  'worktrees',
 ]);
 
 function git(args) {

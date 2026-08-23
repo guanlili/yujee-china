@@ -236,6 +236,15 @@ token or snapshot, and public reads never mutate already-frozen shares.
   换模板/主题一键会从模板重烘(手工版面重置,属预期)。
 - PDF 导出只剩栅格路径(`lib/pdf/render-raster.ts`,html2canvas 截存库 html);
   矢量 PDF 路径已退役。
+- **改模板不会自动修好老书**:`bakePageHtml` 对已带 `html` 的页直接跳过,存量页永远
+  停在烘制那一刻的模板形态。模板几何出过错(如 mag-09 的槽被外层定位推出页面)时,
+  老书要靠一次性维护接口补,且必须走**外科式补丁**而不是清空重烘 —— 重烘会抹掉用户改过
+  的字/颜色/字体和 design-agent `write_page_html` 写下的手工版面。先例:
+  `services/album/repair-mag09-html.ts`(纯字符串补丁)+ `repair-mag09-pages.ts`
+  (扫三处存储:`draft_pages.page.html`、`albums.draft_json.pages[].html`、
+  `album_shares.snapshot_json.pages[].htmlJson`;定稿的 `album_pages` 不存 html、
+  读时现渲,自动吃到修复)+ `api/v1/admin/repair-mag09-pages`(默认 dry-run,
+  `?apply=1` 才写库,幂等)。
 
 ## Database Boundary
 
@@ -351,5 +360,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: a4fe5fd1
+checked-at: ed9a25e6
 -->
