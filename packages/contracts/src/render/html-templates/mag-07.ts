@@ -2,7 +2,10 @@
 // 几何逐一镜像自 templates/mag-07/index.tsx(WebMag07):794×1123、绝对定位、写死 px。
 // 动态槽用 {{...}} token(见 fill-template.ts)。静态字体栈直接内联自 constants.WEB_FONTS。
 //
-// 槽位:explain1/explain2(左侧两段说明,外框+内 <p> 双层结构照抄 React)、
+// 槽位:body/body2(左侧两段说明)、
+// 2026-08-22:这两段原本是「定位外框 + 内 <p> 再偏移」的双层结构(照抄 React),坐标要两层
+// 相加才是页面位置。mag-09 同样的写法把三段字推出了页面,故全库统一拍平:槽一律是模板根的
+// 直接子元素、left/top 即整页坐标。这里两段的最终位置不变(50+10=60 / 150+20=170、510+20=530)。
 // image1(右上横图 380×330,JSX 实际写死 top:60,LAYOUT 注释里的 y:90 未被使用,以 JSX 为准)、
 // image2(右下竖图 380×480)、title(左下贴底大字,variableDecor:色/字体可主题)、folio(右下页码)。
 // 与 React 版的两处已知差异(token 体系表达不了,均已尽量贴近):
@@ -15,15 +18,11 @@ const SANS_EN = '&quot;Inter&quot;, &quot;Noto Sans SC&quot;, &quot;PingFang SC&
 const PLAYFAIR = '&quot;Playfair Display&quot;, &quot;Noto Serif SC&quot;, &quot;Songti SC&quot;, serif';
 
 export const MAG_07_HTML = `<div data-template="mag-07" style="position:relative;width:794px;height:1123px;background:#fff;color:#1c1b18;overflow:hidden;box-sizing:border-box;font-family:${SANS_EN}">
-  <div style="position:absolute;top:150px;left:50px;width:240px;height:330px">
-    <p data-text-key="body" style="position:absolute;left:10px;top:20px;width:260px;height:120px;margin:0;line-height:1.7;text-align:justify;letter-spacing:0.02em;color:{{COLOR:body|#5a574f}};font-family:{{FONT:body|${SANS_EN}}};font-size:18px;white-space:pre-wrap">{{TEXT:body}}</p>
-  </div>
+  <p data-text-key="body" style="position:absolute;left:60px;top:170px;width:260px;height:120px;margin:0;line-height:1.7;text-align:justify;letter-spacing:0.02em;color:{{COLOR:body|#5a574f}};font-family:{{FONT:body|${SANS_EN}}};font-size:18px;white-space:pre-wrap">{{TEXT:body}}</p>
   <div data-image-slot="image1" style="position:absolute;left:364px;top:60px;width:380px;height:330px;overflow:hidden">
     <img data-image-slot="image1" src="{{IMG_SRC:image1}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image1|50% 50%}};{{IMG_TF:image1}}" />
   </div>
-  <div style="position:absolute;top:510px;left:50px;width:260px;height:420px">
-    <p data-text-key="body2" style="position:absolute;left:10px;top:20px;width:260px;height:260px;margin:0;line-height:1.7;text-align:justify;letter-spacing:0.02em;color:{{COLOR:body2|#5a574f}};font-family:{{FONT:body2|${SANS_EN}}};font-size:18px;white-space:pre-wrap">{{TEXT:body2}}</p>
-  </div>
+  <p data-text-key="body2" style="position:absolute;left:60px;top:530px;width:260px;height:260px;margin:0;line-height:1.7;text-align:justify;letter-spacing:0.02em;color:{{COLOR:body2|#5a574f}};font-family:{{FONT:body2|${SANS_EN}}};font-size:18px;white-space:pre-wrap">{{TEXT:body2}}</p>
   <div data-image-slot="image2" style="position:absolute;left:364px;top:450px;width:380px;height:480px;overflow:hidden">
     <img data-image-slot="image2" src="{{IMG_SRC:image2}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:{{IMG_POS:image2|50% 50%}};{{IMG_TF:image2}}" />
   </div>

@@ -13,6 +13,13 @@
   `object-position:{{IMG_POS:slotId|50% 50%}}`,style 末尾拼 `{{IMG_TF:slotId}}`
 - items 重复组:按容量固定展开,bracket 路径 token(`{{TEXT:explain[2]}}`),先例 mag-10
 - 模板 JSON 声明的槽在 HTML 里必须锚点/token 成对出现(或成对省略——React 版没渲染的槽)
+- **槽元素必须是模板根的直接子元素**:`left/top` 一律写整页坐标,槽与根之间不许再有
+  定位祖先(absolute/relative/fixed/sticky),否则浏览器把两层坐标叠加。mag-09 曾把
+  三个 `<p>` 套进绝对定位外层,body 被推到 x=1008、explain2 被推到 y=1284,在
+  794×1123 的页面上等于三段字消失(屏幕/PDF/Live 全中,2026-08-22 修)。图槽的
+  `<img>` 待在同 slotId 的图框 div 里是例外(锚点契约要求的双层结构,靠 100% 铺满,
+  不带自己的 left/top)。守卫:`html-template-lint.ts` 的嵌套定位检查,挂在
+  `templates:check` 与冒烟测试上。
 
 这些锚点同时是**用户操作面**(编辑器改字/换图)与 **AI 编辑红线**(design-agent 的
 write_page_html 校验锚点不可删)的契约,改动需同步 `design-agent html-guard` 与
