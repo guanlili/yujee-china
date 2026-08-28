@@ -130,14 +130,20 @@ test('interiorInkSequence: 不同 seed 给出不同序列(seed 真的被用上�
   assert.notEqual(a, b, '换本书应当换一套排列,否则 seed 形同虚设');
 });
 
-test('interiorInkSequence: 相邻两页不撞色', () => {
-  // 纯随机会连着两三页同色,实体书翻起来像漏印。
-  for (const seed of ['a', 'bb', 'ccc', 'album-1234', '张三的书']) {
-    const seq = interiorInkSequence(seed, 40);
-    for (let i = 1; i < seq.length; i++) {
-      assert.notEqual(seq[i]!.id, seq[i - 1]!.id, `seed=${seed} 第 ${i} 页与上一页撞色`);
+test('interiorInkSequence: 纯随机有放回 —— 相邻同色会发生,占比约五分之一', () => {
+  // 小雨拍板 2026-08-28:去掉「相邻不撞色」那条约束,每页从五色里独立抽。
+  // 这条断言的是它**确实会**撞 —— 把约束加回来(pool 排掉上一页)这条就红。
+  let adjacentSame = 0;
+  let pairs = 0;
+  for (let i = 0; i < 400; i += 1) {
+    const seq = interiorInkSequence(`album-${i}`, 30).map((x) => x.id);
+    for (let j = 1; j < seq.length; j += 1) {
+      pairs += 1;
+      if (seq[j] === seq[j - 1]) adjacentSame += 1;
     }
   }
+  const pct = (adjacentSame / pairs) * 100;
+  assert.ok(pct > 15 && pct < 26, `相邻同色占 ${pct.toFixed(1)}%(五取一理论值 20%)`);
 });
 
 test('interiorInkSequence: 五个色都用得上,不会退化成两色来回跳', () => {

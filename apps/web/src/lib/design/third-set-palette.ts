@@ -157,25 +157,23 @@ function fmix32(h: number): number {
 }
 
 /**
- * 内页底色序列:按 seed 派一串**确定性伪随机**的配色,相邻两项保证不同色。
+ * 内页底色序列:按 seed 派一串**确定性伪随机**的配色,每页从五色里独立抽(有放回)。
  *
  * 为什么不能用真随机 —— 这条路有两个调用方:成书主路(assembleDesignedPages)和
  * 追加照片(job-service.mergeAppendLayoutPages / mergeAppendComposeTexts)。追加那条
  * 只重刷新页,老页的颜色早烘死在 html 里了;两次调用结果不一样,加几张照片就把新页
  * 刷成跟全书不同的一套色。所以必须「同 seed 同长度 → 逐项相同」,而且**前缀稳定**
- * (长度从 10 变 13,前 10 项一个字节都不能动)。
+ * (长度从 10 变 13,前 10 项一个字节都不能动)。第 i 项只取决于 seed 和 i,前缀稳定
+ * 因此是结构上成立的,不靠约定。
  *
- * 相邻不撞色:纯随机会连着两三页同色,实体书翻起来像漏印。取色时把上一项排除掉,
- * 五取四,不影响前缀稳定性(第 i 项只取决于 seed、i 和第 i-1 项)。
+ * **有放回,不去重**(小雨拍板 2026-08-28):同一个色在一本书里出现五六次是正常的,
+ * 某个色一次都不出现也是正常的;相邻两页同色同样允许(约五分之一的概率)。曾经加过
+ * 一条「相邻不撞色」,已按用户要求去掉 —— 别再"顺手"加回来,测试里钉着相邻同色的
+ * 出现率,加回去会红。
  */
 export function interiorInkSequence(seed: string, count: number): readonly DarkInk[] {
-  const out: DarkInk[] = [];
-  let prevIndex = -1;
-  for (let i = 0; i < count; i += 1) {
-    const pool = THIRD_SET_INTERIOR.filter((_, idx) => idx !== prevIndex);
-    const picked = pool[hash32(`${seed}#${i}`) % pool.length]!;
-    prevIndex = THIRD_SET_INTERIOR.indexOf(picked);
-    out.push(picked);
-  }
-  return out;
+  return Array.from(
+    { length: count },
+    (_, i) => THIRD_SET_INTERIOR[hash32(`${seed}#${i}`) % THIRD_SET_INTERIOR.length]!,
+  );
 }

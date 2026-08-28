@@ -281,8 +281,6 @@ test('assembleDesignedPages: 带 colorway 时内页按 3 组深底循环,页根�
     // (等于废掉「sweepCarriers 第三参数放宽」这件事本身)也能全绿,这条才钉得住。
     assert.match(pages[i + 1]!.html!, new RegExp(ink.accent, 'i'), `第 ${i + 1} 页字色`);
   }
-  // 相邻两页不撞色 —— 实体书翻起来不至于像漏印。
-  assert.notEqual(seq[0]!.id, seq[1]!.id);
   // 封面/封尾用 colorway 的底色,不参与内页随机 —— 没有占用序列里的位置
   assert.match(pages[0]!.html!, /background-color:\s*#F9EDC4/i);
   assert.match(pages[5]!.html!, /background-color:\s*#F9EDC4/i); // 封尾此前从未被断言过
