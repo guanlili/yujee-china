@@ -2,12 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   assembleDesignedPages,
+  darkInkByPageIndex,
   buildCoverSets,
   coverTextBase,
   pickHeroPhotos,
   sweepCarriers,
   templateCategory,
 } from './design-apply';
+import {
+  interiorInkSequence,
+  legacyInteriorInkSequence,
+  THIRD_SET_INK,
+} from '@/lib/design/third-set-palette';
 
 const CHAPTERS = [
   { photos: [{ photoId: 'pw', composition: 'wide' }, { photoId: 'pf', composition: 'focal' }] },
@@ -260,26 +266,77 @@ test('assembleDesignedPages: 带 colorway 时内页按 3 组深底循环,页根�
     endingTexts: {},
     fonts: FONTS,
     colors: COLORS,
-    // cream:底色 #F9EDC4 和三组内页墨色(#0E2A47/#12363A/#14140F)都不重合 ——
-    // 用 teal(#12363A)会撞上 THIRD_SET_INTERIOR[1].bg,「封面/封尾没占用内页轮换
-    // 槽位」这件事就只能靠 p1-p4 的链条间接推,断不出来。
+    interiorSeed: 'album-seed-1',
+    // cream:底色 #F9EDC4 与五个内页底色都不重合 —— 撞上的话「封面/封尾没占用内页
+    // 随机序列」这件事就只能间接推,断不出来。
     colorway: { id: 'cream', name: '奶黄', nameEn: 'Cream', bg: '#F9EDC4', title: '#1F3A2E', sub: '#4A4A42' },
   });
-  // 页序 [封面, 内页×4, 封尾];内页从 index 1 开始,按 3 组循环
-  assert.match(pages[1]!.html!, /background-color:\s*#0E2A47/i);
-  assert.match(pages[2]!.html!, /background-color:\s*#12363A/i);
-  assert.match(pages[3]!.html!, /background-color:\s*#14140F/i);
-  assert.match(pages[4]!.html!, /background-color:\s*#0E2A47/i); // 循环回第一组
-  // per-page accent 真的经 carrier 写进了 html —— 只断页根底色的话,把
-  // assembleDesignedPages 里喂给 sweepCarriers 的回调改成恒定返回 input.colors
-  // (等于废掉「sweepCarriers 第三参数放宽」这件事本身)也能全绿,这两条才钉得住。
-  assert.match(pages[1]!.html!, /#B8FF3C/i); // navy-lime 组的 accent
-  assert.match(pages[3]!.html!, /#D4FF3F/i); // ink-lime 组的 accent
-  // 封面/封尾用 colorway 的底色,不是内页墨色 —— 没有占用轮换槽位
+  // 页序 [封面, 内页×4, 封尾];内页从 index 1 开始,按 seed 派的序列逐页刷。
+  const seq = interiorInkSequence('album-seed-1', 4);
+  for (let i = 0; i < 4; i += 1) {
+    const ink = seq[i]!;
+    assert.match(pages[i + 1]!.html!, new RegExp(`background-color:\\s*${ink.bg}`, 'i'), `第 ${i + 1} 页底色`);
+    // per-page 字色真的经 carrier 写进了 html —— 只断页根底色的话,把
+    // assembleDesignedPages 里喂给 sweepCarriers 的回调改成恒定返回 input.colors
+    // (等于废掉「sweepCarriers 第三参数放宽」这件事本身)也能全绿,这条才钉得住。
+    assert.match(pages[i + 1]!.html!, new RegExp(ink.accent, 'i'), `第 ${i + 1} 页字色`);
+  }
+  // 相邻两页不撞色 —— 实体书翻起来不至于像漏印。
+  assert.notEqual(seq[0]!.id, seq[1]!.id);
+  // 封面/封尾用 colorway 的底色,不参与内页随机 —— 没有占用序列里的位置
   assert.match(pages[0]!.html!, /background-color:\s*#F9EDC4/i);
   assert.match(pages[5]!.html!, /background-color:\s*#F9EDC4/i); // 封尾此前从未被断言过
-  // 深底上正文色翻浅,否则模板根写死的 #1c1b18 会黑压黑
-  assert.match(pages[1]!.html!, /color:\s*#E8E5DC/i);
+});
+
+test('assembleDesignedPages: 同一个 interiorSeed 两次成稿,内页配色逐页相同', () => {
+  // 追加照片那条路会拿同一个 seed 重算一遍序列;不稳定就等于新页与老页配色错乱。
+  const build = () =>
+    assembleDesignedPages({
+      interiorPages: [0, 1, 2, 3, 4, 5].map((i) => ({
+        pageIndex: i, templateId: 'mag-08', images: {}, texts: {},
+      })) as never,
+      set: { coverTemplateId: 'mag-62', coverPhotoId: 'p1', endingTemplateId: 'mag-22', endingPhotoId: 'p2' },
+      coverTexts: {}, endingTexts: {}, fonts: FONTS, colors: COLORS,
+      interiorSeed: 'album-stable',
+      colorway: { id: 'cream', name: '奶黄', nameEn: 'Cream', bg: '#F9EDC4', title: '#1F3A2E', sub: '#4A4A42' },
+    });
+  const bgOf = (html: string) => /background-color:\s*(#[0-9a-fA-F]{6})/i.exec(html)?.[1];
+  assert.deepEqual(build().map((p) => bgOf(p.html!)), build().map((p) => bgOf(p.html!)));
+});
+
+test('assembleDesignedPages: 换一本书(换 seed)内页配色跟着换', () => {
+  const build = (seed: string) =>
+    assembleDesignedPages({
+      interiorPages: [0, 1, 2, 3, 4, 5, 6, 7].map((i) => ({
+        pageIndex: i, templateId: 'mag-08', images: {}, texts: {},
+      })) as never,
+      set: { coverTemplateId: 'mag-62', coverPhotoId: 'p1', endingTemplateId: 'mag-22', endingPhotoId: 'p2' },
+      coverTexts: {}, endingTexts: {}, fonts: FONTS, colors: COLORS,
+      interiorSeed: seed,
+      colorway: { id: 'cream', name: '奶黄', nameEn: 'Cream', bg: '#F9EDC4', title: '#1F3A2E', sub: '#4A4A42' },
+    });
+  const bgs = (seed: string) =>
+    build(seed).map((p) => /background-color:\s*(#[0-9a-fA-F]{6})/i.exec(p.html!)?.[1]).join(',');
+  assert.notEqual(bgs('album-aaa'), bgs('album-bbb'), 'seed 没被用上的话两本书会一模一样');
+});
+
+test('assembleDesignedPages: 没有 interiorSeed 的老书走老三色表,不混进新五色', () => {
+  // interiorSeed 是本次新加的,线上已成稿的第三套老书 draft 里没有它 —— 那些书的页面
+  // 早烘成了老三色,追加页必须跟着老表走。
+  const pages = assembleDesignedPages({
+    interiorPages: [0, 1, 2, 3].map((i) => ({
+      pageIndex: i, templateId: 'mag-08', images: {}, texts: {},
+    })) as never,
+    set: { coverTemplateId: 'mag-62', coverPhotoId: 'p1', endingTemplateId: 'mag-22', endingPhotoId: 'p2' },
+    coverTexts: {}, endingTexts: {}, fonts: FONTS, colors: COLORS,
+    colorway: { id: 'cream', name: '奶黄', nameEn: 'Cream', bg: '#F9EDC4', title: '#1F3A2E', sub: '#4A4A42' },
+  });
+  const legacy = legacyInteriorInkSequence(4);
+  for (let i = 0; i < 4; i += 1)
+    assert.match(pages[i + 1]!.html!, new RegExp(`background-color:\\s*${legacy[i]!.bg}`, 'i'));
+  // 新五色一个都不能出现 —— 走错表时正是这个样子。
+  for (const bg of ['#F3F0A8', '#9F82E8', '#C83E18', '#107E47', '#2D6DB0'])
+    for (const page of pages) assert.doesNotMatch(page.html!, new RegExp(bg, 'i'));
 });
 
 test('assembleDesignedPages: 不带 colorway 时行为不变(仍走单色 pageBackground)', () => {
@@ -346,8 +403,17 @@ test('assembleDesignedPages: 深色内页的 decoration 仍跟亮字 accent(内�
     colorway: { id: 'cream', name: '奶黄', nameEn: 'Cream', bg: '#F9EDC4', title: '#1F3A2E', sub: '#4A4A42' },
   });
   const interior = pages[1]!.texts;
-  assert.equal(interior['label#accentColor'], '#B8FF3C', 'navy-lime 组的 accent');
-  assert.equal(interior['title#accentColor'], '#B8FF3C');
+  // 这条没传 interiorSeed(等价老书),走老三色表。
+  const ink = legacyInteriorInkSequence(1)[0]!;
+  // 内页没有 sub 这一说:decoration 跟标题同色,而两个字色方案下它就等于这一页的字色。
+  assert.equal(interior['label#accentColor'], ink.accent);
+  assert.equal(interior['title#accentColor'], ink.accent);
+  // 新书(带 seed)的内页字色只能是那两个之一 —— 两色字规则。
+  const modern = interiorInkSequence('album-any', 1)[0]!;
+  assert.ok(
+    modern.accent === THIRD_SET_INK.light || modern.accent === THIRD_SET_INK.dark,
+    '内页字色只能是那两个之一',
+  );
 });
 
 test('assembleDesignedPages: 无补充照片时后续图槽复用 endingPhotoId 不留空', async () => {
@@ -367,4 +433,24 @@ test('assembleDesignedPages: 无补充照片时后续图槽复用 endingPhotoId 
   for (const slotId of endingSlots) {
     assert.equal(ending.images[slotId], 'hero-2');
   }
+});
+
+test('darkInkByPageIndex: 目录页跟封面/封底同色,不参与内页随机', () => {
+  // 小雨拍板 2026-08-28:封面/目录/封底三张同色,整本书洗一次。
+  // ⚠️ 成稿链路目前会把目录页整页丢掉(mergeComposeIntoDraft 只重拼 [封面,内页,封尾]),
+  // 所以这条钉的是「目录页一旦回到页序里就该拿 colorway」,不是线上现状。
+  const colorway = { id: 'blue', name: '蓝', nameEn: 'Blue', bg: '#2D6DB0', title: '#F5F2E8', sub: '#F5F2E8' };
+  const ordered = [
+    { pageIndex: 0, templateId: 'mag-62', images: {}, texts: {} },
+    { pageIndex: 1, templateId: 'mag-02', images: {}, texts: {} }, // toc
+    { pageIndex: 2, templateId: 'mag-08', images: {}, texts: {} },
+    { pageIndex: 3, templateId: 'mag-63', images: {}, texts: {} },
+  ];
+  const ink = darkInkByPageIndex(ordered as never, colorway, 'album-toc');
+  assert.equal(ink.get(0)!.bg, colorway.bg, '封面');
+  assert.equal(ink.get(1)!.bg, colorway.bg, '目录页应当跟封面同色');
+  assert.equal(ink.get(3)!.bg, colorway.bg, '封底');
+  // 目录页不能占掉内页随机序列的槽位:唯一那张内页拿的是序列第 1 项。
+  assert.equal(ink.get(2)!.bg, interiorInkSequence('album-toc', 1)[0]!.bg);
+  assert.notEqual(ink.get(2)!.bg, colorway.bg);
 });

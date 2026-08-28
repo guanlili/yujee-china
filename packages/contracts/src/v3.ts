@@ -390,6 +390,11 @@ export const V3StoryDraft = z
         // (反推到封面的浅字色,刷到白底新页上,实测 1.09:1,整页像空白)。
         // 可选且追加:老草稿没有这个键照旧解析、行为不变。
         coverColorway: z.string().optional(),
+        // 第三套内页随机配色的种子(这本书的 albumId)。和 coverColorway 同一个道理:
+        // 成稿时用过就必须记下来,否则追加照片那条路只能自己重新随机一次 —— 新页与
+        // 老页会错开成两套色(老页的色早烘死在 html 里,改不回来)。
+        // 可选且追加:本次改动之前成稿的书没有这个键,回落 colorway.id,行为稳定。
+        interiorSeed: z.string().optional(),
       })
       .optional(),
   })

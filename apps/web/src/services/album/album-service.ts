@@ -1325,6 +1325,9 @@ export const albumService = {
               extraEndingPhotoIds,
               ...(input.pageBackground ? { pageBackground: input.pageBackground } : {}),
               ...(input.coverColorway ? { coverColorway: input.coverColorway } : {}),
+              // 内页随机配色的种子 = albumId:同一本书永远派同一套排列,刷新/重成稿
+              // /追加照片都对得上;换一本书才换排列。绝不能用 Math.random。
+              interiorSeed: albumId,
             },
           },
         });
@@ -1434,6 +1437,7 @@ export const albumService = {
         ).filter((id) => id !== input.endingPhotoId && id !== input.coverPhotoId),
         ...(input.pageBackground ? { pageBackground: input.pageBackground } : {}),
         ...(input.coverColorway ? { coverColorway: input.coverColorway } : {}),
+        interiorSeed: albumId,
       };
       const draftJsonLike = {
         version: 'v3-story' as const,

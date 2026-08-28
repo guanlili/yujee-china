@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { interiorInkSequence, legacyInteriorInkSequence } from '@/lib/design/third-set-palette';
 import test from 'node:test';
 import { TEMPLATES, THEME_FONT_CARRIER_SUFFIX } from '@yujee/contracts';
 import type { Page } from '@yujee/contracts';
@@ -109,6 +110,8 @@ test('mergeAppendLayoutPages: 无既有 pages 直接抛', () => {
 // 修之前:新页拿的是 extractDesignFromPages 从**封面**反提取的浅字色,页根却是
 // 重烘出来的模板默认白 —— 正文 #E8E5DC 压白底 1.09:1,整页看着像没印上。
 
+const APPEND_SEED = 'album-append-seed';
+
 function composedThirdSetBook(colorwayId = 'teal') {
   const composed = mergeComposeIntoDraft(
     pagedDraft({ designed: false }),
@@ -121,6 +124,7 @@ function composedThirdSetBook(colorwayId = 'teal') {
       extraEndingPhotoIds: [],
       pageBackground: '#F1F2F0',
       coverColorway: colorwayId,
+      interiorSeed: APPEND_SEED,
     },
     {},
   );
@@ -150,25 +154,53 @@ test('第三套成稿把配色 id 写进 draft 的设计契约(追加路径唯�
   assert.equal(junk.design.coverColorway, undefined);
 });
 
-test('mergeAppendLayoutPages: 深色书的新页跟全书同一套深色,不是封面浅字压白底', () => {
+test('第三套成稿把内页随机种子写进设计契约(追加页要按它复算同一套序列)', () => {
+  // coverColorway 当年栽的那个坑一模一样:用过的决策不留痕,追加路径只能自己瞎猜。
+  assert.equal(composedThirdSetBook().design.interiorSeed, APPEND_SEED);
+});
+
+test('mergeAppendLayoutPages: 深色书的新页跟全书同一套配色,不是封面浅字压白底', () => {
   const draftJson = composedThirdSetBook();
   // 成书页序:[封面(mag-62), 内页 ×2, 封尾];新页插在封尾前 = 第 3 张内页,
-  // 按 THIRD_SET_INTERIOR 轮换应当拿到第三组 ink-lime(#14140F / #D4FF3F)。
+  // 所以它应当拿到 interiorInkSequence(seed, 3) 的第 3 项 —— 靠 draft 里留痕的
+  // interiorSeed 复算,不是重新随机一次。
+  const seq = interiorInkSequence(APPEND_SEED, 3);
+  // fixture 前提(评审 H2):新页那一格必须与「老书回落」那条路给出的色分得开。
+  // 两者相等的话,下面四条断言在接线被整段删掉时照样全绿 —— 等于零覆盖。
+  assert.notEqual(seq[2]!.bg, legacyInteriorInkSequence(3)[2]!.bg, 'fixture 失效:seed 与回落色撞了');
   const merged = mergeAppendLayoutPages(draftJson, [page(0, interior.id, { marker: 'new' })], ['addx-c1']);
   const fresh = merged.pages.find((p) => p.texts.marker === 'new')!;
   const titleSlot = (interior.texts ?? []).find((s) => s.role === 'title')!;
   const bodySlot = (interior.texts ?? []).find((s) => s.role === 'body')!;
 
-  assert.match(fresh.html!, /background-color:\s*#14140F/i, '页根刷这一格的深底');
-  assert.match(fresh.html!, /color:\s*#E8E5DC/i, '页根字色翻浅(静态装饰不至于黑压黑)');
-  assert.equal(fresh.texts[`${titleSlot.id}#accentColor`], '#D4FF3F', '标题走这一格的亮字');
-  assert.equal(fresh.texts[`${bodySlot.id}#accentColor`], '#E8E5DC');
+  assert.match(fresh.html!, new RegExp(`background-color:\\s*${seq[2]!.bg}`, 'i'), '页根刷这一格的底色');
+  assert.match(fresh.html!, new RegExp(`color:\\s*${seq[2]!.body}`, 'i'), '页根字色跟这一格(静态装饰不至于同色相压)');
+  assert.equal(fresh.texts[`${titleSlot.id}#accentColor`], seq[2]!.accent, '标题走这一格的字色');
+  assert.equal(fresh.texts[`${bodySlot.id}#accentColor`], seq[2]!.body);
   // 反提取到的封面色(粉标题)绝不能落到内页上 —— 这正是评审量到 1.09:1 的那条路。
   assert.notEqual(fresh.texts[`${titleSlot.id}#accentColor`], '#F0A4C2');
   assert.doesNotMatch(fresh.html!, /#F0A4C2/i);
-  // 老页一个字节不动(carrier 与页根都保持成书时的样子)。
-  assert.match(merged.pages[1]!.html!, /background-color:\s*#0E2A47/i);
-  assert.match(merged.pages[2]!.html!, /background-color:\s*#12363A/i);
+  // 老页一个字节不动:序列前缀稳定,所以前两张内页还是成书时那两个色。
+  assert.match(merged.pages[1]!.html!, new RegExp(`background-color:\\s*${seq[0]!.bg}`, 'i'));
+  assert.match(merged.pages[2]!.html!, new RegExp(`background-color:\\s*${seq[1]!.bg}`, 'i'));
+});
+
+test('mergeAppendLayoutPages: 老书(没有 interiorSeed)的新页走老三色表,不是新五色', () => {
+  // 本次改动之前成稿的第三套书,页里烘死的是老三色(深蓝/深墨绿/近黑)。加照片时
+  // 若按新五色表派色,新页会是淡黄或橙 —— 插在一本深色书里像另一本书的页。
+  // interiorSeed 缺省 ⟺ 老书(新书两条派发路都必设),所以缺省就是老书的判据。
+  const draftJson = composedThirdSetBook();
+  delete (draftJson.design as Record<string, unknown>).interiorSeed;
+  const merged = mergeAppendLayoutPages(draftJson, [page(0, interior.id, { marker: 'new' })], ['addx-c1']);
+  const fresh = merged.pages.find((p) => p.texts.marker === 'new')!;
+  // 成书 2 张内页 + 新页 = 第 3 张 → 老三色表的第 3 格(近黑 #14140F / 黄绿 #D4FF3F)。
+  const legacy = legacyInteriorInkSequence(3)[2]!;
+  assert.match(fresh.html!, new RegExp(`background-color:\\s*${legacy.bg}`, 'i'), '老书新页用老色表');
+  const titleSlot = (interior.texts ?? []).find((s) => s.role === 'title')!;
+  assert.equal(fresh.texts[`${titleSlot.id}#accentColor`], legacy.accent);
+  // 新五色表的底色一个都不能出现在老书的新页上。
+  for (const bg of ['#F3F0A8', '#9F82E8', '#C83E18', '#107E47', '#2D6DB0'])
+    assert.doesNotMatch(fresh.html!, new RegExp(bg, 'i'), `老书新页混进了新色 ${bg}`);
 });
 
 test('mergeAppendComposeTexts: 追加成稿重烘后,深色不被洗回白底', () => {
@@ -178,9 +210,10 @@ test('mergeAppendComposeTexts: 追加成稿重烘后,深色不被洗回白底', 
   const titleSlot = (interior.texts ?? []).find((s) => s.role === 'title')!;
   const after = mergeAppendComposeTexts(merged, { [String(freshIndex)]: { [titleSlot.id]: '新章标题' } });
   const rebaked = (after.draftJson.pages as Page[])[freshIndex]!;
+  const ink = interiorInkSequence(APPEND_SEED, 3)[2]!;
   assert.match(rebaked.html!, /新章标题/);
-  assert.match(rebaked.html!, /background-color:\s*#14140F/i, '重烘后仍是深底');
-  assert.match(rebaked.html!, /color:\s*#E8E5DC/i);
+  assert.match(rebaked.html!, new RegExp(`background-color:\\s*${ink.bg}`, 'i'), '重烘后仍是这一格的底色');
+  assert.match(rebaked.html!, new RegExp(`color:\\s*${ink.body}`, 'i'));
 });
 
 test('非深色书:追加页刷这本书的书页底色(重烘不该把新页留成模板默认白)', () => {

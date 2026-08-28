@@ -10,7 +10,8 @@ import { patchHtmlPageStyle } from '@/components/album/page-html-dom';
 import { PAGE_BACKGROUNDS, isDefaultPageBackground } from '@/lib/design/page-backgrounds';
 import {
   THIRD_SET_COVER_TEMPLATE_ID,
-  THIRD_SET_INTERIOR,
+  interiorInkSequence,
+  legacyInteriorInkSequence,
   coverColorwayForAlbum,
   type CoverColorway,
 } from '@/lib/design/third-set-palette';
@@ -391,6 +392,8 @@ export function assembleDesignedPages(input: {
   pageBackground?: string;
   /** 第三套(深色椭圆)选中的配色;不传 = 走原来的单色 pageBackground 路径。 */
   colorway?: CoverColorway;
+  /** 第三套内页随机配色的种子(这本书的 albumId)。缺省回落 colorway.id,见 darkInkByPageIndex。 */
+  interiorSeed?: string;
 }): Page[] {
   const coverSlot = firstImageSlotId(input.set.coverTemplateId);
   const endingSlotIds = (templateOf(input.set.endingTemplateId)?.images ?? []).map((s) => s.id);
@@ -418,7 +421,9 @@ export function assembleDesignedPages(input: {
   }));
   // C 方案:carrier sweep 改了 texts,已烘的 html 失效 —— 清掉重烘,设计结果
   // (字体/颜色/封面封尾文案)烘进页面真相。lenient 为迁移过渡期(见 bake-html)。
-  const inkByIndex = input.colorway ? darkInkByPageIndex(ordered, input.colorway) : null;
+  const inkByIndex = input.colorway
+    ? darkInkByPageIndex(ordered, input.colorway, input.interiorSeed)
+    : null;
   const swept = sweepCarriers(ordered, input.fonts, (page) => darkColorsOf(inkByIndex, page) ?? input.colors);
   const baked = bakePagesHtml(swept.map((page) => ({ ...page, html: undefined }))) as Page[];
   return inkByIndex
@@ -438,23 +443,38 @@ export type DarkInkForPage = {
 };
 
 /**
- * 第三套的逐页配色:封面/封尾用这本书的 colorway,内页按 THIRD_SET_INTERIOR 三组
- * **按出现顺序**循环(不按章 —— 章长短不一会让色块忽长忽短)。
- * 深色套不留白页:满版图页染了也基本看不见,但深色书里插一页纯白像漏印,故一律上底色。
+ * 第三套的逐页配色:封面/封尾用这本书的 colorway,内页按 seed 派的**确定性随机**序列
+ * 逐页刷(相邻不撞色)。此前是三组按出现顺序循环,规律太明显、色也太接近,换成随机。
+ * 深色套不留白页:满版图页染了也基本看不见,但书里插一页纯白像漏印,故一律上底色。
+ *
+ * seed 缺省 ⟺ 老书:本次改动之前成稿的第三套书,draft 里没有 design.interiorSeed,
+ * 而页面 html 里烘死的是老三色表。这种书追加页要走 legacyInteriorInkSequence ——
+ * 按新五色派色的话,新页会是淡黄或橙,插在一本深蓝/深墨绿的书里像另一本书的页。
  *
  * 追加照片那条路(job-service.mergeAppendLayoutPages)也要用它,所以导出:新页必须
- * 跟全书用同一套循环、同一个页序口径,自己另算一份迟早会算歪。
+ * 跟全书用同一个 seed、同一个页序口径,自己另算一份迟早会算歪。
  */
 export function darkInkByPageIndex(
   ordered: Page[],
   colorway: CoverColorway,
+  interiorSeed?: string,
 ): Map<number, DarkInkForPage> {
+  const interiorCount = ordered.filter(
+    (page) => templateCategory(page.templateId) === 'interior',
+  ).length;
+  // 一次性派满全书内页 —— 两条路都保证前缀稳定(新书靠 interiorInkSequence 的逐项
+  // 纯函数,老书靠 i % 3),所以追加页把长度撑长之后,前面已成书那些页拿到的还是
+  // 原来那个色。
+  const sequence = interiorSeed
+    ? interiorInkSequence(interiorSeed, interiorCount)
+    : legacyInteriorInkSequence(interiorCount);
   const out = new Map<number, DarkInkForPage>();
   let i = 0;
   for (const page of ordered) {
     if (templateCategory(page.templateId) === 'interior') {
-      const ink = THIRD_SET_INTERIOR[i % THIRD_SET_INTERIOR.length]!;
-      // 内页:accent 给 title/decoration,body 给 body/explain(THIRD_SET_INTERIOR 的契约)。
+      const ink = sequence[i]!;
+      // 内页:accent 给 title/decoration,body 给 body/explain(THIRD_SET_INTERIOR 的契约;
+      // 两色字方案下这两个值相等,但键的语义不变,别合并)。
       out.set(page.pageIndex, {
         bg: ink.bg,
         title: ink.accent,
@@ -463,7 +483,11 @@ export function darkInkByPageIndex(
       });
       i += 1;
     } else {
-      // 封面/封尾:用 colorway,让整本书首尾同色收口。decoration 走 sub 而不是 title ——
+      // 封面/目录/封尾:用 colorway,整本书三张同色收口(小雨拍板 2026-08-28)。
+      // 目录页(toc)走的就是这一支 —— 注意成稿时 mergeComposeIntoDraft 会按
+      // category==='interior' 过滤内页、只重拼 [封面,...内页,封尾],目录页当场被丢掉,
+      // 所以线上成品书目前根本没有目录页。这一支对它是「等目录页修回来就自动生效」。
+      // decoration 走 sub 而不是 title ——
       // CoverColorway 的契约写着 sub 是「副标题 / 竖排系列名 / 底部署名」色,mag-62 的
       // label/label2/label3 三个 decoration 槽正是这三样东西,跟标题变粉就不是设计稿了。
       out.set(page.pageIndex, {

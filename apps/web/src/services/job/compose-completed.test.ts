@@ -8,6 +8,7 @@ import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '../../db/repos/
 import { jobService, mergeComposeIntoDraft, readComposeMeta, type ComposeJobMeta } from './job-service';
 import { buildComposeRequest } from '../album/album-service';
 import type { Page } from '@yujee/contracts';
+import { interiorInkSequence, legacyInteriorInkSequence } from '@/lib/design/third-set-palette';
 
 // ④ 一次性成稿(/v3/compose)回调落地。四条硬约束:
 //   ① pagesTexts 逐槽覆盖到对应页的 texts,不整页替换(模型没写的槽保留模板 sample);
@@ -168,6 +169,13 @@ test('readComposeMeta:坏形状 → null(回调侧据此判失败,不会拿空�
   assert.equal(readComposeMeta({ appendChapterIds: ['c1'] }), null);
   assert.equal(readComposeMeta({ compose: { coverTemplateId: COVER_ID } }), null);
   assert.deepEqual(readComposeMeta({ compose: { ...META } }), META);
+  // interiorSeed 也必须能从 DB 往返里读回来(评审 H2b):真账号那条路是
+  // applyDesign → agent_jobs.meta 落库 → 回调侧 readComposeMeta 读回。漏了这一段,
+  // 种子静默丢失、全平台内页配色回落成老三色表,而其余测试一条都不会红。
+  assert.deepEqual(
+    readComposeMeta({ compose: { ...META, interiorSeed: 'album-xyz' } }),
+    { ...META, interiorSeed: 'album-xyz' },
+  );
   // coverColorway 是真实账号那条路唯一会丢字段的跳(job.meta 落库为 JSON,回调侧靠
   // readComposeMeta 逐字段读回;占位书直接用内存对象,不经过这个函数)。META 本身不带
   // 这个字段(全文件其余用例都复用 META,加上会让它们意外都走深色渲染),所以只在这一
@@ -312,14 +320,33 @@ test('mergeComposeIntoDraft: meta 带 coverColorway 时内页走深色配色', (
     { ...META, coverTemplateId: 'mag-62', coverColorway: 'teal' } as ComposeJobMeta,
     {},
   );
-  // 页序 [封面, ...内页, 封尾];第一张内页拿 THIRD_SET_INTERIOR[0]。
-  // 注意:内页墨色按**页序**在 THIRD_SET_INTERIOR 三组里轮换,与选了哪个 colorway 无关 ——
-  // 传 cream/pink/navy 这条断言照样是 #0E2A47,所以它不能证明「teal 这个 id 真的被查到
-  // 并用上了」,只能证明「dark 模式被打开了」。真正认 id 的是封面:封面/封尾直接吃
-  // colorway 自己的 bg(THIRD_SET_COVERS 里 teal 是 #12363A,与内页轮换色表不共享任何
-  // 一个值),下面这条才钉住「传进去的 id 真的被用了」。
-  assert.match(draftJson.pages[1]!.html!, /background-color:\s*#0E2A47/i);
+  // 页序 [封面, ...内页, 封尾]。这条 meta 没带 interiorSeed(模拟本次改动之前派发的
+  // job),按老书处理 —— 第一张内页是老三色表的第 1 格。
+  const first = legacyInteriorInkSequence(1)[0]!;
+  assert.match(draftJson.pages[1]!.html!, new RegExp(`background-color:\\s*${first.bg}`, 'i'));
+  // 封面/封尾直接吃 colorway 自己的 bg(THIRD_SET_COVERS 里 teal 是 #12363A,与内页
+  // 五色表不共享任何一个值),这条才钉住「传进去的 id 真的被用了」。
   assert.match(draftJson.pages[0]!.html!, /background-color:\s*#12363A/i);
+});
+
+test('mergeComposeIntoDraft: meta 带 interiorSeed 时内页按它派色,并写进设计契约', () => {
+  const build = (interiorSeed?: string) =>
+    mergeComposeIntoDraft(
+      draft(),
+      { ...META, coverTemplateId: 'mag-62', coverColorway: 'teal', ...(interiorSeed ? { interiorSeed } : {}) } as ComposeJobMeta,
+      {},
+    ).draftJson;
+
+  const seeded = build('album-zzz');
+  assert.equal(seeded.design.interiorSeed, 'album-zzz', '种子必须留痕,否则追加页会重新随机');
+  const expected = interiorInkSequence('album-zzz', 1)[0]!;
+  assert.match(seeded.pages[1]!.html!, new RegExp(`background-color:\\s*${expected.bg}`, 'i'));
+
+  // 换一本书(换种子)内页颜色跟着换 —— 种子没被用上的话这两条会相等。
+  const other = build('album-yyy');
+  const bgOf = (d: { pages: { html?: string }[] }) =>
+    d.pages.slice(1, -1).map((p) => /background-color:\s*(#[0-9a-fA-F]{6})/i.exec(p.html!)?.[1]).join(',');
+  assert.notEqual(bgOf(seeded), bgOf(other));
 });
 
 test('mergeComposeIntoDraft: 不带 coverColorway 时不写深色底(老书行为不变)', () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { coverPreviewBackground, coverRecapFromPages } from './cover-recap';
-import { THIRD_SET_COVERS } from '@/lib/design/third-set-palette';
+import { coverColorwayById } from '@/lib/design/third-set-palette';
 
 // 对比度(与 third-set-palette.test.ts 同一套算法):这里要证明的不是「值等于某个
 // 常量」,而是「用错底色的话封面预览真的看不见」。
@@ -22,13 +22,13 @@ function contrast(a: string, b: string): number {
 // ── coverPreviewBackground(评审 F3) ────────────────────────────────────────
 
 test('第三套:预览底色用 colorway 自己的底色,不是那套的书页底色', () => {
-  const teal = THIRD_SET_COVERS.find((c) => c.id === 'teal')!;
+  const teal = coverColorwayById('teal')!;  // 老书仍在用的配色,必须还查得到
   const bg = coverPreviewBackground({ pageBackground: '#F1F2F0', coverColorway: 'teal' });
   assert.equal(bg, teal.bg);
 });
 
 test('第三套用书页底色渲染 = 粉标题和米白小字双双看不见(这条修的就是它)', () => {
-  const teal = THIRD_SET_COVERS.find((c) => c.id === 'teal')!;
+  const teal = coverColorwayById('teal')!;  // 老书仍在用的配色,必须还查得到
   // 错的那条路:近白的 #F1F2F0 盖在 mag-62 深页根上。
   assert.ok(contrast(teal.title, '#F1F2F0') < 2, '粉标题压在近白上不足 2:1');
   assert.ok(contrast(teal.sub, '#F1F2F0') < 1.2, '米白小字压在近白上几乎为 1:1');

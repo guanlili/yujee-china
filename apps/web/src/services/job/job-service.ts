@@ -114,7 +114,9 @@ export function mergeAppendLayoutPages(
   const insertAt = appendInsertAt(existingPages);
   const merged = insertAppendPages(existingPages, incoming);
   const appendedEnd = insertAt + incoming.length;
-  const inkByIndex = colorway ? darkInkByPageIndex(merged, colorway) : null;
+  const inkByIndex = colorway
+    ? darkInkByPageIndex(merged, colorway, parsed.data.design?.interiorSeed)
+    : null;
 
   // 只重刷新页(carrier + 重烘 + 页面外观),老页一个字节不动。
   let appended = merged.slice(insertAt, appendedEnd);
@@ -161,6 +163,8 @@ export type ComposeJobMeta = {
   // 第三套(深色椭圆)选中的配色 id;派发时可选,合法性已在 applyDesign/
   // applyPlaceholderDesign 校验过,这里直接信。
   coverColorway?: string;
+  // 第三套内页随机配色的种子(albumId)。派发时写,回调时读回,再落进 draft.design。
+  interiorSeed?: string;
 };
 
 export function readComposeMeta(meta: unknown): ComposeJobMeta | null {
@@ -191,6 +195,11 @@ export function readComposeMeta(meta: unknown): ComposeJobMeta | null {
     // 不经过这个函数,不受影响,但真书永远看不到深色套。
     ...(typeof value.coverColorway === 'string' && value.coverColorway
       ? { coverColorway: value.coverColorway }
+      : {}),
+    // 与 coverColorway 同一条 DB 往返:漏读这一段,种子就在 agent_jobs.meta 里丢掉,
+    // 内页配色会回落到 colorway.id —— 同一个配色的书全都长一个样。
+    ...(typeof value.interiorSeed === 'string' && value.interiorSeed
+      ? { interiorSeed: value.interiorSeed }
       : {}),
   };
 }
@@ -293,6 +302,7 @@ export function mergeComposeIntoDraft(
     extraEndingPhotoIds: meta.extraEndingPhotoIds,
     ...(meta.pageBackground ? { pageBackground: meta.pageBackground } : {}),
     ...(colorway ? { colorway } : {}),
+    ...(meta.interiorSeed ? { interiorSeed: meta.interiorSeed } : {}),
   });
 
   // 选定封面 = 故事环节收官:把现存章节全部记 done(与旧同步实现一致)。
@@ -313,6 +323,8 @@ export function mergeComposeIntoDraft(
         // carrier 反推会推到封面的浅字色 + 模板默认白底,新页一片空白)。
         // 只写查得到的 id(colorway 已过 coverColorwayById),脏值不进契约。
         coverColorway: colorway?.id,
+        // 内页随机配色的种子:不留痕的话追加照片会重新随机,新页与老页两套色。
+        interiorSeed: meta.interiorSeed,
       },
       progress: { currentChapterId: null, doneChapterIds },
     },
@@ -337,7 +349,9 @@ export function mergeAppendComposeTexts(
   // 重烘 = 页根回到模板默认白。追加成稿紧跟在追加排版后面跑,不在这里把页面外观
   // (深色书的 chrome / 单色书页底)重刷一遍,上一步刚刷好的新页会立刻被洗回白底。
   const colorway = coverColorwayById(parsed.data.design?.coverColorway);
-  const inkByIndex = colorway ? darkInkByPageIndex(merged, colorway) : null;
+  const inkByIndex = colorway
+    ? darkInkByPageIndex(merged, colorway, parsed.data.design?.interiorSeed)
+    : null;
   baked = inkByIndex
     ? applyDarkChrome(baked, inkByIndex)
     : applyPageBackground(baked, parsed.data.design?.pageBackground);
