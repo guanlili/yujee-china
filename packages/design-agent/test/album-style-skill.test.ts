@@ -65,3 +65,31 @@ test('system prompt 把风格级不满分流到风格理解技能', () => {
   // 单页那条不能被顺手删掉 —— 它管的是另一半场景
   assert.match(prompt, /这页不好看/);
 });
+
+/**
+ * “太花/太吵”原先挤在同一行、指向两个风格（素白散文 或 杂志刊头），模型只能抛硬币。
+ * 评审要求拆成两条各自唯一的判据：颜色太多/太花 → 素白散文；太吵/太跳/太闹(信息密度太满) → 杂志刊头。
+ * 文件版与内置兜底版（skills.ts）都要同步，两份给出的判断不能不一致。
+ */
+function assertUnambiguousNoisyMapping(body: string) {
+  const lines = body.split('\n');
+  const messyLine = lines.find((l) => l.includes('颜色太多') || l.includes('太花'));
+  assert.ok(messyLine, '找不到「太花/颜色太多」这一行');
+  assert.ok(messyLine!.includes('素白散文'), '「太花/颜色太多」应唯一指向素白散文');
+  assert.ok(!messyLine!.includes('杂志刊头'), '「太花/颜色太多」这一行不该再兼指杂志刊头');
+
+  const noisyLine = lines.find((l) => l.includes('太吵'));
+  assert.ok(noisyLine, '找不到「太吵」这一行');
+  assert.ok(noisyLine!.includes('杂志刊头'), '「太吵」应唯一指向杂志刊头');
+  assert.ok(!noisyLine!.includes('素白散文'), '「太吵」这一行不该再兼指素白散文');
+}
+
+test('映射表消歧：太花/颜色太多唯一指向素白散文，太吵/太跳/太闹唯一指向杂志刊头（文件版）', () => {
+  const body = stripFences(loadAlbumSkills().find((s) => s.name === '风格理解')!.content);
+  assertUnambiguousNoisyMapping(body);
+});
+
+test('映射表消歧：内置兜底版本与文件版判断一致，不能各说各话', () => {
+  const body = createDefaultAlbumSkills().find((s) => s.name === '风格理解')!.content;
+  assertUnambiguousNoisyMapping(body);
+});

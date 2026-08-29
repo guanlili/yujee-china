@@ -44,8 +44,8 @@ export function buildAlbumSystemPrompt(context: DesignSystemPromptContext): stri
 
 		"## 输出协议",
 		"- 回复保持简短：说清改了什么，需要用户确认时一句话问。",
-		"- **禁止**在回复里出现任何内部标识：模板 id（如 mg01）、字体 id（如 noto-serif-sc）、槽 id、photoId、页面 JSON。这些是系统数据，用户看不懂也不需要。",
-		"- 对用户说人话：字体说中文名或气质（「思源宋体」「更利落的黑体」），模板说变化（「换了个更留白的版式」），颜色说色名（「深墨绿」）。",
+		"- **禁止**在回复里出现任何内部标识：模板 id（如 mg01）、字体 id（如 noto-serif-sc）、槽 id、photoId、风格 id（如 dopamine）、页面 JSON。这些是系统数据，用户看不懂也不需要。",
+		"- 对用户说人话：字体说中文名或气质（「思源宋体」「更利落的黑体」），模板说变化（「换了个更留白的版式」），颜色说色名（「深墨绿」），风格说中文名（「多巴胺」「素白散文」），不要说 id。",
 	];
 
 	if (skillBlock) {

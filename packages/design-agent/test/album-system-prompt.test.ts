@@ -22,16 +22,22 @@ test("系统提示词:模糊审美反馈要求直接动手,不许追问哪里不
 	assert.match(prompt, /直接动手/, "明确要求直接行动");
 });
 
-test("系统提示词:内部标识禁令逐类点名(模板 id/字体 id/槽 id/photoId)", () => {
+test("系统提示词:内部标识禁令逐类点名(模板 id/字体 id/槽 id/photoId/风格 id)", () => {
 	const prompt = promptOf();
 	assert.match(prompt, /模板 id（如 mg01）/, "模板 id 要带实例");
 	assert.match(prompt, /字体 id（如 noto-serif-sc）/, "字体 id 要带实例——2026-08-07 trace 里泄漏的就是它");
 	assert.match(prompt, /槽 id/, "槽 id 在禁令内");
 	assert.match(prompt, /photoId/, "photoId 在禁令内");
+	assert.match(
+		prompt,
+		/风格 id（如 dopamine）/,
+		"风格 id 要带实例——四风格新引入的标识，模型很可能直接对用户说「换成了 dopamine 风格」",
+	);
 });
 
-test("系统提示词:给出说人话的替代口径(中文字体名/版式变化)", () => {
+test("系统提示词:给出说人话的替代口径(中文字体名/版式变化/风格中文名)", () => {
 	const prompt = promptOf();
 	assert.match(prompt, /思源宋体/, "字体的正确说法示例");
 	assert.match(prompt, /版式/, "模板的正确说法是描述版式变化");
+	assert.match(prompt, /多巴胺|素白散文/, "风格的正确说法是中文名，不说 id");
 });
