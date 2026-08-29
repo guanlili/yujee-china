@@ -578,6 +578,23 @@ function createWritePageHtmlTool(
 	};
 }
 
+/**
+ * 模板自带的深色页底。换到这些模板上，文字 carrier 必须跟着翻成浅字 ——
+ * 不翻的话 mag-62 上是 #1c1b18 配 #12363A，约 1.3:1，整页读不了
+ * (design-apply.ts:249 那条注释点名至今没修的坑)。
+ * 值取自 render/html-templates/<id>.ts 的页根 style，改模板底色要同步改这里。
+ */
+const TEMPLATE_OWN_BACKGROUND: Record<string, string> = {
+	"mag-62": "#12363A",
+	"mag-63": "#12363A",
+	p01: "#1C1B18",
+};
+
+/** 一页的实际底色：页级 carrier 优先，其次模板自带深底，最后模板默认白。 */
+function effectivePageBackground(page: AlbumPage): string {
+	return page.texts[PAGE_BACKGROUND_CARRIER_KEY] ?? TEMPLATE_OWN_BACKGROUND[page.templateId] ?? "#FFFFFF";
+}
+
 function createSwapPageTemplateTool(
 	options: AlbumToolsOptions,
 ): AgentTool<typeof swapPageTemplateSchema, AlbumWriteDetails> {
@@ -620,6 +637,16 @@ function createSwapPageTemplateTool(
 
 			const notes: string[] = [];
 			const nextPage = migratePageToTemplate(page, nextTemplate, notes);
+			// 换模板可能换掉了页底色（深底模板自带深底）——字色必须跟着翻，否则留下读不了的页。
+			const beforeInk = bestInkFor(effectivePageBackground(page));
+			const afterInk = bestInkFor(effectivePageBackground(nextPage));
+			if (beforeInk !== afterInk) {
+				const nextTemplateEntry = requireTemplate(options.catalog, nextPage.templateId);
+				for (const slotId of collectThemeableSlots(nextPage, nextTemplateEntry)) {
+					nextPage.texts[`${slotId}#accentColor`] = afterInk;
+				}
+				notes.push(`底色明暗变了，文字色跟着翻成${afterInk === THIRD_SET_INK.light ? "浅字" : "深字"}`);
+			}
 			// 结构性操作:从新模板重新生成页面 HTML,旧页(含手工版面改动)整体重置。
 			nextPage.html = undefined;
 			nextPage.html = bakeAlbumPageHtml(nextPage);
