@@ -23,10 +23,28 @@ Web 侧客户端:`apps/web/src/lib/agent/design-agent-client.ts`。
 | `POST /api/chat` | 一轮对话;`?stream=1` 走 NDJSON 事件流 |
 | `GET /api/albums` · `/api/traces` · `/api/state` | 调试/观测 |
 
-## 八个写工具
+## 十个写工具
 
 `update_page_texts` · `write_page_html` · `swap_page_template` · `update_page_images` ·
-`set_text_colors` · `set_text_fonts` · `move_pages` · `delete_page`
+`set_text_colors` · `set_page_background` · `apply_book_style` · `set_text_fonts` ·
+`move_pages` · `delete_page`
+
+`set_text_colors` 带对比度硬校验(2026-08-29):三色配到该页**实际底色**上(取
+carrier → 模板自带深底 → 白底默认的优先级,即 `effectivePageBackground`)任何一色
+低于 4.5:1 就打回,报错点名哪几页、实测比值。AI 看不见渲染结果,不拦的话用户拿到
+的是一整页读不了的书;`swap_page_template` 换模板跨过明暗边界(浅底↔深底,如换到
+mag-62)时会自动把该页文字 carrier 翻成对应的深字/浅字,不翻的话新底色配旧字色会
+读不了(mag-62 实测约 1.3:1)。
+
+`set_page_background`(2026-08-29 新增)刷单页或全书底色:颜色只能从当前风格的
+调色板里挑(传错会打回并列出可选值,不接受自由 hex —— 会超四色印刷色域、对比度也
+守不住),该页文字色按深底浅字/浅底深字自动跟着翻。只改某几页用它;整本换气质用
+`apply_book_style`。
+
+`apply_book_style`(2026-08-29 新增)整本换气质:换封面/封底版式 + 刷全书页底色和
+三个文字色(四个风格 = editorial 素白散文 / magazine 杂志刊头 / dopamine 多巴胺 /
+postcard 旅行画报,定义见 `packages/contracts/src/design/book-styles.ts`)。换版式会
+重排封面/封尾文案,迁不过去的槽会清空,回复里必须提醒用户,动手前先确认。
 
 `move_pages` 挪动页面:批量 move(插入)/swap(对调)重排页序,只动内页
 (封面/目录/封尾钉死),单纯挪位置不改任何页内容(纯逻辑在 `page-move.ts`)。
@@ -35,13 +53,27 @@ Web 侧客户端:`apps/web/src/lib/agent/design-agent-client.ts`。
 只删内页,照片随页移除不回流,拒删到内页数为 0。与 move_pages 同口径只动数组、
 不改余页 pageIndex —— 落库行序由 Web 侧 `persistDesignChat` 按数组位置重编号。
 
-新增写工具时,**必须同步** `design-chat/route.ts` 里的 `DESIGN_WRITE_TOOLS` 集合,
-否则该工具的改动不会进 `layout_patch.designOps`,历史回放里会丢更新、彩色条少报。
-(`set_text_fonts` / `write_page_html` 就漏过一次。)
+新增写工具时,**必须同步** `design-chat/route.ts` 里的 `DESIGN_WRITE_TOOLS` 集合、
+`apps/web/src/components/album/editor-v2/chat-history.ts` 的 `DESIGN_CHANGE_CATEGORY`
+映射,否则该工具的改动不会进 `layout_patch.designOps`,或进了但撞不出类别 ——
+历史回放里会丢更新、少一类彩色条。(`set_text_fonts` / `write_page_html` 就漏过一次
+前者;`set_page_background` / `apply_book_style` 落地时两处都是跟工具本身同批补的。)
 
 另有 `write_todos`:复诵式长任务计划工具(参考 deepagents TodoListMiddleware,设计:
 `docs/specs/2026-08-05-write-todos-design.md`)。整表覆盖、服务端无状态、纯 no-op
 不动书 —— 它**不是写工具,不进** `DESIGN_WRITE_TOOLS`,与 read_page 同类。
+
+## 六个技能
+
+`read_skill` 按名字取一份技能说明书的**全文**(不是工具描述里那句摘要)。技能定义
+只住在 `src/core/album/skills.ts` 一处 —— 这里不重复抄内容,只记名字和数量,
+避免说明书抄成两份、抄着抄着就漂了(与上面写工具/类别映射同一条纪律)。
+
+`页面HTML编辑` · `相册文案` · `相册排版` · `相册配色` · `相册字体` · `风格理解`
+
+`风格理解`(2026-08-29 新增,技能从五个变六个)是用户对**整本书**观感不满或提气质
+诉求时用的(「太素/太花/不够活泼/想文艺点/换个感觉」),负责判断该换哪个风格,
+对应的写工具是 `apply_book_style`。
 
 ## 部署:必须单机
 
@@ -97,5 +129,5 @@ print/RPC/interactive 三种模式。**通用 agent loop 在 `packages/agent`**,
 
 <!-- doc-scope
 paths: packages/design-agent/src/**, packages/design-agent/fly.toml, apps/web/src/lib/agent/design-agent-client.ts
-checked-at: 2d3a2b43
+checked-at: e8217ce9
 -->

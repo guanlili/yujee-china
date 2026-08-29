@@ -58,5 +58,5 @@ session 消息跨轮保留，用户说「继续」时计划自然还在。`detai
 
 <!-- doc-scope
 paths: packages/design-agent/src/core/album/tools.ts, packages/design-agent/src/core/album/system-prompt.ts
-checked-at: 2d3a2b43
+checked-at: e8217ce9
 -->
