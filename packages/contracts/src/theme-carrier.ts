@@ -29,6 +29,14 @@ export const THEME_ACCENT_CARRIER_SUFFIX = '#accentColor';
 export const THEME_FONT_CARRIER_SUFFIX = '#artFont';
 
 /**
+ * 页级 carrier 键:页底色落 `texts['#pageBackground']`。
+ *
+ * 与 ①②(槽级 sibling carrier)不同,这是**页级**键 —— 没有 slotId 前缀,整页一个值。
+ * 零碰撞同样成立:真实 slotId 不含 `#`,而这个键以 `#` 起头。
+ */
+export const PAGE_BACKGROUND_CARRIER_KEY = '#pageBackground';
+
+/**
  * 文字槽 role 中「持用户散文」的子集 —— 其 `texts[slotId]` 内容**绝不被主题色覆盖**;
  * 主题改走 sibling carrier(约定 ②)。`decoration` text 槽同样保留自身内容/空值,
  * 主题只走 sibling carrier;只有 SVG variableDecor 槽走「值即色」(约定 ①)。

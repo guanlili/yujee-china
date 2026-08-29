@@ -15,8 +15,10 @@ import { getTemplate } from '../templates';
 import type { ResolveImage } from './adapt-layout';
 import { fitDisplayFontSize } from './constants';
 import { resolveThemeCarrier, type AlbumTextRole } from './theme-carrier';
+import { PAGE_BACKGROUND_CARRIER_KEY } from '../theme-carrier';
 import type { ImagePos, TemplateData } from './types';
 import { getHtmlTemplate } from './html-templates/registry';
+import { applyPageBackground } from './page-background';
 
 export interface FillablePage {
   templateId: string;
@@ -106,7 +108,12 @@ export function fillTemplateHtml(templateHtml: string, page: FillablePage, resol
 export function renderPageHtml(page: FillablePage, resolveImage: ResolveImage): string | undefined {
   const tpl = getHtmlTemplate(page.templateId);
   if (!tpl) return undefined;
-  return fillTemplateHtml(tpl, page, resolveImage);
+  // 页底色是页级 carrier，不走 token 替换（模板里没有对应 token，53 个模板不可能挨个加）——
+  // 填充完成后统一注入页根 style 末尾。无该键时 applyPageBackground 原样返回，老书零影响。
+  return applyPageBackground(
+    fillTemplateHtml(tpl, page, resolveImage),
+    page.texts[PAGE_BACKGROUND_CARRIER_KEY],
+  );
 }
 
 function stringOf(value: TemplateData[string]): string {

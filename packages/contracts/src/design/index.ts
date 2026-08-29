@@ -4,3 +4,4 @@ export * from './third-set-palette';
 export * from './page-backgrounds';
 export * from './contrast';
 export * from './book-styles';
+export { PAGE_BACKGROUND_CARRIER_KEY } from '../theme-carrier';
