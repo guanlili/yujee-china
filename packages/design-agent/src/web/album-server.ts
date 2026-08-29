@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { InMemorySessionRepo } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import type { AssistantMessage, ToolCall } from "@earendil-works/pi-ai";
+import { bookStyleOf } from "@yujee/contracts/design";
 import {
 	formatPageUserRef,
 	pageUserRefs,
@@ -398,21 +399,22 @@ export function composeChatTurn(
 	// 用户口径称呼(封面/目录/封尾/第 N 页):由调用方按书状态+模板类目换算;
 	// 缺省时退化为自然页序(仅测试/异常兜底)。
 	currentPageLabel?: string,
+	// 当前书级风格的中文名(从封面模板反推,见 bookStyleOf)。放最后且可选,老调用零影响。
+	styleName?: string,
 ): string {
 	const parts: string[] = [];
-	// 书级设计简报:AI 的全局语境(主题/配色主题/封面氛围)。chapter 概念不进上下文。
-	if (brief && (brief.theme || brief.palette || brief.coverMood)) {
-		const briefBits: string[] = [];
-		if (brief.theme) briefBits.push(`主题:${brief.theme}`);
-		if (brief.palette?.colors) {
-			briefBits.push(`配色:${Object.entries(brief.palette.colors).map(([k, v]) => `${k}=${v}`).join(" ")}`);
-		}
-		if (brief.palette?.fonts) {
-			briefBits.push(`字体:${Object.entries(brief.palette.fonts).map(([k, v]) => `${k}=${v}`).join(" ")}`);
-		}
-		if (brief.coverMood) briefBits.push(`封面氛围:${brief.coverMood}`);
-		parts.push(`【设计简报】${briefBits.join(";")}`);
+	// 书级设计简报:AI 的全局语境(当前风格/主题/配色主题/封面氛围)。chapter 概念不进上下文。
+	const briefBits: string[] = [];
+	if (styleName) briefBits.push(`当前风格:${styleName}`);
+	if (brief?.theme) briefBits.push(`主题:${brief.theme}`);
+	if (brief?.palette?.colors) {
+		briefBits.push(`配色:${Object.entries(brief.palette.colors).map(([k, v]) => `${k}=${v}`).join(" ")}`);
 	}
+	if (brief?.palette?.fonts) {
+		briefBits.push(`字体:${Object.entries(brief.palette.fonts).map(([k, v]) => `${k}=${v}`).join(" ")}`);
+	}
+	if (brief?.coverMood) briefBits.push(`封面氛围:${brief.coverMood}`);
+	if (briefBits.length > 0) parts.push(`【设计简报】${briefBits.join(";")}`);
 	if (currentPageIndex != null) {
 		const label = currentPageLabel ?? `第 ${currentPageIndex + 1} 页`;
 		parts.push(
@@ -457,7 +459,17 @@ async function runAlbumChat(
 		const currentPageLabel =
 			currentPageIndex != null ? currentPageLabelFor(bookBefore, runtime.catalog, currentPageIndex) : undefined;
 		const assistantMessage = await runtime.session.prompt(
-			composeChatTurn(message, currentPageIndex, runtime.getBook().brief, currentPageLabel),
+			composeChatTurn(
+				message,
+				currentPageIndex,
+				runtime.getBook().brief,
+				currentPageLabel,
+				bookStyleOf(
+					runtime
+						.getBook()
+						.pages.find((p) => runtime.catalog.get(p.templateId)?.category === "cover")?.templateId,
+				).name,
+			),
 		);
 		runtime.traces.recordAssistantMessage(trace.id, assistantMessage);
 		const assistantText = extractAssistantText(assistantMessage);
