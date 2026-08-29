@@ -124,6 +124,7 @@ import {
   type DraftSkeleton,
 } from '@/lib/album/authoring-client';
 import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
+import { coverOptionImages } from './cover-option-slots';
 import { ChatPanel, type ChatMode } from './ChatPanel';
 import { FilterBar } from './FilterBar';
 import {
@@ -5168,11 +5169,6 @@ function EditorBook({
     function templateIdsByCategory(category: 'cover' | 'ending'): string[] {
       return TEMPLATE_IDS.filter((id) => getTemplate(id)?.category === category);
     }
-    // The hero image-slot id of a template (its first declared image slot), or 'image'.
-    function heroSlotId(templateId: string): string {
-      const slots = getTemplate(templateId)?.images ?? [];
-      return slots[0]?.id ?? 'image';
-    }
     // Render a {template, photo} choice through its real web template into the .cv-opt box.
     // boxW/boxH 可选:设计选择卡的封面+封底并排小预览用更小的盒(默认保持 132×176)。
     function coverOptionHTML(
@@ -5186,7 +5182,9 @@ function EditorBook({
       const page: EditorPage = {
         pageIndex: 0,
         templateId,
-        imagesJson: photoId ? { [heroSlotId(templateId)]: photoId } : {},
+        // 填满模板的**所有**图槽,不是只填第一个 —— mag-22 封底有 image1/image2 两个槽,
+        // 只填 hero 会让第 1/2/4 套的封底预览一直缺一张图。口径见 cover-option-slots.ts。
+        imagesJson: coverOptionImages(templateId, photoId),
         // 选择卡传空(那时还没文案,渲模板 sample 是对的);回执卡传真页 textsJson。
         textsJson: texts ?? {},
       };

@@ -1543,9 +1543,13 @@
 /* 封面/封底成对小预览:真模板缩放渲染 + 左下角小标签 */
 .editor-port .cv-face{
   position:relative; display:block; width:92px; height:122px;
-  border-radius:8px; overflow:hidden; background:var(--bg);
+  border-radius:12px; overflow:hidden; background:var(--bg);
   box-shadow:0 0 0 1px var(--border-soft) inset;
 }
+/* 内层是 pageFaceHTML 那个带 background 的定宽盒(里面还有个 transform 缩放的页面)。
+   外层 overflow:hidden 本身能裁出圆角,但 transform 子元素在部分浏览器里会让裁切失效,
+   表现就是缩略图四角变方。让内层自己也圆一次,哪条路都兜得住。 */
+.editor-port .cv-face > div{ border-radius:inherit; }
 .editor-port .cv-face-tag{
   position:absolute; left:4px; bottom:4px; font-style:normal;
   font-size:9px; font-weight:600; line-height:1; color:var(--fg-2);
