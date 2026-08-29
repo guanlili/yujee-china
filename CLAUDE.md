@@ -57,10 +57,13 @@ Postgres + Cloudflare R2
 - **必须单机运行。** 每册的 session/trace/书状态在进程内存里,Web 每轮先 `POST /api/book`
   再 `POST /api/chat`,两个请求必须命中同一台机器。`fly scale count 1`,不要开 HA,
   不要 `auto_stop_machines`。理由和部署命令写在 `packages/design-agent/fly.toml` 注释里。
-- 八个写工具:`update_page_texts` / `write_page_html` / `swap_page_template` /
-  `update_page_images` / `set_text_colors` / `set_text_fonts` / `move_pages` /
-  `delete_page`。新增写工具时,
-  `design-chat/route.ts` 的 `DESIGN_WRITE_TOOLS` 集合必须同步,否则历史回放会丢更新。
+- 十个写工具:`update_page_texts` / `write_page_html` / `swap_page_template` /
+  `update_page_images` / `set_text_colors` / `set_page_background` / `apply_book_style` /
+  `set_text_fonts` / `move_pages` / `delete_page`(后两个是 2026-08-29 风格理解那批加的:
+  前者逐页/全书刷底色,后者整本换四风格之一)。新增写工具时,
+  `design-chat/route.ts` 的 `DESIGN_WRITE_TOOLS` 集合、
+  `editor-v2/chat-history.ts` 的 `DESIGN_CHANGE_CATEGORY` 映射都必须同步,
+  否则历史回放会丢更新/少一类彩色条。
 
 ### 页面真相
 
@@ -131,5 +134,5 @@ Postgres + Cloudflare R2
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: ed9a25e6
+checked-at: 212d389a
 -->
