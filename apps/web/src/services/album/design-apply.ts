@@ -9,8 +9,12 @@ import type { Page } from '@yujee/contracts';
 import { bakePagesHtml } from './bake-html';
 import { patchHtmlPageStyle } from '@/components/album/page-html-dom';
 import { PAGE_BACKGROUNDS, isDefaultPageBackground } from '@/lib/design/page-backgrounds';
+import { bestInkFor } from '@yujee/contracts/design';
 import {
   THIRD_SET_COVER_TEMPLATE_ID,
+  THIRD_SET_COVERS,
+  bookStyleSeed,
+  coverColorwayById,
   interiorInkSequence,
   legacyInteriorInkSequence,
   coverColorwayForAlbum,
@@ -550,10 +554,126 @@ export function applyDarkChrome(
 // 导出给追加路径:重烘会把页根打回模板默认白,不重刷一遍新页就跟全书不同底。
 export function applyPageBackground(pages: Page[], bg?: string): Page[] {
   if (!bg || isDefaultPageBackground(bg)) return pages;
+  // 底色和页根字色成对写 —— 与 applyDarkChrome 同一个理由(不翻的话非 carrier 的静态
+  // 装饰黑压黑看不见),也与 carrier 那条路(contracts/render/page-background)同一口径。
+  // 2026-08-29 最终评审 Critical 1 之后这一条从「锦上添花」变成必需:对账之前
+  // design.pageBackground 只可能是 PAGE_BACKGROUNDS 那四个白,只写底色没事;对账之后
+  // 它能落到全书**实际**的那个底色,包括多巴胺的深蓝/深绿/深橙 —— 那时只写底色不写
+  // 字色,追加的新页就是深底压模板默认的近黑字(实测 #2D6DB0 配 #1c1b18 只有 3.22:1)。
+  const ink = bestInkFor(bg);
   return pages.map((page) => {
     if (typeof page.html !== 'string') return page;
-    const patched = patchHtmlPageStyle(page.html, { 'background-color': bg });
+    const patched = patchHtmlPageStyle(page.html, { 'background-color': bg, color: ink });
     if (!patched) return page;
     return { ...page, html: patched, texts: { ...page.texts, [PAGE_BACKGROUND_CARRIER_KEY]: bg } };
   });
+}
+
+// ───────────── draft.design 与页面真相的对账(2026-08-29 最终评审 Critical 1) ─────────────
+//
+// 病根:设计 Agent 的 apply_book_style 整本换风格时**只改 pages**(页底色 carrier +
+// 文字 carrier + 重烘 html),而 persistDesignChat 落库时把 draft.design 原样搬回去。
+// 追加照片那条路(job-service.mergeAppendLayoutPages / mergeAppendComposeTexts)却是
+// 按 draft.design 的 coverColorway / interiorSeed / pageBackground 派新页颜色的 ——
+// 两边脱节,于是:多巴胺书刷成纯白后加照片,新页还是深红;浅底书刷成多巴胺后加照片,
+// 新页是模板默认白底配反提取来的浅字(评审实测 1.06:1,整页看不见)。
+//
+// 修法(评审给的 A 路):把「这本书现在是什么风格」这个事实收敛回 draft.design 这一处
+// 状态。走 B 路(追加时改读页面 carrier)会让 draft.design 变成没人信的死字段,而且
+// **多巴胺那套色是由 seed 派的序列,光看页面反推不出 seed**,新页无从续上。
+//
+// 为什么不按「有没有调用过 apply_book_style」来触发:ops 只在流式那条路(design-chat
+// route)收集,同步那条(designChatTurn)根本不传 ops —— 按 op 名开关会静默漏掉一半入口。
+// 这里改成**自证式对账**:
+//   ① 先问「现在的 design 还解释得了这些页吗」—— 用追加路径自己那个 darkInkByPageIndex
+//      算一遍,逐页比对页面上实际的 #pageBackground carrier。解释得了 ⇒ 原样返回
+//      (**返回同一个对象引用**,老书零改写)。这一步同时也就是判据本身:
+//      「追加照片会把新页画成什么样」== 「这本书现在实际长什么样」。
+//   ② 解释不了才治:先试多巴胺(种子只能是 apply_book_style 用的那个,见 bookStyleSeed),
+//      候选算出来的整本序列必须**逐页对得上**才采信;再试全书单色。
+//   ③ 两条都对不上 ⇒ 原样返回,不猜。宁可维持现状,也不写一个自己都验不过的状态。
+//
+// 这条自证结构顺带保证了最要命的那个安全性质:**成稿主路派的多巴胺书(种子是 albumId,
+// 不是封面首图)永远走不到 ② —— 因为它的 design 在 ① 就已经解释得通了。** 所以不会
+// 出现「把老书的种子悄悄换掉、老页的色序全歪」这种更糟的回归。
+
+/** draft.design 里与「这本书现在长什么样」有关的三个字段(其余字段原样透传)。 */
+export type DraftDesignAppearance = {
+  pageBackground?: string;
+  coverColorway?: string;
+  interiorSeed?: string;
+};
+
+const sameHex = (a: string | undefined, b: string | undefined): boolean =>
+  !!a && !!b && a.toUpperCase() === b.toUpperCase();
+
+/** 逐页读页面上实际的底色 carrier;有任何一页读不到就返回 null(说不清就不猜)。 */
+function observedBackgrounds(pages: Page[]): string[] | null {
+  if (pages.length === 0) return null;
+  const out: string[] = [];
+  for (const page of pages) {
+    const bg = page.texts[PAGE_BACKGROUND_CARRIER_KEY];
+    if (!bg) return null;
+    out.push(bg);
+  }
+  return out;
+}
+
+/**
+ * 这份 design 解释得了这些页吗 —— 「按它派色」与「页面上实际的底色」逐页相同?
+ * 刻意复用追加路径自己那个 darkInkByPageIndex:判据说的就是「追加照片画出来的新页
+ * 要和这本书当前实际外观一致」,所以对账必须用同一个派色函数,不能另写一套近似。
+ */
+function designExplainsPages(
+  appearance: DraftDesignAppearance,
+  pages: Page[],
+  observed: string[],
+): boolean {
+  const colorway = coverColorwayById(appearance.coverColorway);
+  if (colorway) {
+    const inkByIndex = darkInkByPageIndex(pages, colorway, appearance.interiorSeed);
+    return pages.every((page, i) => sameHex(inkByIndex.get(page.pageIndex)?.bg, observed[i]));
+  }
+  return observed.every((bg) => sameHex(bg, appearance.pageBackground));
+}
+
+/**
+ * 把 draft.design 的外观三件套对回页面真相。**解释得通就原样返回同一个对象**
+ * (调用方据此可知「什么都没变」);解释不通且能自证出新状态才改写。
+ */
+export function reconcileDraftDesign<T extends DraftDesignAppearance>(
+  design: T | undefined,
+  pages: Page[],
+): T | undefined {
+  if (!design) return design;
+  const observed = observedBackgrounds(pages);
+  if (!observed) return design; // 没有底色 carrier 的书(纯白老书):说不清,不猜
+  if (designExplainsPages(design, pages, observed)) return design;
+
+  // ① 多巴胺:整本的色是 interiorInkSequence(seed) 派的序列,seed 只可能是
+  //    apply_book_style 用的那个(bookStyleSeed,contracts 里的共用公式)。
+  //    候选必须逐页对得上才采信 —— 对不上说明这本书不是刚被刷成多巴胺的。
+  const colorway = THIRD_SET_COVERS.find((c) => sameHex(c.bg, observed[0]));
+  if (colorway) {
+    const candidate: T = {
+      ...design,
+      pageBackground: colorway.bg,
+      coverColorway: colorway.id,
+      interiorSeed: bookStyleSeed(pages),
+    };
+    if (designExplainsPages(candidate, pages, observed)) return candidate;
+  }
+
+  // ② 全书单色:非多巴胺的三个风格、以及 set_page_background 刷全书,都落在这里。
+  //    深色套的两个字段必须**清掉** —— 留着的话追加路径会继续走深色分支,新页被刷成
+  //    旧风格的颜色(评审实测的那条:纯白书里插进一页深红)。
+  if (observed.every((bg) => sameHex(bg, observed[0]))) {
+    const next = { ...design, pageBackground: observed[0]! } as T;
+    delete (next as DraftDesignAppearance).coverColorway;
+    delete (next as DraftDesignAppearance).interiorSeed;
+    return next;
+  }
+
+  // ③ 自己验不过的状态一律不写。
+  return design;
 }

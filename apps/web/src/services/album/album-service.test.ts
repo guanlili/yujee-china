@@ -2738,6 +2738,54 @@ test('persistDesignChat(committed=true):envelope 沿用锁内最新 tree/progres
   }
 });
 
+// ── Critical 1(2026-08-29 最终评审):换完风格,draft.design 必须跟着页面走 ──────
+// 设计 Agent 的 apply_book_style 只改 pages;这里若把 design 原样搬回去,追加照片那条路
+// (mergeAppendLayoutPages 按 coverColorway/interiorSeed/pageBackground 派色)就会给新页
+// 刷上**旧风格**的颜色 —— 评审实测:刷成纯白的书里插进一页 #C83E18 深红。
+// 落库口径的回归钉在这里;颜色链路的端到端在 style-append-consistency.test.ts。
+
+test('persistDesignChat(committed=true):页面已被整本刷成新底色时,design 跟着对账 —— 深色套两个字段清掉', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db not reachable');
+  const user = await makeUser('wp-designchat-restyle');
+  try {
+    const { albumId } = await seedWrappedStoryAlbum(user.id, 2, { done: true });
+    // 落库前:这本书的设计契约记的是一本深红多巴胺书。
+    const stale = {
+      fonts: { body: 'serif' },
+      colors: { accent: '#ff0000' },
+      pageBackground: '#F1F2F0',
+      coverColorway: 'red',
+      interiorSeed: 'seed-of-this-album',
+    };
+    const before = await albumRepo.findById(albumId);
+    await albumRepo.update(db, albumId, {
+      draftJson: { ...(before!.draftJson as Record<string, unknown>), design: stale },
+    });
+
+    // Agent 交回来的页:整本已经刷成素白散文的暖白(apply_book_style('editorial') 的产物形状)。
+    const restyled = [
+      { pageIndex: 0, templateId: 'mag-01', images: {}, texts: { '#pageBackground': '#FBF8F1' } },
+      { pageIndex: 1, templateId: 'mag-02', images: {}, texts: { '#pageBackground': '#FBF8F1' } },
+    ];
+    await albumService.persistDesignChat(user.id, albumId, {
+      userMessage: '这本书太花了,想文艺一点',
+      assistantReply: '好的,已经整本换成素白散文',
+      committed: true,
+      pages: restyled,
+    });
+
+    const after = await albumRepo.findById(albumId);
+    const design = (after!.draftJson as { design: Record<string, unknown> }).design;
+    assert.equal(design.pageBackground, '#FBF8F1', 'design.pageBackground 必须跟上页面的实际底色');
+    assert.equal(design.coverColorway, undefined, '深色套配色 id 没清掉的话,追加照片会继续走深色分支');
+    assert.equal(design.interiorSeed, undefined, '种子同理必须清掉');
+    assert.deepEqual(design.fonts, stale.fonts, '外观三件套以外的字段原样透传');
+    assert.deepEqual(design.colors, stale.colors);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('persistDesignChat(committed=true):相册没有 V3 story draft → VALIDATION_FAILED,不落库', async (t) => {
   if (!(await isDbReachable())) return t.skip('db not reachable');
   const user = await makeUser('wp-designchat-noguard');

@@ -6,6 +6,7 @@ import {
 	type BookStyle,
 	bookStyleById,
 	bookStyleOf,
+	bookStyleSeed,
 	contrastRatio,
 	interiorInkSequence,
 	PAGE_BACKGROUND_CARRIER_KEY,
@@ -935,12 +936,13 @@ const applyBookStyleSchema = Type.Object({
 });
 type ApplyBookStyleInput = Static<typeof applyBookStyleSchema>;
 
-/** 多巴胺内页取色的 seed。书状态里没有 albumId 时回落封面首图 photoId —— 只要
- *  对同一本书稳定即可（前缀稳定性靠 interiorInkSequence 自身保证）。
+/** 多巴胺内页取色的 seed。**公式住在 contracts（bookStyleSeed）**，这里只是取
+ *  state.pages 交过去 —— apps/web 落库时要按同一个公式把种子记回
+ *  draft.design.interiorSeed，追加照片才复算得出同一串序列（2026-08-29 最终评审
+ *  Critical 1）。两边各写一份的话，第一次改公式就串色。
  *  **导出**是为了让测试能算出期望序列，不必在测试里复刻一份取 seed 的逻辑。 */
 export function bookSeed(state: AlbumBookState): string {
-	const cover = state.pages[0];
-	return Object.values(cover?.images ?? {})[0] ?? cover?.templateId ?? "yujee";
+	return bookStyleSeed(state.pages);
 }
 
 function createApplyBookStyleTool(

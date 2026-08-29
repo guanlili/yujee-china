@@ -24,6 +24,7 @@ import {
   buildCoverSets,
   designAppliedMarker,
   pickHeroPhotos,
+  reconcileDraftDesign,
   slotSpecs,
   templateCategory,
 } from './design-apply';
@@ -850,8 +851,16 @@ export const albumService = {
         // 相已迁 draft_pages,draftJson 只剩 {tree, progress, design}(锁内最新
         // 值,design chat 没有动 tree/progress)。pageCount 收口点三:
         // move_pages 会增删页,必须显式跟 pages.length(此前这里遗漏)。
+        // draft.design 与页面真相对账(2026-08-29 最终评审 Critical 1):设计 Agent 的
+        // apply_book_style 整本换风格时只改 pages,这里若把 design 原样搬回去,
+        // draft.design 就成了陈旧状态 —— 而追加照片那条路(mergeAppendLayoutPages /
+        // mergeAppendComposeTexts)正是按它的 coverColorway/interiorSeed/pageBackground
+        // 给新页派色的,于是「刷成纯白的书里插进一页深红」「刷成多巴胺的书里插进一页
+        // 白底浅字(1.06:1)」。reconcileDraftDesign 是自证式的:现状解释得了页面就
+        // 原样返回同一个对象(老书零改写),解释不了且能自证出新状态才改写。
+        const design = reconcileDraftDesign(envelope.design, pages);
         await albumRepo.update(tx, albumId, {
-          draftJson: envelopeJson({ tree: envelope.tree, progress: envelope.progress, design: envelope.design }),
+          draftJson: envelopeJson({ tree: envelope.tree, progress: envelope.progress, design }),
           pageCount: pages.length,
           ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
         });

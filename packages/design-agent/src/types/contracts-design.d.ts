@@ -39,6 +39,10 @@ export declare function bookStyleById(id: string | null | undefined): BookStyle 
 export declare const BOOK_STYLES: readonly BookStyle[];
 export declare function styleBackgroundOptions(styleId: string): BackgroundOption[];
 export declare function bestInkFor(bg: string): string;
+/** 书级配色种子（封面首图 photoId）—— apps/web 落库时按同一公式记回 interiorSeed。 */
+export declare function bookStyleSeed(
+	pages: readonly { templateId: string; images: Record<string, string> }[],
+): string;
 export declare function interiorInkSequence(seed: string, count: number): readonly DesignDarkInk[];
 export declare const PAGE_BACKGROUND_CARRIER_KEY: "#pageBackground";
 export declare function contrastRatio(a: string, b: string): number;

@@ -129,3 +129,22 @@ export function styleBackgroundOptions(styleId: string): BackgroundOption[] {
     ...PAGE_BACKGROUNDS.map((b) => ({ id: b.id, name: b.name, hex: b.hex })),
   ];
 }
+
+/**
+ * 书级配色种子：**封面（页数组第一页）的首图 photoId**，缺省回落封面模板 id。
+ *
+ * 为什么必须住在 contracts：这是一个**两端必须逐字相同**的约定 —— design-agent 的
+ * `apply_book_style` 用它派 `interiorInkSequence`，把整本刷成多巴胺；apps/web 在
+ * 落库时要按同一个公式把种子记回 `draft.design.interiorSeed`，追加照片那条路才能
+ * 复算出同一串序列、给新页派到与全书同一套色。两边各写一份的话，第一次改公式就会
+ * 让「换完风格再加照片」串色（2026-08-29 最终评审 Critical 1 的病根之一）。
+ *
+ * 只要对同一本书稳定即可 —— 逐项前缀稳定性由 `interiorInkSequence` 自身保证
+ * （第 i 项只取决于 seed 和 i），不依赖这里选了哪个字段。
+ */
+export function bookStyleSeed(
+  pages: readonly { templateId: string; images: Record<string, string> }[],
+): string {
+  const cover = pages[0];
+  return Object.values(cover?.images ?? {})[0] ?? cover?.templateId ?? 'yujee';
+}
