@@ -35,6 +35,9 @@ export interface BackgroundOption {
 }
 
 export declare function bookStyleOf(coverTemplateId: string | null | undefined): BookStyle;
+export declare function bookStyleById(id: string | null | undefined): BookStyle | undefined;
+export declare const BOOK_STYLES: readonly BookStyle[];
 export declare function styleBackgroundOptions(styleId: string): BackgroundOption[];
 export declare function bestInkFor(bg: string): string;
+export declare function interiorInkSequence(seed: string, count: number): readonly DesignDarkInk[];
 export declare const PAGE_BACKGROUND_CARRIER_KEY: "#pageBackground";

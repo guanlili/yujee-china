@@ -101,13 +101,28 @@ export function bookStyleOf(coverTemplateId: string | null | undefined): BookSty
 export type BackgroundOption = { id: string; name: string; hex: string };
 
 /**
+ * 多巴胺五色（THIRD_SET_INTERIOR）的中文展示名。**只在这里映射**——`DarkInk` 类型
+ * 本身没有中文名字段（它是内页配色的真相源，见 third-set-palette.ts，不为 UI 展示
+ * 多加字段），`THIRD_SET_INTERIOR` 表也不改。此前 `styleBackgroundOptions` 直接把
+ * `name` 回落成 `ink.id`，模型转述给用户会拼出「刷成butter」这种中英混杂句子——
+ * 项目规则禁止内部标识进用户回复，故补这张映射（2026-08-29 复盘裁定）。
+ */
+const DOPAMINE_INK_NAME: Record<string, string> = {
+  butter: '淡黄',
+  violet: '紫',
+  orange: '橙',
+  green: '绿',
+  blue: '蓝',
+};
+
+/**
  * 某风格下页底色的合法取值。Agent 只能从这张表里挑，不能自由填 hex ——
  * 自由 hex 会超四色印刷色域（印不出）且对比度失守（小雨拍板 2026-08-29）。
  */
 export function styleBackgroundOptions(styleId: string): BackgroundOption[] {
   const style = bookStyleById(styleId) ?? bookStyleById(DEFAULT_BOOK_STYLE_ID)!;
   if (style.interiorInks) {
-    return style.interiorInks.map((ink) => ({ id: ink.id, name: ink.id, hex: ink.bg }));
+    return style.interiorInks.map((ink) => ({ id: ink.id, name: DOPAMINE_INK_NAME[ink.id] ?? ink.id, hex: ink.bg }));
   }
   return [
     { id: style.id, name: style.name, hex: style.pageBackground },

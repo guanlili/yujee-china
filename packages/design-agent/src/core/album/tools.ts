@@ -1,9 +1,12 @@
 import type { AgentTool, AgentToolResult, Skill } from "@earendil-works/pi-agent-core";
 import { type Static, Type } from "typebox";
 import {
-	type BookStyle,
 	bestInkFor,
+	BOOK_STYLES,
+	type BookStyle,
+	bookStyleById,
 	bookStyleOf,
+	interiorInkSequence,
 	PAGE_BACKGROUND_CARRIER_KEY,
 	styleBackgroundOptions,
 } from "@yujee/contracts/design";
@@ -258,6 +261,7 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 		createUpdatePageImagesTool(options),
 		createSetTextColorsTool(options),
 		createSetPageBackgroundTool(options),
+		createApplyBookStyleTool(options),
 		createSetTextFontsTool(options),
 		createMovePagesTool(options),
 		createDeletePageTool(options),
@@ -863,6 +867,119 @@ function createSetPageBackgroundTool(
 			return commitWrite(options, nextState, {
 				pageNo: touched[0]!,
 				operations: [`pageBackground:${picked.id}=${picked.hex}`],
+				notes,
+			});
+		},
+	};
+}
+
+const applyBookStyleSchema = Type.Object({
+	styleId: Type.String({
+		description: "风格 id：editorial（素白散文）/ magazine（杂志刊头）/ dopamine（多巴胺）/ postcard（旅行画报）",
+	}),
+});
+type ApplyBookStyleInput = Static<typeof applyBookStyleSchema>;
+
+/** 多巴胺内页取色的 seed。书状态里没有 albumId 时回落封面首图 photoId —— 只要
+ *  对同一本书稳定即可（前缀稳定性靠 interiorInkSequence 自身保证）。
+ *  **导出**是为了让测试能算出期望序列，不必在测试里复刻一份取 seed 的逻辑。 */
+export function bookSeed(state: AlbumBookState): string {
+	const cover = state.pages[0];
+	return Object.values(cover?.images ?? {})[0] ?? cover?.templateId ?? "yujee";
+}
+
+function createApplyBookStyleTool(
+	options: AlbumToolsOptions,
+): AgentTool<typeof applyBookStyleSchema, AlbumWriteDetails> {
+	return {
+		name: "apply_book_style",
+		label: "更换全书风格",
+		description:
+			"整本换气质：换封面和封底版式、刷全书页底色和三个文字色。四个风格见「风格理解」技能。用户对整本观感不满（太素/太花/想文艺点/想活泼点）时用它；只有某几页颜色不对用 set_page_background。注意：换封面版式会重排封面文案，迁不过去的会丢，动手前先告诉用户。",
+		parameters: applyBookStyleSchema,
+		prepareArguments(args: unknown): ApplyBookStyleInput {
+			return { styleId: isRecord(args) && typeof args.styleId === "string" ? args.styleId.trim() : "" };
+		},
+		async execute(
+			_toolCallId: string,
+			params: ApplyBookStyleInput,
+		): Promise<AgentToolResult<AlbumWriteDetails>> {
+			const target = bookStyleById(params.styleId);
+			if (!target) {
+				throw new Error(
+					`未知风格 "${params.styleId}"。可选：${BOOK_STYLES.map((s) => `${s.id}（${s.name}）`).join(" / ")}`,
+				);
+			}
+			const current = currentBookStyle(options);
+			if (current.id === target.id) {
+				throw new Error(
+					`这本书已经是「${target.name}」了。要微调就用 set_page_background 换底色，或 set_text_colors 换字色。`,
+				);
+			}
+
+			const state = options.getBookState();
+			const nextState = cloneAlbumBookState(state);
+			const notes: string[] = [];
+			const categoryOf = catalogCategoryOf(options.catalog);
+
+			// ① 换封面/封底模板。图槽数不匹配也照换（多出的照片从该页移除，不回流；
+			// 新增的槽暂时空着待补图），不能因为槽数不一致就整个跳过 —— 四套风格里
+			// 唯二的封尾模板是 mag-22(2 图槽) 和多巴胺专属的 mag-63(纯装饰,0 图槽/
+			// 0 文字槽,故意做成没有照片没有文字的收尾页),真实书的封尾几乎总有照片,
+			// 若按槽数相等才换,dopamine 风格永远换不了封尾,整条功能等于没做。
+			for (const [idx, page] of nextState.pages.entries()) {
+				const category = categoryOf(page.templateId);
+				const wantId =
+					category === "cover" ? target.coverTemplateId : category === "ending" ? target.endingTemplateId : undefined;
+				if (!wantId || wantId === page.templateId) continue;
+				const nextTemplate = options.catalog.get(wantId);
+				if (!nextTemplate) continue;
+				const label = category === "cover" ? "封面" : "封尾";
+				const prevImageCount = Object.keys(page.images).length;
+				const migrateNotes: string[] = [];
+				nextState.pages[idx] = migratePageToTemplate(page, nextTemplate, migrateNotes);
+				const nextImageCount = nextTemplate.imageSlotIds.length;
+				if (nextImageCount < prevImageCount) {
+					migrateNotes.push(`图槽从 ${prevImageCount} 减到 ${nextImageCount}，多出的照片从这页移除（不会转移到其他页）`);
+				} else if (nextImageCount > prevImageCount) {
+					migrateNotes.push(`图槽从 ${prevImageCount} 增到 ${nextImageCount}，新增的槽暂时空着待补图`);
+				}
+				notes.push(`${label}版式换成 ${wantId}${migrateNotes.length > 0 ? `（${migrateNotes.join("；")}）` : ""}`);
+			}
+			notes.push("封面/封尾文案已按新版式重排，迁不过去的槽已清空 —— 告诉用户并确认是否要补写");
+
+			// ② 逐页刷底色和字色
+			// 多巴胺：确定性序列（同 seed 同长度逐项相同、前缀稳定）。绝不能换成随机 ——
+			// 追加照片时只重刷新页，两次结果不一样就会让新页跟全书不是一套色。
+			const seed = bookSeed(nextState);
+			const interiorIdx = nextState.pages
+				.map((p, i) => ({ i, category: categoryOf(p.templateId) }))
+				// NON_NUMBERED_PAGE_CATEGORIES 是 Set（book-state.ts:170），用 .has 不是 .includes
+				.filter((x) => !NON_NUMBERED_PAGE_CATEGORIES.has(x.category ?? ""))
+				.map((x) => x.i);
+			const sequence = target.interiorInks ? interiorInkSequence(seed, interiorIdx.length) : undefined;
+
+			for (const [idx, page] of nextState.pages.entries()) {
+				const template = options.catalog.get(page.templateId);
+				if (!template) continue;
+				const seqPos = interiorIdx.indexOf(idx);
+				const ink = sequence && seqPos >= 0 ? sequence[seqPos]! : undefined;
+				const bg = ink?.bg ?? target.pageBackground;
+				const colors = ink ? { title: ink.accent, body: ink.body, explain: ink.body } : target.colors;
+				page.texts[PAGE_BACKGROUND_CARRIER_KEY] = bg;
+				for (const slotId of collectThemeableSlots(page, template)) {
+					const role = template.textDefsByBase.get(slotBaseIdForTheme(slotId))?.role ?? "text";
+					const kind = ROLE_TO_COLOR_KIND[role];
+					page.texts[`${slotId}#accentColor`] = kind === "body" ? colors.body : kind === "caption" ? colors.explain : colors.title;
+				}
+				page.html = undefined;
+				page.html = bakeAlbumPageHtml(page);
+			}
+
+			notes.unshift(`全书 ${nextState.pages.length} 页刷成「${target.name}」`);
+			return commitWrite(options, nextState, {
+				pageNo: 1,
+				operations: [`bookStyle:${current.id}->${target.id}`],
 				notes,
 			});
 		},

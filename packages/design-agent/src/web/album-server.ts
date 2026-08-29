@@ -82,6 +82,8 @@ export const ALBUM_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set<string>([
 	"delete_page",
 	// set_page_background 同样走 commitWrite → terminate(2026-08-29 加的写工具,别再漏)。
 	"set_page_background",
+	// apply_book_style 同样走 commitWrite → terminate(2026-08-29 加的写工具,别再漏)。
+	"apply_book_style",
 ]);
 
 /**

@@ -79,3 +79,13 @@ test('多巴胺的底色选项是五色 id，其余风格是主底色 + 四白',
   assert.equal(editorial[0]!.hex, '#FBF8F1');
   assert.deepEqual(editorial.map((o) => o.id).slice(1), ['white', 'ivory', 'mist', 'ash']);
 });
+
+test('多巴胺底色选项的 name 是中文，不是内部 id（模型转述给用户不能带英文标识）', () => {
+  // DarkInk 类型本身没有中文展示名字段，name 曾直接回落成 id（"butter"），
+  // 导致 apply_book_style / set_page_background 的 notes 拼出「刷成butter」这种
+  // 中英混杂句子。styleBackgroundOptions 必须把这五个 id 映射成中文。
+  assert.deepEqual(
+    styleBackgroundOptions('dopamine').map((o) => o.name),
+    ['淡黄', '紫', '橙', '绿', '蓝'],
+  );
+});
