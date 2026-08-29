@@ -14,13 +14,14 @@
     "./templates": "./src/templates.ts",
     "./v3": "./src/v3.ts",
     "./render": "./src/render/index.ts",
-    "./render/*": "./src/render/*.ts"
+    "./render/*": "./src/render/*.ts",
+    "./design": "./src/design/index.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
     "templates:generate": "tsx scripts/gen-templates.ts",
     "templates:check": "tsx scripts/gen-templates.ts --check && HTML_TEMPLATES_REQUIRE_ALL=1 tsx scripts/check-html-templates.ts",
-    "test": "tsx --test \"src/*.test.ts\" \"src/render/*.test.ts\"",
+    "test": "tsx --test \"src/*.test.ts\" \"src/render/*.test.ts\" \"src/design/*.test.ts\"",
     "typecheck": "pnpm templates:check && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
