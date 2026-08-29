@@ -144,7 +144,7 @@ git commit -m "refactor: 配色真相源搬进 contracts，apps/web 留 re-expor
 
 **Interfaces:**
 - Consumes: 无
-- Produces: `contrastRatio(a: string, b: string): number`、`meetsAA(a: string, b: string): boolean`、`bestInkFor(bg: string): '#F5F2E8' | '#1A1A14'`
+- Produces: `contrastRatio(a: string, b: string): number`、`meetsAA(a: string, b: string): boolean`、`deltaE(a: string, b: string): number`、`bestInkFor(bg: string): '#F5F2E8' | '#1A1A14'`
 
 **为什么单独抽一个文件：** 现在这套 WCAG 算法在 `third-set-palette.test.ts` 和 `cover-recap.test.ts` 里各抄了一份，Task 6 的运行时校验还要第三份。抽出来一处。
 
@@ -230,6 +230,29 @@ export function meetsAA(a: string, b: string): boolean {
 }
 
 /**
+ * CIE76 色差（Lab 空间欧氏距离）。判断两个颜色**肉眼是否分得出**要用它，别用对比度 ——
+ * 对比度只看亮度，看不见色相：冷灰 #E7EAE9 和暖砂 #F1E7D5 的对比度只有 1.01（垫底），
+ * 但 ΔE 有 9.97（三对底色里最容易分的）。参考：ΔE≈2.3 刚能察觉，ΔE>5 明显可分。
+ */
+export function deltaE(a: string, b: string): number {
+  const toLab = (hex: string): [number, number, number] => {
+    const h = hex.replace('#', '');
+    const full = h.length === 3 ? [...h].map((c) => c + c).join('') : h;
+    const [r, g, b2] = [0, 2, 4].map((i) => {
+      const c = parseInt(full.slice(i, i + 2), 16) / 255;
+      return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    }) as [number, number, number];
+    const f = (t: number): number => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+    const X = f((0.4124 * r + 0.3576 * g + 0.1805 * b2) / 0.95047);
+    const Y = f(0.2126 * r + 0.7152 * g + 0.0722 * b2);
+    const Z = f((0.0193 * r + 0.1192 * g + 0.9505 * b2) / 1.08883);
+    return [116 * Y - 16, 500 * (X - Y), 200 * (Y - Z)];
+  };
+  const [A, B] = [toLab(a), toLab(b)];
+  return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+}
+
+/**
  * 按两色字规则给底色选字色：深底浅字、浅底深字。
  * 不按底色逐个派生字色 —— 那样一本书看着像五本书拼的（小雨拍板 2026-08-28）。
  */
@@ -265,7 +288,7 @@ git commit -m "feat: 抽出 WCAG 对比度工具，供风格校验与测试共�
 - Modify: `packages/contracts/src/design/index.ts`
 
 **Interfaces:**
-- Consumes: Task 1 的 `THIRD_SET_INK`/`THIRD_SET_INTERIOR`/`PAGE_BACKGROUNDS`，Task 2 的 `contrastRatio`/`meetsAA`
+- Consumes: Task 1 的 `THIRD_SET_INK`/`THIRD_SET_INTERIOR`/`PAGE_BACKGROUNDS`，Task 2 的 `contrastRatio`/`deltaE`
 - Produces: `BOOK_STYLES: readonly BookStyle[]`、`bookStyleById(id)`、`bookStyleOf(coverTemplateId)`、`styleBackgroundOptions(styleId)`、类型 `BookStyle`、`BookStyleId = 'editorial' | 'magazine' | 'dopamine' | 'postcard'`
 
 - [ ] **Step 1: 写失败的测试**
@@ -277,7 +300,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { BOOK_STYLES, bookStyleById, bookStyleOf, styleBackgroundOptions } from './book-styles';
-import { contrastRatio } from './contrast';
+import { contrastRatio, deltaE } from './contrast';
 import { THIRD_SET_INK, THIRD_SET_INTERIOR } from './third-set-palette';
 
 test('四个风格，id 与封面模板一一对应', () => {
@@ -303,13 +326,18 @@ test('非多巴胺风格的三个字色在自己底色上都过 4.5:1', () => {
   }
 });
 
-test('三张白被拉开：任意两个非多巴胺底色肉眼可分（亮度差 > 2%）', () => {
+test('三张白被拉开：任意两个非多巴胺底色肉眼明显可分（ΔE >= 5）', () => {
   // 换表前四套配的是 #FFFFFF/#FBF8F1/#F1F2F0/#ECEDEE，肉眼分不出，等于没有风格。
+  //
+  // 判据必须用色差 ΔE，不能用对比度：对比度只看亮度，看不见色相。冷灰 #E7EAE9 和
+  // 暖砂 #F1E7D5 的对比度只有 1.01（三对里垫底），ΔE 却有 9.97（三对里最容易分的）。
+  // 2026-08-29 实测三对：editorial↔magazine 6.37、editorial↔postcard 8.46、
+  // magazine↔postcard 9.97。ΔE>5 = 明显可分。
   const bgs = BOOK_STYLES.filter((s) => s.id !== 'dopamine').map((s) => s.pageBackground);
   for (let i = 0; i < bgs.length; i += 1) {
     for (let j = i + 1; j < bgs.length; j += 1) {
-      const ratio = contrastRatio(bgs[i]!, bgs[j]!);
-      assert.ok(ratio >= 1.02, `${bgs[i]} 与 ${bgs[j]} 只差 ${ratio.toFixed(3)}，分不出`);
+      const diff = deltaE(bgs[i]!, bgs[j]!);
+      assert.ok(diff >= 5, `${bgs[i]} 与 ${bgs[j]} 色差只有 ${diff.toFixed(2)}，肉眼分不出`);
     }
   }
 });
