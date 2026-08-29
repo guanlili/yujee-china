@@ -370,7 +370,10 @@ Expected: FAIL — `Cannot find module './book-styles'`
 // （小雨拍板 2026-08-29，配色稿见 apps/web/scripts/render-style-preview.mts）
 //
 // ⚠️ 色值不是随便填的：非多巴胺三套的每个字色都卡着 4.5:1（见 book-styles.test.ts）。
-// postcard 的注释色 #A8502E 是把 p01 模板自带的 #d27b62（在 #F1E7D5 上仅 2.9:1）压深来的。
+// 两个 explain 色都是压深来的，别改回更浅的：
+//   · magazine #6E7370 在 #E7EAE9 上实测 3.99 —— 不达标，压到 #646966 才有 4.62；
+//   · postcard  #A8502E 在 #F1E7D5 上实测 4.45 —— 差 0.05，压到 #A34E2D 才有 4.65
+//     （它本身已经是 p01 模板自带的 #d27b62（仅 2.9:1）压深过一轮的结果）。
 // 改任何色值都要重跑测试，别凭眼睛判断。
 import { PAGE_BACKGROUNDS } from './page-backgrounds';
 import { type DarkInk, THIRD_SET_INK, THIRD_SET_INTERIOR } from './third-set-palette';
@@ -412,7 +415,7 @@ export const BOOK_STYLES: readonly BookStyle[] = [
     coverTemplateId: 'mag-23',
     endingTemplateId: 'mag-22',
     pageBackground: '#E7EAE9',
-    colors: { title: '#0F0F0F', body: '#2B2E2C', explain: '#6E7370' },
+    colors: { title: '#0F0F0F', body: '#2B2E2C', explain: '#646966' },
   },
   {
     id: 'dopamine',
@@ -434,7 +437,7 @@ export const BOOK_STYLES: readonly BookStyle[] = [
     coverTemplateId: 'p01',
     endingTemplateId: 'mag-22',
     pageBackground: '#F1E7D5',
-    colors: { title: '#1C1B18', body: '#3A362E', explain: '#A8502E' },
+    colors: { title: '#1C1B18', body: '#3A362E', explain: '#A34E2D' },
   },
 ];
 
@@ -1110,7 +1113,8 @@ function createApplyBookStyleTool(
       const seed = bookSeed(nextState);
       const interiorIdx = nextState.pages
         .map((p, i) => ({ i, category: categoryOf(p.templateId) }))
-        .filter((x) => !NON_NUMBERED_PAGE_CATEGORIES.includes(x.category ?? ""))
+        // NON_NUMBERED_PAGE_CATEGORIES 是 Set（book-state.ts:170），用 .has 不是 .includes
+        .filter((x) => !NON_NUMBERED_PAGE_CATEGORIES.has(x.category ?? ""))
         .map((x) => x.i);
       const sequence = target.interiorInks ? interiorInkSequence(seed, interiorIdx.length) : undefined;
 
@@ -1294,15 +1298,15 @@ git commit -m "feat: set_text_colors 加对比度硬校验"
 **这修的是 `design-apply.ts:249-256` 注释点名、至今没修的坑：** Agent 能把浅底书的封面换成
 mag-62，carrier 仍是 `#1c1b18` 落在 `#12363A` 上约 1.3:1，读不了。p01 同病。
 
-- [ ] **Step 1: 先确认模板自带底色的取值来源**
-
-深底模板的自带底色写在 `packages/contracts/src/render/html-templates/<id>.ts` 的页根 style 里。
-用这条命令确认三个深底模板的实际色值，**把查到的值写进代码，不要凭记忆填**：
+- [ ] **Step 1: 核对模板自带底色（值已实测，跑一遍确认没漂）**
 
 ```bash
 cd packages/contracts/src/render/html-templates
-for t in mag-62 mag-63 p01; do echo "== $t"; grep -o 'data-template[^>]*' $t.ts | head -1; done
+for t in mag-62 mag-63 p01; do echo "== $t"; grep -o "data-template=\"$t\"[^>]*" $t.ts | head -1; done
 ```
+
+Expected（2026-08-29 实测）：mag-62 和 mag-63 都是 `background:#12363A`，p01 是 `background:#1c1b18`。
+对不上就以实测为准改 Step 4 的常量表，别用计划里的值。
 
 - [ ] **Step 2: 写失败的测试**
 
