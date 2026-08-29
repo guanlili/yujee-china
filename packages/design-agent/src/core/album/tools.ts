@@ -6,9 +6,11 @@ import {
 	type BookStyle,
 	bookStyleById,
 	bookStyleOf,
+	contrastRatio,
 	interiorInkSequence,
 	PAGE_BACKGROUND_CARRIER_KEY,
 	styleBackgroundOptions,
+	THIRD_SET_INK,
 } from "@yujee/contracts/design";
 import {
 	type AlbumBookState,
@@ -731,6 +733,28 @@ function createSetTextColorsTool(
 				if (!ACCENT_COLOR_PATTERN.test(color as string)) {
 					throw new Error(`${kind} 颜色必须是 #RGB/#RRGGBB 十六进制，收到："${color}"`);
 				}
+			}
+
+			// 对比度体检:文字色落在该页底色上必须 >= 4.5:1。AI 看不见渲染结果,不会自己发现
+			// 「深底刷深字」——这里不拦,用户拿到的就是一整页读不了的书(mag-62 上实测 1.3:1)。
+			const state0 = options.getBookState();
+			const failures: string[] = [];
+			for (const [index, page] of state0.pages.entries()) {
+				const bg = page.texts[PAGE_BACKGROUND_CARRIER_KEY] ?? "#FFFFFF"; // 缺省=模板默认白底
+				for (const [kind, color] of provided) {
+					const ratio = contrastRatio(bg, color as string);
+					if (!Number.isFinite(ratio) || ratio >= 4.5) continue;
+					failures.push(
+						`${pageLabelOf(options, state0, index + 1)}底色 ${bg} 配 ${kind} 色 ${color} 只有 ${ratio.toFixed(2)}:1`,
+					);
+				}
+			}
+			if (failures.length > 0) {
+				const shown = failures.slice(0, 3).join("；");
+				throw new Error(
+					`对比度不够（要 4.5:1 以上）：${shown}${failures.length > 3 ? ` 等 ${failures.length} 处` : ""}。` +
+						`深底配浅字 ${THIRD_SET_INK.light}、浅底配深字 ${THIRD_SET_INK.dark}；要整本换气质用 apply_book_style。`,
+				);
 			}
 
 			const nextState = cloneAlbumBookState(options.getBookState());

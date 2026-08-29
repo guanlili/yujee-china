@@ -66,7 +66,7 @@ test("set_text_colors：三类颜色按角色刷满全书，decoration 跟标题
 	assert.ok(tool);
 	const TITLE = "#2c6e8f";
 	const BODY = "#7a4b2a";
-	const CAPTION = "#8a8577";
+	const CAPTION = "#6b6658"; // 对白底对比度 5.73:1（原 #8a8577 只有 3.68:1，被 set_text_colors 的对比度硬校验打回）
 	const result = await tool.execute("t1", {
 		titleColor: TITLE,
 		bodyColor: BODY,
@@ -123,7 +123,7 @@ test("set_text_colors：只给注释色时，标题/正文/装饰槽不被染色
 	const { tools, getBook } = createHarness();
 	const tool = tools.get("set_text_colors");
 	assert.ok(tool);
-	await tool.execute("t1", { captionColor: "#8a8577" } as never);
+	await tool.execute("t1", { captionColor: "#6b6658" } as never);
 
 	const book = getBook();
 	const catalog = loadTemplateCatalog();
@@ -136,7 +136,7 @@ test("set_text_colors：只给注释色时，标题/正文/装饰槽不被染色
 		if (!(slotId in cover.texts)) continue;
 		assert.equal(
 			cover.texts[key],
-			def.role === "explain" ? "#8a8577" : undefined,
+			def.role === "explain" ? "#6b6658" : undefined,
 			`${cover.templateId}/${slotId}(${def.role}) 的染色不对`,
 		);
 	}
@@ -148,7 +148,7 @@ test("set_text_colors：只给注释色时，标题/正文/装饰槽不被染色
 		if (!(slotId in richPage.texts)) continue;
 		assert.equal(
 			richPage.texts[`${slotId}#accentColor`],
-			def.role === "explain" ? "#8a8577" : undefined,
+			def.role === "explain" ? "#6b6658" : undefined,
 			`${richPage.templateId}/${slotId}(${def.role}) 的染色不对`,
 		);
 	}

@@ -41,3 +41,5 @@ export declare function styleBackgroundOptions(styleId: string): BackgroundOptio
 export declare function bestInkFor(bg: string): string;
 export declare function interiorInkSequence(seed: string, count: number): readonly DesignDarkInk[];
 export declare const PAGE_BACKGROUND_CARRIER_KEY: "#pageBackground";
+export declare function contrastRatio(a: string, b: string): number;
+export declare const THIRD_SET_INK: { readonly light: "#F5F2E8"; readonly dark: "#1A1A14" };
