@@ -3,20 +3,26 @@ import test from 'node:test';
 import { TEMPLATES, PAGE_BACKGROUND_CARRIER_KEY } from '@yujee/contracts';
 import { Page } from '@yujee/contracts';
 import { bestInkFor, contrastRatio } from '@yujee/contracts/design';
-import { mergeAppendLayoutPages, mergeComposeIntoDraft } from '@/services/job/job-service';
-import { reconcileDraftDesign } from './design-apply';
+import { mergeAppendLayoutPages, mergeComposeIntoDraft } from '../src/services/job/job-service';
+import { reconcileDraftDesign } from '../src/services/album/design-apply';
 // 真·端到端:直接跑设计 Agent 的 apply_book_style 源码,不做等效仿制 —— 这条 bug 的
 // 病根就在「Agent 只改页面 / Web 只读 draft.design」这道包边界上,仿一个假 Agent 等于
 // 把要测的那条边界抹掉了。apps/web 不依赖 design-agent 包,故走相对路径 import;
 // Node 的模块解析按**被导入文件**所在目录往上找,design-agent 自己的 node_modules
 // 解析得到 typebox / pi-agent-core,所以跑得起来。
-import { createAlbumTools } from '../../../../../packages/design-agent/src/core/album/tools.ts';
-import { loadTemplateCatalog } from '../../../../../packages/design-agent/src/core/album/templates-catalog.ts';
+//
+// ⚠️ 这个文件住在 scripts/ 而不是 src/,**别挪回去**:design-agent 内部一律用带 `.ts`
+// 扩展名的 import(它自己的 tsconfig 开了 allowImportingTsExtensions),而 apps/web 没开。
+// 放在 src/ 下会被 apps/web 的 tsconfig(include: src/**)拉进类型检查,把 design-agent
+// 整个源码树一起拖进来,报一片 TS5097。scripts/ 不在 include 里,而 package.json 的
+// test 脚本是 `tsx --test "src/**/*.test.ts" "scripts/**/*.test.ts"` —— 照跑不误。
+import { createAlbumTools } from '../../../packages/design-agent/src/core/album/tools.ts';
+import { loadTemplateCatalog } from '../../../packages/design-agent/src/core/album/templates-catalog.ts';
 import {
   type AlbumBookState,
   cloneAlbumBookState,
   parseAlbumBookInput,
-} from '../../../../../packages/design-agent/src/core/album/book-state.ts';
+} from '../../../packages/design-agent/src/core/album/book-state.ts';
 
 /* ───────────── 换风格 → 追加照片 → 新页外观一致(最终评审 Critical 1)─────────────
 
