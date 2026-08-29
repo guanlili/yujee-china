@@ -71,7 +71,7 @@ test("pickStepText:文本首尾空白被裁剪,纯空白视为无文本", () => 
 	assert.equal(pickStepText(blank), null);
 });
 
-test("ALBUM_WRITE_TOOL_NAMES 覆盖全部 8 个终止写工具", () => {
+test("ALBUM_WRITE_TOOL_NAMES 覆盖全部 9 个终止写工具", () => {
 	for (const name of [
 		"update_page_texts",
 		"write_page_html",
@@ -81,6 +81,7 @@ test("ALBUM_WRITE_TOOL_NAMES 覆盖全部 8 个终止写工具", () => {
 		"set_text_fonts",
 		"move_pages",
 		"delete_page",
+		"set_page_background",
 	]) {
 		assert.equal(ALBUM_WRITE_TOOL_NAMES.has(name), true, `${name} 应在终止写工具集里`);
 	}

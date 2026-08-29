@@ -80,6 +80,8 @@ export const ALBUM_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set<string>([
 	// 此前漏在集合外:带它们的终稿步会被错当中间步,文本与终稿气泡重文)。
 	"move_pages",
 	"delete_page",
+	// set_page_background 同样走 commitWrite → terminate(2026-08-29 加的写工具,别再漏)。
+	"set_page_background",
 ]);
 
 /**

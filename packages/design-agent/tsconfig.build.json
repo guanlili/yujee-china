@@ -21,6 +21,9 @@
 			],
 			"@yujee/contracts/render": [
 				"./src/types/contracts-render.d.ts"
+			],
+			"@yujee/contracts/design": [
+				"./src/types/contracts-design.d.ts"
 			]
 		},
 		"rootDir": "./src"

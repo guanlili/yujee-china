@@ -1,6 +1,13 @@
 import type { AgentTool, AgentToolResult, Skill } from "@earendil-works/pi-agent-core";
 import { type Static, Type } from "typebox";
 import {
+	type BookStyle,
+	bestInkFor,
+	bookStyleOf,
+	PAGE_BACKGROUND_CARRIER_KEY,
+	styleBackgroundOptions,
+} from "@yujee/contracts/design";
+import {
 	type AlbumBookState,
 	type AlbumPage,
 	cloneAlbumBookState,
@@ -250,6 +257,7 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 		createSwapPageTemplateTool(options),
 		createUpdatePageImagesTool(options),
 		createSetTextColorsTool(options),
+		createSetPageBackgroundTool(options),
 		createSetTextFontsTool(options),
 		createMovePagesTool(options),
 		createDeletePageTool(options),
@@ -761,6 +769,100 @@ function createSetTextColorsTool(
 			return commitWrite(options, nextState, {
 				pageNo: affectedPageNos[0] ?? 0,
 				operations,
+				notes,
+			});
+		},
+	};
+}
+
+const setPageBackgroundSchema = Type.Object({
+	pages: Type.Union([Type.Literal("all"), Type.Array(PageRefSchema)], {
+		description: `要改底色的页：${PAGE_REF_DESCRIPTION} 传 "all" 表示全书。`,
+	}),
+	colorId: Type.String({ description: "底色 id，只能从当前风格的调色板里挑（报错时会列出可选值）。" }),
+});
+type SetPageBackgroundInput = Static<typeof setPageBackgroundSchema>;
+
+/** 当前书的风格：从封面页的模板反推（封面模板与风格一一对应，故意不存字段）。 */
+function currentBookStyle(options: AlbumToolsOptions): BookStyle {
+	const state = options.getBookState();
+	const coverPage = state.pages.find((p) => options.catalog.get(p.templateId)?.category === "cover");
+	return bookStyleOf(coverPage?.templateId);
+}
+
+function createSetPageBackgroundTool(
+	options: AlbumToolsOptions,
+): AgentTool<typeof setPageBackgroundSchema, AlbumWriteDetails> {
+	return {
+		name: "set_page_background",
+		label: "设定页面底色",
+		description:
+			"改页面底色：指定页或全书换一个底色，该页文字色按深底浅字/浅底深字自动跟着翻。底色只能从当前风格的调色板里挑，传错会列出可选值。整本换气质用 apply_book_style，不要用这个逐页刷。",
+		parameters: setPageBackgroundSchema,
+		prepareArguments(args: unknown): SetPageBackgroundInput {
+			if (!isRecord(args)) return { pages: [], colorId: "" };
+			const pages =
+				args.pages === "all"
+					? ("all" as const)
+					: Array.isArray(args.pages)
+						? args.pages
+						: args.pages !== undefined
+							? [args.pages]
+							: [];
+			return { pages, colorId: typeof args.colorId === "string" ? args.colorId.trim() : "" };
+		},
+		async execute(
+			_toolCallId: string,
+			params: SetPageBackgroundInput,
+		): Promise<AgentToolResult<AlbumWriteDetails>> {
+			const style = currentBookStyle(options);
+			const optionsList = styleBackgroundOptions(style.id);
+			const picked = optionsList.find((o) => o.id === params.colorId);
+			if (!picked) {
+				throw new Error(
+					`底色 "${params.colorId}" 不在「${style.name}」风格的调色板里。可选：${optionsList
+						.map((o) => o.id)
+						.join(" / ")}`,
+				);
+			}
+
+			const state = options.getBookState();
+			const targets =
+				params.pages === "all"
+					? state.pages.map((_, i) => i + 1)
+					: params.pages.map((ref) => resolveRefToInternal(options, ref));
+			const bad = targets.filter((n) => n <= 0);
+			if (bad.length > 0 || targets.length === 0) {
+				throw new Error(`认不出要改哪几页。${pageRefRangeText(options, state)}`);
+			}
+
+			const ink = bestInkFor(picked.hex);
+			const nextState = cloneAlbumBookState(state);
+			const touched: number[] = [];
+			for (const internalNo of targets) {
+				const page = nextState.pages[internalNo - 1];
+				if (!page) continue;
+				const template = options.catalog.get(page.templateId);
+				page.texts[PAGE_BACKGROUND_CARRIER_KEY] = picked.hex;
+				// 底色变了字色必须跟着翻，否则留下「改完底色字读不了」的中间态。
+				if (template) {
+					for (const slotId of collectThemeableSlots(page, template)) {
+						page.texts[`${slotId}#accentColor`] = ink;
+					}
+				}
+				page.html = undefined;
+				page.html = bakeAlbumPageHtml(page);
+				touched.push(internalNo);
+			}
+			if (touched.length === 0) throw new Error("没有页面被改到，检查页码。");
+
+			const notes = [
+				params.pages === "all" ? `全书 ${touched.length} 页刷成${picked.name}` : `${touched.length} 页刷成${picked.name}`,
+				`文字色跟着翻成 ${ink === "#F5F2E8" ? "浅字" : "深字"}`,
+			];
+			return commitWrite(options, nextState, {
+				pageNo: touched[0]!,
+				operations: [`pageBackground:${picked.id}=${picked.hex}`],
 				notes,
 			});
 		},
