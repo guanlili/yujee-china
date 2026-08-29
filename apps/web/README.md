@@ -128,7 +128,13 @@ Key files:
   建 `compose` job 并派发全书成稿;后者给已设计的书追加照片后建同 kind 的窄口径 job。
 - `src/app/api/v3/albums/[uuid]/compose-append/route.ts`: 追加范围成稿路由薄壳。
 - `src/services/album/design-apply.ts`: 设计环节的确定性应用层(封面组规则、carrier sweep、
-  组页、字体兜底),零 AI。
+  组页、字体兜底、逐页深色墨),零 AI。其中 `reconcileDraftDesign` 是
+  `draft.design` 与页面真相的对账(2026-08-29 评审 Critical 1):设计 Agent 的
+  `apply_book_style` 整本换风格时只改 pages,`persistDesignChat` 落库时据此把
+  外观三件套(`pageBackground`/`coverColorway`/`interiorSeed`)对回页面上实际的
+  `#pageBackground` carrier —— 不对账的话追加照片那条路会按**旧风格**给新页派色
+  (刷成纯白的书里插进一页深红)。它是自证式的:现状解释得了页面就原样返回同一个
+  对象,解释不了且能自证出新状态才改写,两条都对不上就不猜。
 - `src/app/api/v3/internal/job-progress/handler.ts`: Agent callback sink。
 
 ## Browser Data Boundary
@@ -360,5 +366,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 212d389a
+checked-at: a7db82ef
 -->

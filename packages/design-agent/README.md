@@ -32,14 +32,24 @@ Web 侧客户端:`apps/web/src/lib/agent/design-agent-client.ts`。
 `set_text_colors` 带对比度硬校验(2026-08-29):三色配到该页**实际底色**上(取
 carrier → 模板自带深底 → 白底默认的优先级,即 `effectivePageBackground`)任何一色
 低于 4.5:1 就打回,报错点名哪几页、实测比值。AI 看不见渲染结果,不拦的话用户拿到
-的是一整页读不了的书;`swap_page_template` 换模板跨过明暗边界(浅底↔深底,如换到
-mag-62)时会自动把该页文字 carrier 翻成对应的深字/浅字,不翻的话新底色配旧字色会
-读不了(mag-62 实测约 1.3:1)。
+的是一整页读不了的书。打回时给的建议按「这本书里到底有没有一个字色能过全书」分流:
+有就只报真能用的那个;没有(多巴胺每页底色不同 —— 淡黄配浅字 1.05、橙配深字 3.46,
+没有哪个 hex 能同时过)就明说统一刷一个字色做不到,并指向 `apply_book_style` /
+`set_page_background` 这两条走得通的路。判据是「有没有可用色」而不是「底色统不统一」
+—— 底色不统一但全是浅底的书,深字每页都过得了,一刀切拒绝会误伤。
+`swap_page_template` 换模板跨过明暗边界(浅底↔深底,如换到 mag-62)时会自动把该页
+文字 carrier 翻成对应的深字/浅字,不翻的话新底色配旧字色会读不了(mag-62 实测约 1.3:1)。
 
 `set_page_background`(2026-08-29 新增)刷单页或全书底色:颜色只能从当前风格的
 调色板里挑(传错会打回并列出可选值,不接受自由 hex —— 会超四色印刷色域、对比度也
 守不住),该页文字色按深底浅字/浅底深字自动跟着翻。只改某几页用它;整本换气质用
 `apply_book_style`。
+
+底色和**页根字色**是成对写的(2026-08-29 评审):写底色的地方一并按 `bestInkFor(底色)`
+写页根 `color`,收在 carrier 一处(`contracts/render/page-background.ts`),四个会重烘
+页面的写工具一次全都受益。只写底色不写字色的话,**不带 carrier** 的静态装饰(mag-10 的
+1/2/3/4 序号走 `color:currentColor`)会黑压深底 —— 多巴胺的橙/绿/蓝底上实测
+3.41/3.36/3.22,全在 4.5 线下。
 
 `apply_book_style`(2026-08-29 新增)整本换气质:换封面/封底版式 + 刷全书页底色和
 三个文字色(四个风格 = editorial 素白散文 / magazine 杂志刊头 / dopamine 多巴胺 /
@@ -65,9 +75,15 @@ postcard 旅行画报,定义见 `packages/contracts/src/design/book-styles.ts`)�
 
 ## 六个技能
 
-`read_skill` 按名字取一份技能说明书的**全文**(不是工具描述里那句摘要)。技能定义
-只住在 `src/core/album/skills.ts` 一处 —— 这里不重复抄内容,只记名字和数量,
-避免说明书抄成两份、抄着抄着就漂了(与上面写工具/类别映射同一条纪律)。
+`read_skill` 按名字取一份技能说明书的**全文**(不是工具描述里那句摘要)。这里不重复
+抄内容,只记名字和数量,避免说明书抄成三份、抄着抄着就漂了(与上面写工具/类别映射
+同一条纪律)。
+
+技能定义有**两份**,改一份必须同步另一份:生产加载的是文件版
+`packages/contracts/skills/<name>/SKILL.md`(见 `skills-loader.ts`,engine/agent 共用
+一份,可用 `YUJEE_DESIGN_SKILLS_DIR` 覆盖);`src/core/album/skills.ts` 是**目录缺失
+或为空时的内置兜底**。两份的实质内容由 `album-style-skill.test.ts` /
+`album-skills-theme.test.ts` 钉着,不许各说各话。
 
 `页面HTML编辑` · `相册文案` · `相册排版` · `相册配色` · `相册字体` · `风格理解`
 
@@ -129,5 +145,5 @@ print/RPC/interactive 三种模式。**通用 agent loop 在 `packages/agent`**,
 
 <!-- doc-scope
 paths: packages/design-agent/src/**, packages/design-agent/fly.toml, apps/web/src/lib/agent/design-agent-client.ts
-checked-at: e8217ce9
+checked-at: a7db82ef
 -->
