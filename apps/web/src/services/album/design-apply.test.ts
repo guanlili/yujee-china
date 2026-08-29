@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { PAGE_BACKGROUND_CARRIER_KEY } from '@yujee/contracts';
 import {
   assembleDesignedPages,
   darkInkByPageIndex,
@@ -209,6 +210,44 @@ test('assembleDesignedPages: 纯白/未传底色 → 页根不写 inline backgro
   }
 });
 
+test('assembleDesignedPages: 页底色同时写进 #pageBackground carrier(重烘才拿得回来)', () => {
+  const set = buildCoverSets('album-1', CHAPTERS)[0];
+  const pages = assembleDesignedPages({
+    interiorPages: [
+      { pageIndex: 0, templateId: 'mag-15', images: { main: 'pw' }, texts: {} },
+      { pageIndex: 1, templateId: 'mag-34', images: { i1: 'pc' }, texts: {} },
+    ],
+    set,
+    coverTexts: {},
+    endingTexts: {},
+    fonts: FONTS,
+    colors: COLORS,
+    pageBackground: '#FBF8F1',
+  });
+  assert.equal(pages.length, 4);
+  for (const page of pages) {
+    assert.equal(page.texts[PAGE_BACKGROUND_CARRIER_KEY], '#FBF8F1', '缺 carrier:Agent 重烘这页时底色就丢了');
+    assert.ok(page.html!.includes('background-color:#FBF8F1'), 'inline 那条老路也要照旧');
+  }
+});
+
+test('assembleDesignedPages: 纯白仍视为无底色,carrier 和 inline 都不写(对老书纯叠加)', () => {
+  const set = buildCoverSets('album-1', CHAPTERS)[0];
+  const base = {
+    interiorPages: [{ pageIndex: 0, templateId: 'mag-15', images: { main: 'pw' }, texts: {} }],
+    set,
+    coverTexts: {},
+    endingTexts: {},
+    fonts: FONTS,
+    colors: COLORS,
+  };
+  const white = assembleDesignedPages({ ...base, pageBackground: '#FFFFFF' });
+  const none = assembleDesignedPages(base);
+  for (const p of [...white, ...none]) {
+    assert.equal(p.texts[PAGE_BACKGROUND_CARRIER_KEY], undefined);
+  }
+});
+
 // ── 封尾模板与多图槽(2026-07 封面封尾调整) ──
 
 test('pickEndingTemplateId: 优先带文字槽的封底,engine 封尾文案有槽可落', async () => {
@@ -284,6 +323,37 @@ test('assembleDesignedPages: 带 colorway 时内页按 3 组深底循环,页根�
   // 封面/封尾用 colorway 的底色,不参与内页随机 —— 没有占用序列里的位置
   assert.match(pages[0]!.html!, /background-color:\s*#F9EDC4/i);
   assert.match(pages[5]!.html!, /background-color:\s*#F9EDC4/i); // 封尾此前从未被断言过
+});
+
+// 缺口(评审前自查):TEMPLATE_OWN_BACKGROUND(design-agent tools.ts)只兜得住模板自带
+// 的固定深底(mag-62/63/p01 的 CSS 默认值 #12363A/#1C1B18),兜不住这里 —— 深色套的
+// 实际底色是 colorway/interiorInkSequence 动态派的(封面可能是浅底 butter #F3F0A8),
+// 不写 carrier 的话 effectivePageBackground 会拿到模板默认深底去做对比度校验,浅底页
+// 会被误判成深底,c3ce69b3 那道硬校验对刚成稿的深色套书形同虚设。
+test('assembleDesignedPages: 深色套(colorway)每页底色也写进 #pageBackground carrier(否则对比度校验会读错底色)', () => {
+  const interior = [0, 1, 2, 3].map((i) => ({
+    pageIndex: i,
+    templateId: 'mag-08',
+    images: {},
+    texts: {},
+  }));
+  const colorway = { id: 'cream', name: '奶黄', nameEn: 'Cream', bg: '#F9EDC4', title: '#1F3A2E', sub: '#4A4A42' };
+  const pages = assembleDesignedPages({
+    interiorPages: interior as never,
+    set: { coverTemplateId: 'mag-62', coverPhotoId: 'p1', endingTemplateId: 'mag-22', endingPhotoId: 'p2' },
+    coverTexts: {},
+    endingTexts: {},
+    fonts: FONTS,
+    colors: COLORS,
+    interiorSeed: 'album-carrier-check',
+    colorway,
+  });
+  const seq = interiorInkSequence('album-carrier-check', 4);
+  for (let i = 0; i < 4; i += 1) {
+    assert.equal(pages[i + 1]!.texts[PAGE_BACKGROUND_CARRIER_KEY], seq[i]!.bg, `第 ${i + 1} 页内页 carrier 缺失`);
+  }
+  assert.equal(pages[0]!.texts[PAGE_BACKGROUND_CARRIER_KEY], colorway.bg, '封面 carrier 缺失');
+  assert.equal(pages[5]!.texts[PAGE_BACKGROUND_CARRIER_KEY], colorway.bg, '封尾 carrier 缺失');
 });
 
 test('assembleDesignedPages: 同一个 interiorSeed 两次成稿,内页配色逐页相同', () => {

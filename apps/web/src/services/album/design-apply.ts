@@ -1,5 +1,6 @@
 import {
   ITEMS_GRID_CAPACITY,
+  PAGE_BACKGROUND_CARRIER_KEY,
   TEMPLATES,
   THEME_ACCENT_CARRIER_SUFFIX,
   THEME_FONT_CARRIER_SUFFIX,
@@ -513,7 +514,13 @@ export function darkColorsOf(
 }
 
 /** 页根同时刷底色和默认字色 —— 模板根写死 color:#1c1b18,深底上不翻浅的话,
- *  非 carrier 的静态装饰(页码、斜杠、分隔符)会黑压黑看不见。 */
+ *  非 carrier 的静态装饰(页码、斜杠、分隔符)会黑压黑看不见。
+ *
+ *  同时把 ink.bg 写进 texts[PAGE_BACKGROUND_CARRIER_KEY]:深色套的底色是
+ *  colorway/interiorInkSequence 动态派的,不是模板自带(design-agent 那张
+ *  TEMPLATE_OWN_BACKGROUND 只兜得住 mag-62/63/p01 的 CSS 默认深底,兜不住这里)——
+ *  不写 carrier,Agent 后续 set_text_colors 对这页做对比度校验时会拿错底色
+ *  (可能是完全不同明暗的默认值),c3ce69b3 那道硬校验对刚成稿的深色套书就形同虚设。 */
 export function applyDarkChrome(
   pages: Page[],
   inkByIndex: Map<number, { bg: string; body: string }>,
@@ -525,19 +532,28 @@ export function applyDarkChrome(
       'background-color': ink.bg,
       color: ink.body,
     });
-    return patched ? { ...page, html: patched } : page;
+    if (!patched) return page;
+    return {
+      ...page,
+      html: patched,
+      texts: { ...page.texts, [PAGE_BACKGROUND_CARRIER_KEY]: ink.bg },
+    };
   });
 }
 
-// 书页底色 sweep:烘完 html 后,给每页页根 [data-template] 写 background-color。
-// 与手动书页背景工具同一原语(patchHtmlPageStyle),纯字符串实现,服务端可跑。
-// 纯白/未传 = 不写(留模板自带 background:#fff);锚点失配的页原样保留(不影响其余页)。
+// 书页底色 sweep:烘完 html 后,给每页页根 [data-template] 写 background-color,
+// 同时把同一个 hex 写进 texts[PAGE_BACKGROUND_CARRIER_KEY](与手动书页背景工具同一
+// 原语 patchHtmlPageStyle,纯字符串实现,服务端可跑)。carrier 是重烘才拿得回来的
+// 那一份 —— Agent 之后 set_text_colors 重烘这页时,只有 inline 那份的话颜色就丢了。
+// 纯白/未传 = 两者都不写(留模板自带 background:#fff,对老书纯叠加);
+// 锚点失配的页原样保留(不影响其余页)。
 // 导出给追加路径:重烘会把页根打回模板默认白,不重刷一遍新页就跟全书不同底。
 export function applyPageBackground(pages: Page[], bg?: string): Page[] {
   if (!bg || isDefaultPageBackground(bg)) return pages;
   return pages.map((page) => {
     if (typeof page.html !== 'string') return page;
     const patched = patchHtmlPageStyle(page.html, { 'background-color': bg });
-    return patched ? { ...page, html: patched } : page;
+    if (!patched) return page;
+    return { ...page, html: patched, texts: { ...page.texts, [PAGE_BACKGROUND_CARRIER_KEY]: bg } };
   });
 }

@@ -12,10 +12,17 @@ export type ChatRole = 'user' | 'assistant';
 /** design chat 写类操作折成的用户可读类别。 */
 export type DesignChangeCategory = 'fonts' | 'colors' | 'pages' | 'order';
 
-/** 八个写工具 → 类别。与 design-chat 路由落库 designOps 的工具名一一对应。 */
+/** 十个写工具 → 类别。与 design-chat 路由落库 designOps 的工具名一一对应。
+ *
+ * set_page_background / apply_book_style(2026-08-29 风格理解新增)都映射到 'colors' ——
+ * 前者就是逐页刷底色,后者虽然也换封面/封尾模板,但用户视角「整本换气质」最显眼的效果
+ * 是全书底色和字色一起变,归进颜色条比归进「页面」更贴用户心智,也不必为这两个工具
+ * 新开一个类别、多一套要审的展示文案。 */
 const DESIGN_CHANGE_CATEGORY: Record<string, DesignChangeCategory> = {
   set_text_fonts: 'fonts',
   set_text_colors: 'colors',
+  set_page_background: 'colors',
+  apply_book_style: 'colors',
   update_page_texts: 'pages',
   swap_page_template: 'pages',
   update_page_images: 'pages',

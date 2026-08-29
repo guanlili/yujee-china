@@ -50,10 +50,13 @@ test('过程披露:每个工具调用一行人话步骤,内部工具名/入参�
 // ── 第三段:一条彩色「更新了什么」条(按类别去重,只报真正改了的) ──
 test('更新条:彩色摘要按类别去重,字体/颜色/页面三类,含 set_text_fonts 与 write_page_html', () => {
   assert.match(chatSrc, /buildDesignChangeCard/);
-  // 六个写工具都要进类别映射(注意 set_text_fonts / write_page_html 之前不在集合里)。
+  // 十个写工具都要进类别映射(注意 set_text_fonts / write_page_html 之前不在集合里;
+  // set_page_background / apply_book_style 是 2026-08-29 风格理解新增的两个)。
   for (const tool of [
     'set_text_fonts',
     'set_text_colors',
+    'set_page_background',
+    'apply_book_style',
     'update_page_texts',
     'swap_page_template',
     'update_page_images',
@@ -94,7 +97,7 @@ test('历史回放:按 designOps 的 toolName 去重成类别,渲染一条彩色
 });
 
 // ── 落库侧:写工具集必须含 set_text_fonts / write_page_html,否则历史回放缺这两类 ──
-test('route 落库写工具集含全部 6 个写工具(字体/HTML 更新才进 designOps)', () => {
+test('route 落库写工具集含全部 10 个写工具(字体/HTML/底色/整本换风格更新才进 designOps)', () => {
   const block = /const DESIGN_WRITE_TOOLS = new Set\(\[[\s\S]*?\]\)/.exec(routeSrc)?.[0] ?? '';
   assert.ok(block.length > 0, 'route 应有 DESIGN_WRITE_TOOLS 集合');
   for (const tool of [
@@ -102,8 +105,12 @@ test('route 落库写工具集含全部 6 个写工具(字体/HTML 更新才进 
     'swap_page_template',
     'update_page_images',
     'set_text_colors',
+    'set_page_background',
+    'apply_book_style',
     'set_text_fonts',
     'write_page_html',
+    'move_pages',
+    'delete_page',
   ]) {
     assert.ok(block.includes(tool), `route DESIGN_WRITE_TOOLS 应含 ${tool}`);
   }
