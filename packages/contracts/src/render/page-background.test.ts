@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { applyPageBackground } from './page-background';
-import { renderPageHtml } from './fill-template';
+import { renderPageHtml, fillTemplateHtml } from './fill-template';
+import { getHtmlTemplate } from './html-templates/registry';
 import { PAGE_BACKGROUND_CARRIER_KEY } from '../theme-carrier';
 import { TEMPLATES } from '../templates.generated';
 
@@ -51,14 +52,13 @@ function sample(templateId: string, extraTexts: Record<string, string> = {}) {
   return { templateId, images, texts: { ...texts, ...extraTexts } };
 }
 
-test('没有 #pageBackground 键时，renderPageHtml 输出逐字节不变', () => {
+test('没有 #pageBackground 键时，renderPageHtml 与不加包装的 fillTemplateHtml 逐字节相同', () => {
   for (const id of ['mag-05', 'mag-13', 'mag-01', 'mag-62']) {
-    const before = renderPageHtml(sample(id), () => 'IMG');
-    const after = renderPageHtml(sample(id, { unrelated: 'x' }), () => 'IMG');
-    assert.ok(before, `${id} 渲染失败`);
-    // 与本次改动前的行为对齐：无 carrier 键 → 页根不出现 background-color
-    assert.ok(!/data-template="[^"]*"[^>]*background-color:/.test(before!), `${id} 页根多了 background-color`);
-    assert.ok(after);
+    const page = sample(id);
+    const wrapped = renderPageHtml(page, () => 'IMG');
+    const bare = fillTemplateHtml(getHtmlTemplate(id)!, page, () => 'IMG');
+    assert.ok(wrapped, `${id} 渲染失败`);
+    assert.equal(wrapped, bare, `${id}：无 carrier 时包装层必须是 no-op，任何一字节差异都是全站回归`);
   }
 });
 
