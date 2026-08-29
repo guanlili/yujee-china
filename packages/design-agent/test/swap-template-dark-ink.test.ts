@@ -79,34 +79,66 @@ test("从深底模板换回浅底模板时字色翻回深字", async () => {
 });
 
 test("页面已有 #pageBackground 时以它为准，不看模板自带底色", async () => {
-	// 注：brief 原稿设浅黄底 #F3F0A8、断言配深字。但 mag-05/mag-13 都不在
-	// TEMPLATE_OWN_BACKGROUND 表里（该表只收 cover/ending 类目的深底模板，内页模板没有
-	// "自带深底"这回事）——不读 #pageBackground、直接假定模板默认白底，算出来也是深字，
-	// 跟浅黄底该配的深字撞了同一个答案：读不读这条 carrier 结果都一样，测不出"以它为
-	// 准"这回事，也测不出实现忘记读它的情况（原稿这个组合下，实现即便完全不读
-	// #pageBackground，写入前也没有任何已存在的 accentColor 可比对，断言必然落空——已用
-	// 上面实现过 Step 4 后重跑验证过，确实红）。
-	// 改为:页面当前已经是"深底覆盖 + 配套浅字"（覆盖底色需要浅字才读得清），换到一个自己
-	// 没有深底的模板(mag-13 默认白底)。正确实现要读出旧底色其实是深底,判定前后底色类别
-	// 不一致,把陈旧的浅字翻回深字;如果实现忽略 #pageBackground、直接当模板默认白底处理,
-	// 会误判"前后都是白底深字类"没有变化,把陈旧的浅字原样留在新的白底上——那才是真正会
-	// 读不清的分岔点，也是这条测试要守住的行为。
+	// 注：这条测试的设计随评审要求的「Important 修复」（migratePageToTemplate 保留
+	// #pageBackground carrier）改过一轮。
+	//
+	// 第一轮（brief 原稿浅黄底 #F3F0A8 + mag-05→mag-13）：两个都是纯内页模板，都不在
+	// TEMPLATE_OWN_BACKGROUND 表里（该表只收 cover/ending 类目的深底模板），读不读这条
+	// carrier 都会落到"默认白底"同一个答案，测不出"以它为准"；已验证过是简报本身的
+	// 测试缺陷，一度改成深蓝底(#2D6DB0)+mag-13 让 before/after 分岔。
+	//
+	// 但评审要求的 Important 修复让 #pageBackground 本身会原样跟着迁移(见下面新增的
+	// 「carrier 还在」测试)——这就让"深蓝底+mag-13"这版也失效了：迁移后 nextPage 照样
+	// 带着 #2D6DB0，effectivePageBackground 前后都读到同一个深蓝，beforeInk===afterInk，
+	// 不会触发翻转，也就验证不了"不看模板自带底色"这句话本身。
+	//
+	// 真正能测出"以它为准，不看模板自带底色"的场景，只能发生在 TEMPLATE_OWN_BACKGROUND
+	// 真正有值的 cover/ending 类目：页面已经有显式的浅底覆盖，换到 mag-62（模板自己声明
+	// 的默认底色是深底 #12363A）——如果实现看的是模板自己的默认底色而不是页面的显式
+	// 覆盖，会把这页错判成深底、把字翻成浅字；只有真的"以显式覆盖为准"，才会维持深字
+	// 不变。
 	const { tools, getBook } = createHarness();
 	const book = getBook();
-	book.pages[1]!.texts["#pageBackground"] = "#2D6DB0"; // 深蓝底覆盖
-	book.pages[1]!.texts["title#accentColor"] = "#F5F2E8"; // 配套的浅字（当前显示是对的）
-	await swapTemplate(tools, 1, "mag-13");
-	const page = getBook().pages[1]!;
-	const accent = Object.entries(page.texts).find(([k]) => k.endsWith("#accentColor"))?.[1];
-	assert.equal(accent, "#1A1A14", "换到默认白底模板后，陈旧的浅字应该翻回深字");
+	book.pages[0]!.texts["#pageBackground"] = "#F3F0A8"; // 显式浅黄覆盖
+	book.pages[0]!.texts["title#accentColor"] = "#1A1A14"; // 配套的深字（当前显示是对的）
+	await swapTemplate(tools, "cover", "mag-62");
+	const cover = getBook().pages[0]!;
+	assert.equal(cover.texts["#pageBackground"], "#F3F0A8", "显式覆盖应该跟着迁移原样带走");
+	const accent = Object.entries(cover.texts).find(([k]) => k.endsWith("#accentColor"))?.[1];
+	assert.equal(accent, "#1A1A14", "有显式浅底覆盖时不该被 mag-62 自带的深底带偏，字色应该保持深字");
 });
 
 test("浅底换浅底时字色不动（不引入无谓改动）", async () => {
+	// 评审复盘（2026-08-29）：这条继承自 brief 原稿——before 快照里本来就没有任何
+	// #accentColor 键，`for...if (k.endsWith('#accentColor'))` 循环永远不触发断言，
+	// 测不出"是否凭空新增了不该有的 accentColor"。改法：先预置几个 carrier（title 和
+	// body 都是 mag-05→mag-13 两个模板共有的槽，迁移不会被当未知槽丢），断言换模板后
+	// 逐字不变，且没有凭空新增/减少。
 	const { tools, getBook } = createHarness();
+	const book = getBook();
+	book.pages[1]!.texts["title#accentColor"] = "#2c6e8f";
+	book.pages[1]!.texts["body#accentColor"] = "#7a4b2a";
 	const before = { ...getBook().pages[1]!.texts };
+	const beforeAccentKeys = Object.keys(before).filter((k) => k.endsWith("#accentColor"));
+	assert.ok(beforeAccentKeys.length > 0, "预置的 accentColor 不能是空的，不然这条测试没有拦截力");
+
 	await swapTemplate(tools, 1, "mag-13");
 	const after = getBook().pages[1]!.texts;
-	for (const [k, v] of Object.entries(before)) {
-		if (k.endsWith("#accentColor")) assert.equal(after[k], v, `${k} 不该变`);
-	}
+	for (const key of beforeAccentKeys) assert.equal(after[key], before[key], `${key} 不该变`);
+	const afterAccentKeys = Object.keys(after).filter((k) => k.endsWith("#accentColor"));
+	assert.deepEqual(afterAccentKeys.sort(), beforeAccentKeys.sort(), "不该凭空新增/减少 accentColor 键");
+});
+
+test("换模板后 #pageBackground carrier 还在（不会被当成未知文字槽丢弃）", async () => {
+	// 评审复盘（2026-08-29）：migratePageToTemplate 把每个文字槽逐个过
+	// validateTextsPatch，"#pageBackground" 既不是任何模板声明的文字槽，也不匹配
+	// parseThemeCarrierKey 的后缀模式（它只认 #accentColor/#artFont），落进"未知槽"
+	// 分支被当垃圾清掉——用户自己设的页底色换模板后会静默复位成模板默认，Task 4
+	// 「重烘后不再丢失」被这条迁移路径绕过去了。评审实测复现，修法是在
+	// migratePageToTemplate 里特判这一个 key，原样带过去。
+	const { tools, getBook } = createHarness();
+	const book = getBook();
+	book.pages[1]!.texts["#pageBackground"] = "#F3F0A8";
+	await swapTemplate(tools, 1, "mag-13");
+	assert.equal(getBook().pages[1]!.texts["#pageBackground"], "#F3F0A8", "页级底色 carrier 应该原样带过去，不能被当未知槽清掉");
 });

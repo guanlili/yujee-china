@@ -67,3 +67,27 @@ test("没有页底色的页按纯白判定（模板默认 background:#fff）", a
 		/对比度/,
 	);
 });
+
+test("换到 mag-62（模板自带深底，未经过 set_page_background）后刷深字必须被打回", async () => {
+	// 评审复盘（2026-08-29）：Task 7 的对比度体检只查 page.texts[PAGE_BACKGROUND_
+	// CARRIER_KEY]，没有查 Task 8 引入的 TEMPLATE_OWN_BACKGROUND。mag-62/mag-63/p01
+	// 这几个模板自带深底，页面只要没走过 set_page_background（没有显式 #pageBackground
+	// carrier），旧实现会把它当白底放行——评审用这条路径实测复现了 1.343:1。
+	// 修法：改用 effectivePageBackground（Task 8 已经写好「carrier 优先 → 模板自带
+	// 深底 → 白底」的正确优先级），这里补一条测试钉住。
+	const { tools, getBook } = createHarness(); // 封面 mag-01（editorial），1 图槽
+	const swapTool = tools.get("swap_page_template")!;
+	// 封面换成 mag-62：category 都是 cover、图槽数都是 1，可以直接换。
+	await swapTool.execute("s1", swapTool.prepareArguments!({ pageNo: "cover", templateId: "mag-62" }) as never);
+	assert.equal(getBook().pages[0]!.templateId, "mag-62");
+	assert.equal(getBook().pages[0]!.texts["#pageBackground"], undefined, "没有显式 carrier 才是这个缺口的真实场景");
+
+	await assert.rejects(
+		() => tools.get("set_text_colors")!.execute("c1", { titleColor: "#1A1A14" } as never),
+		(err: Error) => {
+			assert.match(err.message, /对比度/);
+			assert.match(err.message, /1\.\d\d/); // #12363A 配 #1A1A14 实测约 1.34:1
+			return true;
+		},
+	);
+});

@@ -767,7 +767,11 @@ function createSetTextColorsTool(
 			const state0 = options.getBookState();
 			const failures: string[] = [];
 			for (const [index, page] of state0.pages.entries()) {
-				const bg = page.texts[PAGE_BACKGROUND_CARRIER_KEY] ?? "#FFFFFF"; // 缺省=模板默认白底
+				// 用 effectivePageBackground(Task 8 引入)而不是只看 carrier ——
+				// mag-62/mag-63/p01 这几个模板自带深底,页面没走过 set_page_background、
+				// 没有 #pageBackground carrier 时,只查 carrier 会当成白底放行,
+				// 评审实测 1.343:1 就是从这个缺口钻出来的。
+				const bg = effectivePageBackground(page);
 				for (const [kind, color] of provided) {
 					const ratio = contrastRatio(bg, color as string);
 					if (!Number.isFinite(ratio) || ratio >= 4.5) continue;
@@ -1414,6 +1418,13 @@ function migratePageToTemplate(page: AlbumPage, nextTemplate: TemplateCatalogEnt
 	const nextTexts: Record<string, string> = {};
 	const keptSlots = new Set<string>();
 	for (const [slotId, value] of Object.entries(page.texts)) {
+		if (slotId === PAGE_BACKGROUND_CARRIER_KEY) {
+			// 页级底色 carrier 不挂在任何模板文字槽下,validateTextsPatch 会把它当
+			// "未知槽"清掉——不特判的话,用户设过的页底色会在换模板后静默复位成模板
+			// 默认(Task 4「重烘后不再丢失」被这条迁移路径绕过去了,评审实测坐实)。
+			nextTexts[slotId] = value;
+			continue;
+		}
 		if (parseThemeCarrierKey(slotId)) continue; // carrier 第二遍处理
 		const check = validateTextsPatch(nextTemplate, { [slotId]: value });
 		if (check.length === 0) {
