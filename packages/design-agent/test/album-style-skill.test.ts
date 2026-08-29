@@ -93,3 +93,45 @@ test('映射表消歧：内置兜底版本与文件版判断一致，不能各�
   const body = createDefaultAlbumSkills().find((s) => s.name === '风格理解')!.content;
   assertUnambiguousNoisyMapping(body);
 });
+
+/**
+ * 最终评审 Important 3:多巴胺书每页底色不同,`set_text_colors` 在上面永远调不动
+ * (浅底页要深字、深底页要浅字,没有哪个 hex 能同时过 4.5:1)。而「相册配色」和
+ * 「风格理解」两个技能都还在往这个工具身上指 —— 模型会反复撞墙。两个技能里都要
+ * 写明这条,并指向真正走得通的两个工具。
+ *
+ * 文件版与内置兜底版(skills.ts)的实质内容必须同步:生产加载的是文件版,skills/
+ * 目录缺失时兜底的是内置版,两份给出的判断不能各说各话。
+ */
+function assertDopamineTextColorCaveat(body: string, where: string) {
+  const caveat = body
+    .split('\n')
+    .find((l) => l.includes('set_text_colors') && l.includes('多巴胺') && /用不了|做不到/.test(l));
+  assert.ok(caveat, `${where}:没写明「多巴胺这种每页底色不同的书用不了 set_text_colors」`);
+  assert.ok(/底色/.test(caveat!), `${where}:要说清原因是每页底色不同,不能只说"用不了"`);
+  // 光说不能用没有用,得给出路 —— 两条都要在技能里出现。
+  assert.ok(body.includes('apply_book_style'), `${where}:缺「改整体气质」这条出路`);
+  assert.ok(body.includes('set_page_background'), `${where}:缺「改某几页观感」这条出路`);
+}
+
+test('相册配色技能写明:多巴胺书上 set_text_colors 用不了,并给出两条出路（文件版）', () => {
+  const skill = loadAlbumSkills().find((s) => s.name === '相册配色');
+  assert.ok(skill, '相册配色技能必须能加载');
+  assertDopamineTextColorCaveat(stripFences(skill!.content), '相册配色·文件版');
+});
+
+test('相册配色技能:内置兜底版与文件版判断一致', () => {
+  const skill = createDefaultAlbumSkills().find((s) => s.name === '相册配色')!;
+  assertDopamineTextColorCaveat(skill.content, '相册配色·内置版');
+});
+
+test('风格理解技能同样写明这条（文件版 + 内置兜底版)', () => {
+  assertDopamineTextColorCaveat(
+    stripFences(loadAlbumSkills().find((s) => s.name === '风格理解')!.content),
+    '风格理解·文件版',
+  );
+  assertDopamineTextColorCaveat(
+    createDefaultAlbumSkills().find((s) => s.name === '风格理解')!.content,
+    '风格理解·内置版',
+  );
+});

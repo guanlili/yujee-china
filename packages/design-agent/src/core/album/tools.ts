@@ -725,6 +725,47 @@ const ROLE_TO_FONT_KIND: Record<string, FontRole> = {
 	explain: "body",
 };
 
+/**
+ * 打回 set_text_colors 时给模型的**可行**出路（2026-08-29 最终评审 Important 3）。
+ *
+ * 旧文案一律端出两个 ink（"深底配浅字 X、浅底配深字 Y"）。问题有二：
+ *   ① 底色统一的书上，两个里必有一个不可用，那半句是噪音；
+ *   ② 多巴胺书每页底色不同 —— 淡黄 #F3F0A8 配浅字只有 1.05、橙 #C83E18 配深字 3.46，
+ *      **没有任何一个 hex 能同时过这两页**（评审把 #F5F2E8/#1A1A14/#FFF/#000 四个都
+ *      实测打回了）。这时两个建议色本身都不可用，模型照着改会无限撞墙，而「相册配色」
+ *      和「风格理解」两个技能都还在往这个工具身上指。
+ *
+ * 现在按「这本书里到底有没有一个字色能过全书」来说话：
+ *   · 有 → 只报那一个（或那两个），是真的能用的；
+ *   · 没有 → 明说统一刷一个字色做不到，并给出两条真正走得通的路：
+ *     apply_book_style 改整本气质、set_page_background 改某几页观感（改底色时字色
+ *     会自动跟着翻，见该工具）。
+ *
+ * 注意判据是「有没有可用色」而不是「底色统不统一」：底色不统一但全是浅底的书，
+ * 深字在每页上都过得了，一刀切拒绝会误伤。
+ */
+function uniformColorAdvice(state: AlbumBookState): string {
+	const backgrounds = state.pages.map(effectivePageBackground);
+	const workable = [THIRD_SET_INK.light, THIRD_SET_INK.dark].filter((ink) =>
+		backgrounds.every((bg) => {
+			const ratio = contrastRatio(bg, ink);
+			return !Number.isFinite(ratio) || ratio >= 4.5;
+		}),
+	);
+	if (workable.length > 0) {
+		return `这本书每页都读得了的文字色是 ${workable.join(" 或 ")}；要整本换气质用 apply_book_style。`;
+	}
+	const distinct = [...new Set(backgrounds.map((bg) => bg.toUpperCase()))];
+	const why =
+		distinct.length > 1
+			? `这本书 ${distinct.length} 种底色混着用（浅底页要深字、深底页要浅字）`
+			: `这本书的底色 ${distinct[0]} 明暗居中`;
+	return (
+		`${why}，统一刷一个文字色这件事做不到 —— 没有哪个颜色能在每一页上都过 4.5:1。` +
+		`要改整本气质用 apply_book_style；只想改某几页的观感用 set_page_background（改底色时文字色会自动跟着翻）。`
+	);
+}
+
 function createSetTextColorsTool(
 	options: AlbumToolsOptions,
 ): AgentTool<typeof setTextColorsSchema, AlbumWriteDetails> {
@@ -785,7 +826,7 @@ function createSetTextColorsTool(
 				const shown = failures.slice(0, 3).join("；");
 				throw new Error(
 					`对比度不够（要 4.5:1 以上）：${shown}${failures.length > 3 ? ` 等 ${failures.length} 处` : ""}。` +
-						`深底配浅字 ${THIRD_SET_INK.light}、浅底配深字 ${THIRD_SET_INK.dark}；要整本换气质用 apply_book_style。`,
+						uniformColorAdvice(state0),
 				);
 			}
 
