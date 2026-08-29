@@ -299,8 +299,14 @@ pnpm --filter @yujee/web test    # 从仓根跑,等价
 ```
 
 **真正要小心的是仓根的 `pnpm test`**(即 `pnpm -r test`):它撞到第一个失败的包就中断,
-后面的包一个都不跑。contracts 先失败时,web 这 700+ 个测试根本没机会执行,而输出看起来
+后面的包一个都不跑。contracts 先失败时,web 这 1900+ 个测试根本没机会执行,而输出看起来
 "只坏了一处"。改了 web 就明确跑上面两条之一,别拿仓根 `pnpm test` 的结果替代。
+
+测试文件住在 `src/**/*.test.ts` 和 `scripts/**/*.test.ts` 两处(见 package.json 的 test
+glob)。**跨包 import design-agent 源码的测试只能放 `scripts/`** —— design-agent 内部一律
+用带 `.ts` 扩展名的 import,而 apps/web 的 tsconfig 没开 `allowImportingTsExtensions`,
+放 `src/` 下会被 `include: src/**` 拉进类型检查、把整棵 design-agent 源码树拖进来报 TS5097。
+`scripts/` 不在 include 里,测试照跑。
 
 如果确实看到大量 `DATABASE_URL is not reachable; skipping`,那是本地缺 `apps/web/.env.local`
 或库没起,不是跑法问题 —— 那种情况下真库集成测试会假跳过,输出一片绿但一条 DB 断言都没跑。
@@ -366,5 +372,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: a7db82ef
+checked-at: 6cf10b19
 -->
