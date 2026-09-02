@@ -197,6 +197,34 @@
       "when": 1787047387618,
       "tag": "0027_glossy_micromax",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1787826539260,
+      "tag": "0028_even_mole_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1787881985867,
+      "tag": "0029_handy_thanos",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1787885960621,
+      "tag": "0030_closed_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1787886788311,
+      "tag": "0031_silky_tusk",
+      "breakpoints": true
     }
   ]
 }

@@ -257,6 +257,20 @@ export const albums = pgTable(
     // compose/design-chat) naturally advances every page's version. 0 = no
     // draft_pages rows yet (legacy-only album). See docs/plans/2026-08-03-draft-pages-split.md.
     draftRevision: bigint('draft_revision', { mode: 'number' }).notNull().default(0),
+    // 协同增量同步(2026-08-27 collab plan §7.4):最后一次「结构/整书级写入」
+    // (reorder/delete/add/select-layout/compose/design-chat/replaceAll)落地时的
+    // draft_revision。普通单页 updatePage 只推进 draft_revision、不动它。客户端
+    // since < 该值 ⇒ 页面集合可能删行/重排,必须整书重载;since >= 该值 ⇒ 可以安全
+    // 应用 version > since 的单页增量。0 = 尚无结构写入(全量播种前的初值)。
+    draftStructureRevision: bigint('draft_structure_revision', { mode: 'number' })
+      .notNull()
+      .default(0),
+    // 全局创作设置 OCC(Phase 2B):title / board_background / photo_filter 三个
+    // 相册级设置的乐观并发基线。每次设置写事务内精确比较,成功 +1、失配 409
+    // SETTINGS_CONFLICT 零写入。与 draft_revision(页集合)、draft_structure_revision
+    // (页结构)刻意分离 —— 三类写点互不干扰,拿错版本号只会让对应写点误判冲突。
+    // 0 = 尚无任何设置写(初值)。
+    settingsRevision: integer('settings_revision').notNull().default(0),
     photoCount: integer('photo_count').notNull(),
     pageCount: integer('page_count').notNull().default(0),
     pdfR2Key: text('pdf_r2_key'),
@@ -349,6 +363,10 @@ export const albumPhotos = pgTable(
       .references(() => albums.id, { onDelete: 'cascade' }),
     photoId: text('photo_id').notNull(),
     status: albumPhotoStatusEnum('status').notNull().default('uploaded'),
+    // 最后一个把原图 PUT 上来的 Creator(collab rework §3.3)。照片入册即共享素材:
+    // 成员移除/账号删除不回收素材(set null),删除规则(只能删自己上传且未被
+    // 页面引用的)由未来删除 API 按这道署名执行。
+    uploadedBy: text('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
     width: integer('width'),
     height: integer('height'),
     bytes: integer('bytes'),
@@ -363,7 +381,8 @@ export const albumPhotos = pgTable(
 // 相册分享链接(免登只读):生成时把当前定稿「冻结」成自包含 HTML 快照(图片已换成
 // 公开 R2 快照图 URL),存这张表。公开路由 /{locale}/s/{token} 只按 token 查、不校验归属,
 // 任何人可看。原图仍只在浏览器;这里存的 html 里图片一律是公开快照 URL,免登也能显示。
-// 冻结:生成后相册继续编辑不影响已发链接;想更新就重新生成(覆盖同 albumId 的行)。
+// 冻结:生成后相册继续编辑不影响已发链接;重新生成创建**新**链接(collab rework
+// §3.1:独立 token,editor 建新分享不撤销 owner 已发的链接),旧链接继续可读。
 export const albumShares = pgTable(
   'album_shares',
   {
@@ -403,7 +422,51 @@ export const albumShares = pgTable(
   },
   (t) => ({
     token: uniqueIndex('uq_album_shares_token').on(t.token),
-    album: uniqueIndex('uq_album_shares_album').on(t.albumId), // 一相册一条,重新生成=覆盖
+    // 每相册可有多条(一链接一行);按相册找最新用 album+created_at 查询。
+    album: index('idx_album_shares_album').on(t.albumId, t.createdAt),
+  }),
+);
+
+// 协同编辑成员表(2026-08-27 collab plan §6.1):相册的 editor 名单。owner 永远
+// 不出现在这里 —— `albums.user_id` 是 owner 的唯一真相,这张表只表达"被邀请进来
+// 的 editor"。第一版无角色列:存在即 editor。redeem 用 ON CONFLICT DO NOTHING
+// 幂等;相册/用户删除级联清理。结构/AI 整书写点与成员加入在相册行锁事务内
+// 串行(Phase 2A 起不再用「存在即冻结」,改由结构 OCC 收敛并发)。
+export const albumMembers = pgTable(
+  'album_members',
+  {
+    albumId: text('album_id')
+      .notNull()
+      .references(() => albums.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.albumId, t.userId] }),
+    // 「按用户查加入的相册」与成员列表排序都走这个。
+    userCreated: index('idx_album_members_user').on(t.userId, t.createdAt.desc()),
+  }),
+);
+
+// 协同编辑邀请链接(2026-08-27 collab plan §6.2):一册最多一条(重新生成=旋转
+// token,旧链接立即失效,即最小撤销机制)。只存 token 的 SHA-256 hash,明文仅在
+// 创建/旋转响应里返回一次。token 由 service 层用 ≥32 字节 CSPRNG 生成。
+export const albumEditLinks = pgTable(
+  'album_edit_links',
+  {
+    albumId: text('album_id')
+      .primaryKey()
+      .references(() => albums.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull(),
+    createdBy: text('created_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    tokenHash: uniqueIndex('uq_album_edit_links_token_hash').on(t.tokenHash),
   }),
 );
 
@@ -657,6 +720,10 @@ export type AlbumPhoto = typeof albumPhotos.$inferSelect;
 export type NewAlbumPhoto = typeof albumPhotos.$inferInsert;
 export type AlbumShare = typeof albumShares.$inferSelect;
 export type NewAlbumShare = typeof albumShares.$inferInsert;
+export type AlbumMember = typeof albumMembers.$inferSelect;
+export type NewAlbumMember = typeof albumMembers.$inferInsert;
+export type AlbumEditLink = typeof albumEditLinks.$inferSelect;
+export type NewAlbumEditLink = typeof albumEditLinks.$inferInsert;
 export type AlbumMessage = typeof albumMessages.$inferSelect;
 export type NewAlbumMessage = typeof albumMessages.$inferInsert;
 

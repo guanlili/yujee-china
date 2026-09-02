@@ -1,0 +1,1 @@
+ALTER TABLE "albums" ADD COLUMN "settings_revision" integer DEFAULT 0 NOT NULL;

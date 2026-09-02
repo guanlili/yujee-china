@@ -131,7 +131,7 @@ function mockFrozenShareState(
   );
   const upsert = mock.method(
     albumShareRepo,
-    'upsertByAlbum',
+    'create',
     async (actualTx: unknown, row: Record<string, unknown>) => {
       assert.equal(actualTx, tx);
       savedShare = structuredClone(row);
@@ -505,7 +505,7 @@ test('concurrent share and filter update serialize on the album lock without a m
     ]);
     assert.equal(filterResult.status, 'fulfilled');
 
-    const stored = await albumShareRepo.findByAlbum(album.id);
+    const stored = await albumShareRepo.findLatestByAlbum(album.id);
     if (shareResult.status === 'fulfilled') {
       assert.ok(stored);
       assert.equal(stored.token, shareResult.value.token);
@@ -519,6 +519,47 @@ test('concurrent share and filter update serialize on the album lock without a m
       assert.equal(error.message, '1');
       assert.equal(stored, undefined);
     }
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
+// 0030_closed_sentinel 的核心不变式(collab rework §3.1):album_shares 从「一相册
+// 一条、重新生成即覆盖」改成「一链接一行」。协同下这条是安全边界 —— editor 建
+// 分享**不能**撤销 owner 已经发出去的链接;非协同下它也让「重新生成」不再让已
+// 分发的旧链接突然 404。唯一索引 uq_album_shares_album 已被迁移删除,repo 侧
+// upsertByAlbum 相应换成 create。
+test('重新生成分享创建新行,旧 token 继续可读(一链接一行,不覆盖)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const user = await makeUser('share-append-only');
+  try {
+    const album = await makeAlbum(user.id, { photoCount: 1 });
+    await albumPageRepo.bulkInsert(db, [
+      { ...page(0, { hero: P1 }), albumId: album.id, id: undefined },
+    ]);
+    await albumService.updatePhotoFilter(user.id, album.id, {
+      default: { lutId: 'fuji-portrait', strength: 80 },
+    });
+    await albumService.confirmPhotoSnapshot(user.id, album.id, [
+      { photoId: P1, renderVersion: FILTERED },
+    ]);
+
+    const first = await shareService.createShare(user.id, album.id, 'zh');
+    const second = await shareService.createShare(user.id, album.id, 'zh');
+    assert.notEqual(first.token, second.token, '重新生成必须换新 token');
+
+    // 旧链接不被撤销:两条行都在,按 token 都查得到。
+    const firstRow = await albumShareRepo.findByToken(first.token);
+    const secondRow = await albumShareRepo.findByToken(second.token);
+    assert.ok(firstRow, '重新生成后旧 token 必须仍可读 —— 覆盖语义会让它消失');
+    assert.ok(secondRow);
+    assert.equal(firstRow.albumId, album.id);
+    assert.equal(secondRow.albumId, album.id);
+
+    // 分享管理 UI 展示「当前链接」取最新一条。
+    const latest = await albumShareRepo.findLatestByAlbum(album.id);
+    assert.ok(latest);
+    assert.equal(latest.token, second.token);
   } finally {
     await cleanupUser(user.id);
   }

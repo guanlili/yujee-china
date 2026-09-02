@@ -71,12 +71,14 @@ export async function buildSnapshotPages(
 }
 
 export const shareService = {
-  // 生成/重新生成分享:校验归属 → 把当前定稿页数据 + 每张照片的「公开快照 URL」冻结进
-  // album_shares(一相册一条,覆盖)。分享页用 FlipBook 按这套数据渲染真翻书;图片走公开
-  // 快照 URL,免登也能显示(本地原图不参与:别人浏览器里没有你的 IndexedDB)。
-  // Ownership, current pages/filter/snapshot versions, validation, and upsert all
-  // share one album-row lock. A failed regeneration therefore cannot overwrite an
-  // older valid token/snapshot.
+  // 生成分享(collab rework §3.1):校验归属 → 把当前定稿页数据 + 每张照片的「公开
+  // 快照 URL」冻结为 album_shares 的**新行**(独立 token,一链接一行)。重新生成不再
+  // 覆盖旧行,旧链接继续可读 —— 协同下 editor 建分享不会撤销 owner 已发的链接,
+  // 且失败的生成对已有链接零副作用(插入而非覆盖)。
+  // 分享页用 FlipBook 按这套数据渲染真翻书;图片走公开快照 URL,免登也能显示
+  // (本地原图不参与:别人浏览器里没有你的 IndexedDB)。
+  // Ownership, current pages/filter/snapshot versions, validation, and the insert
+  // all share one album-row lock.
   async createShare(userId: string, albumId: string, locale: string): Promise<{ token: string }> {
     return db.transaction(async (tx) => {
       const album = await albumRepo.findByIdForUpdate(tx, albumId);
@@ -118,7 +120,7 @@ export const shareService = {
         ]),
       );
       const token = newShareToken();
-      await albumShareRepo.upsertByAlbum(tx, {
+      await albumShareRepo.create(tx, {
         token,
         albumId,
         title: album.title,
