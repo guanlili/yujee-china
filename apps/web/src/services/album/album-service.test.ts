@@ -1476,6 +1476,139 @@ test('getInternalAgentData page-info and chapter-search return scoped draft data
   }
 });
 
+// draft_pages 拆表(Phase 1a)之后,任何走 envelopeJson 的写路径都**不再**把 pages 写回
+// draftJson(那个助手的注释自己写着 "pages NEVER goes back into draftJson"),页面真相
+// 只剩 draft_pages 表。可 album-service 的私有 readStoryDraft 仍只读 draftJson,于是
+// 拆表后的书在这三个分支上全线失灵:
+//   - chapter-search / book-tree 的 pageIndexes 恒空
+//   - page-info scope='page' 直接抛「pageIndex not found in chapter」
+// 上面那个用例灌的是**带 pages 的老格式 draftJson**,所以一直是绿的,掩盖了这个洞。
+// Design Agent 的对话式改书靠这个接口定位页面,恒空等于它永远找不到页。
+test('getInternalAgentData 读 draft_pages 表,而不是被写路径抹空的 draftJson.pages', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
+  const user = await makeUser('internal-agent-data-split');
+  try {
+    const album = await makeAlbum(user.id);
+    const tree = {
+      chapters: [
+        {
+          chapterId: 'c1',
+          title: '2024 年 03 月 02 日',
+          description: 'coast morning',
+          accentColor: null,
+          artFont: null,
+          chapterContext: '',
+          place: '',
+          keywords: [],
+          photos: [
+            {
+              photoId: 'p1',
+              sceneDescription: 'coast sunrise',
+              width: 800,
+              height: 600,
+              orientation: 'landscape' as const,
+              takenAt: '2024-03-02T10:20:30',
+            },
+            {
+              photoId: 'p2',
+              sceneDescription: 'coast details',
+              width: 600,
+              height: 800,
+              orientation: 'portrait' as const,
+              takenAt: null,
+            },
+          ],
+        },
+        {
+          chapterId: 'c2',
+          title: '',
+          description: 'city gallery',
+          accentColor: null,
+          artFont: null,
+          chapterContext: '',
+          place: '',
+          keywords: [],
+          photos: [
+            {
+              photoId: 'p3',
+              sceneDescription: 'gallery wall',
+              width: 800,
+              height: 600,
+              orientation: 'landscape' as const,
+            },
+          ],
+        },
+      ],
+    };
+    const pages: Page[] = [
+      { pageIndex: 0, templateId: 'mag-01', images: { hero: 'p1' }, texts: { title: 'Cover' } },
+      { pageIndex: 1, templateId: 'mag-03', images: { image: 'p1' }, texts: { title: 'One' } },
+      { pageIndex: 2, templateId: 'mag-04', images: { image: 'p2' }, texts: { title: 'Two' } },
+      { pageIndex: 3, templateId: 'mag-03', images: { image: 'p3' }, texts: { title: 'Three' } },
+      { pageIndex: 4, templateId: 'mag-20', images: { hero: 'p1' }, texts: { end: 'End' } },
+    ];
+
+    // 拆表后的真实落库形态:draftJson 只有 envelope(没有 pages 键),页在 draft_pages 表。
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: {
+        version: 'v3-story',
+        tree,
+        progress: { currentChapterId: 'c1', doneChapterIds: [] },
+      } as unknown as V3StoryDraft,
+    });
+    await draftPageRepo.replaceAll(db, album.id, pages, 1, null);
+
+    const chapterInfo = await albumService.getInternalAgentData({
+      type: 'page-info',
+      albumId: album.id,
+      scope: 'chapter',
+      chapterId: 'c1',
+    });
+    if (chapterInfo.type !== 'page-info') assert.fail(`unexpected response type ${chapterInfo.type}`);
+    assert.deepEqual(chapterInfo.data.pages.map((page) => page.pageIndex), [1, 2]);
+
+    const pageInfo = await albumService.getInternalAgentData({
+      type: 'page-info',
+      albumId: album.id,
+      scope: 'page',
+      chapterId: 'c1',
+      pageIndex: 2,
+    });
+    if (pageInfo.type !== 'page-info') assert.fail(`unexpected response type ${pageInfo.type}`);
+    assert.deepEqual(pageInfo.data.pages.map((page) => page.pageIndex), [2]);
+
+    const search = await albumService.getInternalAgentData({
+      type: 'chapter-search',
+      albumId: album.id,
+      query: 'coast',
+      limit: 5,
+    });
+    if (search.type !== 'chapter-search') assert.fail(`unexpected response type ${search.type}`);
+    assert.deepEqual(search.data.matches, [
+      { chapterId: 'c1', pageIndexes: [1, 2], label: '2024 年 03 月 02 日', score: 3 },
+    ]);
+
+    const bookTree = await albumService.getInternalAgentData({
+      type: 'book-tree',
+      albumId: album.id,
+      chapterId: 'c1',
+      pageIndex: 2,
+    });
+    if (bookTree.type !== 'book-tree') assert.fail(`unexpected response type ${bookTree.type}`);
+    assert.deepEqual(bookTree.data.chapters, [
+      { chapterId: 'c1', label: '2024 年 03 月 02 日', pageIndexes: [1, 2], done: false },
+      { chapterId: 'c2', label: 'city gallery', pageIndexes: [3], done: false },
+    ]);
+  } finally {
+    await cleanupUser(user.id);
+  }
+});
+
 test('getInternalAgentData page-photos returns registered transient refs without persisting base64', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');

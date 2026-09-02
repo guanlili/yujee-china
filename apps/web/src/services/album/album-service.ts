@@ -551,7 +551,10 @@ export const albumService = {
   async getInternalAgentData(input: V3InternalAgentDataRequest) {
     const album = await albumRepo.findById(input.albumId);
     if (!album) throw ERRORS.ALBUM_NOT_FOUND();
-    const normalized = readStoryDraft(album.draftJson);
+    // 必须走 loadStoryDraft(rows preferred),不能用只读 draftJson 的 readStoryDraft:
+    // draft_pages 拆表后写路径不再把 pages 写回 draftJson(见 envelopeJson 注释),
+    // 裸读 draftJson 会让下面三个分支的 pageIndexes 恒空,Design Agent 永远定位不到页。
+    const normalized = await loadStoryDraft(album);
     if (!normalized) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft');
 
     if (input.type === 'page-info') {
