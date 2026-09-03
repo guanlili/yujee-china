@@ -26,13 +26,14 @@ export function GET(req: Request, ctx: RouteCtx) {
 export function PATCH(req: Request, ctx: RouteCtx) {
   return withAlbum(req, ctx, async (userId, uuid) => {
     const body = await parseBody(AlbumPatchSchema, req);
+    const { baseSettingsRevision } = body;
     if (body.photoFilter !== undefined) {
-      return albumService.updatePhotoFilter(userId, uuid, body.photoFilter);
+      return albumService.updatePhotoFilter(userId, uuid, body.photoFilter, baseSettingsRevision);
     }
     if (body.boardBackground !== undefined) {
-      return albumService.updateBoardBackground(userId, uuid, body.boardBackground);
+      return albumService.updateBoardBackground(userId, uuid, body.boardBackground, baseSettingsRevision);
     }
-    return albumService.updateTitle(userId, uuid, body.title!);
+    return albumService.updateTitle(userId, uuid, body.title!, baseSettingsRevision);
   });
 }
 

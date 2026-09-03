@@ -24,6 +24,18 @@ export const draftPageRepo = {
     return rows[0]?.total ?? 0;
   },
 
+  // 轻量版本清单(AI job 基线,Phase 4):只取 pageIndex+version,不拉页面 JSON。
+  // 基线记录与回写重验都只要这两个字段。无行(未播种)→ []。
+  listVersions: async (
+    albumId: string,
+    tx: DbOrTx = db,
+  ): Promise<Array<{ pageIndex: number; version: number }>> =>
+    tx
+      .select({ pageIndex: draftPages.pageIndex, version: draftPages.version })
+      .from(draftPages)
+      .where(eq(draftPages.albumId, albumId))
+      .orderBy(asc(draftPages.pageIndex)),
+
   // Single-row replace of an EXISTING row: overwrites the page content,
   // stamps the new version/updatedBy. Caller passes the open transaction
   // (write path always runs `ensureDraftPagesSeeded` inside the `albums` row
@@ -50,6 +62,35 @@ export const draftPageRepo = {
         `draft_pages.updateOne: row not found (albumId=${albumId}, pageIndex=${pageIndex})`,
       );
     }
+  },
+
+  // OCC 条件更新(collab plan §8.1):UPDATE 的 WHERE 同时含 album_id +
+  // page_index + **version** —— 版本不匹配时 0 行命中,返回 false 且零写入。
+  // 这是页面写事务的最后不变量防线:即便未来某个调用点绕过了相册行锁内的
+  // 预比较,数据库本身也不会让陈旧 baseVersion 覆盖新页面。与 updateOne 的
+  // 语义差异:updateOne 的 miss 是不变量被破坏(大声失败);这里的 miss 是正常
+  // 的 OCC 冲突结局(false → 上层转 409 EDIT_CONFLICT)。
+  updateOneIfVersion: async (
+    tx: DbOrTx,
+    albumId: string,
+    pageIndex: number,
+    expectedVersion: number,
+    page: Page,
+    nextVersion: number,
+    updatedBy: string | null,
+  ): Promise<boolean> => {
+    const updated = await tx
+      .update(draftPages)
+      .set({ page, version: nextVersion, updatedBy, updatedAt: new Date() })
+      .where(
+        and(
+          eq(draftPages.albumId, albumId),
+          eq(draftPages.pageIndex, pageIndex),
+          eq(draftPages.version, expectedVersion),
+        ),
+      )
+      .returning({ pageIndex: draftPages.pageIndex });
+    return updated.length > 0;
   },
 
   // Full-book replace = deleteByAlbum + bulk insert, same transaction (the

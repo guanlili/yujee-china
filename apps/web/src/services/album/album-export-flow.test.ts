@@ -128,7 +128,7 @@ test('cover thumbnail confirmation is bound to an immutable album revision', asy
 
     await albumService.updatePhotoFilter(user.id, album.id, {
       default: { lutId: 'fuji-portrait', strength: 80 },
-    });
+    }, 0);
     await assert.rejects(
       () => albumService.confirmCoverThumbnail(user.id, album.id, {
         r2Key: sign.r2Key,

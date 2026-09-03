@@ -1,10 +1,15 @@
 import { MAX_PHOTOS_PER_GENERATION } from '@/config/pricing';
 
 export class AppError extends Error {
+  // 结构化错误详情(collab plan §7):目前唯一使用者是 409 EDIT_CONFLICT —— 把
+  // 冲突页的 pageIndex/currentVersion/currentPage 带给客户端「查看最新版本」。
+  // 可选且默认 undefined:无 details 的既有错误响应保持逐字节兼容(err 只在
+  // details !== undefined 时才往 JSON 里加这个键)。
   constructor(
     public code: string,
     message: string,
     public status: number = 400,
+    public details?: unknown,
   ) {
     super(message);
     this.name = 'AppError';

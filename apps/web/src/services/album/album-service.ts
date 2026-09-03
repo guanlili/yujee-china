@@ -11,6 +11,8 @@ import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { albumPhotoRepo } from '@/db/repos/album-photo-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { jobService, mergeComposeIntoDraft, readComposeAppendMeta, type ComposeJobMeta } from '@/services/job/job-service';
+import { collaborationService, resolveRole } from '@/services/collaboration/collaboration-service';
+import { COLLAB_ERRORS } from '@/services/collaboration/collaboration-errors';
 import { creditService } from '@/services/credit/credit-service';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { agentClient } from '@/lib/agent/agent-client';
@@ -400,6 +402,46 @@ function assertStoryExportUnlocked(album: Awaited<ReturnType<typeof albumRepo.fi
   }
 }
 
+// ── 全局创作设置 OCC(Phase 2B)────────────────────────────────────────────
+// title / boardBackground / photoFilter 三个相册级设置写的共享事务骨架:
+// ①行锁 ②resolveRole(owner/editor 同为 Creator)③safe integer 校验
+// ④与 settingsRevision 精确比较,失配 409 SETTINGS_CONFLICT 零写入。返回锁内
+// album 行,供调用方落字段写并推进 settingsRevision+1。必须在 db.transaction 内调用。
+async function lockAlbumForSettingsWrite(
+  tx: DbOrTx,
+  userId: string,
+  albumId: string,
+  baseSettingsRevision: number | undefined,
+) {
+  const latest = await albumRepo.findByIdForUpdate(tx, albumId);
+  if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
+  // ② 协同访问:owner 与 editor 都是 Creator,都可改全局设置;非成员拒绝。行锁内
+  // 判角色,与 updatePage/reorderPages/deletePage 同一 TOCTOU 防线。
+  const role = await resolveRole(latest, userId, tx);
+  if (!role) throw COLLAB_ERRORS.ALBUM_ACCESS_DENIED();
+  // ③ 发布阶段 A(§16)的过渡态,与 updatePage 的 baseVersion 完全同一口径:
+  // owner 旧客户端不带基线时走旧盲写(前端尚未发这个字段,必填会让 owner 自己
+  // 也改不了书名/背景/滤镜);editor 不带一律拒绝 —— 协同并发的安全性由这条守,
+  // 不依赖 schema 的必填。前端全部带上后收紧。
+  if (baseSettingsRevision === undefined) {
+    if (role === 'editor') {
+      throw ERRORS.VALIDATION_FAILED('baseSettingsRevision is required for collaborative saves');
+    }
+    return latest;
+  }
+  // ④ 基线必须是 0..MAX_SAFE_INTEGER 的整数(settingsRevision 从 0 单调自增)。
+  if (!Number.isSafeInteger(baseSettingsRevision) || baseSettingsRevision < 0) {
+    throw ERRORS.VALIDATION_FAILED('baseSettingsRevision must be a non-negative safe integer');
+  }
+  // ⑤ 精确比较:失配即 409 SETTINGS_CONFLICT(零写入、零推进,事务回滚)。
+  if (latest.settingsRevision !== baseSettingsRevision) {
+    throw COLLAB_ERRORS.SETTINGS_CONFLICT({
+      currentSettingsRevision: latest.settingsRevision,
+    });
+  }
+  return latest;
+}
+
 export const albumService = {
   async create(tx: DbOrTx, input: {
     userId: string;
@@ -444,7 +486,11 @@ export const albumService = {
   // which also opportunistically sweeps a zombie (dead job → FAILED + credit
   // release) so a stuck album self-heals on the next look instead of spinning.
   async getDetail(userId: string, albumId: string) {
-    let album = await this.findOwned(userId, albumId);
+    // 协同白名单读路径(collab plan §5.1):owner/editor 可读。相册页面首先
+    // 请求 v1 detail,若仍走 findOwned,editor 会在加载 draft 之前就收到 403。
+    // role 随投影返回(§7.3):客户端隐藏 owner-only 入口;权限由后端兜底。
+    const access = await collaborationService.requireAccess(userId, albumId);
+    let album = access.album;
 
     let generation: { stage: string | null; progress: number } | null = null;
     if (album.status === 'AGENT_RUNNING') {
@@ -478,6 +524,12 @@ export const albumService = {
         id: album.id,
         title: album.title,
         status: album.status,
+        // 协同(collab plan §7.3):与 v3 draft 的角色口径一致。
+        role: access.role,
+        // 结构 OCC 基线(Phase 2A):与 v3 draft skeleton 同口径。
+        structureRevision: album.draftStructureRevision,
+        // 全局创作设置 OCC 基线(Phase 2B):title/背景/滤镜提交时的 baseSettingsRevision。
+        settingsRevision: album.settingsRevision,
         // V3 五环节状态 (WP2.4). Orthogonal to status; the editor reads it to drive
         // the breadcrumb + the story gate. Always present (column default 'analysing').
         stage: album.stage,
@@ -530,7 +582,8 @@ export const albumService = {
   async getChapterSummary(userId: string, albumId: string): Promise<{
     chapters: { chapterId: string; label: string; role: string; photoIds: string[]; chapterContext: string }[];
   }> {
-    const album = await this.findOwned(userId, albumId);
+    // 协同白名单读路径:编辑器的章节栏对 editor 开放(只暴露派生摘要)。
+    const album = (await collaborationService.requireAccess(userId, albumId)).album;
     const normalized = readStoryDraft(album.draftJson);
     if (!normalized) return { chapters: [] };
     const last = normalized.tree.chapters.length - 1;
@@ -660,7 +713,11 @@ export const albumService = {
     // storyProgressFrom 保持纯同步不变 —— 侵入最小。
     layoutState: LayoutState;
   }> {
-    const album = await this.findOwned(userId, albumId);
+    // 协同授权 seam(collab plan §5.1):owner|editor 都是作者,这条是作者读路径。
+    // 曾经用 findOwned —— 与 getDetail 当初迁移的理由完全同一个:协作者能打开相册
+    // (getDetail 走 requireAccess),却在这里吃 403,而 ChatPanel 的 catch 把它静默
+    // 吞成「闸门未知」,结果是导出按钮永久 disabled、无提示无日志。
+    const { album } = await collaborationService.requireAccess(userId, albumId);
     return {
       ...storyProgressFrom(album.stage, readStoryDraft(album.draftJson)),
       layoutState: await resolveLayoutState(albumId),
@@ -776,7 +833,7 @@ export const albumService = {
   // 装书前置：所有权校验 + draft 校验 + 把当前书推给设计 Agent。流式与同步两条
   // 路径共用。
   async prepareDesignChat(userId: string, albumId: string): Promise<void> {
-    const album = await this.findOwned(userId, albumId);
+    const { album } = await collaborationService.requireAccess(userId, albumId);
     // 行读(同 getDraftSkeleton,2026-08-03 线上事故):否则设计 Agent 装的是 legacy
     // 陈旧书,commit 回写时 replaceAll 会用陈旧页覆盖用户在编辑器里的行级编辑。
     const normalized = await loadStoryDraft(album, { bake: true });
@@ -845,7 +902,7 @@ export const albumService = {
         const envelope = parseDraftEnvelope(latest.draftJson);
         if (!envelope) throw ERRORS.VALIDATION_FAILED('album has no V3 story draft pages');
 
-        const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+        const rev = await bumpDraftRevision(tx, albumId, seededRevision, { structural: true });
         await draftPageRepo.replaceAll(tx, albumId, pages, rev, userId);
 
         // 编辑一本已 COMPLETED 的书 → 退回 EDITING(photo-snapshot §5.5,同
@@ -998,7 +1055,10 @@ export const albumService = {
   // that list. The browser only ever sends a chapterId back (chapter-chat), so the
   // original per-page indexes are deliberately dropped.
   async getDraftSkeleton(userId: string, albumId: string) {
-    const album = await this.findOwned(userId, albumId);
+    // 协同白名单读路径:editor 也要能拉草稿投影(skeleton 只含渲染数据,不含
+    // 可编辑 authoring tree,invariant 12 保持)。
+    const access = await collaborationService.requireAccess(userId, albumId);
+    const album = access.album;
     // 时序反转:排版前(analyze 完、还没 select-layout)也要能拿 skeleton 去走「收集故事」面板。
     // 那时 album.status='EDITING'(analyze 完成后保持 EDITING,不翻 AGENT_RUNNING)、layoutJson=null、
     // draftJson 有 tree 无 pages。status 允许 EDITING/AGENT_RUNNING(后者兼容老时序)以及
@@ -1020,6 +1080,14 @@ export const albumService = {
     if (!normalized) return null;
     // 排版前 pages 尚不存在 —— 用空数组,chapters 仍从 tree 出(带 photoIds),让收集面板可用。
     const draftPages = normalized.pages ?? [];
+    // 协同增量同步(collab plan §7.3):每页带 version/updatedBy/updatedAt —— 客户端
+    // 保存时作为 OCC baseVersion,轮询时作为 since 初值。排版前无行 → null。
+    //
+    // meta 必须来自**上面那次 loadStoryDraft 的同一次读**,不能为了拿版本号再查一遍
+    // draft_pages:两次读之间落一次写,客户端就会拿到「旧内容 + 新 version」,带着它
+    // 保存时预比较与条件更新都会放行 —— 静默覆盖掉一份它从未见过的修改,正是 OCC
+    // 要防的那件事被读路径自己捅穿。
+    const rowByPageIndex = normalized.meta;
 
     const chapterIdForPage = (page: V3Page): string | null => {
       const refs = new Set(Object.values(page.images));
@@ -1049,6 +1117,10 @@ export const albumService = {
         htmlJson: (p as { html?: string }).html,
         kind,
         chapterId: kind === 'chapter' ? chapterIdForPage(p) : null,
+        // 协同元数据(collab plan §7.3):按页对象的 pageIndex 字段对行,不是数组位。
+        version: rowByPageIndex.get(p.pageIndex)?.version ?? null,
+        updatedBy: rowByPageIndex.get(p.pageIndex)?.updatedBy ?? null,
+        updatedAt: rowByPageIndex.get(p.pageIndex)?.updatedAt.toISOString() ?? null,
       };
     });
 
@@ -1095,6 +1167,16 @@ export const albumService = {
       language: 'en' as const,
       pages,
       chapters,
+      // 协同(collab plan §7.3):全书 revision(轮询 since 初值)+ 调用者角色
+      // (前端据此隐藏 owner-only 入口;权限仍由后端兜底)。
+      revision: album.draftRevision,
+      // 结构 OCC 基线(Phase 2A):reorder/delete 提交的 baseStructureRevision。
+      // 与 draftRevision 刻意分离 —— 结构版本只在结构写点推进,不能拿
+      // draftRevision 冒充(否则单页写也会让重排/删页误判冲突)。
+      structureRevision: album.draftStructureRevision,
+      // 全局创作设置 OCC 基线(Phase 2B):与 getDetail 同口径。
+      settingsRevision: album.settingsRevision,
+      role: access.role,
     };
   },
 
@@ -1195,7 +1277,9 @@ export const albumService = {
   // 设计环节 phase 0:封面组选项(规则生成,零 AI)。designed=draft 里已有 cover 页
   // (幂等重入信号,ChatPanel 据此不再重复弹选择卡)。
   async listCoverSets(userId: string, albumId: string) {
-    const album = await this.findOwned(userId, albumId);
+    // 同上:作者读路径走协同 seam。协作者列不出封面组 → 选不了封面 → stage 永远
+    // 到不了 ready → 导出闸门同样开不了。
+    const { album } = await collaborationService.requireAccess(userId, albumId);
     // 页/树源走 loadStoryDraft 行读(applyDesign/composeAppend 同款修法):draft_pages 拆表后
     // envelopeJson 从不把 pages 写回 draftJson,裸读 draftJson.pages 对行存书必空 ——
     // hasPages:false 让前端静默不弹封面选择卡,书永远选不了封面、导不了出。
@@ -1253,7 +1337,9 @@ export const albumService = {
       refs?: Record<string, string>;
     },
   ): Promise<{ requestId: string; accepted: true }> {
-    const album = await this.findOwned(userId, albumId);
+    // Creator 授权(collab rework Phase 4):owner/editor 都可发起成稿;
+    // AI 继承发起者身份(§2.2),计费 hold 也挂在发起者名下。
+    const { album } = await collaborationService.requireAccess(userId, albumId);
     if (album.status !== 'EDITING') throw ERRORS.ALBUM_NOT_EDITABLE();
     if (templateCategory(input.coverTemplateId) !== 'cover')
       throw ERRORS.VALIDATION_FAILED(`not a cover template: ${input.coverTemplateId}`);
@@ -1407,7 +1493,8 @@ export const albumService = {
       coverColorway?: string;
     },
   ): Promise<{ accepted: true; placeholder: true }> {
-    const album = await this.findOwned(userId, albumId);
+    // Creator 授权(collab rework Phase 4):同 applyDesign,游客占位样稿路径。
+    const { album } = await collaborationService.requireAccess(userId, albumId);
     if (album.status !== 'EDITING') throw ERRORS.ALBUM_NOT_EDITABLE();
     if (templateCategory(input.coverTemplateId) !== 'cover')
       throw ERRORS.VALIDATION_FAILED(`not a cover template: ${input.coverTemplateId}`);
@@ -1474,7 +1561,7 @@ export const albumService = {
       );
 
       const seededRevision = await ensureDraftPagesSeeded(tx, locked);
-      const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+      const rev = await bumpDraftRevision(tx, albumId, seededRevision, { structural: true });
       await draftPageRepo.replaceAll(tx, albumId, merged.pages, rev, userId);
       await albumRepo.update(tx, albumId, {
         draftJson: envelopeJson({
@@ -1527,7 +1614,8 @@ export const albumService = {
     // composed:false:新页的 sample 文案在追加排版时已由 engine 填好,真文案等登录后
     // 全书 compose 一起覆盖。
     if (opts.isAnonymous) return { accepted: true, composed: false };
-    const album = await this.findOwned(userId, albumId);
+    // Creator 授权(collab rework Phase 4):owner/editor 都可发起追加成稿。
+    const { album } = await collaborationService.requireAccess(userId, albumId);
     if (album.status !== 'EDITING' || album.layoutJson != null) throw ERRORS.ALBUM_NOT_EDITABLE();
 
     const draft = await loadStoryDraft(album, { bake: false });
@@ -1660,11 +1748,30 @@ export const albumService = {
       // (data-template 外框)的行内 style。同 textStyles,只对 html 真相有意义。
       pageStyle?: Record<string, string | null>;
     },
-  ): Promise<{ updated: true }> {
+    // 页面 OCC(collab plan §7.5/§8):客户端所见的页面 version。提供时行版本
+    // 必须精确匹配,否则 409 EDIT_CONFLICT(零写入)。发布阶段 A(§16):owner
+    // 旧客户端不带它时暂走旧盲写;editor 不带必须拒绝;阶段 C 全量收紧。
+    baseVersion?: number,
+  ): Promise<
+    | { updated: true }
+    | { updated: true; pageIndex: number; version: number; revision: number; page: V3Page & { html?: string } }
+  > {
+    let savedVersion: number | null = null;
+    let savedPage: (V3Page & { html?: string }) | null = null;
     await db.transaction(async (tx) => {
+      // 固定事务顺序(collab plan §8):①行锁 ②访问 ③V3 校验 ④播种 ⑤读目标页
+      // ⑥版本比对 ⑦失配即 409(零写入) ⑧应用 patch ⑨bump revision ⑩条件更新
+      // ⑪既有副作用 ⑫返回。
       const latest = await albumRepo.findByIdForUpdate(tx, albumId);
       if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
-      if (latest.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+      // ② 协同访问:owner 或 editor 都可单页写;非成员拒绝。行锁内判角色,
+      // 避免 requireAccess 无锁读的 TOCTOU 窗口。
+      const role = await resolveRole(latest, userId, tx);
+      if (!role) throw COLLAB_ERRORS.ALBUM_ACCESS_DENIED();
+      // 阶段 A:editor 的保存必须基于精确 version(owner 旧客户端豁免到阶段 C)。
+      if (baseVersion === undefined && role === 'editor') {
+        throw ERRORS.VALIDATION_FAILED('baseVersion is required for collaborative saves');
+      }
 
       // draft_pages 拆表(Phase 1a)固定写事务次序:行锁(above)→ 懒播种 → 行级写
       // → bump revision(docs/plans/2026-08-03-draft-pages-split.md Global
@@ -1685,6 +1792,9 @@ export const albumService = {
       // still returning {updated:true}.
       const draft = await loadStoryDraft(latest, { tx, bake: true });
       if (!draft || !draft.pages.length) {
+        // ③ 协同(带 baseVersion)只允许命中 draft_pages 路径:legacy album_pages
+        // 分支没有页面 version,不得执行无 version 写入(collab plan §7.5)。
+        if (baseVersion !== undefined) throw COLLAB_ERRORS.COLLAB_UNSUPPORTED_ALBUM();
         await albumPageRepo.updateOne(tx, albumId, pageIndex, {
           imagesJson: patch.imagesJson,
           textsJson: patch.textsJson,
@@ -1715,6 +1825,40 @@ export const albumService = {
       }
       const existing = existingMatches[0]!;
       const existingIdx = draft.pages.indexOf(existing);
+
+      // ⑥ 版本比对(collab plan §8):baseVersion 必须与行的当前 version 精确
+      // 相等。失配 → 409 + 结构化 details(当前页全文只经响应返回),事务回滚,
+      // 零写入、零 revision 推进。
+      if (baseVersion !== undefined) {
+        // 只为拿一行的 version,不能 findByAlbum 把整本书的页 JSON(每页一份
+        // 794×1123 的 html)都捞回来 —— listVersions 只 select pageIndex+version。
+        const row = (await draftPageRepo.listVersions(albumId, tx)).find(
+          (r) => r.pageIndex === pageIndex,
+        );
+        if (!row || row.version !== baseVersion) {
+          // 失配才需要把当前页全文取回来塞进 details(客户端「查看最新版本」)。
+          const current = row
+            ? (await draftPageRepo.findByAlbum(albumId, tx)).find((r) => r.pageIndex === pageIndex) ?? null
+            : null;
+          // 日志只允许 id/版本号(collab plan §19):页面正文、html、图片引用
+          // 和完整 currentPage 一律不落日志。
+          logger.info(
+            {
+              albumId,
+              pageIndex,
+              userId,
+              baseVersion,
+              currentVersion: current?.version ?? null,
+            },
+            'collab.page_conflict',
+          );
+          throw COLLAB_ERRORS.EDIT_CONFLICT({
+            pageIndex,
+            currentVersion: current?.version ?? -1,
+            currentPage: current?.page ?? null,
+          });
+        }
+      }
 
       const page = { ...existing } as V3Page & { html?: string };
       // html 逐笔 patch;任何一笔失配 → 置 null,收尾整页重烘(宁可丢手工版面
@@ -1766,8 +1910,35 @@ export const albumService = {
       }
 
       const rev = await bumpDraftRevision(tx, albumId, seededRevision);
-      await draftPageRepo.updateOne(tx, albumId, pageIndex, page, rev, userId);
-
+      if (baseVersion !== undefined) {
+        // ⑩ 条件更新是最后防线(§8.1):即便未来有调用点绕过行锁预比较,
+        // version 不匹配也写不进去。失配时重读行取最新 details 再 409。
+        const won = await draftPageRepo.updateOneIfVersion(
+          tx, albumId, pageIndex, baseVersion, page, rev, userId,
+        );
+        if (!won) {
+          const current = (await draftPageRepo.findByAlbum(albumId, tx)).find(
+            (r) => r.pageIndex === pageIndex,
+          ) ?? null;
+          logger.info(
+            {
+              albumId,
+              pageIndex,
+              userId,
+              baseVersion,
+              currentVersion: current?.version ?? null,
+            },
+            'collab.page_conflict',
+          );
+          throw COLLAB_ERRORS.EDIT_CONFLICT({
+            pageIndex,
+            currentVersion: current?.version ?? -1,
+            currentPage: current?.page ?? null,
+          });
+        }
+      } else {
+        await draftPageRepo.updateOne(tx, albumId, pageIndex, page, rev, userId);
+      }
       // envelope(tree/progress/design)不重写:页真相已迁 draft_pages,这次编辑
       // 没有动 tree/progress,draftJson 保持原样。副作用不变:编辑已 COMPLETED 的
       // 书 → 退回 EDITING(photo-snapshot §5.5,同上);第一页(数组位 0 = 封面)被改
@@ -1778,8 +1949,19 @@ export const albumService = {
           ? { coverThumbnailUrl: null, coverThumbnailR2Key: null }
           : {}),
       });
+      savedVersion = rev;
+      savedPage = page;
     });
-    return { updated: true };
+    if (savedVersion === null || savedPage === null) {
+      // legacy album_pages 分支(阶段 A 的 owner 盲写)保持原返回形状。
+      return { updated: true };
+    }
+    // 成功日志只含 id/版本号(collab plan §19)。
+    logger.info(
+      { albumId, pageIndex, userId, version: savedVersion, revision: savedVersion },
+      'collab.page_saved',
+    );
+    return { updated: true, pageIndex, version: savedVersion, revision: savedVersion, page: savedPage };
   },
 
   // ── 页序重排的原子落库(2026-08-01 设计引入,2026-08-02 页序弹窗沿用:
@@ -1794,11 +1976,31 @@ export const albumService = {
     userId: string,
     albumId: string,
     permutation: number[],
-  ): Promise<{ updated: true }> {
+    // 结构 OCC(Phase 2A):客户端所见的结构版本基线。事务内与 locked
+    // draftStructureRevision 精确比较,失配即 409 STRUCTURE_CONFLICT 零写入;
+    // 匹配才执行并把结构版本推进到新 revision。
+    // 阶段 A 过渡态(同 baseVersion):owner 可省略走旧盲写,editor 必须带。
+    baseStructureRevision?: number,
+  ): Promise<{ updated: true; structureRevision: number }> {
+    let structureRevision = 0;
     await db.transaction(async (tx) => {
       const latest = await albumRepo.findByIdForUpdate(tx, albumId);
       if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
-      if (latest.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+      // ② 结构 OCC 访问:owner/editor 都可重排(产品口径),非成员拒绝。行锁内
+      // 判角色,与 updatePage 同一 TOCTOU 防线。
+      const role = await resolveRole(latest, userId, tx);
+      if (!role) throw COLLAB_ERRORS.ALBUM_ACCESS_DENIED();
+      // ③ 阶段 A 过渡态:owner 旧客户端不带基线走旧盲写,editor 不带一律拒绝。
+      if (baseStructureRevision === undefined && role === 'editor') {
+        throw ERRORS.VALIDATION_FAILED('baseStructureRevision is required for collaborative saves');
+      }
+      // ④ 结构版本比对:早于 ensureDraftPagesSeeded(会写行)即返回,省掉无谓的播种写
+      // (零写入本身由事务回滚保证,不依赖这个顺序)。
+      if (baseStructureRevision !== undefined && latest.draftStructureRevision !== baseStructureRevision) {
+        throw COLLAB_ERRORS.STRUCTURE_CONFLICT({
+          currentStructureRevision: latest.draftStructureRevision,
+        });
+      }
 
       // draft_pages 拆表(Phase 1a)固定写事务次序,同 updatePage(Task 3):行锁
       // (above)→ 懒播种 → 用 loadStoryDraft 的行/回退判定路由。这里不能再用旧的
@@ -1842,7 +2044,8 @@ export const albumService = {
           ...draft!.pages[oldIdx]!,
           pageIndex: newIdx,
         }));
-        const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+        const rev = await bumpDraftRevision(tx, albumId, seededRevision, { structural: true });
+        structureRevision = rev;
         await draftPageRepo.replaceAll(tx, albumId, permuted, rev, userId);
         // envelope(tree/progress/design)不重写:页真相已迁 draft_pages,重排没
         // 有动 tree/progress。pageCount 收口点一:整书替换后行数就是新的真相
@@ -1871,8 +2074,18 @@ export const albumService = {
         ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
         ...(touchesCover ? { coverThumbnailUrl: null, coverThumbnailR2Key: null } : {}),
       });
+      // legacy(album_pages)分支没有 draft_pages 行,也就没有结构版本可推进 ——
+      // 基线比对在这条路径上是空转,structureRevision 原样返回。
+      //
+      // 只对 editor 显式拒绝,不拒 owner:存量 legacy 相册的重排/删页是 owner
+      // 一直在用的功能,不能因为协同上线就断掉。editor 事实上也到不了这里
+      // (invitationReadiness 要求 layoutJson === null 且 draft_pages 已播种,
+      // legacy 相册根本发不出邀请),这条守的是口径明确 —— 协同写路径要么有真
+      // OCC,要么明确拒绝,不给假的安全感。
+      if (role === 'editor') throw COLLAB_ERRORS.COLLAB_UNSUPPORTED_ALBUM();
+      structureRevision = latest.draftStructureRevision;
     });
-    return { updated: true };
+    return { updated: true, structureRevision };
   },
 
   // ── 删除书页(2026-08-03 设计:docs/specs/2026-08-03-delete-page-design.md)。
@@ -1891,11 +2104,28 @@ export const albumService = {
     userId: string,
     albumId: string,
     pageIndex: number,
-  ): Promise<{ updated: true }> {
+    // 结构 OCC(Phase 2A):与 reorderPages 同一基线契约 —— 失配 409 零写入。
+    // 阶段 A 过渡态(同 baseVersion):owner 可省略走旧盲写,editor 必须带。
+    baseStructureRevision?: number,
+  ): Promise<{ updated: true; structureRevision: number }> {
+    let structureRevision = 0;
     await db.transaction(async (tx) => {
       const latest = await albumRepo.findByIdForUpdate(tx, albumId);
       if (!latest) throw ERRORS.ALBUM_NOT_FOUND();
-      if (latest.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+      // 结构 OCC 访问:owner/editor 都可删页;非成员拒绝。行锁内判角色。
+      const role = await resolveRole(latest, userId, tx);
+      if (!role) throw COLLAB_ERRORS.ALBUM_ACCESS_DENIED();
+      // 阶段 A 过渡态:owner 旧客户端不带基线走旧盲写,editor 不带一律拒绝。
+      if (baseStructureRevision === undefined && role === 'editor') {
+        throw ERRORS.VALIDATION_FAILED('baseStructureRevision is required for collaborative saves');
+      }
+      // 结构版本比对:早于 ensureDraftPagesSeeded(会写行)即返回,省掉无谓的播种写
+      // (零写入本身由事务回滚保证,不依赖这个顺序)。
+      if (baseStructureRevision !== undefined && latest.draftStructureRevision !== baseStructureRevision) {
+        throw COLLAB_ERRORS.STRUCTURE_CONFLICT({
+          currentStructureRevision: latest.draftStructureRevision,
+        });
+      }
 
       const seededRevision = await ensureDraftPagesSeeded(tx, latest);
       const draft = await loadStoryDraft(latest, { tx, bake: false });
@@ -1936,7 +2166,8 @@ export const albumService = {
         const remaining = draft!.pages
           .filter((_, i) => i !== arrayIdx)
           .map((page, newIdx) => ({ ...page, pageIndex: newIdx }));
-        const rev = await bumpDraftRevision(tx, albumId, seededRevision);
+        const rev = await bumpDraftRevision(tx, albumId, seededRevision, { structural: true });
+        structureRevision = rev;
         await draftPageRepo.replaceAll(tx, albumId, remaining, rev, userId);
         // envelope(tree/progress/design)不重写:删页没有动 tree/progress。
         // pageCount 收口:页数变化写点必须显式跟上(同 reorderPages 收口点一)。
@@ -1963,61 +2194,86 @@ export const albumService = {
         pageCount: legacyRows!.length - 1,
         ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
       });
+      // legacy(album_pages)分支没有 draft_pages 行,也就没有结构版本可推进 ——
+      // 基线比对在这条路径上是空转,structureRevision 原样返回。
+      //
+      // 只对 editor 显式拒绝,不拒 owner:存量 legacy 相册的重排/删页是 owner
+      // 一直在用的功能,不能因为协同上线就断掉。editor 事实上也到不了这里
+      // (invitationReadiness 要求 layoutJson === null 且 draft_pages 已播种,
+      // legacy 相册根本发不出邀请),这条守的是口径明确 —— 协同写路径要么有真
+      // OCC,要么明确拒绝,不给假的安全感。
+      if (role === 'editor') throw COLLAB_ERRORS.COLLAB_UNSUPPORTED_ALBUM();
+      structureRevision = latest.draftStructureRevision;
     });
-    return { updated: true };
+    return { updated: true, structureRevision };
   },
 
   // Editor renames the album from the topbar (docs/web/api.md §1 — PATCH base
   // fields). Only the title is mutable here; layout/status are owned by
-  // generation/chat/pdf flows. Ownership is enforced before the write.
-  async updateTitle(userId: string, albumId: string, title: string): Promise<{ title: string }> {
-    await this.findOwned(userId, albumId);
+  // generation/chat/pdf flows. 全局创作设置 OCC(Phase 2B):owner/editor 同为
+  // Creator,行锁内 resolveRole + 精确比较 settingsRevision,失配 409 零写。
+  // 锁外不预查归属(避免 TOCTOU):纯输入校验在外,访问判定一律在锁内。
+  async updateTitle(
+    userId: string,
+    albumId: string,
+    title: string,
+    // 阶段 A 过渡态:owner 可省略(走旧盲写),editor 必须带 —— 见 lockAlbumForSettingsWrite。
+    baseSettingsRevision?: number,
+  ): Promise<{ title: string; settingsRevision: number }> {
     const trimmed = title.trim();
     if (!trimmed) throw ERRORS.VALIDATION_FAILED('title must not be empty');
-    await db.transaction(async (tx) => {
-      await albumRepo.update(tx, albumId, { title: trimmed });
+    return db.transaction(async (tx) => {
+      const latest = await lockAlbumForSettingsWrite(tx, userId, albumId, baseSettingsRevision);
+      const settingsRevision = latest.settingsRevision + 1;
+      await albumRepo.update(tx, albumId, { title: trimmed, settingsRevision });
+      return { title: trimmed, settingsRevision };
     });
-    return { title: trimmed };
   },
 
   // 预览垫底背景(相册级视觉属性)。null = 清除。写库前收敛校验,非法当无背景。
+  // 全局创作设置 OCC(Phase 2B):与 updateTitle 同款行锁 + 基线比较 + 推进一次。
   async updateBoardBackground(
     userId: string,
     albumId: string,
     board: unknown,
-  ): Promise<{ boardBackground: BoardBackground | null }> {
-    await this.findOwned(userId, albumId);
+    // 阶段 A 过渡态:owner 可省略(走旧盲写),editor 必须带 —— 见 lockAlbumForSettingsWrite。
+    baseSettingsRevision?: number,
+  ): Promise<{ boardBackground: BoardBackground | null; settingsRevision: number }> {
     const normalized = board == null ? null : normalizeBoardBackground(board);
-    await db.transaction(async (tx) => {
-      await albumRepo.update(tx, albumId, { boardBackground: normalized });
+    return db.transaction(async (tx) => {
+      const latest = await lockAlbumForSettingsWrite(tx, userId, albumId, baseSettingsRevision);
+      const settingsRevision = latest.settingsRevision + 1;
+      await albumRepo.update(tx, albumId, { boardBackground: normalized, settingsRevision });
+      return { boardBackground: normalized, settingsRevision };
     });
-    return { boardBackground: normalized };
   },
 
   async updatePhotoFilter(
     userId: string,
     albumId: string,
     state: PhotoFilterState | null,
-  ): Promise<{ photoFilter: PhotoFilterState | null }> {
+    // 阶段 A 过渡态:owner 可省略(走旧盲写),editor 必须带 —— 见 lockAlbumForSettingsWrite。
+    baseSettingsRevision?: number,
+  ): Promise<{ photoFilter: PhotoFilterState | null; settingsRevision: number }> {
     const normalized =
       state === null
         ? null
         : normalizePhotoFilterState(PhotoFilterStateSchema.parse(state));
 
-    await db.transaction(async (tx) => {
-      const album = await albumRepo.findByIdForUpdate(tx, albumId);
-      if (!album) throw ERRORS.ALBUM_NOT_FOUND();
-      if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+    return db.transaction(async (tx) => {
+      const latest = await lockAlbumForSettingsWrite(tx, userId, albumId, baseSettingsRevision);
+      const settingsRevision = latest.settingsRevision + 1;
       await albumRepo.update(tx, albumId, {
         photoFilter: normalized,
+        settingsRevision,
         pdfUrl: null,
         pdfR2Key: null,
         coverThumbnailUrl: null,
         coverThumbnailR2Key: null,
-        ...(album.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
+        ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
       });
+      return { photoFilter: normalized, settingsRevision };
     });
-    return { photoFilter: normalized };
   },
 
   // Returns { putUrl, r2Key, publicUrl } so the browser can PUT a PDF directly

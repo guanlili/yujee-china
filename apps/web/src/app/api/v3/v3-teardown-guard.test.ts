@@ -96,6 +96,14 @@ test('web keeps the v1 infrastructure route whitelist used by V3', () => {
     'apps/web/src/app/api/v1/albums/[uuid]/pdf/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/route.ts',
     'apps/web/src/app/api/v1/albums/route.ts',
+    // 协同编辑邀请(2026-08-27):
+    // edit-link 创建/旋转(owner),token redeem(真实账号),draft-changes 增量轮询。
+    // 成员授权与页面 OCC 都复用 v1/v3 现有路由,不另起 v4。
+    'apps/web/src/app/api/v1/albums/[uuid]/edit-link/route.ts',
+    'apps/web/src/app/api/v1/edit-links/[token]/redeem/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/draft-changes/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/members/route.ts',
+    'apps/web/src/app/api/v1/albums/[uuid]/members/[userId]/route.ts',
     'apps/web/src/app/api/v1/billing/checkout/route.ts',
     'apps/web/src/app/api/v1/credit/balance/route.ts',
     'apps/web/src/app/api/v1/feedback/route.ts',

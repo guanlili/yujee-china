@@ -56,11 +56,13 @@ Web 调**两个**后端服务,别混:
 ```text
 apps/web/
 ├── src/app/[locale]/          # Pages, localized routes, album editor entry
-├── src/app/api/v1             # Existing product APIs: albums, pdf, credit, user, admin
+├── src/app/api/v1             # Existing product APIs: albums, pdf, credit, user, admin,
+│                              #   协同编辑(edit-link/members/draft-changes/edit-links redeem)
 ├── src/app/api/v3             # Generation/orchestration APIs
 ├── src/components/album       # Album editor, templates, rendering components
 ├── src/lib
 │   ├── agent                  # Agent HTTP client and contract parsing
+│   ├── collaboration          # 协同:能力模型(前后端同一份真相)+ 浏览器端 client
 │   ├── generation             # Browser generation client helpers
 │   ├── photo                  # Compression, HEIC, clustering, thumbnails, local store
 │   ├── pdf                    # Browser/PDF rendering helpers
@@ -372,5 +374,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 6cf10b19
+checked-at: PENDING
 -->

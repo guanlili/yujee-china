@@ -492,7 +492,7 @@ test('concurrent share and filter update serialize on the album lock without a m
     ]);
     await albumService.updatePhotoFilter(user.id, album.id, {
       default: { lutId: 'fuji-portrait', strength: 80 },
-    });
+    }, 0);
     await albumService.confirmPhotoSnapshot(user.id, album.id, [
       { photoId: P1, renderVersion: FILTERED },
     ]);
@@ -501,7 +501,7 @@ test('concurrent share and filter update serialize on the album lock without a m
       shareService.createShare(user.id, album.id, 'zh'),
       albumService.updatePhotoFilter(user.id, album.id, {
         default: { lutId: 'daily-soft', strength: 60 },
-      }),
+      }, 1),
     ]);
     assert.equal(filterResult.status, 'fulfilled');
 
@@ -539,7 +539,7 @@ test('重新生成分享创建新行,旧 token 继续可读(一链接一行,不�
     ]);
     await albumService.updatePhotoFilter(user.id, album.id, {
       default: { lutId: 'fuji-portrait', strength: 80 },
-    });
+    }, 0);
     await albumService.confirmPhotoSnapshot(user.id, album.id, [
       { photoId: P1, renderVersion: FILTERED },
     ]);

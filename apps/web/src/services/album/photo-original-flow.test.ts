@@ -48,7 +48,8 @@ test('photo-original signUpload: owner gets signed PUTs with correct keys; non-o
 
     await assert.rejects(
       () => photoOriginalService.signUpload(stranger.id, album.id, [entry(P1)]),
-      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+      // 协同收口:上传是 Creator 能力,路人拿 ALBUM_ACCESS_DENIED。
+      (err: { code?: string }) => err.code === 'ALBUM_ACCESS_DENIED',
     );
 
     const tooMany = Array.from({ length: 301 }, (_, i) => entry(`over-${i}`));
@@ -141,6 +142,8 @@ test('getDetail projects photoOriginals counts', async (t) => {
   }
 });
 
+// 协同授权收口后:路人(既非 owner 也非 editor)拿到 ALBUM_ACCESS_DENIED
+// —— requireAccess/resolveRole 的统一口径,不再是 owner-only 的 ALBUM_NOT_OWNED。
 test('photo-original confirm/getUrls: non-owner is rejected', async (t) => {
   if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
   const owner = await makeUser('photo-orig-nonowner-owner');
@@ -150,11 +153,11 @@ test('photo-original confirm/getUrls: non-owner is rejected', async (t) => {
 
     await assert.rejects(
       () => photoOriginalService.confirm(stranger.id, album.id, { entries: [entry(P1)] }),
-      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+      (err: { code?: string }) => err.code === 'ALBUM_ACCESS_DENIED',
     );
     await assert.rejects(
       () => photoOriginalService.getUrls(stranger.id, album.id, [P1]),
-      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+      (err: { code?: string }) => err.code === 'ALBUM_ACCESS_DENIED',
     );
   } finally {
     await cleanupUser(owner.id);

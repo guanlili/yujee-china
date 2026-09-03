@@ -759,7 +759,7 @@ export const jobService = {
       const mergedPages = merged.pages as Page[];
 
       const seededRevision = await ensureDraftPagesSeeded(tx, album);
-      const rev = await bumpDraftRevision(tx, job.albumId, seededRevision);
+      const rev = await bumpDraftRevision(tx, job.albumId, seededRevision, { structural: true });
       // 系统/agent 写点:updatedBy = null(与 T3/T4 用户写点传 userId 的口径一致)。
       await draftPageRepo.replaceAll(tx, job.albumId, mergedPages, rev, null);
 
@@ -863,7 +863,7 @@ export const jobService = {
 
         const appendDraft = mergedAppend.draftJson as unknown as V3StoryDraft & { pages: Page[] };
         const seededRevision = await ensureDraftPagesSeeded(tx, album);
-        const rev = await bumpDraftRevision(tx, job.albumId, seededRevision);
+        const rev = await bumpDraftRevision(tx, job.albumId, seededRevision, { structural: true });
         // 系统/agent 写点:updatedBy = null(与全书成稿同一口径)。
         await draftPageRepo.replaceAll(tx, job.albumId, appendDraft.pages, rev, null);
         await albumRepo.update(tx, job.albumId, {
@@ -940,7 +940,7 @@ export const jobService = {
       if (!won) return;
 
       const seededRevision = await ensureDraftPagesSeeded(tx, album);
-      const rev = await bumpDraftRevision(tx, job.albumId, seededRevision);
+      const rev = await bumpDraftRevision(tx, job.albumId, seededRevision, { structural: true });
       // 系统/agent 写点:updatedBy = null(与 T3/T4 用户写点传 userId 的口径一致)。
       await draftPageRepo.replaceAll(tx, job.albumId, merged.pages, rev, null);
 

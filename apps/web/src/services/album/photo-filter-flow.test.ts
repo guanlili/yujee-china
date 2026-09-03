@@ -24,7 +24,7 @@ test('updating photo filters persists normalized state and invalidates completed
 
     const result = await albumService.updatePhotoFilter(user.id, album.id, {
       default: { lutId: 'fuji-portrait', strength: 80 },
-    });
+    }, 0);
 
     assert.equal(result.photoFilter?.default?.lutId, 'fuji-portrait');
     const row = await albumRepo.findById(album.id);
@@ -61,6 +61,8 @@ test('updatePhotoFilter locks the owned row and preserves a concurrent non-COMPL
         id: albumId,
         userId: 'user-atomic',
         status: 'FAILED',
+        // 全局创作设置 OCC(Phase 2B):锁内基线,与调用方传的 baseSettingsRevision 比较。
+        settingsRevision: 0,
       } as never;
     },
   );
@@ -82,7 +84,7 @@ test('updatePhotoFilter locks the owned row and preserves a concurrent non-COMPL
   try {
     const result = await albumService.updatePhotoFilter('user-atomic', 'album-atomic', {
       default: { lutId: 'fuji-portrait', strength: 82 },
-    });
+    }, 0);
 
     assert.equal(staleRead.mock.callCount(), 0);
     assert.equal(lockedRead.mock.callCount(), 1);
@@ -92,6 +94,9 @@ test('updatePhotoFilter locks the owned row and preserves a concurrent non-COMPL
     assert.equal(writtenPatch?.pdfR2Key, null);
     assert.equal(writtenPatch?.coverThumbnailUrl, null);
     assert.equal(writtenPatch?.coverThumbnailR2Key, null);
+    // 设置写成功推进一次 settingsRevision(0 → 1),并随响应回传新基线。
+    assert.equal(result.settingsRevision, 1);
+    assert.equal(writtenPatch?.settingsRevision, 1);
   } finally {
     update.mock.restore();
     transaction.mock.restore();

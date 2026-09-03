@@ -419,7 +419,7 @@ test('updateTitle: renames an owned album (trimmed)', async (t) => {
   try {
     const album = await makeAlbum(user.id, { title: 'Old Title' });
 
-    const result = await albumService.updateTitle(user.id, album.id, '  New Title  ');
+    const result = await albumService.updateTitle(user.id, album.id, '  New Title  ', 0);
     assert.equal(result.title, 'New Title');
 
     const after = await albumRepo.findById(album.id);
@@ -439,7 +439,7 @@ test('updateTitle: rejects a blank title', async (t) => {
     const album = await makeAlbum(user.id, { title: 'Keep Me' });
 
     await assert.rejects(
-      () => albumService.updateTitle(user.id, album.id, '   '),
+      () => albumService.updateTitle(user.id, album.id, '   ', 0),
       (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
     );
     const after = await albumRepo.findById(album.id);
@@ -449,7 +449,7 @@ test('updateTitle: rejects a blank title', async (t) => {
   }
 });
 
-test('updateTitle: rejects a non-owner with ALBUM_NOT_OWNED', async (t) => {
+test('updateTitle: rejects a stranger with ALBUM_ACCESS_DENIED', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping');
     return;
@@ -460,8 +460,10 @@ test('updateTitle: rejects a non-owner with ALBUM_NOT_OWNED', async (t) => {
     const album = await makeAlbum(owner.id, { title: 'Owned' });
 
     await assert.rejects(
-      () => albumService.updateTitle(intruder.id, album.id, 'Hijacked'),
-      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+      () => albumService.updateTitle(intruder.id, album.id, 'Hijacked', 0),
+      // 协同授权收口后:非 owner 也非 editor 的路人拿到 ALBUM_ACCESS_DENIED
+      // (requireAccess/resolveRole 的统一口径),不再是 owner-only 的 ALBUM_NOT_OWNED。
+      (err: { code?: string }) => err.code === 'ALBUM_ACCESS_DENIED',
     );
     const after = await albumRepo.findById(album.id);
     assert.equal(after?.title, 'Owned'); // unchanged
@@ -676,7 +678,8 @@ test('getDraftSkeleton: rejects a non-owner', async (t) => {
     const albumId = await seedDraftAlbum(owner.id);
     await assert.rejects(
       () => albumService.getDraftSkeleton(intruder.id, albumId),
-      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+      // 协同收口:路人是 ALBUM_ACCESS_DENIED(editor 则应放行,见 collab 白名单用例)。
+      (err: { code?: string }) => err.code === 'ALBUM_ACCESS_DENIED',
     );
   } finally {
     await cleanupUser(owner.id);
@@ -1193,7 +1196,8 @@ test('getStoryProgress: rejects a non-owner', async (t) => {
     const albumId = await seedStoryAlbum(owner.id, 1);
     await assert.rejects(
       () => albumService.getStoryProgress(intruder.id, albumId),
-      (err: { code?: string }) => err.code === 'ALBUM_NOT_OWNED',
+      // 协同收口:路人是 ALBUM_ACCESS_DENIED(editor 则应放行 —— 否则导出按钮永久锁死)。
+      (err: { code?: string }) => err.code === 'ALBUM_ACCESS_DENIED',
     );
   } finally {
     await cleanupUser(owner.id);
@@ -2354,7 +2358,7 @@ test('reorderPages(draft 相册):按置换重排 draft_pages 行,pageIndex 重�
     };
     await albumRepo.update(db, album.id, { status: 'COMPLETED', stage: 'story', draftJson: wrapped });
 
-    await albumService.reorderPages(user.id, album.id, [0, 2, 1]);
+    await albumService.reorderPages(user.id, album.id, [0, 2, 1], 0);
 
     const after = await albumRepo.findById(album.id);
     const rows = await draftPageRepo.findByAlbum(album.id);
@@ -2400,7 +2404,7 @@ test('reorderPages:置换校验 —— 长度不符/非双射/移动 cover 类�
 
     const rejects = (perm: number[]) =>
       assert.rejects(
-        albumService.reorderPages(user.id, album.id, perm),
+        albumService.reorderPages(user.id, album.id, perm, 0),
         (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
       );
     await rejects([0, 1]); // 长度不符
@@ -2422,7 +2426,7 @@ test('reorderPages(无 draft 存量相册):album_pages 行按置换重写 pageIn
       { albumId: album.id, pageIndex: 2, templateId: 'mag-05', imagesJson: {}, textsJson: { title: 'B' } },
     ]);
 
-    await albumService.reorderPages(user.id, album.id, [0, 2, 1]);
+    await albumService.reorderPages(user.id, album.id, [0, 2, 1], 0);
 
     const rows = await albumPageRepo.findByAlbum(db, album.id);
     assert.deepEqual(
@@ -2470,7 +2474,7 @@ test('reorderPages 路由判定必须与 updatePage 一致:先 updatePage 改一
     const staleDraft = stale?.draftJson as { pages: Array<{ texts: { title: string } }> };
     assert.equal(staleDraft.pages[1]?.texts.title, 'A', 'sanity: draftJson.pages 确实没跟着 updatePage 更新');
 
-    await albumService.reorderPages(user.id, albumId, [0, 2, 1]);
+    await albumService.reorderPages(user.id, albumId, [0, 2, 1], stale!.draftStructureRevision);
 
     const rows = await draftPageRepo.findByAlbum(albumId);
     const movedToIndex2 = rows.find((r) => r.pageIndex === 2)!;
@@ -2505,7 +2509,7 @@ test('deletePage(draft 相册):删内页后行数-1,pageIndex 连续,整条记�
     };
     await albumRepo.update(db, album.id, { status: 'COMPLETED', stage: 'story', draftJson: wrapped });
 
-    await albumService.deletePage(user.id, album.id, 1);
+    await albumService.deletePage(user.id, album.id, 1, 0);
 
     const after = await albumRepo.findById(album.id);
     const rows = await draftPageRepo.findByAlbum(album.id);
@@ -2547,7 +2551,7 @@ test('deletePage(draft 相册):双宽内页(spread 模板)同样可删', async (
     };
     await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
 
-    await albumService.deletePage(user.id, album.id, 2);
+    await albumService.deletePage(user.id, album.id, 2, 0);
 
     const rows = await draftPageRepo.findByAlbum(album.id);
     assert.deepEqual(
@@ -2580,7 +2584,7 @@ test('deletePage:拒绝 —— 删 cover 类目页/删最后一张内页/越界,
     await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
 
     const rejects = (idx: number) =>
-      assert.rejects(albumService.deletePage(user.id, album.id, idx), hasCode('VALIDATION_FAILED'));
+      assert.rejects(albumService.deletePage(user.id, album.id, idx, 0), hasCode('VALIDATION_FAILED'));
     await rejects(0); // cover 类目:锚定页不许删(服务端二次把关,不只靠前端置灰)
     await rejects(1); // 最后一张内页:拒绝删到内页数为 0
     await rejects(9); // 越界
@@ -2619,7 +2623,7 @@ test('getDraftSkeleton 读行级真相:updatePage/deletePage 之后再读必须�
       '改文字后重新读 skeleton 必须看见新文案(不能读 legacy 陈旧快照)',
     );
 
-    await albumService.deletePage(user.id, album.id, 1);
+    await albumService.deletePage(user.id, album.id, 1, 1);
     const afterDelete = await albumService.getDraftSkeleton(user.id, album.id);
     assert.equal(afterDelete?.pages.length, 2, '删页后重新读 skeleton 页数必须变少');
     assert.equal(afterDelete?.pages[1]?.textsJson.title, 'B', '幸存页顺延');
@@ -2682,7 +2686,7 @@ test('deletePage:按 pageIndex 字段解析(不是数组下标)—— 字段不�
     await albumRepo.update(db, album.id, { status: 'EDITING', stage: 'story', draftJson: wrapped });
 
     // 前端发的是字段值 129(不是数组下标 1)。
-    await albumService.deletePage(user.id, album.id, 129);
+    await albumService.deletePage(user.id, album.id, 129, 0);
 
     const rows = await draftPageRepo.findByAlbum(album.id);
     assert.deepEqual(
@@ -2695,7 +2699,7 @@ test('deletePage:按 pageIndex 字段解析(不是数组下标)—— 字段不�
     );
 
     // 不存在的字段值(哪怕它是合法数组下标)必须明确拒绝,不能静默删错页。
-    await assert.rejects(albumService.deletePage(user.id, album.id, 77), hasCode('VALIDATION_FAILED'));
+    await assert.rejects(albumService.deletePage(user.id, album.id, 77, 2), hasCode('VALIDATION_FAILED'));
   } finally {
     await cleanupUser(user.id);
   }
@@ -2712,7 +2716,7 @@ test('deletePage(无 draft 存量相册):album_pages 行过滤后 pageIndex 重�
       { albumId: album.id, pageIndex: 2, templateId: 'mag-05', imagesJson: { b: 'p2' }, textsJson: { title: 'B' } },
     ]);
 
-    await albumService.deletePage(user.id, album.id, 1);
+    await albumService.deletePage(user.id, album.id, 1, 0);
 
     const rows = await albumPageRepo.findByAlbum(db, album.id);
     assert.deepEqual(

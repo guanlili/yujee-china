@@ -60,8 +60,8 @@ export const agentJobRepo = {
   // Newest job for an album. The album-uuid read path (album-service) uses this
   // to surface live stage/progress and to run the opportunistic zombie sweep —
   // album is the source of truth, the job is just its generation telemetry.
-  findLatestByAlbum: async (albumId: string): Promise<AgentJob | undefined> => {
-    const rows = await db
+  findLatestByAlbum: async (albumId: string, tx: DbOrTx = db): Promise<AgentJob | undefined> => {
+    const rows = await tx
       .select()
       .from(agentJobs)
       .where(eq(agentJobs.albumId, albumId))

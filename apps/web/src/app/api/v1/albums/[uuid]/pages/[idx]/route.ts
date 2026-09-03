@@ -4,7 +4,9 @@ import { requireAuth } from '@/lib/auth/require-auth';
 import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
+import { err } from '@/lib/api/err';
 import { albumService } from '@/services/album/album-service';
+import { StructureRevisionSchema } from './schema';
 
 const BodySchema = z
   .object({
@@ -20,6 +22,10 @@ const BodySchema = z
     // 页级样式(书页背景色):CSS 属性 → 值|null(移除)。写页根(data-template 外框)。
     // 值层面的注入护栏在 patchHtmlPageStyle(属性名白名单式正则 + 禁 ;{}<>")。
     pageStyle: z.record(z.string().max(32), z.string().max(200).nullable()).optional(),
+    // 页面 OCC(collab plan §7.5):客户端所见的页面 version。可选是发布阶段 A
+    // (§16)的过渡态 —— owner 旧客户端不带它暂走旧盲写,editor 必须带,阶段 C
+    // 收紧为必填。
+    baseVersion: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   })
   .refine(
     (b) =>
@@ -39,7 +45,8 @@ export async function PATCH(
     const user = await requireAuth(req);
     const { uuid, idx } = await ctx.params;
     const body = await parseBody(BodySchema, req);
-    const data = await albumService.updatePage(user.id, uuid, Number(idx), body);
+    const { baseVersion, ...patch } = body;
+    const data = await albumService.updatePage(user.id, uuid, Number(idx), patch, baseVersion);
     return ok(data);
   } catch (e) {
     return fromException(e);
@@ -47,6 +54,7 @@ export async function PATCH(
 }
 
 // 删除书页(2026-08-03 设计):只删内页,图片随页移除;校验与语义都在 service 层。
+// 基线 schema 见 ./schema.ts(route 文件不能多导出常量)。
 export async function DELETE(
   req: Request,
   ctx: { params: Promise<{ uuid: string; idx: string }> },
@@ -54,7 +62,23 @@ export async function DELETE(
   try {
     const user = await requireAuth(req);
     const { uuid, idx } = await ctx.params;
-    const data = await albumService.deletePage(user.id, uuid, Number(idx));
+    const url = new URL(req.url);
+    const raw = url.searchParams.get('baseStructureRevision');
+    // 省略 = 发布阶段 A 的旧客户端(同 baseVersion 口径):owner 走旧盲写,
+    // editor 在 service 层被拒。给了就必须是合法整数。
+    let baseStructureRevision: number | undefined;
+    if (raw !== null) {
+      const parsed = StructureRevisionSchema.safeParse(raw);
+      if (!parsed.success) {
+        return err(
+          'VALIDATION_FAILED',
+          'baseStructureRevision must be an integer in [0, MAX_SAFE_INTEGER]',
+          400,
+        );
+      }
+      baseStructureRevision = parsed.data;
+    }
+    const data = await albumService.deletePage(user.id, uuid, Number(idx), baseStructureRevision);
     return ok(data);
   } catch (e) {
     return fromException(e);

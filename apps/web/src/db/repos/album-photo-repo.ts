@@ -5,6 +5,8 @@ import { albumPhotos, type AlbumPhoto } from '../schema';
 export type AlbumPhotoUpsert = {
   photoId: string;
   status: 'uploaded' | 'missing';
+  // 最后确认 PUT 成功的 Creator(collab rework §3.3)。missing 行不带署名。
+  uploadedBy?: string | null;
   width?: number;
   height?: number;
   bytes?: number;
@@ -52,6 +54,7 @@ export const albumPhotoRepo = {
           albumId,
           photoId: r.photoId,
           status: r.status,
+          uploadedBy: r.uploadedBy ?? null,
           width: r.width ?? null,
           height: r.height ?? null,
           bytes: r.bytes ?? null,
@@ -61,6 +64,9 @@ export const albumPhotoRepo = {
         target: [albumPhotos.albumId, albumPhotos.photoId],
         set: {
           status: sql`CASE WHEN excluded.status = 'missing' THEN ${albumPhotos.status} ELSE excluded.status END`,
+          // 署名随 status 同闸:missing 不动既有署名;uploaded(missing→uploaded
+          // 流转,或首次确认)落最后确认者。
+          uploadedBy: sql`CASE WHEN excluded.status = 'missing' THEN ${albumPhotos.uploadedBy} ELSE excluded.uploaded_by END`,
           width: sql`CASE WHEN excluded.status = 'missing' THEN ${albumPhotos.width} ELSE excluded.width END`,
           height: sql`CASE WHEN excluded.status = 'missing' THEN ${albumPhotos.height} ELSE excluded.height END`,
           bytes: sql`CASE WHEN excluded.status = 'missing' THEN ${albumPhotos.bytes} ELSE excluded.bytes END`,

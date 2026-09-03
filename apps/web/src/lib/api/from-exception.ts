@@ -5,7 +5,7 @@ import { logger } from '@/lib/log/logger';
 
 export function fromException(e: unknown): Response {
   if (e instanceof AppError) {
-    return err(e.code, e.message, e.status);
+    return err(e.code, e.message, e.status, e.details);
   }
   if (e instanceof ZodError) {
     return err('VALIDATION_FAILED', e.issues.map((i) => i.message).join('; '), 400);

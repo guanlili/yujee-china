@@ -671,7 +671,11 @@ export function ChatPanel({
         storyGate = json.data as StoryProgress;
         setStoryProgress(storyGate);
         updateStoryGateUi(storyGate);
-      } catch {
+      } catch (e) {
+        // 拉不到闸门 = 导出按钮永久 disabled(isAuthoringExportLocked(null) → true)。
+        // 这里曾经完全静默,于是「导出点不动」在日志里查无实据 —— 协作者被 403 挡了
+        // 整整一轮才靠读代码找出来。失败必须留痕,哪怕只是控制台。
+        console.warn('[story-gate] 拉取失败,导出闸门保持锁定', e);
         storyGate = null;
         updateStoryGateUi(null);
       } finally {
