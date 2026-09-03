@@ -72,6 +72,28 @@ Postgres + Cloudflare R2
 - 渲染注册表的**唯一真相**是 `apps/web/src/components/album/web-registry.ts`。
   不要在 `components/album/templates/` 下再建第二套注册表(2026-07 已删过一次)。
 
+### 协同编辑(2026-09 移植自黑客松站)
+
+- **授权只有两个 seam,别再逐点手写归属判断**:`collaborationService.requireAccess`
+  (owner|editor 都是 Creator —— 改内容/结构/设置、传照片、跑 AI、导出、建分享)与
+  `requireOwner`(治理:管成员、删相册、转所有权)。库里曾有 16 处硬写
+  `album.userId !== userId`,逐点改必漏,漏一个就是越权。
+- **写路径一律在 `albumRepo.findByIdForUpdate` 行锁内用 `resolveRole`**,不用无锁的
+  `requireAccess` —— 否则有 TOCTOU 窗口。读路径才用 `requireAccess`。
+- 能力模型的唯一真相是 `apps/web/src/lib/collaboration/capabilities.ts`,**前后端共用
+  同一份纯函数**。前端显隐只是体验,每条能力后端都有锁内检查兜底。
+- 三种 OCC 各管各的版本列,**刻意不复用**:页面 `draft_pages.version`(baseVersion +
+  `updateOneIfVersion` 双防线)、结构 `albums.draft_structure_revision`(整批/结构写点,
+  见 `bumpDraftRevision({structural:true})`)、设置 `albums.settings_revision`
+  (title/背景/滤镜)。拿错版本号只会让对应写点误判冲突。
+- 新增整批替换页面的写点(`draftPageRepo.replaceAll`)时,**必须**配 structural 的
+  `bumpDraftRevision`,否则协作者的增量同步会收到错误增量而不是整书重载。
+  `collaboration-service.test.ts` 的写点清单守卫会拦。
+- 基线字段(`baseVersion`/`baseStructureRevision`/`baseSettingsRevision`)目前在
+  schema 里是**可选**,这是发布阶段 A 的过渡态:前端协同 UI 落地前不发它们,必填会让
+  owner 自己也改不了书名/挪不了页。服务端口径是「owner 省略走旧盲写,editor 省略一律
+  拒绝」。前端全部带上后收紧为必填。
+
 ### 照片滤镜与派生物
 
 - `albums.photo_filter` 是全书默认 + 单张覆盖的持久化真相;显式 `null` 覆盖表示原片。
@@ -134,5 +156,5 @@ Postgres + Cloudflare R2
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 212d389a
+checked-at: 1cade4aa
 -->
