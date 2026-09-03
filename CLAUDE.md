@@ -89,10 +89,17 @@ Postgres + Cloudflare R2
 - 新增整批替换页面的写点(`draftPageRepo.replaceAll`)时,**必须**配 structural 的
   `bumpDraftRevision`,否则协作者的增量同步会收到错误增量而不是整书重载。
   `collaboration-service.test.ts` 的写点清单守卫会拦。
-- 基线字段(`baseVersion`/`baseStructureRevision`/`baseSettingsRevision`)目前在
-  schema 里是**可选**,这是发布阶段 A 的过渡态:前端协同 UI 落地前不发它们,必填会让
-  owner 自己也改不了书名/挪不了页。服务端口径是「owner 省略走旧盲写,editor 省略一律
-  拒绝」。前端全部带上后收紧为必填。
+- 基线字段(`baseVersion`/`baseStructureRevision`/`baseSettingsRevision`)在 schema 里
+  是**可选**。两端前端(EditorPort / MobileEditorRoot)现在都会带上,但存量客户端可能
+  不带,所以服务端口径仍是「owner 省略走旧盲写,**editor 省略一律拒绝**」—— 后半句是
+  可选 schema 下唯一的协同并发防线,`settings-wiring.test.ts` 有守卫钉住它。
+  将来确认无存量客户端后可收紧为必填。
+- AI 长任务(layout/compose)在派发时于 album 行锁内记 `agent_jobs.meta.baseline`,
+  回写前重验;失配即 `AI_RESULT_STALE` **零写入** + 释放计费 hold —— 人工编辑优先于
+  AI 结果。`replaceAll` 的 `updatedBy` 是发起者(AI 继承发起者身份),不再是 null。
+- 协作者的书出现在「我的相册」,但 **editor 的 RUNNING 书不驱动轮询、不触发
+  `resolveGeneration`** —— 账务清扫归书的 owner,否则僵尸共享书会在协作者侧
+  形成永不终止的轮询。
 
 ### 照片滤镜与派生物
 
@@ -156,5 +163,5 @@ Postgres + Cloudflare R2
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 1cade4aa
+checked-at: 1adaef05
 -->
