@@ -59,11 +59,13 @@ test('desktop Style lives in selected-image resources, not the global top bar', 
 
 test('filter persistence is a photoFilter-only 180ms PATCH with stale-response protection', () => {
   assert.match(editor, /createFilterSaveController/);
-  assert.match(editor, /JSON\.stringify\(\{\s*photoFilter:\s*state\s*\}\)/);
+  // Phase 2B:持久化走共享设置传输层(带 baseSettingsRevision OCC 基线),
+  // 不再手搓裸 PATCH。仍只提交 photoFilter 一个字段。
+  assert.match(editor, /saveAlbumSettings/);
+  assert.match(editor, /patch:\s*\{\s*photoFilter:\s*state\s*\}/);
   assert.match(editor, /filterSaver\.schedule\(photoFilter\)/);
   assert.match(editor, /filterSaver\.dispose\(\)/);
   assert.match(editor, /onSuccess:\s*\(normalized\)[\s\S]*?setPhotoFilter/);
-  assert.doesNotMatch(editor, /JSON\.stringify\(\{\s*photoFilter[\s\S]{0,100}(title|boardBackground)/);
 });
 
 test('display reload and every desktop export consume the current filter state', () => {

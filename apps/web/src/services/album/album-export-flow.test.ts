@@ -53,7 +53,7 @@ test('v3 export gate: PDF sign/confirm reject until all story chapters are done'
       (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
     );
     await assert.rejects(
-      () => albumService.confirmPdf(user.id, album.id, `pdfs/${user.id}/${album.id}.pdf`),
+      () => albumService.confirmPdf(user.id, album.id, `pdfs/${album.id}/${crypto.randomUUID()}.pdf`),
       (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
     );
 
@@ -82,7 +82,9 @@ test('v3 export gate: PDF sign/confirm reject until all story chapters are done'
       contentType: 'application/pdf',
       size: 4,
     });
-    assert.equal(sign.r2Key, `pdfs/${user.id}/${album.id}.pdf`);
+    // Phase 3.2:key 归 album 命名空间 + 每次 UUID exportId(不按执行者 userId)。
+    assert.match(sign.r2Key, new RegExp(`^pdfs/${album.id}/[0-9a-f-]{36}\\.pdf$`));
+    assert.doesNotMatch(sign.r2Key, new RegExp(`/${user.id}/`), 'key 不再使用执行者命名空间');
   } finally {
     await cleanupUser(user.id);
   }
@@ -253,5 +255,81 @@ test('non-draft cover page edits invalidate signed and confirmed cover thumbnail
     assert.equal(current?.coverThumbnailUrl, null);
   } finally {
     await cleanupUser(user.id);
+  }
+});
+
+test('pdf export (collab rework §3.2): editor exports into album namespace; stranger denied', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { albumMemberRepo } = await import('../../db/repos/album-member-repo');
+  const { collaborationService } = await import('../collaboration/collaboration-service');
+  const owner = await makeUser('pdf-editor-owner');
+  const editor = await makeUser('pdf-editor-member');
+  const stranger = await makeUser('pdf-editor-stranger');
+  try {
+    const album = await makeAlbum(owner.id, { photoCount: 2 });
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: makeV3StoryDraft(1),
+    });
+    await albumMemberRepo.addMemberIfAbsent(db, album.id, editor.id);
+    // 解锁导出闸门(与上面 v3 export gate 测试同一口径:全章 done + stage ready)。
+    await albumService.markChapterDone(owner.id, album.id, 'c1');
+    await albumRepo.update(db, album.id, { stage: 'ready' });
+
+    // editor:Creator 能力 —— sign 的 key 归 album 命名空间(独立 exportId)。
+    const editorSign = await albumService.signPdfUpload(editor.id, album.id, {
+      contentType: 'application/pdf',
+      size: 4,
+    });
+    assert.match(editorSign.r2Key, new RegExp(`^pdfs/${album.id}/[0-9a-f-]{36}\\.pdf$`));
+    assert.doesNotMatch(editorSign.r2Key, new RegExp(`/${editor.id}/`));
+
+    // 两个 Creator 各自导出不互相覆盖文件:每次 sign 都是不同的 exportId。
+    const ownerSign = await albumService.signPdfUpload(owner.id, album.id, {
+      contentType: 'application/pdf',
+      size: 4,
+    });
+    assert.notEqual(ownerSign.r2Key, editorSign.r2Key);
+
+    // editor confirm 自己的 key:相册指针挪到最新一份。
+    const confirmed = await albumService.confirmPdf(editor.id, album.id, editorSign.r2Key);
+    assert.equal(confirmed.pdfUrl, `https://cdn.yujeeai.test/${editorSign.r2Key}`);
+
+    // 伪造 key(别的 album 段 / 非 UUID 尾段)被拒。
+    await assert.rejects(
+      () => albumService.confirmPdf(editor.id, album.id, `pdfs/other-album/${crypto.randomUUID()}.pdf`),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+    await assert.rejects(
+      () => albumService.confirmPdf(editor.id, album.id, `pdfs/${album.id}/not-a-uuid.pdf`),
+      (err: { code?: string }) => err.code === 'VALIDATION_FAILED',
+    );
+
+    // stranger:非 owner 非 member → 拒绝(sign 走 requireAccess)。
+    await assert.rejects(
+      () => albumService.signPdfUpload(stranger.id, album.id, {
+        contentType: 'application/pdf',
+        size: 4,
+      }),
+      (err: { code?: string }) => err.code === 'ALBUM_ACCESS_DENIED',
+    );
+    await assert.rejects(
+      () => albumService.confirmPdf(stranger.id, album.id, editorSign.r2Key),
+      (err: { code?: string }) => err.code === 'ALBUM_ACCESS_DENIED',
+    );
+
+    // editor 可读已导出 PDF;stranger 不可。
+    const editorRead = await albumService.getPdfUrl(editor.id, album.id);
+    assert.equal(editorRead.pdfUrl, confirmed.pdfUrl);
+    await assert.rejects(
+      () => albumService.getPdfUrl(stranger.id, album.id),
+      (err: { code?: string }) => err.code === 'ALBUM_ACCESS_DENIED',
+    );
+    void collaborationService;
+  } finally {
+    await cleanupUser(owner.id);
+    await cleanupUser(editor.id);
+    await cleanupUser(stranger.id);
   }
 });

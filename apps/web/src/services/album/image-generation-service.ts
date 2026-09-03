@@ -14,6 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 
 import { db, type DbOrTx } from '@/db/client';
+import { collaborationService } from '@/services/collaboration/collaboration-service';
 import { albumRepo } from '@/db/repos/album-repo';
 import { creditHoldRepo } from '@/db/repos/credit-hold-repo';
 import { imageGenerations, users } from '@/db/schema';
@@ -68,13 +69,12 @@ export const imageGenerationService = {
     const cleanedPrompt = sanitizeUserPrompt(input.body.prompt);
     if (!cleanedPrompt) throw ERRORS.VALIDATION_FAILED('prompt is empty after sanitising');
 
-    // 1) 归属校验。**刻意不加 album 行锁**:creditService.hold 的锁序是
+    // 1) Creator 授权(collab rework Phase 4a):AI 生图是创作能力,owner/editor 都可用;
+    //    积分挂请求者自己。**刻意不加 album 行锁**:creditService.hold 的锁序是
     //    users -> albums,这里若先锁 albums 再锁 users,同一相册上并发的
-    //    「生图」与「加照片/定稿」会撞 40P01 死锁。归属只是读 userId,不需要锁;
+    //    「生图」与「加照片/定稿」会撞 40P01 死锁。判角色只是读,不需要锁;
     //    相册在这之后被删掉的话,后面写 image_generations 时外键会拦下。
-    const album = await albumRepo.findById(input.albumId);
-    if (!album) throw ERRORS.ALBUM_NOT_FOUND();
-    if (album.userId !== input.userId) throw ERRORS.ALBUM_NOT_OWNED();
+    const album = (await collaborationService.requireAccess(input.userId, input.albumId)).album;
 
     // 2) 决定这次收不收钱 + 收钱。事务里只锁 users。
     const { charged, retryRowId, previousRetries } = await db.transaction(async (tx) => {

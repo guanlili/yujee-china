@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
-/* 删除书页(2026-08-03 设计:docs/specs/2026-08-03-delete-page-design.md)的接线
+/* 删除书页(2026-08-03 设计)的接线
    守卫。服务层对错在 album-service.test.ts;这里 pin 接线上的共存条件:
      · 每端恰好一个 DELETE 发射点,失败都回滚本地并提示
      · 两端都有「非内页拒绝 + 最后一张内页拒绝」双守卫(服务端之外的前置反馈)
@@ -58,4 +58,16 @@ test('线上契约:两端删除都按 pageIndex 字段,不按数组下标', () =
   assert.match(mobileRoot, /const wireIndex = prev\[pageIndex\]\?\.pageIndex/, '发线前按数组下标取字段');
   assert.match(mobileRoot, /pages\/\$\{wireIndex\}/, 'URL 用字段值');
   assert.doesNotMatch(mobileRoot, /pages\/\$\{pageIndex\}`, \{ method: 'DELETE' \}/, '不许把数组下标发上线');
+});
+
+test('结构 OCC(Phase 2A):两端 DELETE 都带 baseStructureRevision、读回推进、409 冲突回滚+重载提示', () => {
+  // 桌面:DELETE query 带基线,成功读回推进,409 冲突回滚 + 整书重载出口。
+  assert.match(editor, /baseStructureRevision=\$\{bookStructureRevision\}/);
+  assert.match(editor, /bookStructureRevision = json\.data\.structureRevision/);
+  assert.match(editor, /STRUCTURE_CONFLICT/);
+  // 移动端:DELETE query 带基线,成功读回推进 ref,409 冲突回滚 + 「结构已变化」提示。
+  assert.match(mobileRoot, /baseStructureRevision=\$\{baseline\}/);
+  assert.match(mobileRoot, /structureRevisionRef\.current = json\.data\.structureRevision/);
+  assert.match(mobileRoot, /STRUCTURE_CONFLICT/);
+  assert.match(mobileRoot, /结构已变化/);
 });

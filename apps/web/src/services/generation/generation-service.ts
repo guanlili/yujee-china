@@ -6,6 +6,7 @@ import { agentClient, type AgentPhotoInput } from '@/lib/agent/agent-client';
 import { env } from '@/lib/env';
 import { ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
+import { collaborationService } from '@/services/collaboration/collaboration-service';
 import { albumService } from '@/services/album/album-service';
 import { loadStoryDraft } from '@/services/album/draft-store';
 import { creditService } from '@/services/credit/credit-service';
@@ -136,7 +137,8 @@ export const generationService = {
     opts: GenerationOpts = {},
   ) {
     const anon = opts.isAnonymous === true;
-    const album = await albumService.findOwned(userId, albumId);
+    // Creator 授权(collab rework Phase 4a):owner/editor 都可发起;计费挂请求者。
+    const album = (await collaborationService.requireAccess(userId, albumId)).album;
     if (album.status !== 'EDITING' || album.layoutJson != null) throw ERRORS.ALBUM_NOT_EDITABLE();
     // 游客上限按全书累计口径:已有 + 新增 ≤ 20,防止 1 本相册反复追加绕开小上限。
     if (anon && album.photoCount + input.photos.length > ANON_MAX_PHOTOS_PER_GENERATION) {
@@ -175,7 +177,8 @@ export const generationService = {
   },
 
   async submitSelectLayoutV3(userId: string, albumId: string, input: SelectLayoutInput) {
-    const album = await albumService.findOwned(userId, albumId);
+    // Creator 授权(collab rework Phase 4a):owner/editor 都可发起;计费挂请求者。
+    const album = (await collaborationService.requireAccess(userId, albumId)).album;
     // 解耦:排版是独立操作,不再依赖 analyze 的 init job(analyze 完它已 COMPLETED)。闸门改看
     // 相册态 + 草稿树:必须 EDITING、还没定稿(layoutJson==null),且草稿里有可排版的章节树。
     if (album.status !== 'EDITING' || album.layoutJson != null) {

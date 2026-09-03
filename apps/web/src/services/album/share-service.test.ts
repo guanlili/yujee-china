@@ -11,6 +11,7 @@ const { db } = await import('@/db/client');
 const { albumRepo } = await import('@/db/repos/album-repo');
 const { albumPageRepo } = await import('@/db/repos/album-page-repo');
 const { albumShareRepo } = await import('@/db/repos/album-share-repo');
+const { albumMemberRepo } = await import('@/db/repos/album-member-repo');
 const { draftPageRepo } = await import('@/db/repos/draft-page-repo');
 const { albumService } = await import('./album-service');
 const { shareService } = await import('./share-service');
@@ -129,7 +130,7 @@ function mockFrozenShareState(
       return pages as never;
     },
   );
-  const upsert = mock.method(
+  const create = mock.method(
     albumShareRepo,
     'create',
     async (actualTx: unknown, row: Record<string, unknown>) => {
@@ -165,11 +166,11 @@ function mockFrozenShareState(
     get savedShare() {
       return savedShare;
     },
-    calls: { staleRead, lockedRead, transaction, pageRead, upsert, draftCount, draftRead },
+    calls: { staleRead, lockedRead, transaction, pageRead, upsert: create, draftCount, draftRead },
     restore() {
       draftRead.mock.restore();
       draftCount.mock.restore();
-      upsert.mock.restore();
+      create.mock.restore();
       pageRead.mock.restore();
       transaction.mock.restore();
       lockedRead.mock.restore();
@@ -524,43 +525,47 @@ test('concurrent share and filter update serialize on the album lock without a m
   }
 });
 
-// 0030_closed_sentinel 的核心不变式(collab rework §3.1):album_shares 从「一相册
-// 一条、重新生成即覆盖」改成「一链接一行」。协同下这条是安全边界 —— editor 建
-// 分享**不能**撤销 owner 已经发出去的链接;非协同下它也让「重新生成」不再让已
-// 分发的旧链接突然 404。唯一索引 uq_album_shares_album 已被迁移删除,repo 侧
-// upsertByAlbum 相应换成 create。
-test('重新生成分享创建新行,旧 token 继续可读(一链接一行,不覆盖)', async (t) => {
-  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
-  const user = await makeUser('share-append-only');
+test('createShare (collab rework §3.1): editor may share with owner-namespace URLs; stranger denied with zero writes', async () => {
+  // editor:member 存在 → 创建成功。快照 URL 必须仍归 **owner** 命名空间
+  // (压缩快照由 owner 浏览器上传,editor 只引用;资产归属迁移是 Phase 3.3)。
+  const editorId = 'user-editor-share';
+  const editorState = mockFrozenShareState(albumFixture());
+  const editorExists = mock.method(
+    albumMemberRepo,
+    'exists',
+    async (albumId: string, userId: string) => {
+      assert.equal(albumId, ALBUM_ID);
+      return userId === editorId;
+    },
+  );
   try {
-    const album = await makeAlbum(user.id, { photoCount: 1 });
-    await albumPageRepo.bulkInsert(db, [
-      { ...page(0, { hero: P1 }), albumId: album.id, id: undefined },
-    ]);
-    await albumService.updatePhotoFilter(user.id, album.id, {
-      default: { lutId: 'fuji-portrait', strength: 80 },
-    }, 0);
-    await albumService.confirmPhotoSnapshot(user.id, album.id, [
-      { photoId: P1, renderVersion: FILTERED },
-    ]);
-
-    const first = await shareService.createShare(user.id, album.id, 'zh');
-    const second = await shareService.createShare(user.id, album.id, 'zh');
-    assert.notEqual(first.token, second.token, '重新生成必须换新 token');
-
-    // 旧链接不被撤销:两条行都在,按 token 都查得到。
-    const firstRow = await albumShareRepo.findByToken(first.token);
-    const secondRow = await albumShareRepo.findByToken(second.token);
-    assert.ok(firstRow, '重新生成后旧 token 必须仍可读 —— 覆盖语义会让它消失');
-    assert.ok(secondRow);
-    assert.equal(firstRow.albumId, album.id);
-    assert.equal(secondRow.albumId, album.id);
-
-    // 分享管理 UI 展示「当前链接」取最新一条。
-    const latest = await albumShareRepo.findLatestByAlbum(album.id);
-    assert.ok(latest);
-    assert.equal(latest.token, second.token);
+    const result = await shareService.createShare(editorId, ALBUM_ID, 'zh');
+    assert.equal(result.token.length, 24);
+    assert.equal(editorState.calls.upsert.mock.callCount(), 1);
+    const snapshot = editorState.savedShare?.snapshotJson as {
+      photoUrls: Record<string, string>;
+    };
+    assert.match(snapshot.photoUrls[P1]!, new RegExp(`/photo-snapshots/${USER_ID}/`));
+    assert.doesNotMatch(snapshot.photoUrls[P1]!, new RegExp(`/${editorId}/`));
   } finally {
-    await cleanupUser(user.id);
+    editorExists.mock.restore();
+    editorState.restore();
+  }
+
+  // stranger:非 owner 非 member → ALBUM_ACCESS_DENIED,零插入。
+  const strangerState = mockFrozenShareState(albumFixture());
+  const noMember = mock.method(albumMemberRepo, 'exists', async () => false);
+  try {
+    await assert.rejects(
+      () => shareService.createShare('user-stranger-share', ALBUM_ID, 'zh'),
+      (error: { code?: string }) => {
+        assert.equal(error.code, 'ALBUM_ACCESS_DENIED');
+        return true;
+      },
+    );
+    assert.equal(strangerState.calls.upsert.mock.callCount(), 0);
+  } finally {
+    noMember.mock.restore();
+    strangerState.restore();
   }
 });

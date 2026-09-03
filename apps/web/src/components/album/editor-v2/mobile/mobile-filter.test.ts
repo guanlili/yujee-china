@@ -99,7 +99,9 @@ test('mobile root owns normalized filter persistence and registers both filter s
   assert.match(root, /controlledPhotoFilter === undefined \? localPhotoFilter : controlledPhotoFilter/);
   assert.match(root, /controlledSetPhotoFilter \?\? setLocalPhotoFilter/);
   assert.match(root, /createFilterSaveController/);
-  assert.match(root, /JSON\.stringify\(\{\s*photoFilter:\s*state\s*\}\)/);
+  // Phase 2B:持久化走共享设置传输层(带 baseSettingsRevision OCC 基线)。
+  assert.match(root, /saveAlbumSettings/);
+  assert.match(root, /patch:\s*\{\s*photoFilter:\s*state\s*\}/);
   assert.match(root, /filterSaver\.schedule\(photoFilter\)/);
   assert.match(root, /filterSaver\.retry\(\)/);
   assert.match(root, /filterSaver\.dispose\(\)/);
@@ -142,7 +144,9 @@ test('filter entry points are hidden when LUT rendering is unsupported', () => {
   assert.match(root, /lutEngine\.isSupported\(\)/);
   assert.match(root, /lutSupported=\{lutSupported\}/);
   assert.match(root, /\{lutSupported && filterOpen && \(/);
-  assert.match(more, /\{lutSupported && \(/);
+  // Phase 0 迭代:入口条件是「支持 LUT 且容器给了 handler」(handler 变 optional,
+  // 治理口径的隐藏移到容器层)。
+  assert.match(more, /\{lutSupported && onPhotoFilter && \(/);
   assert.match(editor, /lutSupported=\{lutSupported\}/);
   assert.match(editView, /\{lutSupported && selectedPhotoId && \(/);
   assert.match(editView, /onPhotoFilter/);

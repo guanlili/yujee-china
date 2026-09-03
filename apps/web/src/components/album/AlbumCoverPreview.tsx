@@ -63,7 +63,10 @@ export function AlbumCoverPreview({
     };
   }, [photoKey, photoFilter]);
 
-  const resolveImage = useCallback((photoId: string) => imageUrls[photoId], [imageUrls]);
+  const resolveImage = useCallback(
+    (photoId: string) => imageUrls[photoId],
+    [imageUrls],
+  );
 
   useEffect(() => {
     const frame = frameRef.current;

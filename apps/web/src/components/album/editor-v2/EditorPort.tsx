@@ -44,6 +44,13 @@ import {
   putSnapshotBlob,
 } from '@/lib/album/photo-snapshot-client';
 import { usePhotoOriginalSync } from '@/lib/hooks/use-photo-original-sync';
+import { createPageSaveCoordinator, type PagePatch } from '@/lib/collaboration/page-save-coordinator';
+import { createFetchPageSaveTransport } from '@/lib/collaboration/page-save-transport';
+import { createDraftSync, type SyncChanges } from '@/lib/collaboration/draft-sync';
+import { saveAlbumSettings, type SettingsSaveOutcome } from '@/lib/collaboration/settings-save-transport';
+import { capabilitiesForRole } from '@/lib/collaboration/capabilities';
+import { CollabPanel } from './CollabPanel';
+import { authHrefWithFrom } from '@/lib/auth/redirect';
 import { UserAvatar } from '@/components/app/UserAvatar';
 import { UserMenu } from '@/components/app/UserMenu';
 import { useChromeSession } from '@/components/app/useChromeSession';
@@ -395,6 +402,8 @@ function EditorAuthoring({
         textsJson: { ...p.textsJson },
         imagePosJson: { ...(p.imagePosJson ?? {}) },
         htmlJson: p.htmlJson,
+        // 协同(collab plan §7.3):页 OCC 版本随页走,保存协调器以它为 baseVersion。
+        version: p.version ?? null,
       })),
     [skeleton],
   );
@@ -589,42 +598,75 @@ function EditorShell({
   const [filterScope, setFilterScope] = useState<'book' | 'photo'>('book');
   const [filterPhotoId, setFilterPhotoId] = useState<string | null>(null);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [collabOpen, setCollabOpen] = useState(false);
   const [filterPersistError, setFilterPersistError] = useState<string | null>(null);
+  /** 点了「重试」但结果还没回来。防抖 180ms + 一趟网络期间没有任何反馈的话,
+   *  提示看起来就是「点了没反应」,用户会连点,把保存无限往后推(schedule 会重置计时器)。 */
+  const [filterRetrying, setFilterRetrying] = useState(false);
   const lastPersistedFilter = useRef(JSON.stringify(detail.album.photoFilter ?? null));
   const lutSupported = useMemo(() => lutEngine.isSupported(), []);
-  const filterSaver = useMemo(
-    () => createFilterSaveController({
+  const aT = useMemo(() => boundPick(locale), [locale]);
+  // 全局创作设置 OCC 基线(Phase 2B):滤镜(本组件)与标题/画板背景(EditorBook)
+  // 三处设置写入共用同一基线 —— ref 穿下去给命令式画布直接读写,避免两套基线
+  // 互相看不见(同一客户端自己跟自己 409)。
+  const settingsRevisionRef = useRef(detail.album.settingsRevision ?? 0);
+  // authoring 分支的 draft skeleton 比 detail 后解析、更"新"(其间可能又发生过设置写);
+  // editing 分支 detail.album 即真相。两类来源都同步,后到者覆盖 —— 与移动端
+  // structureRevisionRef 同口径。
+  useEffect(() => {
+    const next = draftChapters?.settingsRevision ?? detail.album.settingsRevision;
+    if (typeof next === 'number') settingsRevisionRef.current = next;
+  }, [draftChapters, detail.album.settingsRevision]);
+  const filterSaver = useMemo(() => {
+    // save 与 onSuccess 之间的单飞信箱:save 里判定的冲突/无权限提示,由随后的
+    // onSuccess 落到 filterPersistError(它在成功路径开头清 null,闭包变量保证
+    // 「先清再设」的顺序不吞冲突提示)。控制器只放行最新一代回调,不会串台。
+    let conflictNotice: string | null = null;
+    return createFilterSaveController({
       save: async (state, signal) => {
-        const response = await fetch(`/api/v1/albums/${detail.album.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ photoFilter: state }),
+        // 设置 OCC(collab rework §3):提交精确 baseSettingsRevision;成功读回新
+        // settingsRevision 推进本地基线。冲突经 save 返回值回滚(而非 onError):
+        // 控制器会把返回值当"已确认状态"走 onSuccess 落回本地。
+        conflictNotice = null;
+        const out: SettingsSaveOutcome = await saveAlbumSettings({
+          albumId: detail.album.id,
+          patch: { photoFilter: state },
+          baseSettingsRevision: settingsRevisionRef.current,
           signal,
         });
-        const json = (await response.json().catch(() => null)) as {
-          ok?: boolean;
-          data?: { photoFilter?: PhotoFilterState | null };
-          error?: { message?: string };
-        } | null;
-        if (!response.ok || !json?.ok) {
-          throw new Error(json?.error?.message ?? `filter PATCH failed (${response.status})`);
+        if (out.ok) {
+          settingsRevisionRef.current = out.settingsRevision;
+          return (out.data as PhotoFilterState | null | undefined) ?? state;
         }
-        return json.data?.photoFilter ?? state;
+        if (out.kind === 'conflict' || out.kind === 'forbidden') {
+          // 冲突:采纳服务器当前基线(否则本地永远落后,之后每次写都 409 死胡同),
+          // 本地退回最后确认版本;用户显式点重试 = 在新基线上重新表达这次滤镜意图。
+          if (out.kind === 'conflict' && out.currentSettingsRevision != null) {
+            settingsRevisionRef.current = out.currentSettingsRevision;
+          }
+          conflictNotice = out.kind === 'conflict'
+            ? aT('滤镜已被他人修改，已恢复为上次保存的版本', 'Filter changed elsewhere — restored the last saved version')
+            : aT('已无编辑权限', 'You no longer have edit access');
+          return JSON.parse(lastPersistedFilter.current) as PhotoFilterState | null;
+        }
+        // 网络失败:保留乐观值等重试(与原口径一致),经 onError 说话。
+        throw new Error(aT('没保存上，稍后可重试', "Couldn't save — retry later"));
       },
       onSuccess: (normalized) => {
         const serialized = JSON.stringify(normalized);
         lastPersistedFilter.current = serialized;
-        setFilterPersistError(null);
+        setFilterRetrying(false);
+        setFilterPersistError(conflictNotice);
         setPhotoFilter((current) =>
           JSON.stringify(current) === serialized ? current : normalized,
         );
       },
       onError: (error) => {
+        setFilterRetrying(false);
         setFilterPersistError(error.message);
       },
-    }),
-    [detail.album.id, setPhotoFilter],
-  );
+    });
+  }, [detail.album.id, setPhotoFilter, aT]);
 
   /* 选完滤镜、鼠标点到别处 → 面板自己收起。
      早先只有 × 能关,面板就一直钉在画布底部挡视线。移动端那份是 bottom-sheet,
@@ -698,7 +740,16 @@ function EditorShell({
           locale={locale}
           exportUnlocked={exportUnlocked}
           coordinator={coordinator}
+          detail={detail}
+          onOpenCollab={() => setCollabOpen(true)}
         />
+        {collabOpen ? (
+          <CollabPanel
+            albumId={detail.album.id}
+            locale={locale}
+            onClose={() => setCollabOpen(false)}
+          />
+        ) : null}
 
         <div className="workspace flex-1 overflow-hidden relative md:flex" style={{ height: 'calc(100vh - 56px)' }}>
           <button className="chat-fold-expand" data-action="toggleChat" data-i18n-title="expandChat" title="展开对话" aria-label="展开对话">
@@ -722,6 +773,7 @@ function EditorShell({
             coordinator={coordinator}
             lutSupported={lutSupported}
             openPhotoFilter={openPhotoFilter}
+            settingsRevisionRef={settingsRevisionRef}
           />
 
           {/* Stable chat rail: keyed by album.id so an EditorBook remount doesn't
@@ -781,12 +833,20 @@ function EditorTopbar({
   locale,
   exportUnlocked,
   coordinator,
+  detail,
+  onOpenCollab,
 }: {
   locale: Locale;
   exportUnlocked: boolean;
   coordinator: RefObject<ChatCoordinator | null>;
+  detail: AlbumDetail;
+  onOpenCollab: () => void;
 }) {
   void coordinator; // the export button's data-action is wired by EditorBook via the shared root
+  // 治理入口显隐(capabilities 收口,Phase 5):协作邀请/成员管理是 owner-only
+  // 治理能力,判据来自产品授权唯一真相(共享 capabilities),不再手写 isOwner。
+  // 创作入口(标题/滤镜/分享/导出/备份)对 owner/editor 全量开放,不加条件。
+  const canManageMembers = capabilitiesForRole(detail.album.role).has('manageMembers');
   // 账户菜单统一为 <UserMenu>(与 landing / my-albums 同一组件):真实姓名/邮箱、
   // 积分余额、我的相册、消耗记录、反馈、退出全在。此前编辑页是手搓静态 demo
   // (写死的占位姓名/邮箱)+ 命令式补真名 + 命令式注入语言行,三套逻辑
@@ -824,8 +884,10 @@ function EditorTopbar({
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="save-ic w-4 h-4"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>
           <span className="save-label" data-backup-label />
         </button>
-        {/* 分享链接(免登只读):挨着「保存」。生成前必须把照片压缩快照上传云端(对方浏览器
-            里没有本地原图),弹窗里先说明这点、用户确认后才上传+生成;传不齐不发链接。 */}
+        {/* 分享链接(免登只读,collab rework §3.1):owner/editor 都是 Creator 都可创建,
+            每次生成独立链接(editor 不撤销 owner 已发的)。生成前必须把照片压缩快照上传
+            云端(对方浏览器里没有本地原图),弹窗里先说明这点、用户确认后才上传+生成;
+            传不齐不发链接。 */}
         <button
           className="share-btn inline-flex items-center gap-1.5 px-4 py-2.5 rounded-pill text-[13px] font-semibold text-fg2 border border-bd"
           data-action="shareLink"
@@ -834,6 +896,27 @@ function EditorTopbar({
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
         </button>
+        {/* 协作编辑(collab plan §15):治理能力(manageMembers),仅持有该能力的
+            角色可见;权限由后端兜底(非 owner 调 edit-link/members 都 403)。 */}
+        {canManageMembers ? (
+          <button
+            className="collab-btn inline-flex items-center gap-1.5 px-4 py-2.5 rounded-pill text-[13px] font-semibold text-fg2 border border-bd"
+            data-testid="collab-btn"
+            onClick={() => {
+              if (!session.user || session.user.isAnonymous) {
+                const from = `/${locale}/album/${detail.album.id}`;
+                window.location.assign(authHrefWithFrom(`/${locale}/login`, from));
+                return;
+              }
+              onOpenCollab();
+            }}
+            title={pick(locale, { zh: '协作编辑:邀请他人共同编辑这本书', en: 'Collaborate: invite others to co-edit this book' })}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>
+          </button>
+        ) : null}
+        {/* 导出(collab rework §3.2):Creator 能力,editor 也导出;key 归 album 命名空间,
+            协作者导出不互相覆盖文件。 */}
         <span className="btn-glow" data-export-gate={exportUnlocked ? 'open' : 'locked'}>
           <button
             className="btn-primary bg-fg text-white px-4 py-2.5 rounded-pill text-[13px] font-semibold flex items-center gap-1.5 transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
@@ -1485,6 +1568,7 @@ function EditorBook({
   coordinator,
   lutSupported,
   openPhotoFilter,
+  settingsRevisionRef,
 }: {
   detail: AlbumDetail;
   locale: Locale;
@@ -1497,6 +1581,10 @@ function EditorBook({
   coordinator: RefObject<ChatCoordinator | null>;
   lutSupported: boolean;
   openPhotoFilter: (scope: 'photo', photoId: string) => void;
+  // 设置 OCC 基线(Phase 2B):与 EditorShell 的滤镜保存器共用(RefObject 穿透,
+  // 同 coordinator 先例)—— 标题/画板背景在命令式画布里直接读写它,避免两套
+  // 基线互相看不见(同一客户端自己跟自己 409)。
+  settingsRevisionRef: RefObject<number>;
 }) {
   // 游客态:命令式 handlers(保存/分享/导出上传)经 ref 读身份;/user/me 未返回前
   // 视为「未知」不拦(服务端 403 兜底),但自动上云(原图对账补传)保持关闭直到
@@ -1599,6 +1687,163 @@ function EditorBook({
       void loadAlbumFonts(pagesState.map((page) => ({ texts: page.textsJson })))
         .catch(() => undefined);
     };
+
+    // ── 协同保存协调器(collab plan §9)───────────────────────────────────────
+    // 桌面所有单页 PATCH 都走它:同页串行、在途合并、baseVersion 串接、409/失败/
+    // 无权限状态可见 —— 替换此前 fire-and-forget + 静默吞错的直连 fetch。
+    const saveStatusEl = document.createElement('div');
+    saveStatusEl.className = 'collab-save-status';
+    saveStatusEl.setAttribute('data-state', 'idle');
+    saveStatusEl.style.cssText =
+      'position:fixed;right:16px;bottom:16px;z-index:80;padding:6px 12px;border-radius:999px;' +
+      'font-size:12px;line-height:1.4;background:rgba(20,20,24,.82);color:#fff;cursor:default;' +
+      'opacity:0;transition:opacity .2s;pointer-events:none;user-select:none;';
+    document.body.appendChild(saveStatusEl);
+    let saveStatusTimer = 0;
+    function showSaveStatus(text: string, interactive: 'retry' | 'conflict' | null) {
+      saveStatusEl.textContent = text;
+      saveStatusEl.style.opacity = '1';
+      saveStatusEl.style.pointerEvents = interactive ? 'auto' : 'none';
+      saveStatusEl.style.cursor = interactive ? 'pointer' : 'default';
+      saveStatusEl.onclick = null;
+      if (interactive === 'retry') {
+        saveStatusEl.onclick = () => void saveCoordinator.flush();
+      } else if (interactive === 'conflict') {
+        // 冲突第一版只提供「查看最新版本」= 放弃本地未存修改并整书重载(§9.3,
+        // 不提供强制覆盖,避免绕开 OCC)。
+        saveStatusEl.onclick = () => {
+          saveCoordinator.dispose();
+          window.location.reload();
+        };
+      }
+      window.clearTimeout(saveStatusTimer);
+      if (!interactive) saveStatusTimer = window.setTimeout(hideSaveStatus, 2500);
+    }
+    function hideSaveStatus() {
+      saveStatusEl.style.opacity = '0';
+      saveStatusEl.style.pointerEvents = 'none';
+    }
+    const fetchSaveTransport = createFetchPageSaveTransport(albumId);
+    const saveCoordinator = createPageSaveCoordinator({
+      // 传输层包装:成功响应的 version 回写进 pagesState(下一次 enqueue 的
+      // baseVersion 来源;协调器内部也串接,双保险以应对 refreshDraft 换数组)。
+      transport: {
+        save: async (pageIndex, baseVersion, patch) => {
+          const out = await fetchSaveTransport.save(pageIndex, baseVersion, patch);
+          if (out.ok === true && typeof out.version === 'number') {
+            const page = pageByIndex(pageIndex);
+            if (page) page.version = out.version;
+          }
+          return out;
+        },
+      },
+      onPageStateChange: (_pageIndex, state) => {
+        saveStatusEl.setAttribute('data-state', state);
+        if (state === 'saving') showSaveStatus(aT('保存中…', 'Saving…'), null);
+        else if (state === 'saved') showSaveStatus(aT('已保存', 'Saved'), null);
+        else if (state === 'failed') showSaveStatus(aT('保存失败,点击重试', 'Save failed — tap to retry'), 'retry');
+        else if (state === 'conflict') showSaveStatus(aT('此页已被他人修改,点击查看最新版本', 'This page changed elsewhere — tap to reload'), 'conflict');
+        else if (state === 'forbidden') showSaveStatus(aT('已无编辑权限', 'You no longer have edit access'), null);
+      },
+    });
+    const enqueuePageSave = (pageIndex: number, patch: PagePatch) => {
+      // legacy 定稿相册页面无 version → null → 传输层不带 baseVersion(阶段 A 盲写)。
+      saveCoordinator.enqueue(pageIndex, pageByIndex(pageIndex)?.version ?? null, patch);
+    };
+
+    // ── 协同增量轮询(collab plan §10)───────────────────────────────────────
+    // 2.5s 拉 draft-changes;干净页自动替换重绘,dirty/saving/conflict 页只标记
+    // 远端变化(内容留在内存,等保存协调器给出终态);结构变化 → 复用 authoring
+    // 的 skeleton 重取通道(事件 → 父层 refetch → canvasEpoch 重挂,revision 随
+    // 新 skeleton 重置)。初始 revision 来自 draft skeleton(§7.3)。
+    let bookRevision = draftChapters?.revision ?? 0;
+    // 结构 OCC 基线(Phase 2A):reorder/delete 提交此值,成功后推进。与 bookRevision
+    // 刻意分离 —— 结构版本只随结构写点前进,不能用 draftRevision 冒充(否则单页写
+    // 也会让重排/删页误判冲突)。整书 reload 后随新 skeleton 归位(见 reloadDraft)。
+    let bookStructureRevision = draftChapters?.structureRevision ?? 0;
+    const remoteChangedPages = new Map<number, { pageIndex: number; version: number }>();
+    let lastReloadDispatch = 0;
+    const draftSync = createDraftSync({
+      source: {
+        fetchChanges: async (since) => {
+          try {
+            const res = await fetch(`/api/v1/albums/${albumId}/draft-changes?since=${since}`, {
+              cache: 'no-store',
+            });
+            if (res.status === 401 || res.status === 403) return { kind: 'unauthorized' };
+            const json = (await res.json().catch(() => null)) as {
+              ok?: boolean;
+              data?: SyncChanges;
+            } | null;
+            if (!res.ok || !json?.ok) return { kind: 'error' };
+            return json.data ? ({ ...json.data, kind: 'changes' } as SyncChanges) : { kind: 'error' };
+          } catch {
+            return { kind: 'error' };
+          }
+        },
+        reloadDraft: async () => {
+          // 'deferred':revision 不动,由 skeleton 重取 + canvasEpoch 重挂完成整书
+          // 重载(重挂后本 effect 重建,bookRevision 从新 skeleton 归位)。冷却
+          // 10s:指纹未变(内容相同)时父层不会 bump epoch,防止事件风暴。
+          const hasUnsafeLocalState = pagesState.some((page) => {
+            const state = saveCoordinator.state(page.pageIndex);
+            return state === 'dirty' || state === 'saving' || state === 'conflict';
+          });
+          if (hasUnsafeLocalState) return { kind: 'deferred' };
+          const now = Date.now();
+          if (now - lastReloadDispatch < 10_000) return { kind: 'deferred' };
+          lastReloadDispatch = now;
+          window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+          return { kind: 'deferred' };
+        },
+      },
+      host: {
+        localPageState: (pageIndex) => {
+          const state = saveCoordinator.state(pageIndex);
+          return {
+            dirty: state === 'dirty' || state === 'saving',
+            conflict: state === 'conflict',
+            version: pageByIndex(pageIndex)?.version ?? null,
+          };
+        },
+        applyPage: (r) => {
+          const page = pageByIndex(r.pageIndex);
+          if (!page) return; // 结构变化里的新页:交给 reload 通道,这里不凭空造页
+          const remote = r.page as {
+            images?: Record<string, string>;
+            texts?: Record<string, string>;
+            imagePos?: Record<string, { x: number; y: number; scale: number }>;
+            html?: string;
+          };
+          page.imagesJson = { ...(remote.images ?? {}) };
+          page.textsJson = { ...(remote.texts ?? {}) };
+          page.imagePosJson = remote.imagePos ? { ...remote.imagePos } : undefined;
+          page.htmlJson = remote.html;
+          page.version = r.version;
+          remoteChangedPages.delete(r.pageIndex);
+          repaintPages([r.pageIndex]);
+        },
+        markRemoteChanged: (r) => {
+          // dirty/conflict 页:远端已前进。保存成功后的下一轮轮询会带来更高
+          // version 再应用;若保存冲突,冲突 UI(保存状态浮标)已指引用户重载。
+          remoteChangedPages.set(r.pageIndex, { pageIndex: r.pageIndex, version: r.version });
+          showSaveStatus(
+            aT(
+              '此页在别处有新版本，点击放弃本地修改并加载最新版本',
+              'A newer version exists — click to discard local edits and reload',
+            ),
+            'conflict',
+          );
+        },
+      },
+      getRevision: () => bookRevision,
+      setRevision: (revision) => { bookRevision = revision; },
+    });
+    const onDraftVisChange = () => {
+      if (document.visibilityState === 'visible') draftSync.poke();
+    };
+    document.addEventListener('visibilitychange', onDraftVisChange);
+    draftSync.start();
     const total = initialPages.length;
     // 收集态(排版前):authoring 且 pages 为空 —— draft 有 tree/chapters 但还没排版,
     // 所以没有版式页可画。此时画板不渲染空的版式书,改成显示「当前正在采访的那一章」的
@@ -2503,12 +2748,9 @@ function EditorBook({
       syncPageHtml(page, (html) => patchHtmlImagePos(html, slotId, clamped) ?? html);
       // 脏页重绘替换全书重绘;reattachImgEdit(在里面跑)re-binds overlay。
       repaintPages([pageIndex]);
-      // Persist via the same single-page PATCH channel as inline text edits.
-      void fetch(`/api/v1/albums/${albumId}/pages/${pageIndex}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ imagePosJson: page.imagePosJson }),
-      }).catch(() => {});
+      // Persist via the same single-page PATCH channel as inline text edits ——
+      // 经保存协调器(同页串行 + baseVersion + 状态可见,不再静默吞错)。
+      enqueuePageSave(pageIndex, { imagePosJson: page.imagePosJson });
     }
 
     // ── 换图 / 删图(#304 移动端已有,桌面补齐)────────────────────────────────
@@ -3147,9 +3389,27 @@ function EditorBook({
         const res = await fetch(`/api/v1/albums/${albumId}/pages/reorder`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ permutation: perm }),
+          body: JSON.stringify({ permutation: perm, baseStructureRevision: bookStructureRevision }),
         });
+        const json = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          data?: { structureRevision?: number };
+          error?: { code?: string };
+        } | null;
+        // 结构 OCC 冲突:服务端零写入 —— 乐观结果必须回滚,给出整书重载出口,
+        // 不许让「本地已重排、服务端没存上」的假象静默留存(§4)。
+        if (res.status === 409 && json?.error?.code === 'STRUCTURE_CONFLICT') {
+          pagesState = prev;
+          rebuildSpreads();
+          repaintBook();
+          showSaveStatus(aT('页面结构已变化，点击重新加载', 'Page structure changed — tap to reload'), 'conflict');
+          return;
+        }
         if (!res.ok) throw new Error(`reorder ${res.status}`);
+        // 成功:推进结构基线,下一次 reorder/delete 用新值。
+        if (typeof json?.data?.structureRevision === 'number') {
+          bookStructureRevision = json.data.structureRevision;
+        }
       } catch {
         // 服务端没存上,本地不能装作排成了 —— 回滚到旧引用(pageIndex 原样)重绘。
         pagesState = prev;
@@ -3187,8 +3447,24 @@ function EditorBook({
       repaintBook();
       updateSelectionHighlight();
       try {
-        const res = await fetch(`/api/v1/albums/${albumId}/pages/${idx}`, { method: 'DELETE' });
+        const res = await fetch(`/api/v1/albums/${albumId}/pages/${idx}?baseStructureRevision=${bookStructureRevision}`, { method: 'DELETE' });
+        const json = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          data?: { structureRevision?: number };
+          error?: { code?: string };
+        } | null;
+        // 结构 OCC 冲突:服务端零写入 —— 乐观删除必须回滚 + 整书重载出口。
+        if (res.status === 409 && json?.error?.code === 'STRUCTURE_CONFLICT') {
+          pagesState = prev;
+          rebuildSpreads();
+          repaintBook();
+          showSaveStatus(aT('页面结构已变化，点击重新加载', 'Page structure changed — tap to reload'), 'conflict');
+          return;
+        }
         if (!res.ok) throw new Error(`delete ${res.status}`);
+        if (typeof json?.data?.structureRevision === 'number') {
+          bookStructureRevision = json.data.structureRevision;
+        }
       } catch {
         // 服务端没删掉,本地不能装作删了 —— 回滚到旧引用重绘(同 reorder 失败口径)。
         pagesState = prev;
@@ -4132,17 +4408,15 @@ function EditorBook({
       textStyles?: Record<string, Record<string, string | null>>,
       pageStyle?: Record<string, string | null>,
     ) {
-      void fetch(`/api/v1/albums/${albumId}/pages/${page.pageIndex}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          imagesJson: page.imagesJson,
-          textsJson: page.textsJson,
-          imagePosJson: page.imagePosJson ?? {},
-          ...(textStyles ? { textStyles } : {}),
-          ...(pageStyle ? { pageStyle } : {}),
-        }),
-      }).catch(() => {});
+      // 经保存协调器:全量字段语义不变(服务端对提供的字段整体替换),但同页
+      // 请求串行、携带 baseVersion、失败/冲突可见(collab plan §9)。
+      enqueuePageSave(page.pageIndex, {
+        imagesJson: page.imagesJson,
+        textsJson: page.textsJson,
+        imagePosJson: page.imagePosJson ?? {},
+        ...(textStyles ? { textStyles } : {}),
+        ...(pageStyle ? { pageStyle } : {}),
+      });
     }
     // 手工编辑固化进本地 htmlJson(与服务端 updatePage 同一套 patcher)。
     // C 方案:页面真相 = html —— 只写 textsJson 的话,下一次重绘 preferredPageHtml
@@ -5598,13 +5872,31 @@ function EditorBook({
       }
     }
     function setBoardBackground(bg: BoardBackground | null) {
+      const prev = boardBg;
       boardBg = bg;
       applyBoardBackground(bg);
       reflectBoardSelection();
-      // 视觉属性,持久化失败静默(下次刷新回退,不打断用户)。
-      void fetch(`/api/v1/albums/${albumId}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ boardBackground: bg }),
+      // 视觉属性:网络失败维持现状静默(下次刷新回退,不打断用户,原口径);
+      // 设置 OCC 冲突必须回滚 —— 本地画的背景服务端没接受,不能装作设上了(§4),
+      // 并采纳服务器基线(否则本地永远落后,下次设置写入直接死 409)。
+      void saveAlbumSettings({
+        albumId,
+        patch: { boardBackground: bg },
+        baseSettingsRevision: settingsRevisionRef.current,
+      }).then((out) => {
+        if (out.ok) {
+          settingsRevisionRef.current = out.settingsRevision;
+          return;
+        }
+        if (out.kind === 'conflict') {
+          if (out.currentSettingsRevision != null) {
+            settingsRevisionRef.current = out.currentSettingsRevision;
+          }
+          boardBg = prev;
+          applyBoardBackground(prev);
+          reflectBoardSelection();
+          showSaveStatus(aT('背景已被他人修改，已恢复', 'Background changed elsewhere — restored'), null);
+        }
       }).catch(() => undefined);
     }
     function boardBodyEl() { return document.querySelector<HTMLElement>('.board-bg-body'); }
@@ -6215,14 +6507,35 @@ function EditorBook({
         }
         const prevTitle = currentTitle;
         currentTitle = next;
-        void fetch(`/api/v1/albums/${albumId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title: next }),
+        // 设置 OCC(Phase 2B):提交精确 baseSettingsRevision;失败/冲突一律回滚
+        // 显示,冲突同时采纳服务器基线并给出可见解释。
+        void saveAlbumSettings({
+          albumId,
+          patch: { title: next },
+          baseSettingsRevision: settingsRevisionRef.current,
         })
-          .then((r) => r.json())
-          .then((j) => { if (!j?.ok) throw new Error('rename failed'); })
-          .catch(() => { currentTitle = prevTitle; titleEl.textContent = prevTitle; });
+          .then((out) => {
+            if (out.ok) {
+              settingsRevisionRef.current = out.settingsRevision;
+              return;
+            }
+            currentTitle = prevTitle;
+            titleEl.textContent = prevTitle;
+            if (out.kind === 'conflict') {
+              if (out.currentSettingsRevision != null) {
+                settingsRevisionRef.current = out.currentSettingsRevision;
+              }
+              showSaveStatus(aT('标题已被他人修改，已恢复', 'Title changed elsewhere — restored'), null);
+            } else if (out.kind === 'forbidden') {
+              showSaveStatus(aT('已无编辑权限', 'You no longer have edit access'), null);
+            } else {
+              showSaveStatus(aT('改名没保存上，请重试', 'Rename not saved — try again'), null);
+            }
+          })
+          .catch(() => {
+            currentTitle = prevTitle;
+            titleEl.textContent = prevTitle;
+          });
       });
     }
 
@@ -6354,6 +6667,14 @@ function EditorBook({
     window.addEventListener('resize', onMobileResize);
 
     return () => {
+        // 协同保存收尾(collab plan §9.2 规则 7/8):离开画板尽力 flush 在途/积压
+        // 的保存,然后 dispose 停止一切发送;状态浮标一并撤掉。正确性不依赖这里
+        // —— 服务端 OCC 兜底,flush 只是少丢一次用户编辑的机会。
+        void saveCoordinator.flush().finally(() => saveCoordinator.dispose());
+        draftSync.stop();
+        document.removeEventListener('visibilitychange', onDraftVisChange);
+        window.clearTimeout(saveStatusTimer);
+        saveStatusEl.remove();
         displayReload.dispose();
         window.removeEventListener('resize', onMobileResize);
         if (mobileReinitTimer !== null) window.clearTimeout(mobileReinitTimer);

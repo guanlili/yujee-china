@@ -213,3 +213,47 @@ test('editing a COMPLETED album reverts its status to EDITING (photo-snapshot §
     await cleanupUser(user.id);
   }
 });
+
+test('photo-snapshot (collab rework §3.3): editor can back up; keys stay in the owner namespace', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { albumMemberRepo } = await import('../../db/repos/album-member-repo');
+  const owner = await makeUser('photo-snap-editor-owner');
+  const editor = await makeUser('photo-snap-editor-member');
+  const stranger = await makeUser('photo-snap-editor-stranger');
+  try {
+    const album = await makeAlbum(owner.id, { photoCount: 2 });
+    await albumMemberRepo.addMemberIfAbsent(db, album.id, editor.id);
+
+    // editor 备份:签发的 key 归 **owner** 命名空间(读侧 URL 按 owner 派生,
+    // editor 执行者不能把字节写进读侧找不到的位置)。
+    const signed = await albumService.signPhotoSnapshotUpload(editor.id, album.id, [
+      { photoId: P1, renderVersion: V2 },
+    ]);
+    assert.match(signed[0]!.r2Key, new RegExp(`photo-snapshots/${owner.id}/${album.id}/${P1}/${V2}`));
+    assert.doesNotMatch(signed[0]!.r2Key, new RegExp(`/${editor.id}/`));
+
+    // editor confirm:快照台账合并进相册。
+    const confirmed = await albumService.confirmPhotoSnapshot(editor.id, album.id, [
+      { photoId: P1, renderVersion: V2 },
+    ]);
+    assert.deepEqual(confirmed.renderVersions, { [P1]: V2 });
+
+    // stranger 拒绝。
+    await assert.rejects(
+      () => albumService.signPhotoSnapshotUpload(stranger.id, album.id, [
+        { photoId: P1, renderVersion: V2 },
+      ]),
+      (err: { code?: string }) => err.code === 'ALBUM_ACCESS_DENIED',
+    );
+    await assert.rejects(
+      () => albumService.confirmPhotoSnapshot(stranger.id, album.id, [
+        { photoId: P1, renderVersion: V2 },
+      ]),
+      (err: { code?: string }) => err.code === 'ALBUM_ACCESS_DENIED',
+    );
+  } finally {
+    await cleanupUser(owner.id);
+    await cleanupUser(editor.id);
+    await cleanupUser(stranger.id);
+  }
+});

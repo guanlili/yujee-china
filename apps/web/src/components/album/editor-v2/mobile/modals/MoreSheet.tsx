@@ -32,6 +32,7 @@ export function MoreSheet({
   onBackupPhotos,
   onRebackupPhotos,
   onPhotoFilter,
+  onCollab,
 }: {
   open: boolean;
   aT: AT;
@@ -40,12 +41,14 @@ export function MoreSheet({
   lutSupported: boolean;
   onClose: () => void;
   /** 页序弹窗入口(2026-08-02):打开 ReorderSheet 拖拽调整页面顺序。 */
-  onReorderPages: () => void;
-  onBackupPhotos: () => void;
+  onReorderPages?: () => void;
+  onBackupPhotos?: () => void;
   /** 整本重传一遍。上传档从 1600 提到 3400 之后,存量备份不会自动升级 ——
    *  档位不进 renderVersion(进了会把存量分享全打成 409),升档只能靠用户点这一条。 */
-  onRebackupPhotos: () => void;
-  onPhotoFilter: () => void;
+  onRebackupPhotos?: () => void;
+  onPhotoFilter?: () => void;
+  /** 协作编辑入口(collab plan §15)。owner 才传;不传则整项隐藏。 */
+  onCollab?: () => void;
 }) {
   const backupLabel = () => {
     if (backupState === 'backing-up') {
@@ -77,7 +80,18 @@ export function MoreSheet({
         </p>
       </div>
       <div className="px-5 py-4 flex flex-col gap-2.5">
-        <button className="export-opt" onClick={onReorderPages} data-testid="more-reorder">
+        {onCollab ? (
+          <button className="export-opt" onClick={onCollab} data-testid="more-collab">
+            <svg {...stroke}>
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            <span>{aT('协作编辑', 'Collaborate')}</span>
+          </button>
+        ) : null}
+        {onReorderPages ? <button className="export-opt" onClick={onReorderPages} data-testid="more-reorder">
           <svg {...stroke}>
             <polyline points="17 1 21 5 17 9" />
             <path d="M3 11V9a4 4 0 0 1 4-4h14" />
@@ -85,8 +99,8 @@ export function MoreSheet({
             <path d="M21 13v2a4 4 0 0 1-4 4H3" />
           </svg>
           <span>{aT('调整页面顺序', 'Reorder pages')}</span>
-        </button>
-        {lutSupported && (
+        </button> : null}
+        {lutSupported && onPhotoFilter && (
           <button
             className="export-opt"
             onClick={onPhotoFilter}
@@ -103,7 +117,7 @@ export function MoreSheet({
             <span>{aT('全书照片风格', 'Whole-book photo style')}</span>
           </button>
         )}
-        <button
+        {onBackupPhotos ? <button
           className="export-opt"
           onClick={onBackupPhotos}
           disabled={backupState === 'backing-up'}
@@ -116,10 +130,10 @@ export function MoreSheet({
             <line x1="12" y1="3" x2="12" y2="15" />
           </svg>
           <span>{backupLabel()}</span>
-        </button>
+        </button> : null}
         {/* 只在「已经备份过」时出现:没备份过的书点上面那条就够了,这条会是多余的第二个入口。
             存量备份是老的 1600 档,导出会糊;重传一遍覆盖成 3400。 */}
-        {backupState === 'backed-up' && (
+        {backupState === 'backed-up' && onRebackupPhotos && (
           <button
             className="export-opt"
             onClick={onRebackupPhotos}

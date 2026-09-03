@@ -168,6 +168,7 @@
     },
     "myAlbums": {
       "title": "マイアルバム",
+      "collab": "共同編集",
       "create": "新しいアルバム",
       "open": "開く",
       "delete": "削除",

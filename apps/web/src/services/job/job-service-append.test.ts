@@ -444,7 +444,7 @@ test('handleV3SelectLayoutCompleted(append): 既有页源切到 draft_pages 行,
     assert.equal(rows[2]!.page.templateId, ending.id, '封尾仍在最后');
     for (const row of rows) {
       assert.equal(row.version, 3, '整批(老页 + 新页)推到同一个新 revision');
-      assert.equal(row.updatedBy, null, 'select-layout 是系统/agent 写点');
+      assert.equal(row.updatedBy, user.id, 'AI 继承发起者身份(collab rework §2.2,Phase 4 起不再是 null)');
     }
 
     const doneJob = await agentJobRepo.findByRequestId(requestId);

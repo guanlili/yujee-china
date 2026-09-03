@@ -19,6 +19,9 @@ export interface EditorPage {
   // 页面 HTML 真相(C 方案):存在时画板优先渲染它(含 AI/用户手工版面);
   // 图片 src 为 {{IMG_SRC:slotId}} token,展示前经 page-html-dom 解析。
   htmlJson?: string;
+  // 协同(collab plan §7.3):页面 OCC 版本 —— 保存时作为 baseVersion,轮询时
+  // 判断远端新旧。null/缺失 = legacy 定稿相册(无 version,走阶段 A 盲写)。
+  version?: number | null;
 }
 
 export interface AlbumInfo {
@@ -51,6 +54,14 @@ export interface AlbumInfo {
   copySource?: 'placeholder' | 'ai' | null;
   errorMessage: string | null;
   createdAt: string;
+  // 协同(collab plan §7.3):调用者角色。前端据此隐藏 owner-only 入口
+  // (协作邀请/成员管理),权限仍由后端兜底。旧响应无此字段 → undefined。
+  role?: 'owner' | 'editor';
+  // 结构 OCC 基线(Phase 2A):与 v3 draft skeleton 同口径。旧响应无此字段。
+  structureRevision?: number;
+  // 全局创作设置 OCC 基线(Phase 2B):title/画板背景/全书滤镜提交时的
+  // baseSettingsRevision。旧响应无此字段。
+  settingsRevision?: number;
 }
 
 export interface AlbumDetail {

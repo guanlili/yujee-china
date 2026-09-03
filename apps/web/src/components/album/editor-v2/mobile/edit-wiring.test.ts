@@ -71,12 +71,17 @@ test('编辑焦点住在容器层:editPage / 选中 / 面板快照都在 Root', 
 
 test('落库真的发生:完成 → PATCH pages/{index},走与桌面同一条通道', () => {
   const root = read('MobileEditorRoot.tsx');
+  // 协同保存协调器(collab plan §9):页级 PATCH 搬进了共享 transport(桌面/移动
+  // 同一条通道的物理保证),Root 经协调器串行 + 带 baseVersion。
+  const transport = read('../../../..', 'lib', 'collaboration', 'page-save-transport.ts');
   assert.match(
-    root,
-    /fetch\(`\/api\/v1\/albums\/\$\{detail\.album\.id\}\/pages\/\$\{pageIndex\}`/,
+    transport,
+    /\/api\/v1\/albums\/\$\{albumId\}\/pages\/\$\{pageIndex\}/,
     '页级改动必须 PATCH 到 pages/{index}',
   );
-  assert.match(root, /method: 'PATCH'/);
+  assert.match(transport, /method: 'PATCH'/);
+  assert.match(root, /createPageSaveCoordinator\(/, 'persistPage 必须经保存协调器(同页串行 + OCC)');
+  assert.match(root, /createFetchPageSaveTransport\(/);
   // 页索引用 page.pageIndex(存库口径),不是数组下标
   assert.match(root, /persistPage\(page\.pageIndex/, '落库要用 page.pageIndex,不是数组下标');
   // 文字与底色两条都要真的调
@@ -86,10 +91,15 @@ test('落库真的发生:完成 → PATCH pages/{index},走与桌面同一条通
 
 test('内容改动失败必须出声(静默失败 = 用户以为改好了,刷新才发现白改)', () => {
   const root = read('MobileEditorRoot.tsx');
-  const at = root.indexOf('const persistPage');
-  const body = root.slice(at, at + 700);
-  assert.match(body, /res\.ok/, '要看 HTTP 结果');
-  assert.match(body, /say\(/, '失败要给用户反馈');
+  // 失败反馈从 persistPage 内联检查,升级成协调器状态回调:覆盖面更全
+  // (网络失败/冲突/无权限三类都要说话,不再只有 HTTP 非 2xx 一种)。
+  const at = root.indexOf('const coord = createPageSaveCoordinator');
+  const wiring = root.slice(at, at + 1000);
+  assert.match(wiring, /onPageStateChange/, '保存状态变化必须接到 UI');
+  for (const s of ['failed', 'conflict', 'forbidden']) {
+    assert.match(wiring, new RegExp(`'${s}'`), `${s} 状态必须给用户反馈`);
+  }
+  assert.match(wiring, /say\(/, '反馈走现有 toast');
 });
 
 test('取消 = 把面板打开那一刻的整页快照放回去(不做反向撤销)', () => {

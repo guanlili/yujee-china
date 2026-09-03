@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import { db, type DbOrTx } from '../client';
-import { albums, creditHolds, users, type NewAlbum, type Album } from '../schema';
+import { albumMembers, albums, creditHolds, users, type NewAlbum, type Album } from '../schema';
 
 type AlbumStatus = Album['status'];
 
@@ -141,6 +141,24 @@ export const albumRepo = {
       .from(albums)
       .where(eq(albums.userId, userId))
       .orderBy(desc(albums.createdAt)),
+
+  // 被邀请协作的相册(collab rework §15.2 的"产品要求显示共享相册"扩展):
+  // album_members 行 → join 出相册本体。owner 不在 members 表(albums.user_id 是
+  // owner 唯一真相),两张查询天然不重叠。joinedAt 供列表按"最近加入"排序。
+  // 查询构建器单独导出:闸门/CI 无库环境下用 toSQL() 断言生成的 SQL 形状
+  // (join/过滤/排序),跨用户读的归属边界不靠 DB 测试的静默 skip。
+  findSharedWithUserQuery: (userId: string) =>
+    db
+      .select({ album: albums, joinedAt: albumMembers.createdAt })
+      .from(albumMembers)
+      .innerJoin(albums, eq(albumMembers.albumId, albums.id))
+      .where(eq(albumMembers.userId, userId))
+      .orderBy(desc(albumMembers.createdAt)),
+
+  findSharedWithUser: async (
+    userId: string,
+  ): Promise<Array<{ album: Album; joinedAt: Date }>> =>
+    await albumRepo.findSharedWithUserQuery(userId),
 
   create: async (tx: DbOrTx, data: NewAlbum): Promise<Album> => {
     const rows = await tx.insert(albums).values(data).returning();

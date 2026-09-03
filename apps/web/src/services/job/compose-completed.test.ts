@@ -240,7 +240,7 @@ test('③ handleV3ComposeCompleted:落库成书 + stage 推到 ready(导出闸�
     assert.ok(reloaded?.draftRevision && reloaded.draftRevision > 0);
     for (const row of rows) {
       assert.equal(row.version, reloaded?.draftRevision);
-      assert.equal(row.updatedBy, null, 'compose is a system/agent write point');
+      assert.equal(row.updatedBy, user.id, 'AI 继承发起者身份(collab rework §2.2,Phase 4 起不再是 null)');
     }
 
     const doneJob = await agentJobRepo.findByRequestId(requestId);

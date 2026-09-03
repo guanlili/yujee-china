@@ -121,7 +121,7 @@ test('handleV3SelectLayoutCompleted: 组页落库切 draft_pages 行级写 + pag
     assert.deepEqual(stripPagesHtml(rows.map((r) => r.page)), PAGES);
     for (const row of rows) {
       assert.equal(row.version, reloaded?.draftRevision, 'every row lands on the new revision');
-      assert.equal(row.updatedBy, null, 'select-layout is a system/agent write point');
+      assert.equal(row.updatedBy, user.id, 'AI 继承发起者身份(collab rework §2.2,Phase 4 起不再是 null)');
     }
 
     const doneJob = await agentJobRepo.findByRequestId(requestId);

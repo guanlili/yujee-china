@@ -287,6 +287,8 @@ test('顶栏「保存」= 备份照片到云端,与「更多」里那条同一�
   const root = read('MobileEditorRoot.tsx');
   assert.match(root, /const runBackup = useCallback/, '两个入口必须共用一份 handler');
   assert.match(root, /onSave=\{runBackup\}/, '顶栏接的是它');
+  // Phase 3.3:备份是 Creator 能力,owner/editor 都可(后端快照链路已放开);
+  // handler 必须仍是共用那一份,不许内联副本。
   assert.match(root, /onBackupPhotos=\{runBackup\}/, '「更多」接的也是它');
   assert.doesNotMatch(
     root,

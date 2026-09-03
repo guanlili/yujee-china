@@ -97,3 +97,21 @@ test('锚定页:两端格子都锁(不可拖起)', () => {
   assert.match(editor, /isAnchoredTemplate\(/);
   assert.match(reorderSheet, /isAnchoredTemplate\(/);
 });
+
+test('结构 OCC(Phase 2A):两端 reorder 带 baseStructureRevision、读回推进、409 冲突回滚+重载提示', () => {
+  // 桌面:POST body 带基线,成功读回推进,409 冲突回滚并给整书重载出口。
+  assert.match(editor, /baseStructureRevision: bookStructureRevision/);
+  assert.match(editor, /bookStructureRevision = json\.data\.structureRevision/);
+  assert.match(editor, /STRUCTURE_CONFLICT/);
+  // 移动端:commitReorder 带基线,成功读回推进 ref,409 冲突回滚 + 「结构已变化」提示。
+  assert.match(mobileRoot, /baseStructureRevision: baseline/);
+  assert.match(mobileRoot, /structureRevisionRef\.current = json\.data\.structureRevision/);
+  assert.match(mobileRoot, /STRUCTURE_CONFLICT/);
+  assert.match(mobileRoot, /结构已变化/);
+});
+
+test('结构入口不对 editor 隐藏:移动端重排入口不再因 isOwner 关掉', () => {
+  assert.doesNotMatch(mobileRoot, /onReorderPages=\{isOwner \?/);
+  // 桌面入口本就挂在选中页气泡(edit bar)里,不经 isOwner 条件。
+  assert.match(editor, /data-edit-action="reorder-open"/);
+});

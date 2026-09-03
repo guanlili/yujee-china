@@ -168,6 +168,7 @@
     },
     "myAlbums": {
       "title": "我的相册",
+      "collab": "协作",
       "create": "新建相册",
       "open": "打开",
       "delete": "删除",

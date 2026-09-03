@@ -168,6 +168,7 @@
     },
     "myAlbums": {
       "title": "Mis álbumes",
+      "collab": "Compartido",
       "create": "Nuevo álbum",
       "open": "Abrir",
       "delete": "Eliminar",

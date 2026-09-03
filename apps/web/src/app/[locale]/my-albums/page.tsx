@@ -37,6 +37,9 @@ type Album = {
   id: string;
   title: string;
   status: 'AGENT_RUNNING' | 'EDITING' | 'COMPLETED' | 'FAILED';
+  // 协同(collab rework §15.2):我在本书上的角色。editor = 被邀请协作的书,
+  // 列表显示「协作」徽标且无删除入口(deleteAlbum 是 owner 治理权)。
+  role?: 'owner' | 'editor';
   photoCount: number;
   pageCount: number;
   pdfUrl: string | null;
@@ -44,6 +47,10 @@ type Album = {
   photoFilter: PhotoFilterState | null;
   createdAt: string;
   coverPage: AlbumCoverPage | null;
+  // 协作(collab rework §15.2):共享书卡片在 editor 浏览器里没有本地原图,
+  // 封面渲染靠 getDetail 的 photoSnapshotUrls(编辑页回退)。列表端点不投影
+  // 快照 URL(4s 轮询下塞全量 URL 会让 payload 爆炸,且公开 URL 常态化下发
+  // 给 editor 无法在踢人后撤销 —— 审查十三轮指认)。
   // 无封面页时的兜底:项目里的照片 id(草稿排版页图槽优先,其次章节原图),
   // 本机 photoStore 能解出哪张就用哪张当封面缩略图。
   fallbackPhotoIds?: string[];
@@ -129,13 +136,35 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
   // Keep the list fresh only while something is mid-generation. The list
   // endpoint already sweeps zombie jobs (album-service.listByUser), so a quiet
   // re-fetch is enough to surface completion or failure on its own.
-  const anyRunning = (albums ?? []).some((a) => a.status === 'AGENT_RUNNING');
+  // 协作(collab rework §15.2):owner 的 RUNNING 书才驱动轮询;共享书(editor)
+  // 的 RUNNING **不驱动轮询** —— 僵尸共享书不在 editor 侧形成永不终止的循环
+  // (editor 侧无 sweep 权,账务清扫只发生在 owner 自己的列表请求里)。owner
+  // 侧轮询节奏不变:每拍先刷新,超 15 分钟降频 60s(慢轮询仍然刷新只是低频,
+  // 不停止 —— owner 侧列表请求自带僵尸 sweep,会一直收敛到 FAILED/COMPLETED)。
+  const POLL_MAX_MS = 15 * 60 * 1000;
+  const POLL_SLOW_MS = 60 * 1000;
+  const anyRunning = (albums ?? []).some(
+    (a) => a.status === 'AGENT_RUNNING' && a.role !== 'editor',
+  );
   const loadRef = useRef(load);
   loadRef.current = load;
+  const pollStartedAtRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!anyRunning) return;
-    const id = setInterval(() => loadRef.current(), POLL_MS);
-    return () => clearInterval(id);
+    if (!anyRunning) {
+      pollStartedAtRef.current = null;
+      return;
+    }
+    if (pollStartedAtRef.current === null) pollStartedAtRef.current = Date.now();
+    const startedAt = pollStartedAtRef.current;
+    const tick = () => {
+      loadRef.current();
+      const slow = Date.now() - startedAt > POLL_MAX_MS;
+      timer = setTimeout(tick, slow ? POLL_SLOW_MS : POLL_MS);
+    };
+    let timer: ReturnType<typeof setTimeout> | null = setTimeout(tick, POLL_MS);
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [anyRunning]);
 
   useEffect(() => {
@@ -152,6 +181,10 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
 
     for (const album of albums) {
       if (album.coverThumbnailUrl) continue;
+      // 协作(collab rework §15.2):共享书(role=editor)不生成封面缩略图 ——
+      // signCoverThumbnailUpload 是 owner-only,editor 发起注定 403 且会反复重试。
+      // editor 打开书时画布走正常渲染;缩略图由 owner 打开列表时生成。
+      if (album.role === 'editor') continue;
       // 有封面页用封面页图槽;没有(未定稿的草稿相册)用项目里的照片兜底,
       // 卡片不再停在空报刊占位上。
       const candidatePhotoIds = album.coverPage
@@ -311,10 +344,29 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
     );
   };
 
+  // 协作徽标(collab rework §15.2):role=editor 的共享书。点开即编辑,
+  // 但无删除入口(治理权)。
+  const roleBadge = (a: Album) =>
+    a.role === 'editor' ? (
+      <span className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full bg-[rgba(140,94,244,0.12)] px-2 py-0.5 text-[10.5px] font-semibold text-[#8C5EF4]">
+        {t.myAlbums.collab}
+      </span>
+    ) : null;
+
+  const cardTags = (a: Album) => (
+    <span className="flex shrink-0 items-center gap-1.5">
+      {roleBadge(a)}
+      {statusChip(a.status)}
+    </span>
+  );
+
   // Hover-revealed delete control. Rendered as a card-level sibling that sits
   // above the cover link (never a <button> nested in an <a>), so clicking it
   // deletes without also opening the album and the markup stays valid.
-  const deleteButton = (a: Album) => (
+  // 仅 owner 渲染(collab rework:deleteAlbum 是治理权,editor 的共享书不可删;
+  // 后端 DELETE 也按 Creator/治理 seam 兜底 403)。
+  const deleteButton = (a: Album) =>
+    a.role === 'editor' ? null : (
     <div className="absolute right-2 top-2 z-[5] flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
       <button
         type="button"
@@ -375,7 +427,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
             <span className="min-w-0 truncate text-[12.5px] text-[var(--muted)]">
               {pick(locale, { zh: '正在排版 · 约 1 分钟', en: 'Laying out · about 1 min' })}
             </span>
-            {statusChip(a.status)}
+            {cardTags(a)}
           </div>
         </div>
       );
@@ -405,14 +457,16 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
                 <line x1="12" y1="17" x2="12.01" y2="17" />
               </svg>
               <div className="mt-3 text-sm text-white/90">{t.myAlbums.failedLabel}</div>
-              <RetryFailedButton albumId={a.id} variant="card" />
+              {/* 重试会重新扣费/挂 hold(账务在 owner 名下),retry API 是 owner-only;
+                  共享书(role=editor)不渲染死按钮,重试由 owner 完成。 */}
+              {a.role !== 'editor' && <RetryFailedButton albumId={a.id} variant="card" />}
             </div>
           </div>
           <div className="flex min-h-[52px] items-center justify-between gap-2 px-3.5 py-3">
             <span className="min-w-0 truncate text-[12.5px] text-[var(--muted)]">
               {a.title} · {formatDate(a.createdAt)}
             </span>
-            {statusChip(a.status)}
+            {cardTags(a)}
           </div>
         </div>
       );
@@ -447,7 +501,7 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
           <span className="min-w-0 truncate text-[12.5px] text-[var(--muted)]">
             {albumFoot(a)}
           </span>
-          {statusChip(a.status)}
+          {cardTags(a)}
         </div>
       </div>
     );

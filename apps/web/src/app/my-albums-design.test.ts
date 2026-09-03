@@ -60,7 +60,17 @@ test('my-albums wires the real generating status from API data into the card UI'
   const runningBranch = getRunningBranch();
 
   assert.match(page, /status: 'AGENT_RUNNING' \| 'EDITING' \| 'COMPLETED' \| 'FAILED'/, 'Album type should keep the backend running status');
-  assert.match(page, /const anyRunning = \(albums \?\? \[\]\)\.some\(\(a\) => a\.status === 'AGENT_RUNNING'\)/, 'polling should still be driven by real running albums');
+  // 协作(collab rework §15.2):只有 owner 的 RUNNING 书驱动轮询;共享书(editor)
+  // 不驱动 —— 僵尸共享书不在 editor 侧形成永不终止的循环(editor 侧无 sweep 权,
+  // 账务由 owner 打开自己的列表驱动)。owner 侧:超 15 分钟降频 60s,慢轮询仍刷新。
+  assert.match(
+    page,
+    /const anyRunning = \(albums \?\? \[\]\)\.some\(\s*\(a\) => a\.status === 'AGENT_RUNNING' && a\.role !== 'editor',?\s*\)/,
+    'polling should be driven by owner-side running albums only (shared/editor books must not poll forever)',
+  );
+  assert.match(page, /const POLL_MAX_MS = 15 \* 60 \* 1000;/, 'polling cap must exceed the compose zombie threshold');
+  assert.match(page, /const POLL_SLOW_MS = 60 \* 1000;/, 'slow polling interval must exist');
+  assert.match(page, /const slow = Date\.now\(\) - startedAt > POLL_MAX_MS;/, 'degradation decision must live inside the tick');
   assert.match(page, /const runningCount = \(albums \?\? \[\]\)\.filter\(\(a\) => a\.status === 'AGENT_RUNNING'\)\.length/, 'summary should count real running albums');
   assert.match(page, /if \(status === 'AGENT_RUNNING'\) return \{ chip: 'bg-black\/\[0\.05\] text-\[#555\]', dot: '#8C5EF4' \}/, 'running chip should keep the supplied gray pill with purple dot');
   assert.match(page, /isRunning \? 'animate-\[cover-sweep_1\.2s_linear_infinite\]' : ''/, 'running chip dot should keep the supplied animated state');
@@ -71,7 +81,9 @@ test('my-albums wires the real generating status from API data into the card UI'
   assert.doesNotMatch(runningBranch, /doing-glow|sk-block|animate-\[cover-sweep_1\.5s_ease-in-out_infinite\]/, 'running branch must not keep old skeleton shimmer pieces');
   assert.match(runningBranch, /正在排版 · 约 1 分钟/, 'running branch should keep the design generating copy');
   assert.match(runningBranch, /Laying out · about 1 min/, 'running branch should keep the English generating copy');
-  assert.match(runningBranch, /\{statusChip\(a\.status\)\}/, 'running branch should show the backend status chip');
+  // cardTags = 协作徽标(collab rework §15.2)+ statusChip 的合体;statusChip 在其内部渲染。
+  assert.match(runningBranch, /\{cardTags\(a\)\}/, 'running branch should show the backend status chip (via cardTags)');
+  assert.match(page, /const cardTags = \(a: Album\)/, 'cardTags must exist (role badge + status chip)');
   assert.doesNotMatch(runningBranch, /<AlbumCoverPreview/, 'running branch should not render the normal cover preview');
   assert.doesNotMatch(runningBranch, /\{a\.title\}/, 'running branch should not render a normal album title overlay');
 });

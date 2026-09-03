@@ -483,7 +483,14 @@ export async function composeAppendV3(
 // 了页(COMPLETED 不等于写了 —— 整章掉队时也是 COMPLETED,靠 lastComposeWrote 区分)。
 export async function fetchDesignState(
   albumId: string,
-): Promise<{ composing: boolean; lastComposeStatus: string | null; lastComposeWrote: boolean | null }> {
+): Promise<{
+  composing: boolean;
+  lastComposeStatus: string | null;
+  lastComposeWrote: boolean | null;
+  // lastComposeStale:这单 compose 因运行期间的人工编辑被基线闸拦下
+  // (AI_RESULT_STALE),前端据此说「基于最新版本重跑」,不伪装成成功也不报笼统失败。
+  lastComposeStale: boolean;
+}> {
   const res = await fetch(`/api/v3/albums/${albumId}/design`);
   const json = await res.json();
   if (!json.ok) {
@@ -494,5 +501,6 @@ export async function fetchDesignState(
     composing: !!json.data.composing,
     lastComposeStatus: json.data.lastComposeStatus ?? null,
     lastComposeWrote: json.data.lastComposeWrote ?? null,
+    lastComposeStale: json.data.lastComposeStale === true,
   };
 }

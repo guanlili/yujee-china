@@ -24,6 +24,11 @@ export interface DraftSkeletonPage {
   htmlJson?: string;
   kind: DraftPageKind;
   chapterId: string | null;
+  // 协同(collab plan §7.3):页面 OCC 版本(保存 baseVersion / 轮询新旧判断)。
+  // null = 排版前无行或 legacy。
+  version?: number | null;
+  updatedBy?: string | null;
+  updatedAt?: string | null;
 }
 
 // The chapter state machine (requirements §5). 'empty'→'asking'→'brief_ready'
@@ -66,6 +71,15 @@ export interface DraftSkeleton {
   language: 'zh' | 'en';
   pages: DraftSkeletonPage[];
   chapters: DraftSkeletonChapter[];
+  // 协同(collab plan §7.3):全书 revision(增量轮询 since 初值)+ 调用者角色
+  // (前端据此隐藏 owner-only 入口;权限由后端兜底)。旧相册/旧缓存无此字段。
+  revision?: number;
+  // 结构 OCC 基线(Phase 2A):reorder/delete 提交的 baseStructureRevision。
+  // 与 revision(draftRevision)分离,旧响应无此字段。
+  structureRevision?: number;
+  // 全局创作设置 OCC 基线(Phase 2B):title/背景/滤镜提交时的 baseSettingsRevision。
+  settingsRevision?: number;
+  role?: 'owner' | 'editor';
 }
 
 async function getJson<T>(path: string): Promise<T> {

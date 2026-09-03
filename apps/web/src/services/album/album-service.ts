@@ -7,6 +7,7 @@ import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
+import type { Album } from '@/db/schema';
 import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { albumPhotoRepo } from '@/db/repos/album-photo-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
@@ -103,6 +104,38 @@ async function coverThumbnailRevision(
       : null),
   });
   return createHash('sha256').update(state).digest('hex');
+}
+
+// my-albums 列表项投影(collab rework §15.2):Album 行 → 前端卡片 DTO。纯函数、
+// 零副作用,抽出是为了在**无库环境**(闸门/CI)也能测 role 透传与封面兜底规则 ——
+// listByUser 的 DB 测试在无库时会静默 skip,新查询否则没有真实覆盖。
+export function toMyAlbumListItem(
+  a: Album,
+  role: 'owner' | 'editor',
+  status: Album['status'],
+  coverPage: AlbumCoverPage | null,
+) {
+  return {
+    id: a.id,
+    title: a.title,
+    status,
+    // 协同(collab rework §15.2):调用者在这本书上的角色。旧客户端不读此字段,
+    // 向后兼容。
+    role,
+    photoCount: a.photoCount,
+    pageCount: a.pageCount,
+    pdfUrl: a.pdfUrl,
+    coverThumbnailUrl: a.coverThumbnailUrl ?? null,
+    photoFilter: a.photoFilter ?? null,
+    createdAt: a.createdAt,
+    coverPage,
+    // 服务器压缩快照 URL 刻意**只给 getDetail**(编辑页回退渲染本地缺失的原图)。
+    // 列表端点不投影 —— 4s 轮询下塞全量 URL 会让 payload 爆炸,且公开 URL 常态化
+    // 下发给 editor 无法在踢人后撤销。
+    // 已有封面页或已存缩略图就不用兜底,省掉无谓的 draft 解析与线上负载。
+    fallbackPhotoIds:
+      coverPage || a.coverThumbnailUrl ? [] : albumService.fallbackCoverPhotoIds(a.draftJson),
+  };
 }
 
 type AlbumCoverPage = {
@@ -541,8 +574,11 @@ export const albumService = {
         coverThumbnailUrl: album.coverThumbnailUrl,
         // 手动备份过的照片的服务器压缩图 URL(photoId→url)。resolveImage 在本地原图
         // 缺失时回退到它,让换设备/清缓存后内页不空白。未备份 → {}。
+        // key 固定 **owner**(album.userId)命名空间(collab rework §3.3:备份执行者
+        // 可能是 editor,但快照字节始终写在 owner 命名空间,读侧派生必须一致 ——
+        // 用调用者 userId 会让 editor 读到一串不存在的 URL,内页全空白)。
         photoSnapshotUrls: photoSnapshotUrls(
-          userId,
+          album.userId,
           album.id,
           album.photoSnapshot?.photoIds,
           r2.publicUrl,
@@ -1222,7 +1258,32 @@ export const albumService = {
 
   async listByUser(userId: string) {
     const rows = await albumRepo.findByUser(userId);
-    const coverRows = await albumPageRepo.findFirstByAlbumIds(rows.map((a) => a.id));
+    // 共享相册(collab rework §15.2):我作为 editor 被邀请的书也进列表。
+    // 两查询天然不重叠(owner 不在 members 表);role 供前端区分展示与治理入口
+    // (editor 无 deleteAlbum,列表删除按钮须按 role 隐藏)。
+    // 排序保持存量行为:自己的书按 createdAt desc(老用户列表顺序不变),
+    // 共享书整段追加在尾部(按加入时间 desc)—— 不悄悄改变既有用户的列表顺序。
+    const sharedRows = await albumRepo.findSharedWithUser(userId);
+    // role 不硬编码:共享书同样走 resolveRole 统一判定(与 owner 书同一权限
+    // 真相;members 表行 → editor,若未来 members 语义扩展只改一处)。
+    const shared: Array<{ album: Album; role: 'owner' | 'editor' }> = [];
+    for (const { album } of sharedRows) {
+      const sharedRole = await resolveRole(album, userId);
+      if (!sharedRole) continue; // 成员行在读取间隙被移除:跳过,不下发
+      shared.push({ album, role: sharedRole });
+    }
+    // 去重防御:按 albumId 归一(own 优先)—— 正常数据两查询不重叠,这里只防脏数据。
+    const seen = new Set<string>();
+    const all: Array<{ album: Album; role: 'owner' | 'editor' }> = [];
+    for (const entry of [
+      ...rows.map((album) => ({ album, role: 'owner' as const })),
+      ...shared,
+    ]) {
+      if (seen.has(entry.album.id)) continue;
+      seen.add(entry.album.id);
+      all.push(entry);
+    }
+    const coverRows = await albumPageRepo.findFirstByAlbumIds(all.map((e) => e.album.id));
     const coverByAlbumId = new Map(
       coverRows.map((p) => [
         p.albumId,
@@ -1238,9 +1299,12 @@ export const albumService = {
     // Sweep any zombie on the list path too: landing on /my-albums alone is
     // enough to flip a dead generation to FAILED and release its credit hold.
     const out = [];
-    for (const a of rows) {
+    for (const { album: a, role } of all) {
       let status = a.status;
-      if (status === 'AGENT_RUNNING') {
+      // sweep 只对**自己的书**做:账务(hold 释放/僵尸结算)归书的 owner,
+      // editor 打开列表不触发他人账务。共享书的账务由 owner 打开自己的列表
+      // 驱动,不会缺席。
+      if (role === 'owner' && status === 'AGENT_RUNNING') {
         const resolved = await jobService.resolveGeneration(a.id);
         // A swept zombie is no longer AGENT_RUNNING, so reload instead of relying
         // on the stale list row.
@@ -1248,28 +1312,14 @@ export const albumService = {
           const reloaded = await albumRepo.findById(a.id);
           status = reloaded?.status ?? status;
         }
-      } else if (status === 'EDITING') {
+      } else if (role === 'owner' && status === 'EDITING') {
         // Read-time draft-expiry sweep (§12): landing on /my-albums is enough to
         // release an idle draft's hold past 24h. The album stays EDITING (the
         // draft is kept), so status is unaffected — only the credit hold moves.
         await draftExpirySweeper.sweepAlbumOnRead(a.id);
       }
       const coverPage = coverByAlbumId.get(a.id) ?? null;
-      out.push({
-        id: a.id,
-        title: a.title,
-        status,
-        photoCount: a.photoCount,
-        pageCount: a.pageCount,
-        pdfUrl: a.pdfUrl,
-        coverThumbnailUrl: a.coverThumbnailUrl ?? null,
-        photoFilter: a.photoFilter ?? null,
-        createdAt: a.createdAt,
-        coverPage,
-        // 已有封面页或已存缩略图就不用兜底,省掉无谓的 draft 解析与线上负载。
-        fallbackPhotoIds:
-          coverPage || a.coverThumbnailUrl ? [] : this.fallbackCoverPhotoIds(a.draftJson),
-      });
+      out.push(toMyAlbumListItem(a, role, status, coverPage));
     }
     return out;
   },
@@ -1311,6 +1361,11 @@ export const albumService = {
       lastComposeStatus: latestCompose?.status ?? null,
       // 追加范围成稿是否真写出了页(见上);非追加单/还未回填 → null。
       lastComposeWrote,
+      // AI 结果过期(collab rework Phase 4):job 因运行期间的人工修改被拦,
+      // 前端据此给出「基于最新版本重跑」的明确行动,而非笼统失败。
+      lastComposeStale:
+        latestCompose?.status === 'FAILED'
+        && (latestCompose?.error as { code?: string } | null)?.code === 'AI_RESULT_STALE',
     };
   },
 
@@ -2288,10 +2343,13 @@ export const albumService = {
     }
     if (input.size <= 0 || input.size > PDF_MAX_BYTES) throw ERRORS.PDF_TOO_LARGE();
 
-    const album = await this.findOwned(userId, albumId);
+    const { album } = await collaborationService.requireAccess(userId, albumId);
     assertStoryExportUnlocked(album);
 
-    const r2Key = `pdfs/${userId}/${albumId}.pdf`;
+    // 导出(collab rework §3.2):key 归 **album** 命名空间且每次带独立 exportId ——
+    // 协作者的导出不互相覆盖文件(后 confirm 的只是把相册 pdfUrl 指针挪到最新一份,
+    // 旧文件留在 R2,已发出的旧链接不失效)。
+    const r2Key = `pdfs/${album.id}/${crypto.randomUUID()}.pdf`;
     const putUrl = await r2.signPutUrl(r2Key, input.contentType, 300);
     return { putUrl, r2Key, publicUrl: r2.publicUrl(r2Key) };
   },
@@ -2305,13 +2363,19 @@ export const albumService = {
     albumId: string,
     r2Key: string,
   ): Promise<{ pdfUrl: string }> {
-    const album = await this.findOwned(userId, albumId);
-    assertStoryExportUnlocked(album);
-    const expected = `pdfs/${userId}/${albumId}.pdf`;
-    if (r2Key !== expected) throw ERRORS.VALIDATION_FAILED('r2Key does not match album');
+    // 先提取 albumId 段再比较,不把 albumId 内插进正则(路径参数可能含正则元字符)。
+    const keyMatch = /^pdfs\/([^/]+)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.pdf$/.exec(r2Key);
+    if (!keyMatch || keyMatch[1] !== albumId) {
+      throw ERRORS.VALIDATION_FAILED('r2Key does not match album');
+    }
 
     const pdfUrl = r2.publicUrl(r2Key);
     await db.transaction(async (tx) => {
+      const album = await albumRepo.findByIdForUpdate(tx, albumId);
+      if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+      const role = await resolveRole(album, userId, tx);
+      if (!role) throw COLLAB_ERRORS.ALBUM_ACCESS_DENIED();
+      assertStoryExportUnlocked(album);
       await albumRepo.update(tx, albumId, { pdfR2Key: r2Key, pdfUrl, status: 'COMPLETED' });
     });
     return { pdfUrl };
@@ -2392,7 +2456,7 @@ export const albumService = {
       publicUrl: string;
     }[]
   > {
-    await this.findOwned(userId, albumId);
+    const { album } = await collaborationService.requireAccess(userId, albumId);
     if (!Array.isArray(entries) || entries.length === 0) {
       throw ERRORS.VALIDATION_FAILED('entries must be a non-empty array');
     }
@@ -2410,7 +2474,7 @@ export const albumService = {
       publicUrl: string;
     }[] = [];
     for (const { photoId, renderVersion } of parsed.data) {
-      const r2Key = photoSnapshotKey(userId, albumId, photoId, renderVersion);
+      const r2Key = photoSnapshotKey(album.userId, albumId, photoId, renderVersion);
       const putUrl = await r2.signPutUrl(r2Key, PHOTO_SNAPSHOT_CONTENT_TYPE, 300);
       out.push({
         photoId,
@@ -2435,7 +2499,8 @@ export const albumService = {
     return db.transaction(async (tx) => {
       const album = await albumRepo.findByIdForUpdate(tx, albumId);
       if (!album) throw ERRORS.ALBUM_NOT_FOUND();
-      if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+      const role = await resolveRole(album, userId, tx);
+      if (!role) throw COLLAB_ERRORS.ALBUM_ACCESS_DENIED();
       if (!Array.isArray(entries) || entries.length === 0) {
         throw ERRORS.VALIDATION_FAILED('entries must be a non-empty array');
       }
@@ -2460,8 +2525,9 @@ export const albumService = {
     });
   },
 
+  // 读已导出 PDF(collab rework §3.2):导出是 Creator 能力,owner/editor 都可读。
   async getPdfUrl(userId: string, albumId: string): Promise<{ pdfUrl: string | null }> {
-    const album = await this.findOwned(userId, albumId);
+    const { album } = await collaborationService.requireAccess(userId, albumId);
     return { pdfUrl: album.pdfUrl ?? null };
   },
 };

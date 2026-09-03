@@ -240,7 +240,9 @@ test('select-layout/completed under EDITING (时序反转) → merges pages + st
     assert.deepEqual(stripPagesHtml(rows.map((r) => r.page)), PAGES);
     for (const row of rows) {
       assert.equal(row.version, album?.draftRevision);
-      assert.equal(row.updatedBy, null);
+      // Phase 4(collab rework §2.2):AI 继承发起者身份,updatedBy = job.userId
+      // (此前是 null 表示「系统写入」)。
+      assert.equal(row.updatedBy, user.id);
     }
     assert.equal(album?.pageCount, PAGES.length);
     assert.equal(album?.layoutJson, null);

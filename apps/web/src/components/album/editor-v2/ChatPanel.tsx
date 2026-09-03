@@ -2141,6 +2141,15 @@ export function ChatPanel({
           if (state.composing) continue;
           settleThinking(host, 'analyzedFeedback');
           window.dispatchEvent(new CustomEvent('yujee:authoring-pages-ready'));
+          // AI 结果过期(Phase 4 基线闸):期间有人工修改,AI 结果没落库 —— 给出
+          // 明确行动(基于最新版本重跑),不伪装成功也不笼统报错。
+          if (state.lastComposeStale) {
+            appendReplyBody(host, aT(
+              'AI 运行期间这本书被修改过了,为了不覆盖你们的编辑,这次结果没有写进书里。基于现在的最新版本再让我做一次吧。',
+              'The book was edited while the AI was running, so the result was set aside to protect those edits. Ask me again to run it on the latest version.',
+            ));
+            return;
+          }
           // COMPLETED 不等于「真写出来了」:整章掉队时(pagesTexts 全空,或被 F1 的章
           // 归属守卫全数跳过)job 依旧 COMPLETED,只有 lastComposeWrote===false 才知道
           // 这次没写出东西 —— 这里改走与回调侧(job-service)同款的诚实文案,不再当场

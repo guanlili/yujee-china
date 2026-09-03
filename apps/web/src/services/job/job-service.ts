@@ -5,6 +5,12 @@ import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { creditService } from '@/services/credit/credit-service';
 import { ERRORS, mapAgentErrorCode } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
+import type { AgentJob } from '@/db/schema';
+import {
+  captureJobBaseline,
+  findBaselineStaleReason,
+  type JobBaseline,
+} from '@/services/collaboration/collaboration-service';
 import { Page, V3LayoutTree, V3StoryDraft } from '@yujee/contracts';
 import {
   appendInsertAt,
@@ -408,6 +414,62 @@ export function readAppendChapterIds(meta: unknown): string[] | null {
     : null;
 }
 
+// AI 长任务基线(collab rework §Phase 4):agent_jobs.meta.baseline。坏形状按无
+// 基线处理(基线机制上线前的旧 job 没有它,回写放行与历史行为一致)。
+export function readJobBaseline(meta: unknown): JobBaseline | null {
+  const record = recordOrEmpty(meta);
+  const raw = record.baseline;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const candidate = raw as {
+    structureRevision?: unknown;
+    settingsRevision?: unknown;
+    pages?: unknown;
+  };
+  if (
+    typeof candidate.structureRevision !== 'number'
+    || typeof candidate.settingsRevision !== 'number'
+    || !Array.isArray(candidate.pages)
+  ) {
+    return null;
+  }
+  const pages = candidate.pages.filter(
+    (p): p is { pageIndex: number; version: number } =>
+      !!p && typeof p === 'object'
+      && typeof (p as { pageIndex?: unknown }).pageIndex === 'number'
+      && typeof (p as { version?: unknown }).version === 'number',
+  );
+  return {
+    structureRevision: candidate.structureRevision,
+    settingsRevision: candidate.settingsRevision,
+    pages,
+  };
+}
+
+// 回写前锁内基线重验失败的终局(Phase 4):job 标 FAILED(AI_RESULT_STALE)、
+// **零写入** —— AI 结果不落库,期间的人工编辑优先;客户端提示基于最新版本重跑。
+// compose 的计费 hold 照 handleV3Failed 释放(AI 没交付,钱不能吞)。
+// 必须在相册行锁事务内调用(校验读到的才是当前状态)。
+async function failStaleJob(
+  tx: DbOrTx,
+  job: AgentJob,
+  reason: string,
+): Promise<void> {
+  logger.warn(
+    { requestId: job.requestId, albumId: job.albumId, kind: job.kind, stale: reason },
+    'AI result stale — write-back aborted, manual edits preserved',
+  );
+  const won = await agentJobRepo.transitionStatus(tx, job.id, 'FAILED', ['QUEUED', 'RUNNING'], {
+    error: {
+      code: 'AI_RESULT_STALE',
+      message: 'The book changed while the AI was running — rerun on the latest version',
+      stale: reason,
+    },
+    completedAt: new Date(),
+  });
+  if (!won) return;
+  if (job.kind === 'compose') await creditService.releaseByAlbum(tx, job.albumId);
+}
+
 function recordOrEmpty(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -561,6 +623,24 @@ export const jobService = {
       meta?: Record<string, unknown>;
     },
   ) {
+    // Every job that can later rewrite draft_pages participates in the same
+    // album-row lock protocol as invitation redemption.
+    let baseline: JobBaseline | undefined;
+    if (input.kind !== 'init') {
+      const album = await albumRepo.findByIdForUpdate(tx, input.albumId);
+      if (!album) throw ERRORS.ALBUM_NOT_FOUND();
+      // AI 基线(Phase 4):layout/compose 完成时会整批回写 draft_pages,启动时
+      // 在**同一把 album 行锁内**记录基线(结构/设置/页版本),完成回写前重验 ——
+      // 期间的人工编辑优先,AI 结果 stale 不落库。add 只写 envelope 不动页,
+      // init 不写任何页,两者无需基线。
+      if (input.kind === 'layout' || input.kind === 'compose') {
+        baseline = captureJobBaseline({
+          album,
+          pages: await draftPageRepo.listVersions(input.albumId, tx),
+        });
+      }
+    }
+    const meta = { ...input.meta, ...(baseline ? { baseline } : {}) };
     return agentJobRepo.create(tx, {
       userId: input.userId,
       albumId: input.albumId,
@@ -568,7 +648,7 @@ export const jobService = {
       kind: input.kind,
       status: 'QUEUED',
       progress: 0,
-      ...(input.meta ? { meta: input.meta } : {}),
+      ...(Object.keys(meta).length > 0 ? { meta } : {}),
     });
   },
 
@@ -720,6 +800,18 @@ export const jobService = {
         return;
       }
 
+      // AI 基线重验(Phase 4):排版结果基于派发时的页快照,若期间发生人工修改
+      // (结构/设置/页内容),直接合并会覆盖协作者的编辑 —— 零写入,job 标
+      // AI_RESULT_STALE,提示基于最新版本重跑。
+      const staleReason = findBaselineStaleReason(
+        { album, pages: await draftPageRepo.listVersions(job.albumId, tx) },
+        readJobBaseline(job.meta),
+      );
+      if (staleReason) {
+        await failStaleJob(tx, job, staleReason);
+        return;
+      }
+
       // 解耦:这是独立 layout job 的完成回调。只需草稿已就绪(analyze 已写树)即可合并
       // 排版页;相册在 analyze 完成时就已 EDITING/story,这里不再改 status/stage,只补页。
       const loaded = await loadStoryDraft(album, { tx, bake: false });
@@ -760,8 +852,8 @@ export const jobService = {
 
       const seededRevision = await ensureDraftPagesSeeded(tx, album);
       const rev = await bumpDraftRevision(tx, job.albumId, seededRevision, { structural: true });
-      // 系统/agent 写点:updatedBy = null(与 T3/T4 用户写点传 userId 的口径一致)。
-      await draftPageRepo.replaceAll(tx, job.albumId, mergedPages, rev, null);
+      // AI 继承发起者身份(collab rework §2.2):updatedBy = 发起 job 的用户,不再是 null(系统)。
+      await draftPageRepo.replaceAll(tx, job.albumId, mergedPages, rev, job.userId);
 
       // envelope 只剩 tree/progress/design;pageCount 收口点二 —— 拆表前 pages 与
       // pageCount 天然同源,拆表后必须显式跟上(此前这里遗漏了 pageCount)。
@@ -796,6 +888,17 @@ export const jobService = {
       const album = await albumRepo.findByIdForUpdate(tx, job.albumId);
       if (!album) {
         logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 compose completed');
+        return;
+      }
+
+      // AI 基线重验(Phase 4):文案基于派发时的页快照,期间的人工修改(结构/设置/
+      // 页内容)优先 —— 零写入,AI_RESULT_STALE。append 与全书两个分支共用此闸。
+      const staleReason = findBaselineStaleReason(
+        { album, pages: await draftPageRepo.listVersions(job.albumId, tx) },
+        readJobBaseline(job.meta),
+      );
+      if (staleReason) {
+        await failStaleJob(tx, job, staleReason);
         return;
       }
 
@@ -864,8 +967,8 @@ export const jobService = {
         const appendDraft = mergedAppend.draftJson as unknown as V3StoryDraft & { pages: Page[] };
         const seededRevision = await ensureDraftPagesSeeded(tx, album);
         const rev = await bumpDraftRevision(tx, job.albumId, seededRevision, { structural: true });
-        // 系统/agent 写点:updatedBy = null(与全书成稿同一口径)。
-        await draftPageRepo.replaceAll(tx, job.albumId, appendDraft.pages, rev, null);
+        // AI 继承发起者身份(§2.2),同 layout 分支。
+        await draftPageRepo.replaceAll(tx, job.albumId, appendDraft.pages, rev, job.userId);
         await albumRepo.update(tx, job.albumId, {
           draftJson: envelopeJson({
             tree: appendDraft.tree,
@@ -941,8 +1044,8 @@ export const jobService = {
 
       const seededRevision = await ensureDraftPagesSeeded(tx, album);
       const rev = await bumpDraftRevision(tx, job.albumId, seededRevision, { structural: true });
-      // 系统/agent 写点:updatedBy = null(与 T3/T4 用户写点传 userId 的口径一致)。
-      await draftPageRepo.replaceAll(tx, job.albumId, merged.pages, rev, null);
+      // AI 继承发起者身份(§2.2),同 layout 分支。
+      await draftPageRepo.replaceAll(tx, job.albumId, merged.pages, rev, job.userId);
 
       await albumRepo.update(tx, job.albumId, {
         draftJson: envelopeJson({

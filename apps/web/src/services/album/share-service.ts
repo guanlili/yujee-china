@@ -12,6 +12,8 @@ import {
 import { effectiveRenderVersion } from '@/lib/photo/filter-state';
 import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
+import { resolveRole } from '@/services/collaboration/collaboration-service';
+import { COLLAB_ERRORS } from '@/services/collaboration/collaboration-errors';
 import type { Album, AlbumShare } from '@/db/schema';
 
 // 随机不可猜的分享令牌:18 字节 → 24 位 URL-safe 字符。
@@ -83,7 +85,10 @@ export const shareService = {
     return db.transaction(async (tx) => {
       const album = await albumRepo.findByIdForUpdate(tx, albumId);
       if (!album) throw ERRORS.ALBUM_NOT_FOUND();
-      if (album.userId !== userId) throw ERRORS.ALBUM_NOT_OWNED();
+      // 锁内 Creator 检查(collab rework §3.1):owner/editor 都可建分享,路人拒绝。
+      // 与 updatePage/reorderPages 同一 TOCTOU 防线 —— 不用无锁的 requireAccess。
+      const role = await resolveRole(album, userId, tx);
+      if (!role) throw COLLAB_ERRORS.ALBUM_ACCESS_DENIED();
 
       // 页面来源:编辑态页真相在 draft_pages 行(2026-08-03 拆表;loadStoryDraft 对未
       // 播种的存量书回退 legacy draftJson.pages)。冻结读在行锁事务内且不烘
@@ -115,7 +120,10 @@ export const shareService = {
         photoIds.map((photoId) => [
           photoId,
           r2.publicUrl(
-            photoSnapshotKey(userId, albumId, photoId, recordedVersions[photoId]!),
+            // key 归 **owner** 命名空间(album.userId,与执行者无关):快照字节由 owner
+            // 浏览器上传,读侧(分享冻结/getDetail 投影)都按 owner 派生 URL。editor
+            // 建分享时若带自己的 userId,会指向读侧根本找不到的位置。
+            photoSnapshotKey(album.userId, albumId, photoId, recordedVersions[photoId]!),
           ),
         ]),
       );
