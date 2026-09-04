@@ -68,7 +68,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-16',
-    reviewedAt: '9c34faea',
+    reviewedAt: '83b929f6',
     heroImage: '/examples/life-story/spread-01.jpg',
   },
   {
@@ -76,7 +76,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-17',
-    reviewedAt: '9c34faea',
+    reviewedAt: '83b929f6',
     heroImage: '/examples/travel-journal/spread-03.jpg',
   },
   {
@@ -84,7 +84,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-17',
-    reviewedAt: '9c34faea',
+    reviewedAt: '83b929f6',
     heroImage: '/examples/life-story/spread-02.jpg',
   },
   {
@@ -92,7 +92,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-17',
-    reviewedAt: '9c34faea',
+    reviewedAt: '83b929f6',
     heroImage: '/examples/life-story/spread-03.jpg',
   },
   {
@@ -100,7 +100,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-16',
-    reviewedAt: '9c34faea',
+    reviewedAt: '83b929f6',
     heroImage: '/examples/travel-journal/spread-01.jpg',
   },
   {
@@ -108,7 +108,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-17',
-    reviewedAt: '9c34faea',
+    reviewedAt: '83b929f6',
     heroImage: '/examples/travel-journal/spread-02.jpg',
   },
   {
@@ -116,7 +116,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-17',
-    reviewedAt: '9c34faea',
+    reviewedAt: '83b929f6',
     heroImage: '/examples/life-story/spread-04.jpg',
   },
 ];

@@ -45,7 +45,7 @@ const EXAMPLES = ['apps/web/src/lib/examples/examples.ts', 'apps/web/src/lib/exa
 /** Guide prose only. guides.ts is excluded on purpose — see FRESHNESS_DECLARATIONS. */
 const GUIDES_CONTENT = 'apps/web/src/lib/guides/content';
 /** The hub has no article of its own to carry a reviewedAt, so it lives here. */
-const GUIDES_HUB_REVIEWED_AT = '9c34faea';
+const GUIDES_HUB_REVIEWED_AT = '83b929f6';
 
 /** Every example detail page is one row of the same array, so they share sources. */
 const exampleDetailFreshness: Record<string, RouteFreshness> = Object.fromEntries(
@@ -59,7 +59,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/': {
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
     updatedAt: '2026-08-08',
-    reviewedAt: '9c34faea',
+    reviewedAt: '83b929f6',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback
@@ -67,17 +67,17 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/about/story': {
     sources: [MARKETING, 'apps/web/src/app/[locale]/about/story/page.tsx'],
     updatedAt: '2026-08-10',
-    reviewedAt: '9c34faea',
+    reviewedAt: '83b929f6',
   },
   // Privacy prose last moved in the pre-launch pass that aligned it with what the
   // product actually does (b69eb438). marketing.ts has moved several times since —
   // including b3d095bc, which rewrote the TERMS sections next door and left this
   // page untouched. That is exactly the case the reviewedAt/updatedAt split exists
   // for: reviewed again, still 2026-07-12.
-  '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: '9c34faea' },
+  '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: '83b929f6' },
   // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
   // refund rule) in both locales — a genuine content change, so this one moves.
-  '/terms': { sources: [MARKETING], updatedAt: '2026-08-08', reviewedAt: '9c34faea' },
+  '/terms': { sources: [MARKETING], updatedAt: '2026-08-08', reviewedAt: '83b929f6' },
   // 这五个路由被闸门捞出来,是因为 messages/marketing 被动过两次:19093baf 往
   // footer 的 Photo Books 组加了一条 /guides 链接,9c34faea 加了 guides.faqHead。
   // 前者是导航;后者更轻 —— faqHead 只在 guides/[slug]/page.tsx 渲染,这几个营销页
@@ -88,7 +88,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   // 审计记录指着一个没干这件事的提交。写错的审计记录比没有更糟。
   // The hub renders each example's `title`, not its meta — the keyword pass
   // rewrote titles/descriptions on the detail pages only, so the hub is unchanged.
-  '/examples': { sources: [...EXAMPLES, MARKETING], updatedAt: '2026-08-04', reviewedAt: '9c34faea' },
+  '/examples': { sources: [...EXAMPLES, MARKETING], updatedAt: '2026-08-04', reviewedAt: '83b929f6' },
   ...exampleDetailFreshness,
 };
 
