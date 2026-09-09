@@ -30,6 +30,13 @@ def test_agent_route_surface_is_recognize_layout_compose_only() -> None:
     assert "/health" in paths
     assert {"/v3/analyze", "/v3/select-layout", "/v3/compose"}.issubset(paths)
 
+    # ⚠️ 这个口**必须在**。它有活的调用方(features.py:_remote_clip_embeddings,
+    # 主 engine 配了 GROUPING_CLIP_BASE_URL),而 grouping.py 的 emb_future.result()
+    # 没有 try/except —— 一旦它再被当成「后续环节端点」清掉,下一次 deploy CLIP
+    # worker 就会把 analyze 打挂。2026-07-06 的 0cfc019d 正是这么删掉它的,
+    # 而当时这份清单还把它列进了 removed,等于给误删盖了章。
+    assert "/internal/open-clip/embeddings" in paths
+
     # 排版改纯确定性 + AI 调用收敛成 compose 一次之后,这些端点都已删除。
     removed = {
         "/v3/judge-layout",
@@ -43,8 +50,9 @@ def test_agent_route_surface_is_recognize_layout_compose_only() -> None:
         "/v3/cover",
         "/v3/finalize",
         "/v3/page-edit",
+        # 欠账:/internal/agent-ack 生产上还在(源码没有),但它没有活的调用方,
+        # 单独记账,本批不动。
         "/internal/agent-ack",
-        "/internal/open-clip/embeddings",
     }
     assert removed.isdisjoint(paths)
     assert not any(path.startswith("/" + "v2" + "/album") for path in paths)

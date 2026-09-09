@@ -15,12 +15,19 @@ Stateless(§数据归属):Agent 不持 draft/stage;base64 只在 analyze/compose
 
 from __future__ import annotations
 
+import base64
+import io
+import threading
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable, TypeVar
+
+from PIL import Image
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel
 
-from .auth import require_bearer
+from .auth import require_bearer, require_clip_bearer
 from ..logging_config import get_logger
 from ..contracts.schemas import (
     ComposeRequest,
@@ -119,3 +126,82 @@ async def submit_compose(
     return V3AcceptedResponse(
         ok=True, data=V3AcceptedData(requestId=req.requestId, accepted=True)
     ).model_dump(mode="json")
+
+
+# ---------- internal:CLIP embedding worker ------------------------------------
+#
+# 只有专用的 2GB CLIP worker(fly.clip.toml,AGENT_ENABLE_CLIP_EMBEDDINGS=true)
+# 开这个口;普通 1GB Agent 没装 torch,开关关着 => 404。
+#
+# ⚠️ 这个路由曾在 0cfc019d「瘦身到最小版」被误删,而调用方 features.py 一直在调。
+# 生产 yujee-agent-clip 上它是通的(线上镜像比源码新且复现不出来),所以补回来是
+# **拆哑雷**:防的是「下次谁拿当前源码重新 deploy CLIP worker,analyze 当场 404」。
+# 响应形状由调用方 features.py:_remote_clip_embeddings 决定,不能改。
+#
+# 欠账(本批不还):/internal/agent-ack 也存在同样的「生产有、源码没有」漂移,
+# 但它没有活的调用方,单独记账。
+
+_T = TypeVar("_T")
+
+# 推理单飞锁。CLIP worker 是 shared-cpu-1x / 2048MB,实测 torch+open_clip 加载
+# 峰值就吃掉 ~1.36GB,只剩 ~690MB 余量;而 run_in_threadpool 默认 40 个线程,
+# 两三个并发推理就能把工作集乘爆。CLIP 与档案推理共用同一把锁 —— 它们抢的是
+# 同一台机器的内存,不能各锁各的。
+_INFERENCE_LOCK = threading.Lock()
+
+
+def _locked(fn: Callable[..., _T]) -> Callable[..., _T]:
+    """把一个同步推理函数包成「全机串行」——交给 run_in_threadpool 之前套上。"""
+
+    def _run(*args: Any, **kwargs: Any) -> _T:
+        with _INFERENCE_LOCK:
+            return fn(*args, **kwargs)
+
+    return _run
+
+
+def _bad_request(message: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={"ok": False, "error": {"code": "AGENT_BAD_REQUEST", "message": message}},
+    )
+
+
+def _decode_data_url(url: str) -> Image.Image:
+    """data URL -> PIL Image。只认 base64 内联,不外联取图(SSRF)。"""
+    if not isinstance(url, str) or "," not in url:
+        raise _bad_request("not a data url")
+    header, encoded = url.split(",", 1)
+    if not header.startswith("data:image/"):
+        raise _bad_request("not an image data url")
+    try:
+        return Image.open(io.BytesIO(base64.b64decode(encoded, validate=True)))
+    except Exception as exc:  # noqa: BLE001 —— 坏 base64 / 坏图都只是 400,不是 500
+        raise _bad_request("undecodable image data url") from exc
+
+
+def _require_clip_worker(what: str) -> None:
+    if not get_settings().agent_enable_clip_embeddings:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"ok": False, "error": {"code": "AGENT_NOT_FOUND", "message": f"{what} disabled"}},
+        )
+
+
+class _EmbeddingsRequest(BaseModel):
+    images: list[str]  # data:image/jpeg;base64,... —— 只在内存里,不落盘不进日志
+
+
+@router.post("/internal/open-clip/embeddings", dependencies=[Depends(require_clip_bearer)])
+async def open_clip_embeddings(payload: _EmbeddingsRequest) -> dict:
+    _require_clip_worker("clip embeddings")
+    if not payload.images:
+        return {"ok": True, "data": {"embeddings": []}}
+
+    from ..workflows.core.chaptering import features
+
+    images = [_decode_data_url(url) for url in payload.images]
+    # CPU 推理是阻塞的,别占住事件循环;并发要串行,别把 2GB 撑爆。
+    embeddings = await run_in_threadpool(_locked(features.clip_embeddings), images)
+    log.info("open_clip_embeddings", count=len(images))
+    return {"ok": True, "data": {"embeddings": embeddings}}
