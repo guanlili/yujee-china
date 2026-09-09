@@ -9,7 +9,12 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Any, Literal
+
 from PIL import Image
+
+from .inference import locked
 
 
 def box_from_mask(mask: Image.Image, threshold: int = 128) -> dict | None:
@@ -33,4 +38,135 @@ def box_from_mask(mask: Image.Image, threshold: int = 128) -> dict | None:
         "y": upper / height * 100,
         "w": (right - left) / width * 100,
         "h": (lower - upper) / height * 100,
+    }
+
+
+# ── 模型接入 ────────────────────────────────────────────────────────────────────
+#
+# ⚠️ 选型理由(别改回 RMBG-1.4):RMBG-1.4 的许可是 bria-rmbg-1.4,官方写明
+# "source-available model for **non-commercial** use"。Yujee 是收费产品,烘进镜像
+# 就是拿非商用许可的模型商用。改用 Apache-2.0 的这两个,许可干净:
+#
+#   建档 profile → u2netp  (320²,4MB) —— 档案只要**包围盒**,320² 足够,而且
+#                                        实测它在 CLIP 之上一点没抬高内存峰值。
+#   抠图 cutout  → isnet-general-use (1024²,170MB) —— 真抠图要精细边缘;
+#                                        拿 320² 的糙边去抠人像,正是 2026-08-29
+#                                        否决自动抠图的那个病。
+#
+# 两个模型的归一化常数不一样,张冠李戴 mask 会整个糊掉 —— 所以绑在 spec 里。
+
+
+@dataclass(frozen=True)
+class _ModelSpec:
+    name: str
+    setting: str          # settings 上的权重路径字段名
+    size: int             # 模型输入边长(正方形)
+    mean: tuple[float, float, float]
+    std: tuple[float, float, float]
+
+
+SPECS: dict[str, _ModelSpec] = {
+    "profile": _ModelSpec(
+        name="profile",
+        setting="profile_seg_model_path",
+        size=320,
+        mean=(0.485, 0.456, 0.406),
+        std=(0.229, 0.224, 0.225),
+    ),
+    "cutout": _ModelSpec(
+        name="cutout",
+        setting="profile_matting_model_path",
+        size=1024,
+        mean=(0.5, 0.5, 0.5),
+        std=(1.0, 1.0, 1.0),
+    ),
+}
+
+Quality = Literal["profile", "cutout"]
+
+_SESSIONS: dict[str, Any] = {}
+
+
+def _session(spec: _ModelSpec):
+    """惰性加载 + 进程内单例。min_machines_running=0 的机器冷启已经慢,
+    别在 import 期加载;也别每张照片重建 session。"""
+    if spec.name not in _SESSIONS:
+        import onnxruntime as ort
+
+        from ....settings import get_settings
+
+        options = ort.SessionOptions()
+        # 关掉内存池:实测开着会一路只涨不还(1095MB 且继续爬),关掉就稳在一个
+        # 平台期。这台机器只有 2GB,稳比快重要。
+        options.enable_cpu_mem_arena = False
+        options.enable_mem_pattern = False
+        # shared-cpu-1x 就一个核,多线程只会多占内存。
+        options.intra_op_num_threads = 1
+        options.inter_op_num_threads = 1
+        path = getattr(get_settings(), spec.setting)
+        _SESSIONS[spec.name] = ort.InferenceSession(
+            path, options, providers=["CPUExecutionProvider"]
+        )
+    return _SESSIONS[spec.name]
+
+
+def _preprocess(image: Image.Image, spec: _ModelSpec):
+    """PIL -> NCHW float32,按 spec 的 mean/std 归一化。"""
+    import numpy as np
+
+    resized = image.convert("RGB").resize((spec.size, spec.size), Image.Resampling.BILINEAR)
+    array = np.asarray(resized, dtype=np.float32) / 255.0
+    array = (array - np.array(spec.mean, dtype=np.float32)) / np.array(spec.std, dtype=np.float32)
+    return array.transpose(2, 0, 1)[None, ...].astype(np.float32)
+
+
+def _mask_from_output(output, size: tuple[int, int]) -> Image.Image:
+    """模型 logits -> 与原图同尺寸的 L mask。
+
+    各家显著性模型的输出量纲不一(有的过了 sigmoid 有的没有),一律按 min-max
+    拉回 0..1 再转 0..255 —— 我们只用它取包围盒/抠图,绝对量纲无所谓。"""
+    import numpy as np
+
+    prediction = np.asarray(output)[0, 0]
+    lo, hi = float(prediction.min()), float(prediction.max())
+    prediction = (prediction - lo) / (hi - lo + 1e-8)
+    mask = Image.fromarray((prediction * 255).astype("uint8"), mode="L")
+    return mask.resize(size, Image.Resampling.BILINEAR)
+
+
+@locked
+def subject_mask(image: Image.Image, *, quality: Quality = "profile") -> Image.Image:
+    """前景 mask(L 模式,与原图同尺寸)。
+
+    quality="profile" 建档用(u2netp/320²,只为取包围盒);
+    quality="cutout"  真抠图用(isnet/1024²,要精细边缘)。
+
+    @locked:全机推理串行,理由见 inference.py。
+    """
+    spec = SPECS[quality]
+    session = _session(spec)
+    tensor = _preprocess(image, spec)
+    output = session.run(None, {session.get_inputs()[0].name: tensor})[0]
+    return _mask_from_output(output, image.size)
+
+
+def detect_faces(image: Image.Image) -> list[dict]:
+    """人脸框(0-100 百分比),0..n 个。
+
+    ⚠️ 现状:**还没接检测器,恒返回 []**。后果是 design-agent 的
+    `avoid-face-crop` 会退化成 `center-subject` —— 不会报错,只是少一条约束。
+
+    没接的理由:计划首选的 YuNet 要自己写 priors 解码 + NMS,而手上没有真实
+    人脸样本可以验证,写了也是没验过的代码;走 opencv 又是给一台只剩 ~690MB
+    余量的机器加重依赖。签名和 0-100 口径先钉死,将来接上不用动调用方。
+    """
+    return []
+
+
+def subject_geometry(image: Image.Image) -> dict:
+    """几何组的对外入口。mask 只用来取框,**不返回也不保存** ——
+    绝大多数照片不会被抠,预存 mask 是净浪费(见契约注释)。"""
+    return {
+        "subjectBox": box_from_mask(subject_mask(image)),
+        "faceBoxes": detect_faces(image),
     }

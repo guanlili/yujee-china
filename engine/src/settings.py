@@ -99,6 +99,12 @@ class Settings(BaseSettings):
     grouping_clip_secret: str | None = None
     grouping_clip_timeout_seconds: int = 180
 
+    # 照片档案的两个分割模型权重(ONNX)。只有 CLIP worker 装,普通 1GB Agent 没有。
+    # 都是 Apache-2.0 —— 刻意不用 RMBG-1.4,它写明禁止商用(见 profile/geometry.py)。
+    # 建档只要包围盒,走 320² 的 u2netp;真抠图要精细边缘,走 1024² 的 isnet。
+    profile_seg_model_path: str = "/app/models/u2netp.onnx"
+    profile_matting_model_path: str = "/app/models/isnet-general-use.onnx"
+
     # 仓里唯一的 Gemini 槽(native generateContent)。名字是历史产物:select-layout
     # 如今是纯确定性选版、根本不用 key,这把 key 唯一的消费者是 ④ /v3/compose 成稿。
     # 没改名是因为它在 Fly 上是 out-of-band 设的 secret,改名要跟线上轮换同步做;

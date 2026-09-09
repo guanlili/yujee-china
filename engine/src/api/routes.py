@@ -17,9 +17,8 @@ from __future__ import annotations
 
 import base64
 import io
-import threading
 from datetime import datetime, timezone
-from typing import Any, Callable, TypeVar
+from typing import Any
 
 from PIL import Image
 
@@ -37,6 +36,7 @@ from ..contracts.schemas import (
     V3AnalyzeRequest,
 )
 from ..workflows import analyze, compose, select_layout
+from ..workflows.core.profile.inference import locked as _locked
 from ..settings import get_settings
 
 router = APIRouter()
@@ -141,25 +141,9 @@ async def submit_compose(
 # 欠账(本批不还):/internal/agent-ack 也存在同样的「生产有、源码没有」漂移,
 # 但它没有活的调用方,单独记账。
 
-_T = TypeVar("_T")
-
-# 推理单飞锁。CLIP worker 是 shared-cpu-1x / 2048MB,实测 torch+open_clip 加载
-# 峰值就吃掉 ~1.36GB,只剩 ~690MB 余量;而 run_in_threadpool 默认 40 个线程,
-# 两三个并发推理就能把工作集乘爆。CLIP 与档案推理共用同一把锁 —— 它们抢的是
-# 同一台机器的内存,不能各锁各的。
-_INFERENCE_LOCK = threading.Lock()
-
-
-def _locked(fn: Callable[..., _T]) -> Callable[..., _T]:
-    """把一个同步推理函数包成「全机串行」——交给 run_in_threadpool 之前套上。"""
-
-    def _run(*args: Any, **kwargs: Any) -> _T:
-        with _INFERENCE_LOCK:
-            return fn(*args, **kwargs)
-
-    return _run
-
-
+# 推理单飞锁在 workflows/core/profile/inference.py —— CLIP 与档案共用一把,
+# 因为它们抢的是同一台 2GB 机器的同一块内存,各锁各的等于没锁。理由和实测数字
+# 都写在那个模块的抬头。
 def _bad_request(message: str) -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
