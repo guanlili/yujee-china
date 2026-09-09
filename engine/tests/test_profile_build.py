@@ -115,6 +115,28 @@ def test_undecodable_image_raises_instead_of_fabricating_a_profile():
         build.build_profile(_truncated_jpeg(), photo_id="p3")
 
 
+def test_undecodable_image_fails_before_burning_inference_and_a_vision_call(monkeypatch):
+    """而且要**早**炸。
+
+    Image.open 是惰性的,不在最前面把解码兑现掉,坏图要跑完一次分割推理 + 一次视觉
+    模型调用(几秒 + 真金白银)才在色彩组炸出来 —— 结果一样是「这张没档案」,
+    代价却全花了。这条钉的就是那笔白花的钱:变异「raise 改 pass」时上一条照样绿
+    (色彩组随后自己会抛),只有这一条抓得住。
+    """
+    touched: list[str] = []
+    monkeypatch.setattr(
+        build, "subject_geometry", lambda image, **_: touched.append("geometry") or {}
+    )
+    monkeypatch.setattr(
+        build, "semantic_features", lambda image, **_: touched.append("semantic") or {}
+    )
+
+    with pytest.raises(OSError):
+        build.build_profile(_truncated_jpeg(), photo_id="p3")
+
+    assert touched == [], f"坏图上白跑了:{touched}"
+
+
 def test_geometry_failure_is_logged_with_photo_id(monkeypatch):
     """几何组挂了必须留痕。原来这个 except 一行日志都不打 —— 整机的分割权重丢了
     也只表现为「所有 subjectBox 都是 null」,查不出根因。"""
