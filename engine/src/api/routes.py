@@ -153,14 +153,22 @@ def _bad_request(message: str) -> HTTPException:
 
 
 def _decode_data_url(url: str) -> Image.Image:
-    """data URL -> PIL Image。只认 base64 内联,不外联取图(SSRF)。"""
+    """data URL -> **完整解码**的 PIL Image。只认 base64 内联,不外联取图(SSRF)。
+
+    ⚠️ `load()` 不能省。`Image.open` 是惰性的:截断的 JPEG 能 open 成功,真解码要等
+    到后面 convert 的时候才炸(实测 `Image.open OK` -> `OSError: image file is
+    truncated`)。不在这里炸掉,一张坏图就要白烧一次分割推理 + 一次视觉模型调用
+    才被发现,而且是在没人包 try 的地方炸。
+    """
     if not isinstance(url, str) or "," not in url:
         raise _bad_request("not a data url")
     header, encoded = url.split(",", 1)
     if not header.startswith("data:image/"):
         raise _bad_request("not an image data url")
     try:
-        return Image.open(io.BytesIO(base64.b64decode(encoded, validate=True)))
+        image = Image.open(io.BytesIO(base64.b64decode(encoded, validate=True)))
+        image.load()
+        return image
     except Exception as exc:  # noqa: BLE001 —— 坏 base64 / 坏图都只是 400,不是 500
         raise _bad_request("undecodable image data url") from exc
 
@@ -227,8 +235,22 @@ async def photo_profile(payload: _PhotoProfileRequest) -> dict:
 
     from ..workflows.core.profile import build
 
-    # 坏 data URL 在跑任何推理之前就 400,别白烧算力。
-    decoded = [(item.photoId, _decode_data_url(item.dataUrl)) for item in payload.images]
+    # 坏图在跑任何推理之前就筛掉,别白烧算力 —— 但**逐张筛**,不是整批 400。
+    # 三个模块的抬头都写着「一张照片的失败不该打挂整本」,而这里原来是列表推导:
+    # 第一张坏图抛 HTTPException,同批另外 7 张全部陪葬。
+    decoded: list[tuple[str, Image.Image]] = []
+    undecodable: list[str] = []
+    for item in payload.images:
+        try:
+            decoded.append((item.photoId, _decode_data_url(item.dataUrl)))
+        except HTTPException:
+            undecodable.append(item.photoId)
+    if undecodable:
+        log.warning("photo_profile.undecodable", photo_ids=undecodable, count=len(undecodable))
+    if not decoded:
+        # 一张都解不出来 = 调用方发错了东西。回空 map 假装成功会让整本书悄悄没档案,
+        # 那正是这批要治的病;这种情况必须让调用方看见。
+        raise _bad_request("no decodable image in batch")
 
     # ⚠️ 批内必须**并发**,不能逐个 await。每张 ≈ 0.6s 本地推理 + 2~3s 视觉网络往返;
     # 串行的话 100 张的书要跑 5-6 分钟,而 grouping_clip_timeout_seconds 默认才 180s
@@ -240,10 +262,31 @@ async def photo_profile(payload: _PhotoProfileRequest) -> dict:
     # 视觉调用必须有重叠、本地推理必须无重叠。
     semaphore = asyncio.Semaphore(PROFILE_MAX_CONCURRENCY)
 
-    async def _build(photo_id: str, image: Image.Image) -> tuple[str, dict]:
+    async def _build(photo_id: str, image: Image.Image) -> dict:
         async with semaphore:
-            return photo_id, await run_in_threadpool(build.build_profile, image)
+            return await run_in_threadpool(build.build_profile, image, photo_id=photo_id)
 
-    pairs = await asyncio.gather(*(_build(pid, img) for pid, img in decoded))
-    log.info("photo_profile", count=len(decoded), persist_mask=payload.persistMask)
-    return {"ok": True, "data": {"profiles": dict(pairs)}}
+    # return_exceptions=True:少一张档案 vs 整批 500,前者是这个 endpoint 的设计意图。
+    results = await asyncio.gather(
+        *(_build(pid, img) for pid, img in decoded), return_exceptions=True
+    )
+    profiles: dict[str, dict] = {}
+    for (photo_id, _image), result in zip(decoded, results):
+        if isinstance(result, BaseException):
+            log.warning(
+                "photo_profile.build_failed",
+                photo_id=photo_id,
+                error=f"{type(result).__name__}: {result}",
+            )
+            continue
+        profiles[photo_id] = result
+
+    log.info(
+        "photo_profile",
+        count=len(payload.images),
+        built=len(profiles),
+        undecodable=len(undecodable),
+        failed=len(decoded) - len(profiles),
+        persist_mask=payload.persistMask,
+    )
+    return {"ok": True, "data": {"profiles": profiles}}

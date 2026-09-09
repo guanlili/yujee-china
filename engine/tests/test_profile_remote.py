@@ -6,7 +6,6 @@ yujee-agent-clip,走 /internal/photo-profile。写法对齐
 features.py:_remote_clip_embeddings。
 """
 
-import pytest
 from src.contracts.schemas import V3AnalyzePhoto
 from src.workflows.core.profile import remote
 
@@ -107,9 +106,91 @@ def test_falls_back_to_shared_secret_when_clip_secret_absent(monkeypatch):
     assert calls[0]["headers"]["Authorization"] == "Bearer fallback"
 
 
-def test_bad_shape_raises_so_caller_can_degrade(monkeypatch):
-    """形状不对就抛,由 analyze 那层统一降级成「没有档案」——
-    这里**不要**偷偷返回半份档案,那样错会一路飘到排版。"""
-    _install_fake_client(monkeypatch, lambda body: _FakeResponse({"ok": True, "data": {}}))
-    with pytest.raises(ValueError):
-        remote.fetch_photo_profiles([_photo("p1")], _Settings())
+
+
+# ── 一个批次失败不该清空整本书的档案 ────────────────────────────────────────────
+#
+# 原来 raise_for_status() 直接抛出去,analyze.py 的 except 把 profiles 整个清成 {}
+# —— 一次 502/超时,100 张的书一张档案都不剩。分批本来就是为了让失败可以局部化,
+# 不局部化的分批等于没分批。
+
+
+class _LogSpy:
+    def __init__(self) -> None:
+        self.warnings: list[tuple[str, dict]] = []
+
+    def warning(self, event, **kw):
+        self.warnings.append((event, kw))
+
+    def info(self, event, **kw):
+        pass
+
+
+class _BoomResponse:
+    def raise_for_status(self):
+        import httpx
+
+        raise httpx.HTTPStatusError("502", request=None, response=None)
+
+    def json(self):  # pragma: no cover —— 上面已经抛了
+        return {}
+
+
+def _ok(body):
+    return _FakeResponse(
+        {"ok": True, "data": {"profiles": {i["photoId"]: {"composition": "focal"} for i in body["images"]}}}
+    )
+
+
+def test_one_failed_batch_only_loses_that_batch(monkeypatch):
+    """第二批 502,第一批和第三批的档案必须照常拿到。"""
+    seen: list[int] = []
+
+    def _handler(body):
+        seen.append(len(seen))
+        return _BoomResponse() if len(seen) == 2 else _ok(body)
+
+    _install_fake_client(monkeypatch, _handler)
+    photos = [_photo(f"p{i}") for i in range(remote.PROFILE_BATCH_SIZE * 3)]
+
+    out = remote.fetch_photo_profiles(photos, _Settings())
+
+    assert len(seen) == 3, "第二批失败之后没有继续跑第三批"
+    assert len(out) == remote.PROFILE_BATCH_SIZE * 2
+    assert "p0" in out and f"p{remote.PROFILE_BATCH_SIZE * 2}" in out
+
+
+def test_failed_batch_is_logged(monkeypatch):
+    """静默丢档案是这批要治的病本身 —— 失败必须留痕。"""
+    _install_fake_client(monkeypatch, lambda body: _BoomResponse())
+    spy = _LogSpy()
+    monkeypatch.setattr(remote, "log", spy)
+
+    remote.fetch_photo_profiles([_photo("p1")], _Settings())
+
+    assert spy.warnings, "批次失败没有打任何日志"
+    assert "HTTPStatusError" in str(dict(spy.warnings[0][1]).get("error"))
+
+
+def test_bad_shape_in_one_batch_only_loses_that_batch(monkeypatch):
+    """形状不对的那一批丢掉,别的批照常 —— 也**不要**把半份档案混进来。"""
+    seen: list[int] = []
+
+    def _handler(body):
+        seen.append(len(seen))
+        return _FakeResponse({"ok": True, "data": {}}) if len(seen) == 1 else _ok(body)
+
+    _install_fake_client(monkeypatch, _handler)
+    photos = [_photo(f"p{i}") for i in range(remote.PROFILE_BATCH_SIZE * 2)]
+
+    out = remote.fetch_photo_profiles(photos, _Settings())
+
+    assert len(out) == remote.PROFILE_BATCH_SIZE
+    assert "p0" not in out
+
+
+def test_every_batch_failing_returns_empty_instead_of_raising(monkeypatch):
+    """整个 worker 挂了 -> 空档案 + 日志,让 analyze 退回今天的行为,而不是靠
+    上游那个 except 兜(那个 except 兜住的是异常,兜不住「静默丢了一半」)。"""
+    _install_fake_client(monkeypatch, lambda body: _BoomResponse())
+    assert remote.fetch_photo_profiles([_photo("p1")], _Settings()) == {}

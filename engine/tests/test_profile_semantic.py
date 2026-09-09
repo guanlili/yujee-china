@@ -48,7 +48,9 @@ def test_rejects_out_of_enum_value_and_falls_back(monkeypatch):
         "description": "x",
     }))
     out = semantic.semantic_features(_img())
-    assert out["composition"] == "focal"
+    # composition 落 None 而不是编一个 focal:slot_matcher_v3 遇到 None 视作任意、
+    # 不挡,那是正确的降级;编一个值会让选版按错误的构图约束匹配槽位。
+    assert out["composition"] is None
     assert out["scene"] == "outdoor"
     assert out["peopleCount"] == "0"
     assert out["mood"] == "quiet"
@@ -57,7 +59,7 @@ def test_rejects_out_of_enum_value_and_falls_back(monkeypatch):
 def test_handles_non_json_response(monkeypatch):
     _stub(monkeypatch, "对不起，我无法分析这张图片。")
     out = semantic.semantic_features(_img())
-    assert out["composition"] == "focal"
+    assert out["composition"] is None
     assert out["description"] == ""
 
 
@@ -116,7 +118,7 @@ def test_model_failure_falls_back_not_raises(monkeypatch):
 
     monkeypatch.setattr(semantic, "_call_vision", _boom)
     out = semantic.semantic_features(_img())
-    assert out["composition"] == "focal"
+    assert out["composition"] is None
     assert out["description"] == ""
 
 
@@ -171,3 +173,50 @@ def test_call_vision_wires_into_the_real_ai_client(monkeypatch):
     # 桩是 **kwargs,吃得下任何键 —— 拿真签名再核一遍,否则「传了个
     # chat_completion 根本不认的参数」会被桩喂饱。
     assert set(seen) <= accepted, f"chat_completion 不认这些参数:{set(seen) - accepted}"
+
+
+# ── 整组失效时不能全程静默 ──────────────────────────────────────────────────────
+#
+# 这个 except 原来一行日志都不打。视觉槽整体不可用时(key 轮换掉了、上游限流、
+# 代理挡死)每张照片都静静落回退值,日志里没有任何一行说明视觉组挂了 —— 而
+# tree_builder 会老老实实把回退值回填进章节树。
+
+
+class _LogSpy:
+    def __init__(self) -> None:
+        self.warnings: list[tuple[str, dict]] = []
+
+    def warning(self, event, **kw):
+        self.warnings.append((event, kw))
+
+    def info(self, event, **kw):
+        pass
+
+
+def test_vision_failure_is_logged_with_photo_id_and_exception_type(monkeypatch):
+    def _boom(image):
+        raise RuntimeError("upstream down")
+
+    monkeypatch.setattr(semantic, "_call_vision", _boom)
+    spy = _LogSpy()
+    monkeypatch.setattr(semantic, "log", spy)
+
+    semantic.semantic_features(_img(), photo_id="p42")
+
+    assert spy.warnings, "视觉调用失败没有打任何日志"
+    kw = dict(spy.warnings[0][1])
+    assert kw.get("photo_id") == "p42"
+    assert "RuntimeError" in str(kw.get("error"))
+
+
+def test_unparseable_response_is_logged_too(monkeypatch):
+    """模型返回了东西但解不出 JSON —— 也要留痕,否则「全书 composition 都是 None」
+    分不清是视觉组挂了还是模型在胡说。"""
+    _stub(monkeypatch, "对不起，我无法分析这张图片。")
+    spy = _LogSpy()
+    monkeypatch.setattr(semantic, "log", spy)
+
+    semantic.semantic_features(_img(), photo_id="p43")
+
+    assert spy.warnings, "解析失败没有打任何日志"
+    assert dict(spy.warnings[0][1]).get("photo_id") == "p43"

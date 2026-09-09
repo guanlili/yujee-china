@@ -43,6 +43,15 @@ def test_subject_box_nullable():
     assert PhotoProfile.model_validate({**VALID, "subjectBox": None}).subjectBox is None
 
 
+def test_composition_nullable_for_a_failed_semantic_group():
+    """语义组失败时 composition 落 None —— 契约必须收得下。
+
+    编一个 focal 会让 slot_matcher_v3 按错误的构图约束匹配槽位(它对 None 的处置
+    是「视作任意,不挡」,那才是正确的降级)。
+    """
+    assert PhotoProfile.model_validate({**VALID, "composition": None}).composition is None
+
+
 def test_face_boxes_default_empty():
     without = {k: v for k, v in VALID.items() if k != "faceBoxes"}
     assert PhotoProfile.model_validate(without).faceBoxes == []

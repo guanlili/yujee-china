@@ -191,7 +191,7 @@ def _stub_build(monkeypatch):
     monkeypatch.setattr(
         build,
         "build_profile",
-        lambda image: {
+        lambda image, **_: {
             "v": 1,
             "subjectBox": {"x": 10.0, "y": 20.0, "w": 50.0, "h": 60.0},
             "faceBoxes": [],
@@ -440,3 +440,77 @@ def test_photo_profile_concurrency_is_bounded(monkeypatch):
     assert vision.max_inside <= _max_concurrency(), (
         f"并发放到了 {vision.max_inside} 路,超过上限 {_max_concurrency()}"
     )
+
+
+# ── 一张坏图不该毒死整批 ────────────────────────────────────────────────────────
+#
+# 三个模块的抬头都写着「一张照片的失败不该打挂整本」,而三处放大器叠加下来这句话
+# 一条都不成立:
+#   - _decode_data_url 抛 HTTPException  -> 整批 400
+#   - asyncio.gather 没有 return_exceptions -> 整批 500
+#   - (remote.py 那头的 raise_for_status  -> 整本书的档案被清空,见 test_profile_remote)
+#
+# 截断的 JPEG 是最常见的那一张坏图:Image.open 是**惰性**的,截断文件能 open 成功,
+# 真解码发生在后面 convert 的时候(实测:Image.open OK -> OSError image file is truncated)。
+
+
+def _truncated_data_url() -> str:
+    """能 open、不能 decode 的 JPEG —— 上传中断/存储截断的真实形态。"""
+    buf = io.BytesIO()
+    Image.new("RGB", (400, 300), (200, 140, 80)).save(buf, format="JPEG", quality=90)
+    raw = buf.getvalue()
+    return "data:image/jpeg;base64," + base64.b64encode(raw[: len(raw) // 2]).decode("ascii")
+
+
+def test_one_truncated_photo_does_not_kill_the_batch(monkeypatch):
+    """一批 8 张里塞一张截断 JPEG,另外 7 张的档案必须照常拿得到。"""
+    _enable(monkeypatch)
+    _stub_build(monkeypatch)
+
+    images = [{"photoId": f"p{i}", "dataUrl": _data_url()} for i in range(8)]
+    images[3]["dataUrl"] = _truncated_data_url()
+
+    resp = _client().post(
+        "/internal/photo-profile",
+        json={"images": images},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+
+    assert resp.status_code == 200
+    profiles = resp.json()["data"]["profiles"]
+    assert set(profiles) == {f"p{i}" for i in range(8)} - {"p3"}
+
+
+def test_one_failed_build_does_not_kill_the_batch(monkeypatch):
+    """建档本身抛(色彩组在坏图上 raise、onnx 挂了…)也只该少那一张。"""
+    _enable(monkeypatch)
+
+    from src.workflows.core.profile import build
+
+    def _flaky(image, **kwargs):
+        if kwargs.get("photo_id") == "p3":
+            raise OSError("image file is truncated")
+        return {"v": 1, "composition": "focal"}
+
+    monkeypatch.setattr(build, "build_profile", _flaky)
+
+    resp = _client().post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": f"p{i}", "dataUrl": _data_url()} for i in range(8)]},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+
+    assert resp.status_code == 200
+    assert set(resp.json()["data"]["profiles"]) == {f"p{i}" for i in range(8)} - {"p3"}
+
+
+def test_whole_batch_undecodable_still_400(monkeypatch):
+    """一张都解不出来 = 调用方发错了东西,该让它知道,而不是回一个空 map 假装成功。"""
+    _enable(monkeypatch)
+    _stub_build(monkeypatch)
+    resp = _client().post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": "p1", "dataUrl": _truncated_data_url()}]},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+    assert resp.status_code == 400

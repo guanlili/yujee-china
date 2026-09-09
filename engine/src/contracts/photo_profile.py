@@ -47,7 +47,16 @@ class PhotoProfile(BaseModel):
     dominantColors: list[HexColor] = Field(max_length=3)
 
     # 语义组(视觉模型)
-    composition: Literal["closeup", "focal", "wide"]
+    #
+    # ⚠️ composition 可为 None,**这是刻意的**。视觉调用失败/返回枚举外的值时,语义组
+    # 必须落 None 而不是编一个 focal:slot_matcher_v3 遇到 None 会「视作任意,不挡」,
+    # 那是正确的降级;编一个值会让选版按错误的构图约束去匹配槽位,比没有档案更糟,
+    # 而且在成品上查不出来(见 semantic._FALLBACK 的注释)。
+    # 📌 TS 侧真相源 packages/contracts/src/photo-profile.ts 的 `composition` 目前
+    # 还是 z.enum([...]) 不可空 —— 那边补上 `.nullable()` 之前,语义组失败的照片会被
+    # web 的逐条 safeParse 整条跳过(色彩/几何一起丢)。engine 侧的章节树回填不受
+    # 影响(tree_builder 本来就把非法值当 None)。
+    composition: Literal["closeup", "focal", "wide"] | None = None
     scene: Literal["indoor", "outdoor", "nature", "city", "interior"]
     peopleCount: Literal["0", "1", "2-3", "4+"]
     mood: Literal["warm", "cool", "sentimental", "energetic", "quiet"]
