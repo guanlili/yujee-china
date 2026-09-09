@@ -22,6 +22,11 @@ const DESIGN_WRITE_TOOLS = new Set([
   'set_text_fonts',
   'move_pages',
   'delete_page',
+  // 2026-09-09 照片视觉档案那批:构图裁切 / 整本调色 / 逐张抠图。
+  // look_at_photos 是读工具,不进这里 —— 它不改任何东西。
+  'set_image_pos',
+  'set_photo_filter',
+  'set_photo_cutout',
 ]);
 
 // 设计 Agent 全书对话。默认同步 JSON；?stream=1 时把 8787 的 NDJSON 事件流逐行

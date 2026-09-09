@@ -97,9 +97,12 @@ test('历史回放:按 designOps 的 toolName 去重成类别,渲染一条彩色
 });
 
 // ── 落库侧:写工具集必须含 set_text_fonts / write_page_html,否则历史回放缺这两类 ──
-test('route 落库写工具集含全部 10 个写工具(字体/HTML/底色/整本换风格更新才进 designOps)', () => {
-  const block = /const DESIGN_WRITE_TOOLS = new Set\(\[[\s\S]*?\]\)/.exec(routeSrc)?.[0] ?? '';
-  assert.ok(block.length > 0, 'route 应有 DESIGN_WRITE_TOOLS 集合');
+test('route 落库写工具集含全部 13 个写工具(字体/HTML/底色/整本换风格/照片三件套更新才进 designOps)', () => {
+  const rawBlock = /const DESIGN_WRITE_TOOLS = new Set\(\[[\s\S]*?\]\)/.exec(routeSrc)?.[0] ?? '';
+  assert.ok(rawBlock.length > 0, 'route 应有 DESIGN_WRITE_TOOLS 集合');
+  // ⚠️ 断言前必须剥注释:这是源码正则守卫,块里的注释会把断言喂饱 —— 只要注释里
+  // 出现过某个工具名,includes 就永远为真。这个仓库栽过这一跤。
+  const block = rawBlock.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   for (const tool of [
     'update_page_texts',
     'swap_page_template',
@@ -111,7 +114,12 @@ test('route 落库写工具集含全部 10 个写工具(字体/HTML/底色/整�
     'write_page_html',
     'move_pages',
     'delete_page',
+    'set_image_pos',
+    'set_photo_filter',
+    'set_photo_cutout',
   ]) {
     assert.ok(block.includes(tool), `route DESIGN_WRITE_TOOLS 应含 ${tool}`);
   }
+  // look_at_photos 是读工具,进了写工具集会让每次「看图」都被当成一次改动落库。
+  assert.ok(!block.includes('look_at_photos'), 'route DESIGN_WRITE_TOOLS 不该含读工具 look_at_photos');
 });

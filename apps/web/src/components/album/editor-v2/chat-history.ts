@@ -12,7 +12,7 @@ export type ChatRole = 'user' | 'assistant';
 /** design chat 写类操作折成的用户可读类别。 */
 export type DesignChangeCategory = 'fonts' | 'colors' | 'pages' | 'order';
 
-/** 十个写工具 → 类别。与 design-chat 路由落库 designOps 的工具名一一对应。
+/** 十三个写工具 → 类别。与 design-chat 路由落库 designOps 的工具名一一对应。
  *
  * set_page_background / apply_book_style(2026-08-29 风格理解新增)都映射到 'colors' ——
  * 前者就是逐页刷底色,后者虽然也换封面/封尾模板,但用户视角「整本换气质」最显眼的效果
@@ -29,6 +29,15 @@ const DESIGN_CHANGE_CATEGORY: Record<string, DesignChangeCategory> = {
   write_page_html: 'pages',
   move_pages: 'order',
   delete_page: 'pages',
+  // 2026-09-09 照片视觉档案那批。**不新开类别** —— 加一类会在 ChatPanel:844 那组
+  // 硬编码中英文案里产生新的英文 key,跟 i18n overlay(以英文原文为 key)撞车。
+  // set_image_pos 改的是照片在框里的位置 → 用户视角就是「这页变了」;
+  // set_photo_cutout 抠掉背景同理,是页面观感变化,不是换颜色;
+  // set_photo_filter 是逐张/整本调色 → 'colors',与 set_page_background 同理。
+  // look_at_photos 是读工具,**不进这张表** —— 它不改任何东西,进来会造出假改动。
+  set_image_pos: 'pages',
+  set_photo_filter: 'colors',
+  set_photo_cutout: 'pages',
 };
 
 /** 固定展示顺序,不随工具调用顺序抖动。 */

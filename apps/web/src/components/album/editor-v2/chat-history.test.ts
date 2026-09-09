@@ -97,3 +97,24 @@ test('重复文本按条数配对,不是按集合去重(否则连发两条一样
 
   assert.equal(out.length, 2, '服务端一条 + 本地还没落库的那条 = 两条,不能被集合去重吃掉一条');
 });
+
+// ── 2026-09-09 照片视觉档案那批新增的三个写工具 ──
+// CLAUDE.md 明写:新增写工具必须同步 DESIGN_WRITE_TOOLS 和 DESIGN_CHANGE_CATEGORY,
+// 否则历史回放会丢更新/少一类彩色条(set_text_fonts / write_page_html 栽过一次)。
+test('照片三工具都有类别映射,历史回放不会丢彩色条', () => {
+  assert.equal(designChangeCategoryOf('set_image_pos'), 'pages');
+  assert.equal(designChangeCategoryOf('set_photo_filter'), 'colors');
+  assert.equal(designChangeCategoryOf('set_photo_cutout'), 'pages');
+});
+
+test('look_at_photos 是读工具,不该有类别', () => {
+  // 它不改任何东西,进了映射就会在历史里造出一条假的"改动"。
+  assert.equal(designChangeCategoryOf('look_at_photos'), undefined);
+});
+
+test('照片三工具与既有工具混用时类别去重且保持固定顺序', () => {
+  assert.deepEqual(
+    designOpCategories(['set_photo_filter', 'set_image_pos', 'move_pages', 'set_photo_cutout']),
+    ['colors', 'pages', 'order'],
+  );
+});
