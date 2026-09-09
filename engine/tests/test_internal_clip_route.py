@@ -756,3 +756,14 @@ def test_one_failed_mask_does_not_kill_the_batch(monkeypatch):
     data = resp.json()["data"]
     assert len(data["profiles"]) == 3
     assert set(data["masks"]) == {"p0", "p2"}
+
+
+def test_empty_batch_still_returns_the_full_response_shape(monkeypatch):
+    """空批次也要吐齐三个键 —— 调用方不该为「批是空的」写第二套解析分支。"""
+    _enable(monkeypatch)
+    resp = _client().post(
+        "/internal/photo-profile",
+        json={"images": []},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+    assert resp.json()["data"] == {"profiles": {}, "masks": {}, "visionCallCount": 0}

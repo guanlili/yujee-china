@@ -256,7 +256,8 @@ def _profile_semaphore() -> asyncio.Semaphore:
 async def photo_profile(payload: _PhotoProfileRequest) -> dict:
     _require_clip_worker("photo profile")
     if not payload.images:
-        return {"ok": True, "data": {"profiles": {}}}
+        # 三个键恒存在,空批次也一样 —— 调用方不该为「批是空的」写第二套解析分支。
+        return {"ok": True, "data": {"profiles": {}, "masks": {}, "visionCallCount": 0}}
 
     from ..workflows.core.profile import build, geometry
 
@@ -282,9 +283,9 @@ async def photo_profile(payload: _PhotoProfileRequest) -> dict:
     # —— 开关一开 analyze 就废。并发后一批 8 张从 ~28s 降到 ~5s。
     #
     # 这里**不套** _locked,也不该套:锁住网络等待就等于没并发。内存不会因此失守
-    # —— geometry.subject_mask 自己带 @locked(RLock),本地推理那段仍然全机串行,
-    # 并发的只是网络 I/O。tests/test_internal_clip_route.py 两头都钉了:
-    # 视觉调用必须有重叠、本地推理必须无重叠。
+    # —— geometry._segment 自己带 @locked(RLock),本地推理那段(建档的 u2netp 和
+    # persistMask 的 isnet 都经它)仍然全机串行,并发的只是网络 I/O。
+    # tests/test_internal_clip_route.py 两头都钉了:视觉调用必须有重叠、本地推理必须无重叠。
     semaphore = _profile_semaphore()
 
     # 成本计数:调用方那台 1GB Agent 自己看不见视觉调用,只能由这里带回去。
