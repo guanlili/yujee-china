@@ -30,8 +30,12 @@ Postgres + Cloudflare R2
 
 ### 生成 Agent(yujee-agent)
 
-- route surface **只有四个**:`GET /health`、`POST /v3/analyze`、`POST /v3/select-layout`、
-  `POST /v3/compose`。已删除的端点:`/v3/judge-layout`、`/v3/judge-page-template`、`/v3/design`。
+- route surface = **四个对外 + 两个 internal**。对外:`GET /health`、`POST /v3/analyze`、
+  `POST /v3/select-layout`、`POST /v3/compose`。internal(只在 2GB CLIP worker 上开,
+  普通 1GB Agent 的开关关着 => 404):`POST /internal/open-clip/embeddings`、
+  `POST /internal/photo-profile`。已删除的端点:`/v3/judge-layout`、
+  `/v3/judge-page-template`、`/v3/design`。
+  ⚠️ `/internal/agent-ack` 是**生产有、源码没有**的漂移,还没人补,见 3aa9f113 的账。
 - 分析是**纯确定性分组**:`/v3/analyze` 走 CLIP/时间/GPS/像素,零 AI 调用、不识图;
   章标题由拍摄时间跨度确定性派生到 `V3Chapter.title`。
 - 排版是**一次确定性选版**:`/v3/select-layout` 直接回调 `completed` + 完整 `pages`,
