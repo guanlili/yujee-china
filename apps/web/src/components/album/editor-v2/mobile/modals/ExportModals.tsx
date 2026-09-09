@@ -240,9 +240,12 @@ export function LiveStyleModal({
             <span className={`motion-example motion-example-${o.id === 'flip' ? 'flip' : 'grid'}`} aria-hidden="true">
               {o.id === 'flip' ? (
                 <span className="motion-book">
+                  <span className="motion-fan motion-fan-left"><i /><i /><i /></span>
+                  <span className="motion-fan motion-fan-right"><i /><i /><i /></span>
                   <span className="motion-page motion-page-left" />
                   <span className="motion-page motion-page-right" />
-                  <span className="motion-page motion-page-turn" />
+                  <span className="motion-leaf motion-leaf-left" />
+                  <span className="motion-leaf motion-leaf-right" />
                 </span>
               ) : (
                 <span className="motion-grid">

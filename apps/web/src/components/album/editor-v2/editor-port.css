@@ -1046,19 +1046,50 @@
   display:flex; align-items:center; justify-content:center; overflow:hidden;
   box-shadow:inset 0 0 0 1px var(--border-soft);
 }
+/* 翻页 Live 的示意图 = 导出真在做的那套:整本摊成扇形页堆,新跨页从书脊两半一起
+   张开盖住平躺的旧跨页(见 lib/export/live-video.ts 抬头)。扇形矩形是
+   LIVE_FAN_SHAPE 的真几何按书宽 84 缩下来烘死的,live-style-preview.test.ts
+   现算一遍对着比 —— 导出参数一动,这里就红。 */
 .editor-port .motion-book{
-  position:relative; width:112px; height:76px; display:flex;
-  filter:drop-shadow(0 5px 8px rgba(0,0,0,.12)); perspective:260px;
+  position:relative; width:84px; height:59.4px;
+  filter:drop-shadow(0 5px 9px rgba(0,0,0,.14)); perspective:286px;
 }
+/* 左侧整摞 = 右侧镜像,几何只写一份。 */
+.editor-port .motion-fan{ position:absolute; inset:0; }
+.editor-port .motion-fan-left{ transform:scaleX(-1); }
+.editor-port .motion-fan i{
+  position:absolute; display:block; border:1px solid rgba(0,0,0,.08);
+  border-radius:1px 4px 4px 1px; box-shadow:0 2px 3px rgba(8,12,20,.14);
+}
+/* 顺序 = 画的先后,**由深到浅**(与 live-video 的 paintFan 照 fanCards 返回序画一致):
+   靠后者压在上面,最浅那张收尾。写反了整摞会被最外那张盖成一块板。
+   灰阶也是算的:#dedede 按 darkAt 往 #0b0f16 压。 */
+.editor-port .motion-fan i:nth-child(1){ left:75.3px; top:3.5px; width:23.8px; height:52.4px; background:#bebebe; }
+.editor-port .motion-fan i:nth-child(2){ left:67.9px; top:2.7px; width:24.5px; height:53.9px; background:#c7c7c7; }
+.editor-port .motion-fan i:nth-child(3){ left:58.8px; top:1.8px; width:25.4px; height:55.9px; background:#d1d1d1; }
+/* 平躺的旧跨页 —— 张开那两半落平后正好把它盖住,于是循环回到起点无缝。 */
 .editor-port .motion-page{
-  width:56px; height:76px; background:#dedede; border:1px solid #d1d1d1;
+  position:absolute; top:0; width:42px; height:59.4px;
+  border:1px solid #d1d1d1; box-shadow:0 4px 9px rgba(8,12,20,.20);
 }
-.editor-port .motion-page-left{ border-radius:7px 1px 1px 7px; }
-.editor-port .motion-page-right{ border-radius:1px 7px 7px 1px; }
-.editor-port .motion-page-turn{
-  position:absolute; right:0; top:0; transform-origin:left center; border-radius:1px 7px 7px 1px;
-  background:linear-gradient(90deg,#cfcfcf,#ececec);
-  animation:yujee-motion-page-turn 2.8s var(--ease) infinite;
+.editor-port .motion-page-left{
+  left:0; border-radius:5px 1px 1px 5px; background:linear-gradient(90deg,#d4d4d4,#e6e6e6);
+}
+.editor-port .motion-page-right{
+  left:42px; border-radius:1px 5px 5px 1px; background:linear-gradient(270deg,#d4d4d4,#e6e6e6);
+}
+.editor-port .motion-leaf{
+  position:absolute; top:0; width:42px; height:59.4px;
+  border:1px solid #d1d1d1; box-shadow:0 4px 9px rgba(8,12,20,.20);
+  animation:yujee-motion-spread-open 2.8s var(--ease) infinite;
+}
+.editor-port .motion-leaf-left{
+  left:0; transform-origin:right center; border-radius:5px 1px 1px 5px;
+  background:linear-gradient(90deg,#d4d4d4,#e6e6e6); --motion-shut:70deg;
+}
+.editor-port .motion-leaf-right{
+  left:42px; transform-origin:left center; border-radius:1px 5px 5px 1px;
+  background:linear-gradient(270deg,#d4d4d4,#e6e6e6); --motion-shut:-70deg;
 }
 .editor-port .motion-grid{
   width:94px; height:94px; display:grid; grid-template-columns:repeat(3,1fr); gap:5px;
@@ -1075,17 +1106,18 @@
 .editor-port .motion-option-copy{
   margin-top:4px; font-size:11.5px; line-height:1.45; color:var(--muted);
 }
-@keyframes yujee-motion-page-turn{
-  0%,22%{ transform:rotateY(0deg); opacity:1; }
-  68%,88%{ transform:rotateY(-176deg); opacity:1; }
-  100%{ transform:rotateY(-176deg); opacity:0; }
+/* 70° 是缩略图的刻意取值,不是从几何推出来的:出片那边是 cos((1-e)·90°),
+   e=0 完全合拢;缩略图里合到看不见不如留一点厚度好认。 */
+@keyframes yujee-motion-spread-open{
+  0%,18%{ transform:rotateY(var(--motion-shut,0deg)); }
+  46%,100%{ transform:rotateY(0deg); }
 }
 @keyframes yujee-motion-grid-shift{
   0%,28%,100%{ transform:scale(1); background:#d8d8d8; }
   48%,70%{ transform:scale(.86); background:#bfc9c7; }
 }
 @media (prefers-reduced-motion:reduce){
-  .editor-port .motion-page-turn,.editor-port .motion-grid span{ animation:none; }
+  .editor-port .motion-leaf,.editor-port .motion-grid span{ animation:none; }
 }
 .editor-port .nine-grid-actions{ display:grid; grid-template-columns:1fr; gap:10px; }
 .editor-port .collage-confirm.secondary{

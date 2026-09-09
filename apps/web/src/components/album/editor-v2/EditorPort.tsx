@@ -1163,9 +1163,12 @@ function EditorModals({ locale }: { locale: Locale }) {
                 <button className="selected" data-live-style="flip" aria-pressed="true">
                   <span className="motion-example motion-example-flip" aria-hidden="true">
                     <span className="motion-book">
+                      <span className="motion-fan motion-fan-left"><i /><i /><i /></span>
+                      <span className="motion-fan motion-fan-right"><i /><i /><i /></span>
                       <span className="motion-page motion-page-left" />
                       <span className="motion-page motion-page-right" />
-                      <span className="motion-page motion-page-turn" />
+                      <span className="motion-leaf motion-leaf-left" />
+                      <span className="motion-leaf motion-leaf-right" />
                     </span>
                   </span>
                   <span className="motion-option-title">{aT('翻页 Live', 'Page-flip Live')}</span>
