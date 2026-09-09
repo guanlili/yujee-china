@@ -4,7 +4,7 @@
 
 **Goal:** 让 Design Agent 能管整本调色（LUT）、构图裁切（imagePos）、抠图三件事 —— 靠给它补一层它现在完全没有的输入：照片视觉档案。
 
-**Architecture:** 三组档案字段（几何/色彩/语义）在 analyze 阶段一次算完，存 `album_photos.profile` jsonb。engine 侧新增推理 endpoint，web 侧落库并提供跨存储写入 seam，design-agent 侧加 4 个工具读写。契约先锁死（Task 0），之后 A/B/C 三线在各自 worktree 并行，最后汇合验收。
+**Architecture:** 三组档案字段（几何/色彩/语义）在 analyze 阶段一次算完，存 `album_photos.profile` jsonb。engine 侧新增推理 endpoint，web 侧落库并提供跨存储写入 seam，design-agent 侧加 4 个工具读写。契约先锁死（Task 0），之后 A/B/C 三线在同一工作区并行（文件不重叠），最后汇合验收。
 
 **Tech Stack:** Python 3.14 / FastAPI / Pillow / RMBG-1.4（engine）；TypeScript / Next.js / drizzle / zod（web）；TypeScript / typebox / `tsx --test`（design-agent）
 
@@ -35,7 +35,12 @@ Task 0（契约，串行头，必须最先完成）
               Task Z1（汇合验收）
 ```
 
-三条线文件不重叠，各用一个 worktree，最后合回 main。
+三条线文件不重叠，**在同一个主工作区并行**，各改各的目录，直接提交到 main。
+
+⚠️ **不开 worktree**：worktree 是干净 checkout，`engine/.venv` 和 `node_modules`
+都不在里面，重装依赖的时间比省下的隔离价值大。代价是 **`git add` 必须写精确路径** ——
+工作区里长期有别的项目的未跟踪文件和几个本来就脏的文件（`apps/web/package.json`、
+`pnpm-lock.yaml`），`git add -A` 会误伤。
 
 ---
 
@@ -358,7 +363,8 @@ MSG
 
 # A 线 —— engine（Python）
 
-**Worktree:** `wt-photo-engine`。只碰 `engine/**`，不碰任何 TS。
+**范围:** 只碰 `engine/**`，不碰任何 TS。另两条线在同一个工作区并行，碰它们的目录会撞车。
+`git add` 写精确路径，绝不 `git add -A`。
 
 **测试命令:** `cd engine && .venv/bin/python -m pytest tests/<file> -v`
 
@@ -1555,7 +1561,9 @@ MSG
 
 # B 线 —— web 服务层（TypeScript）
 
-**Worktree:** `wt-photo-web`。只碰 `apps/web/src/db/**` 和 `apps/web/src/services/**`。**不碰 `apps/web/src/components/**`** —— 那是 UI，不在这批范围里，碰了会跟别的分支撞车。
+**范围:** 只碰 `apps/web/src/db/**`、`apps/web/src/services/**`、`apps/web/src/app/api/v3/internal/**`。
+**不碰 `apps/web/src/components/**`** —— 那是 UI，不在这批范围里。另两条线在同一个工作区并行。
+`git add` 写精确路径，绝不 `git add -A`。
 
 **测试命令:** `cd apps/web && npx tsx --test src/<path>/<file>.test.ts`（⚠️ 别在仓根跑 `pnpm test`，它会倒在 design-agent 的环境上，不是你的代码坏了）
 
@@ -1970,7 +1978,8 @@ MSG
 
 # C 线 —— design-agent（TypeScript）
 
-**Worktree:** `wt-photo-agent`。只碰 `packages/design-agent/**`。
+**范围:** 只碰 `packages/design-agent/**`。另两条线在同一个工作区并行，碰它们的目录会撞车。
+`git add` 写精确路径，绝不 `git add -A`。
 
 **测试命令:** `cd packages/design-agent && npx tsx --test test/<file>.test.ts`；全量 `pnpm design:test`
 
@@ -2472,11 +2481,9 @@ MSG
 
 ## Task Z1：三线合并 + 端到端验收
 
-**前置：** A/B/C 三线各自全绿并合回 main。
+**前置：** A/B/C 三线各自全绿（三线直接提交在 main 上，无需合并分支）。
 
-- [ ] **Step 1: 按 B → A → C 顺序合并**
-
-B 先合（契约的消费方最少），A 次之（engine 独立），C 最后（依赖 B 的 seam）。每合一条跑一次对应的测试套。
+- [ ] **Step 1: 三套测试各跑一遍，确认三线互不干扰**
 
 Run:
 ```bash
