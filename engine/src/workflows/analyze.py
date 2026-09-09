@@ -15,6 +15,7 @@ from ..api import callback
 from .core.chaptering import grouping as chapter_grouping
 from .core.chaptering import tree_builder
 from .core.chaptering import unplaced as chapter_unplaced
+from .core.profile import remote as profile_remote
 from ..logging_config import get_logger, request_id_var
 from ..contracts.schemas import (
     V3AnalyzeCompleted,
@@ -99,11 +100,29 @@ async def _run_analyze(job: _Job) -> None:
         )
         return
 
+    # 照片视觉档案。**必须在建树之前**拿到 —— 它回填的 composition 是排版
+    # (select_layout 的 slot_matcher)的输入,晚一步就白填。
+    #
+    # 三条硬要求:默认关(开了就是每本书 N 次视觉调用,而 analyze 至今零 AI 调用);
+    # 委托给 2GB 的 CLIP worker(这台 1GB 机器没有分割权重);失败**绝不打挂
+    # analyze** —— 建档是锦上添花,挂了就退回今天的行为。
+    profiles: dict[str, dict] = {}
+    if get_settings().agent_enable_photo_profile:
+        try:
+            profiles = await asyncio.to_thread(
+                profile_remote.fetch_photo_profiles, req.photos, get_settings()
+            )
+        except Exception as exc:  # noqa: BLE001 —— 档案挂了不该连坐整次 analyze
+            log.warning("v3_analyze.photo_profile_failed", error=str(exc))
+            profiles = {}
+
     # 散落照片走确定性就近归章(按时间/位置),树里的章标识由时间/地点派生:
     # 分析期不再有任何 AI 调用。
     try:
         assignments = chapter_unplaced.group_unplaced(grouping, photos_by_id)
-        tree = tree_builder.assemble_stage1_tree(grouping, assignments, photos_by_id)
+        tree = tree_builder.assemble_stage1_tree(
+            grouping, assignments, photos_by_id, profiles=profiles
+        )
     except Exception as exc:  # noqa: BLE001
         log.exception("v3_analyze.regroup_or_assemble_failed", error=str(exc))
         await _emit_failure(

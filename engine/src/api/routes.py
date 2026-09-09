@@ -189,3 +189,44 @@ async def open_clip_embeddings(payload: _EmbeddingsRequest) -> dict:
     embeddings = await run_in_threadpool(_locked(features.clip_embeddings), images)
     log.info("open_clip_embeddings", count=len(images))
     return {"ok": True, "data": {"embeddings": embeddings}}
+
+
+# ---------- internal:照片视觉档案 ----------------------------------------------
+#
+# 与 CLIP embedding 同一台 worker、同一个开关、同一把推理锁 —— 它们抢的是同一块
+# 内存(shared-cpu-1x / 2048MB)。
+# 产出形状必须能被 contracts/photo_profile.py 直接 parse:这是 A/B 两线的接缝。
+# base64 只在内存里,不落盘不进日志(见本文件抬头的 Stateless 约定)。
+
+
+class _PhotoProfileItem(BaseModel):
+    photoId: str
+    dataUrl: str
+
+
+class _PhotoProfileRequest(BaseModel):
+    images: list[_PhotoProfileItem]
+    # ⚠️ 本批**收下但不实现**:真抠图要跑第二次高精度推理(isnet/1024²)、写 R2、
+    # 回填 maskKey,而 R2 写入口在 B 线。收下是为了让调用方现在就能带上这个参数
+    # 而不至于 422 —— 接上之后只在这里加分支,调用方不用改。见 Task Z1。
+    persistMask: bool = False
+
+
+@router.post("/internal/photo-profile", dependencies=[Depends(require_clip_bearer)])
+async def photo_profile(payload: _PhotoProfileRequest) -> dict:
+    _require_clip_worker("photo profile")
+    if not payload.images:
+        return {"ok": True, "data": {"profiles": {}}}
+
+    from ..workflows.core.profile import build
+
+    profiles: dict[str, dict] = {}
+    for item in payload.images:
+        image = _decode_data_url(item.dataUrl)
+        # ⚠️ 这里**不套** _locked:build_profile 里除了本地分割推理,还有一次视觉
+        # 模型的网络调用(好几秒)。把网络等待也锁进去,一本 100 张的书就是几百秒
+        # 串行,analyze 直接超时。本地推理那段由 geometry.subject_mask 自己的
+        # @locked 兜着(RLock),内存该守的已经守住了。
+        profiles[item.photoId] = await run_in_threadpool(build.build_profile, image)
+    log.info("photo_profile", count=len(payload.images), persist_mask=payload.persistMask)
+    return {"ok": True, "data": {"profiles": profiles}}

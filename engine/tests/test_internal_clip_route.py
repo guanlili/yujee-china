@@ -158,3 +158,130 @@ def test_inference_is_single_flight(monkeypatch):
 
     assert all(r.status_code == 200 for r in results)
     assert state["max_inside"] == 1, f"推理并发了 {state['max_inside']} 路,单飞锁没生效"
+
+
+# ── /internal/photo-profile ───────────────────────────────────────────────────
+
+
+def _stub_build(monkeypatch):
+    """建档打桩 —— 路由测试不下模型权重、不打真视觉 API。"""
+    from src.workflows.core.profile import build
+
+    monkeypatch.setattr(
+        build,
+        "build_profile",
+        lambda image: {
+            "v": 1,
+            "subjectBox": {"x": 10.0, "y": 20.0, "w": 50.0, "h": 60.0},
+            "faceBoxes": [],
+            "maskKey": None,
+            "colorTemp": "warm",
+            "brightness": "mid",
+            "saturation": "normal",
+            "dominantColors": ["#C8A05A"],
+            "composition": "focal",
+            "scene": "outdoor",
+            "peopleCount": "1",
+            "mood": "warm",
+            "description": "海边",
+        },
+    )
+
+
+def test_photo_profile_disabled_returns_404(monkeypatch):
+    _enable(monkeypatch, "false")
+    client = TestClient(app)
+    resp = client.post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": "p1", "dataUrl": _data_url()}]},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+    assert resp.status_code == 404
+
+
+def test_photo_profile_requires_bearer(monkeypatch):
+    _enable(monkeypatch)
+    client = TestClient(app)
+    resp = client.post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": "p1", "dataUrl": _data_url()}]},
+    )
+    assert resp.status_code == 401
+
+
+def test_photo_profile_returns_profiles_keyed_by_photo_id(monkeypatch):
+    _enable(monkeypatch)
+    _stub_build(monkeypatch)
+    client = TestClient(app)
+    resp = client.post(
+        "/internal/photo-profile",
+        json={
+            "images": [
+                {"photoId": "p1", "dataUrl": _data_url()},
+                {"photoId": "p2", "dataUrl": _data_url()},
+            ]
+        },
+        headers={"Authorization": "Bearer s3cret"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert set(body["data"]["profiles"]) == {"p1", "p2"}
+    assert body["data"]["profiles"]["p1"]["composition"] == "focal"
+
+
+def test_photo_profile_output_parses_as_contract(monkeypatch):
+    """路由吐出来的东西必须还能被契约吃下 —— 这是 A/B 两线的接缝。"""
+    from src.contracts.photo_profile import PhotoProfile
+
+    _enable(monkeypatch)
+    _stub_build(monkeypatch)
+    client = TestClient(app)
+    resp = client.post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": "p1", "dataUrl": _data_url()}]},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+    PhotoProfile.model_validate(resp.json()["data"]["profiles"]["p1"])
+
+
+def test_photo_profile_empty_returns_empty_map(monkeypatch):
+    _enable(monkeypatch)
+    client = TestClient(app)
+    resp = client.post(
+        "/internal/photo-profile",
+        json={"images": []},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["data"]["profiles"] == {}
+
+
+def test_photo_profile_accepts_persist_mask_without_implementing_it(monkeypatch):
+    """persistMask 收下但本批不实现(要等 B 线的 R2 写入口)。
+
+    关键是**不能报错** —— 调用方带了这个参数不该 422,否则 B 线接上之前
+    连普通建档都调不通。
+    """
+    _enable(monkeypatch)
+    _stub_build(monkeypatch)
+    client = TestClient(app)
+    resp = client.post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": "p1", "dataUrl": _data_url()}], "persistMask": True},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["data"]["profiles"]["p1"]["maskKey"] is None
+
+
+def test_photo_profile_rejects_non_data_url(monkeypatch):
+    _enable(monkeypatch)
+    _stub_build(monkeypatch)
+    client = TestClient(app)
+    resp = client.post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": "p1", "dataUrl": "https://evil.example.com/a.jpg"}]},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+    assert resp.status_code == 400

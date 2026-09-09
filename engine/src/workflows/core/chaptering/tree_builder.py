@@ -98,10 +98,35 @@ def _with_ordinal(label: str, ordinal: int) -> str:
     return f"{label} · 第 {ordinal} 段"
 
 
+# 契约 V3ChapterPhoto.composition 的合法取值。档案里冒出枚举外的值(模型乱吐、
+# 老版本档案)必须在这里挡掉 —— 直接塞给 pydantic 会把整次 analyze 打成 failed。
+_COMPOSITIONS = {"closeup", "focal", "wide"}
+# 契约 V3ChapterPhoto.sceneDescription 的上限,超了同样打挂 analyze。
+_SCENE_DESCRIPTION_MAX = 300
+
+
+def _profile_scene_description(profile: Mapping[str, object] | None) -> str:
+    """档案 -> sceneDescription。没有档案/形状不对一律退回今天的空串。"""
+    if not isinstance(profile, Mapping):
+        return ""
+    value = profile.get("description")
+    return value[:_SCENE_DESCRIPTION_MAX] if isinstance(value, str) else ""
+
+
+def _profile_composition(profile: Mapping[str, object] | None) -> str | None:
+    """档案 -> composition。没有档案/枚举外的值一律退回今天的 None
+    (slot_matcher 遇到 None 视作任意,即今天的行为)。"""
+    if not isinstance(profile, Mapping):
+        return None
+    value = profile.get("composition")
+    return value if isinstance(value, str) and value in _COMPOSITIONS else None
+
+
 def assemble_stage1_tree(
     grouping: GroupingResult,
     assignments: UnplacedAssignments,
     photos_by_id: Mapping[str, V3AnalyzePhoto],
+    profiles: Mapping[str, Mapping[str, object]] | None = None,
 ) -> V3LayoutTree:
     if not grouping.chapters:
         raise ValueError("Stage1 grouping produced no chapters")
@@ -153,13 +178,16 @@ def assemble_stage1_tree(
             photos.append(
                 V3ChapterPhoto(
                     photoId=photo_id,
-                    # 砍掉豆包识图后不再有逐图场景描述,分析期恒为空串。
-                    sceneDescription="",
+                    # 有照片视觉档案就回填,没有(存量书/建档失败)退回空串 ——
+                    # 这个字段此前恒空,design-agent 的 skills.ts 一直在教模型用
+                    # 一个死字段,search_book 搜照片描述那条分支永远搜不到。
+                    sceneDescription=_profile_scene_description((profiles or {}).get(photo_id)),
                     width=src.width,
                     height=src.height,
                     orientation=_orientation(src.width, src.height),  # type: ignore[arg-type]
-                    # 构图也是识图产物,没有识图就交给排版按朝向自行匹配。
-                    composition=None,
+                    # 同上:此前恒 None,导致模板槽位声明的构图约束在生产里完全
+                    # 没生效(slot_matcher_v3 遇到 None 就「视作任意,不挡」)。
+                    composition=_profile_composition((profiles or {}).get(photo_id)),  # type: ignore[arg-type]
                     takenAt=src.exif.takenAt if src.exif else None,
                 )
             )

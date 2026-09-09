@@ -105,6 +105,11 @@ class Settings(BaseSettings):
     profile_seg_model_path: str = "/app/models/u2netp.onnx"
     profile_matting_model_path: str = "/app/models/isnet-general-use.onnx"
 
+    # analyze 期是否建照片视觉档案。**默认关**:开了就是每本书 N 次视觉模型调用,
+    # 而 analyze 至今是「零 AI 调用的纯确定性分组」(架构里写明的性质)。翻这一页
+    # 要先有人算过成本 —— 打开之前请看 docs 里那份设计文档的 §5。
+    agent_enable_photo_profile: bool = False
+
     # 仓里唯一的 Gemini 槽(native generateContent)。名字是历史产物:select-layout
     # 如今是纯确定性选版、根本不用 key,这把 key 唯一的消费者是 ④ /v3/compose 成稿。
     # 没改名是因为它在 Fly 上是 out-of-band 设的 secret,改名要跟线上轮换同步做;
