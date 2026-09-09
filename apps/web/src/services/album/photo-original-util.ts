@@ -112,6 +112,24 @@ export const PhotoOriginalUrlsBodySchema = z.object({
     .max(PHOTO_ORIGINAL_MAX_COUNT),
 }).strict();
 
+/** 抠图 mask 的 content-type。服务端(isnet)回来的就是一张 PNG。 */
+export const PHOTO_MASK_CONTENT_TYPE = 'image/png';
+
+/**
+ * 抠图 mask 的 R2 key。与原图同一套推导规则:**key 一律由 (albumId, photoId) 算出来**,
+ * 任何调用方都给不了 key —— 内部口的鉴权只有一把共享密钥,收 key 等于把它升格成
+ * 整桶任意对象的读写权。
+ *
+ * 不带 renderVersion:mask 是照片的固有属性(主体在哪),与 LUT/强度无关;
+ * 重跑分割就地覆盖,`profile.maskKey` 始终指向同一个 key。
+ */
+export function photoMaskKey(albumId: string, photoId: string): string {
+  if (!isValidPhotoId(photoId)) {
+    throw ERRORS.VALIDATION_FAILED('invalid photoId');
+  }
+  return `photo-masks/${albumId}/${photoId}.png`;
+}
+
 export function photoOriginalKey(albumId: string, photoId: string): string {
   if (!isValidPhotoId(photoId)) {
     throw ERRORS.VALIDATION_FAILED('invalid photoId');

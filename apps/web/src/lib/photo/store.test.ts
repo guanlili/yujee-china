@@ -241,6 +241,7 @@ const {
   filteredVariantPrefix,
   photoStore,
 } = await import('./store');
+const { cutoutEngine } = await import('./cutout/engine');
 
 function filterState(
   lutId: 'cloudy-cool' | 'street-negative',
@@ -1238,4 +1239,120 @@ test('抠图变体和同 LUT 的未抠变体是不同的 key', () => {
 test('抠图变体仍落在 filteredVariantPrefix 下 —— 否则 LRU 回收扫不到它', () => {
   const key = derivedCacheKey('p1', 'display', null, true);
   assert.ok(key.startsWith(filteredVariantPrefix('p1', 'display')));
+});
+
+// ── 服务端 mask 优先 ───────────────────────────────────────────────────────
+// 浏览器端那套抠图是漫水填充,无语义 —— 2026-08-29 实测「棚拍人像 5 张 0 张能用」,
+// 自动抠图因此被否决。现在 Agent 能自动开抠图,渲染就必须优先用服务端 isnet 的
+// mask(album_photos.profile.maskKey → R2 PNG),拿不到才退回浏览器端。
+async function withFakeCutout<T>(
+  over: Partial<{
+    applyToBlob: (blob: Blob) => Promise<Blob>;
+    applyMaskToBlob: (blob: Blob, mask: Blob) => Promise<Blob>;
+  }>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const originals = {
+    applyToBlob: cutoutEngine.applyToBlob,
+    applyMaskToBlob: cutoutEngine.applyMaskToBlob,
+  };
+  if (over.applyToBlob) cutoutEngine.applyToBlob = over.applyToBlob as typeof cutoutEngine.applyToBlob;
+  if (over.applyMaskToBlob) {
+    cutoutEngine.applyMaskToBlob = over.applyMaskToBlob as typeof cutoutEngine.applyMaskToBlob;
+  }
+  try {
+    return await run();
+  } finally {
+    cutoutEngine.applyToBlob = originals.applyToBlob;
+    cutoutEngine.applyMaskToBlob = originals.applyMaskToBlob;
+  }
+}
+
+const cutoutState = (photoId: string): PhotoFilterState => ({
+  default: null,
+  cutouts: { [photoId]: true },
+});
+
+test('有服务端 mask 时走 applyMaskToBlob,不碰浏览器端漫水填充', async () => {
+  const photoId = 'mask-preferred';
+  fakeDb.derived.set(`${photoId}@display`, new Blob(['base'], { type: 'image/jpeg' }));
+  const mask = new Blob(['mask-bytes'], { type: 'image/png' });
+  const asked: string[] = [];
+  photoStore.setPhotoMaskFetcher(async (id) => {
+    asked.push(id);
+    return mask;
+  });
+  let localCalls = 0;
+  let maskCalls = 0;
+  try {
+    await withFakeCutout({
+      applyToBlob: async (blob) => { localCalls += 1; return blob; },
+      applyMaskToBlob: async (_blob, m) => {
+        maskCalls += 1;
+        assert.equal(await m.text(), 'mask-bytes');
+        return new Blob(['cut-by-mask'], { type: 'image/webp' });
+      },
+    }, async () => {
+      const out = await photoStore.getTierBlob(photoId, 'display', cutoutState(photoId));
+      assert.equal(await out!.text(), 'cut-by-mask');
+    });
+  } finally {
+    photoStore.setPhotoMaskFetcher(null);
+  }
+  assert.equal(maskCalls, 1);
+  assert.equal(localCalls, 0, '有 mask 就不该退回漫水填充');
+  assert.deepEqual(asked, [photoId]);
+});
+
+test('没有 mask(没注入 fetcher / 取不到)时退回浏览器端抠图', async () => {
+  const photoId = 'mask-absent';
+  fakeDb.derived.set(`${photoId}@display`, new Blob(['base'], { type: 'image/jpeg' }));
+  photoStore.setPhotoMaskFetcher(async () => undefined);
+  let localCalls = 0;
+  try {
+    await withFakeCutout({
+      applyToBlob: async () => { localCalls += 1; return new Blob(['cut-local'], { type: 'image/webp' }); },
+      applyMaskToBlob: async () => { throw new Error('不该走到这里'); },
+    }, async () => {
+      const out = await photoStore.getTierBlob(photoId, 'display', cutoutState(photoId));
+      assert.equal(await out!.text(), 'cut-local');
+    });
+  } finally {
+    photoStore.setPhotoMaskFetcher(null);
+  }
+  assert.equal(localCalls, 1);
+});
+
+test('mask 抠出来的变体与漫水填充的变体不共用缓存 key —— 否则 mask 到货后永远看不到', () => {
+  assert.notEqual(
+    derivedCacheKey('p1', 'display', null, 'mask'),
+    derivedCacheKey('p1', 'display', null, true),
+  );
+  assert.ok(derivedCacheKey('p1', 'display', null, 'mask').startsWith(filteredVariantPrefix('p1', 'display')));
+});
+
+test('URL 缓存也按「抠没抠、用的哪种抠法」分键 —— 否则切换后拿到上一次的图', async () => {
+  const photoId = 'url-cache-cut';
+  fakeDb.derived.set(`${photoId}@display`, new Blob(['base'], { type: 'image/jpeg' }));
+  // ⚠️ 只补 URL 上的两个静态方法,**别整个替掉 globalThis.URL** —— 模块加载器要用
+  // `new URL(...)`,替掉之后任何一次 import 都会炸。
+  const urlCtor = globalThis.URL as unknown as Record<string, unknown>;
+  const had = { create: urlCtor.createObjectURL, revoke: urlCtor.revokeObjectURL };
+  let seq = 0;
+  urlCtor.createObjectURL = () => `blob:mock-${seq++}`;
+  urlCtor.revokeObjectURL = () => {};
+  photoStore.setPhotoMaskFetcher(null);
+  try {
+    await withFakeCutout({
+      applyToBlob: async () => new Blob(['cut-local'], { type: 'image/webp' }),
+    }, async () => {
+      const plain = await photoStore.getTierUrl(photoId, 'display', null);
+      const cut = await photoStore.getTierUrl(photoId, 'display', cutoutState(photoId));
+      assert.ok(plain && cut);
+      assert.notEqual(plain, cut, '抠图与原图不能共用一个 URL 缓存槽');
+    });
+  } finally {
+    urlCtor.createObjectURL = had.create;
+    urlCtor.revokeObjectURL = had.revoke;
+  }
 });

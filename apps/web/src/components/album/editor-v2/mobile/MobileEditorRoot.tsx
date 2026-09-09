@@ -50,6 +50,7 @@ import { useExport } from './use-export';
 import { useShareLink } from './use-share-link';
 import { usePhotoBackup } from './use-photo-backup';
 import { usePhotoOriginalSync } from '@/lib/hooks/use-photo-original-sync';
+import { usePhotoMaskSource } from '@/lib/hooks/use-photo-mask-source';
 import { createPageSaveCoordinator, type PagePatch, type PageSaveCoordinator } from '@/lib/collaboration/page-save-coordinator';
 import { createFetchPageSaveTransport } from '@/lib/collaboration/page-save-transport';
 import { createDraftSync, type SyncChanges } from '@/lib/collaboration/draft-sync';
@@ -898,6 +899,8 @@ export function MobileEditorRoot({
     // 游客零 R2 写入:确认是真实账号才开自动对账补传(服务端对游客也是 403)。
     enabled: Boolean(viewerSession.user && !viewerSession.user.isAnonymous),
   });
+  // 抠图 mask 的取数口(同桌面):不接的话手机端只有漫水填充那套。
+  usePhotoMaskSource(detail.album.id);
   const share = useShareLink(detail.album.id, locale, aT);
 
   // 导出闸门:ChatPanel 挂载即拉 story-progress 并经 setExportGateUi 推锁态过来

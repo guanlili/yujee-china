@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  photoMaskKey,
   photoOriginalKey, PhotoOriginalEntriesBodySchema,
   PhotoOriginalConfirmBodySchema, PhotoOriginalUrlsBodySchema,
 } from './photo-original-util';
@@ -72,4 +73,17 @@ test('missing with invalid photoId rejected', () => {
     missing: ['../etc'],
   });
   assert.equal(result.success, false);
+});
+
+// ── 抠图 mask 的 R2 key ────────────────────────────────────────────────────
+// 与原图同一套推导规则:key 由 (albumId, photoId) 算出来,任何调用方都给不了 key。
+test('photoMaskKey 由 (albumId, photoId) 推导,并挡住非法 photoId', () => {
+  assert.equal(
+    photoMaskKey('album-1', '550e8400-e29b-41d4-a716-446655440000'),
+    'photo-masks/album-1/550e8400-e29b-41d4-a716-446655440000.png',
+  );
+  // 路径穿越 / 跨命名空间的 id 一律拒 —— 与 photoOriginalKey 同一条闸。
+  for (const bad of ['../evil', 'a/b', '', 'x'.repeat(200)]) {
+    assert.throws(() => photoMaskKey('album-1', bad), /invalid photoId/i, `${bad} 应被拒`);
+  }
 });

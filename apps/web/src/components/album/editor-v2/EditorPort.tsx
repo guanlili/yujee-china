@@ -44,6 +44,7 @@ import {
   putSnapshotBlob,
 } from '@/lib/album/photo-snapshot-client';
 import { usePhotoOriginalSync } from '@/lib/hooks/use-photo-original-sync';
+import { usePhotoMaskSource } from '@/lib/hooks/use-photo-mask-source';
 import { createPageSaveCoordinator, type PagePatch } from '@/lib/collaboration/page-save-coordinator';
 import { createFetchPageSaveTransport } from '@/lib/collaboration/page-save-transport';
 import { createDraftSync, type SyncChanges } from '@/lib/collaboration/draft-sync';
@@ -1626,6 +1627,9 @@ function EditorBook({
     ),
     enabled: Boolean(viewerSession.user && !viewerSession.user.isAnonymous),
   });
+  // 抠图 mask 的取数口(2026-09-09 照片视觉档案那批):渲染优先用服务端 isnet 的分割
+  // 结果,拿不到才退回浏览器端的漫水填充。与身份无关 —— 服务端按 requireAccess 兜底。
+  usePhotoMaskSource(detail.album.id);
   useEffect(() => {
     // The canvas effect scopes to the SHARED outer root (created by the stable shell)
     // so it can reach the topbar + modals it wires (setLang walks the whole tree). Its

@@ -59,6 +59,16 @@ export function filteredVariantPrefix(photoId: string, tier: PhotoTier): string 
   return `${filteredPhotoNamespace(photoId)}@${tier}@pf-v1@`;
 }
 
+/**
+ * 这张照片抠没抠、用的哪一种抠法。
+ *   false  —— 没抠
+ *   'local' —— 浏览器端漫水填充(无语义的兜底,见 cutout-math.ts 抬头)
+ *   'mask'  —— 服务端 isnet 分割 mask
+ * 两种抠法**必须分键**:同一张照片先用兜底渲染过一遍、mask 随后才到货,共用 key
+ * 的话缓存会一直把那份残废的图喂回来,用户永远看不到好的那版。
+ */
+export type CutoutMode = false | 'local' | 'mask';
+
 // `cut`=这张照片抠了图。它必须参与 key —— 否则「抠了图但没上 LUT」会落进下面那个
 // 早退分支,拿到 `{photoId}@{tier}`,而那正是**未处理原图**的 key,两者互相覆盖。
 // 这是静默串味(不报错、不崩),排查成本极高。
@@ -67,14 +77,15 @@ export function derivedCacheKey(
   photoId: string,
   tier: PhotoTier,
   ref: PhotoFilterRef | null | undefined,
-  cut = false,
+  cut: boolean | CutoutMode = false,
 ): string {
   const strength = ref ? quantizeStrength(ref.strength) : 0;
   const filtered = Boolean(ref) && strength > 0;
   if (!filtered && !cut) return `${photoId}@${tier}`;
   // 抠图变体也挂在 filteredVariantPrefix 下,现有的 LRU 回收扫描才能覆盖到它。
   const lutPart = filtered ? `${ref!.lutId}@${strength}` : 'original@0';
-  return `${filteredVariantPrefix(photoId, tier)}${lutPart}${cut ? '@cut1' : ''}`;
+  const cutPart = cut === 'mask' ? '@cut1m' : cut ? '@cut1' : '';
+  return `${filteredVariantPrefix(photoId, tier)}${lutPart}${cutPart}`;
 }
 
 function effectiveFilter(
@@ -499,6 +510,52 @@ async function getBaseTierBlob(
   return derived;
 }
 
+/**
+ * 服务端抠图 mask 的取数口。编辑器挂载时注入(见 use-photo-mask-source.ts),
+ * 卸载/换相册传 null 收回 —— 与 setRemoteOriginalFetcher 同一套模块级槽位约定。
+ *
+ * 为什么必须有这条路:浏览器端那套是从四边漫水填充,**没有语义**,老照片/杂乱背景/
+ * 主体与背景同色一律失手(2026-08-29 实测棚拍人像 5 张 0 张能用,自动抠图因此被
+ * 否决)。现在 Agent 能自动开抠图,不接服务端 mask 就等于给用户一个被啃残的自己。
+ */
+export type PhotoMaskFetcher = (photoId: string) => Promise<Blob | undefined>;
+
+let maskFetcher: PhotoMaskFetcher | null = null;
+// 同一张照片一次编辑会话只问一次:display/thumb/backup/导出各走一遍取数,
+// 不合并的话同一张 mask 要下载四次。换 fetcher 时整表清掉(换相册 = 换命名空间)。
+const maskCache = new Map<string, Promise<Blob | undefined>>();
+
+function loadServerMask(photoId: string): Promise<Blob | undefined> {
+  const fetcher = maskFetcher;
+  if (!fetcher) return Promise.resolve(undefined);
+  let inflight = maskCache.get(photoId);
+  if (!inflight) {
+    // 失败一律吞成 undefined —— 取不到 mask 只该退回浏览器端抠图,
+    // 绝不能把整张照片(乃至整批)的渲染拖垮。
+    inflight = fetcher(photoId).catch(() => undefined);
+    maskCache.set(photoId, inflight);
+  }
+  return inflight;
+}
+
+type ResolvedCutout = { mode: CutoutMode; mask?: Blob };
+
+/** 先问服务端 mask,再决定这张照片用哪种抠法。没抠图的照片不问,不白花一次网络。 */
+async function resolveCutout(photoId: string, cut: boolean): Promise<ResolvedCutout> {
+  if (!cut) return { mode: false };
+  const mask = await loadServerMask(photoId);
+  return mask ? { mode: 'mask', mask } : { mode: 'local' };
+}
+
+/** 抠图的唯一执行点:画板与导出共用,两边才不会一个抠了一个没抠。 */
+async function applyCutout(blob: Blob, cutout: ResolvedCutout): Promise<Blob> {
+  if (cutout.mode === false) return blob;
+  // 抠不动时两个方法都原样退回入参(它们自己吞异常),所以这里不用再包 try。
+  return cutout.mask
+    ? cutoutEngine.applyMaskToBlob(blob, cutout.mask)
+    : cutoutEngine.applyToBlob(blob);
+}
+
 export interface TierBlobResult {
   blob: Blob | undefined;
   filteredFallback: boolean;
@@ -521,7 +578,8 @@ async function getTierBlobResult(
     };
   }
 
-  const key = derivedCacheKey(photoId, tier, ref, cut);
+  const cutout = await resolveCutout(photoId, cut);
+  const key = derivedCacheKey(photoId, tier, ref, cutout.mode);
   const cached = await getDerivedValue(key);
   if (cached instanceof Blob) {
     try {
@@ -541,8 +599,8 @@ async function getTierBlobResult(
   // 顺序是先调色再抠图:LUT 要在完整的 RGB 上算,抠图只是把背景的 alpha 打成 0。
   // 反过来先抠再调色,LUT 会把透明区域也一起算进去。
   const toned = ref ? await lutEngine.applyToBlob(base, ref, 'full') : base;
-  // 抠不动时 cutoutEngine 原样退回入参(它自己吞掉异常),所以这里不用再包一层 try。
-  const filtered = cut ? await cutoutEngine.applyToBlob(toned) : toned;
+  // 有服务端 mask 就用它,没有才退回浏览器端漫水填充(见 PhotoMaskFetcher 注释)。
+  const filtered = await applyCutout(toned, cutout);
   if (filtered === base) {
     console.warn('Filtered tier render returned the base Blob; variant not cached', {
       photoId,
@@ -676,6 +734,13 @@ export const photoStore = {
     remoteFetcher = fetcher;
   },
 
+  // 服务端抠图 mask 的取数口,同上一条的生命周期约定。换相册必须换(或清掉)——
+  // mask 缓存是按 photoId 记的,残留的 fetcher 会替错的相册答题。
+  setPhotoMaskFetcher(fetcher: PhotoMaskFetcher | null): void {
+    maskFetcher = fetcher;
+    maskCache.clear();
+  },
+
   // 规范上传档:手动备份/对账补传要传的就是这一份 —— 无滤镜、无用户偏好,只是把
   // 本地原图(HEIC 先转)按 backup 档位(3400/0.82)降采样成 JPEG。绝不读远端:
   // 本地原本就没有原图时上传等于把刚从 R2 下载的字节又传回 R2,纯粹浪费带宽,
@@ -751,7 +816,10 @@ export const photoStore = {
     photoFilter?: PhotoFilterState | null,
   ): Promise<string | undefined> {
     const ref = effectiveFilter(photoFilter, photoId);
-    const key = derivedCacheKey(photoId, tier, ref);
+    // ⚠️ URL 缓存的 key 必须与派生缓存同口径:少带 cut 的话「抠图版」和「原图版」
+    // 共用同一个槽位,切换抠图开关只会拿回上一次那张(静默,不报错)。
+    const cutout = await resolveCutout(photoId, isCutoutPhoto(photoFilter, photoId));
+    const key = derivedCacheKey(photoId, tier, ref, cutout.mode);
     const cached = cachedUrl(key);
     if (cached) {
       if (ref) {
@@ -771,7 +839,7 @@ export const photoStore = {
       const result = await getTierBlobResult(this, photoId, tier, photoFilter);
       if (!result.blob) return undefined;
       const urlKey = result.filteredFallback
-        ? derivedCacheKey(photoId, tier, null)
+        ? derivedCacheKey(photoId, tier, null, cutout.mode)
         : key;
       const existing = cachedUrl(urlKey);
       if (existing) return existing;
@@ -844,20 +912,27 @@ export const photoStore = {
         continue;
       }
       const ref = effectiveFilter(photoFilter, id);
-      if (!ref) {
+      const cut = isCutoutPhoto(photoFilter, id);
+      if (!ref && !cut) {
         out[id] = await blobToPdfDataUrl(blob, maxEdge);
         continue;
       }
 
+      // 抠图必须也走导出这条路,否则画板上抠掉了背景、导出/PDF 里背景还在。
+      // 顺序与画板一致(getTierBlobResult):**先 LUT 再抠图** —— LUT 要在完整的
+      // RGB 上算,反过来会把透明区域也算进去。
       const base = await blobToPdfJpegBlob(blob, maxEdge);
-      const filtered = await lutEngine.applyToBlob(base, ref, 'full');
-      if (filtered === base) {
+      const toned = ref ? await lutEngine.applyToBlob(base, ref, 'full') : base;
+      if (ref && toned === base) {
         console.warn('PDF filtered render returned the exact downsized base Blob', {
           photoId: id,
           ref,
         });
       }
-      out[id] = await blobToDataUrl(filtered);
+      const cutout = await resolveCutout(id, cut);
+      // 抠图产物带 alpha,编码成 WebP(JPEG 装不下 alpha)。导出下游是把 data URL
+      // 塞进 <img> 再整页栅格化,透明度照常合成。
+      out[id] = await blobToDataUrl(await applyCutout(toned, cutout));
     }
     return out;
   },

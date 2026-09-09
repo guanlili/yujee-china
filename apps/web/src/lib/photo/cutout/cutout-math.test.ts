@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildAlphaMask, featherMask } from './cutout-math';
+import { alphaFromMaskPixels, buildAlphaMask, featherMask } from './cutout-math';
 
 /** 造一张 w×h 的 RGBA 图:fill 是底色,rect 区域涂成另一色。 */
 function makeImage(w: number, h: number, bg: [number, number, number], rect?: {
@@ -86,4 +86,41 @@ test('羽化半径为 0 时原样返回,不悄悄改数据', () => {
   const px = makeImage(w, h, [255, 255, 255], { x0: 2, y0: 2, x1: 2, y1: 2, color: [0, 0, 0] });
   const hard = buildAlphaMask(px, w, h, { tolerance: 10 });
   assert.deepEqual(Array.from(featherMask(hard, w, h, 0)), Array.from(hard));
+});
+
+// ── 服务端 mask 的读法 ─────────────────────────────────────────────────────
+// 服务端(isnet)回来的是一张 PNG。它可能是**灰度**(主体白、背景黑,alpha 全 255),
+// 也可能是**带 alpha 的 RGBA**(主体不透明、背景透明)。两种都要读对 —— 读错的表现
+// 是「整张图全透明」或「抠图完全没生效」,而不会报错。
+
+function rgba(pixels: [number, number, number, number][]): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(pixels.length * 4);
+  pixels.forEach(([r, g, b, a], i) => {
+    out[i * 4] = r; out[i * 4 + 1] = g; out[i * 4 + 2] = b; out[i * 4 + 3] = a;
+  });
+  return out;
+}
+
+test('带 alpha 的 mask:直接用 alpha 通道', () => {
+  const alpha = alphaFromMaskPixels(rgba([
+    [255, 255, 255, 0],
+    [255, 255, 255, 128],
+    [255, 255, 255, 255],
+  ]));
+  assert.deepEqual([...alpha], [0, 128, 255]);
+});
+
+test('灰度 mask(alpha 全 255):用亮度,黑=背景 白=主体', () => {
+  const alpha = alphaFromMaskPixels(rgba([
+    [0, 0, 0, 255],
+    [128, 128, 128, 255],
+    [255, 255, 255, 255],
+  ]));
+  assert.equal(alpha[0], 0, '黑 = 背景 = 透明');
+  assert.equal(alpha[2], 255, '白 = 主体 = 不透明');
+  assert.ok(alpha[1]! > 100 && alpha[1]! < 160, '中间灰给半透明边缘');
+});
+
+test('空 mask 给空结果,不抛', () => {
+  assert.equal(alphaFromMaskPixels(new Uint8ClampedArray(0)).length, 0);
 });

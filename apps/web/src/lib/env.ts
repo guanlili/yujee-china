@@ -8,6 +8,15 @@ const EnvSchema = z.object({
     .default('postgresql://yujee:yujee@localhost:5432/yujee_dev'),
   AGENT_BASE_URL: z.string().url().default('http://localhost:8001'),
   AGENT_SHARED_SECRET: z.string().min(8).default('dev_secret_replace_me'),
+  // 2GB CLIP worker(yujee-agent-clip)。**不是** AGENT_BASE_URL 那台机器:
+  // /internal/photo-profile 只在装了 onnxruntime + 分割权重的 worker 上开,普通
+  // 1GB Agent 的开关关着 => 404。与 engine 的 grouping_clip_base_url 指同一台。
+  // 没配 = 抠图 mask 这条能力不存在,渲染安静退回浏览器端(不报错、不挡流程),
+  // 所以它**不进 PRODUCTION_REQUIRED**。
+  AGENT_CLIP_BASE_URL: z.string().url().optional(),
+  // 没配则回落 AGENT_SHARED_SECRET —— 与 engine 的
+  // `grouping_clip_secret or agent_shared_secret` 同一条回落规则。
+  AGENT_CLIP_SECRET: z.string().min(8).optional(),
   // 设计 Agent（packages/design-agent album server，对话式改书）。secret 未设 => 不带鉴权头（本地 dev）。
   DESIGN_AGENT_BASE_URL: z.string().url().default('http://localhost:8787'),
   DESIGN_AGENT_SHARED_SECRET: z.string().optional(),

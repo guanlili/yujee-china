@@ -188,3 +188,35 @@ export function featherMask(
   }
   return out;
 }
+
+// ── 服务端 mask 的读法 ─────────────────────────────────────────────────────
+// 上面那套漫水填充是**没有语义**的兜底(2026-08-29 验证「棚拍人像 5 张 0 张能用」,
+// 自动抠图因此被否决)。真正能用的是服务端 isnet-general-use 的分割 mask,由
+// `album_photos.profile.maskKey` 指向 R2 的一张 PNG。这里只做「把那张 PNG 的像素
+// 翻译成 alpha」这一件纯计算的事。
+//
+// 两种形状都要读对,而且读错**不会报错**,只会表现成「整张全透明」或「抠图没生效」:
+//   · 带 alpha 的 RGBA:主体不透明、背景透明 → 直接用 alpha 通道;
+//   · 灰度(canvas 解出来 alpha 恒 255):主体白、背景黑 → 用亮度。
+// 判据是「有没有任何一个像素 alpha < 255」,而不是猜文件格式。
+
+/** BT.601 亮度权重(与人眼感知一致;mask 本来就近乎灰度,这里只是稳妥取值)。 */
+function luma(r: number, g: number, b: number): number {
+  return Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+}
+
+export function alphaFromMaskPixels(rgba: Uint8ClampedArray): Uint8ClampedArray {
+  const count = Math.floor(rgba.length / 4);
+  const out = new Uint8ClampedArray(count);
+  let hasAlpha = false;
+  for (let i = 0; i < count; i += 1) {
+    if (rgba[i * 4 + 3]! < 255) { hasAlpha = true; break; }
+  }
+  for (let i = 0; i < count; i += 1) {
+    const base = i * 4;
+    out[i] = hasAlpha
+      ? rgba[base + 3]!
+      : luma(rgba[base]!, rgba[base + 1]!, rgba[base + 2]!);
+  }
+  return out;
+}

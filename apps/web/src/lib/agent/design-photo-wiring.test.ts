@@ -250,3 +250,52 @@ test('移动壳同样接上 —— 否则手机上调色只能靠刷新', () => 
   assert.match(body, /lastPersistedFilter\.current\s*=/);
   assert.match(body, /setPhotoFilter\(/);
 });
+
+// ── 抠图渲染必须优先用服务端 mask ─────────────────────────────────────────
+// 浏览器端那套是从四边漫水填充,没有语义(2026-08-29 实测棚拍人像 5 张 0 张能用,
+// 自动抠图因此被否决)。Agent 现在能自动开抠图,渲染不接服务端 isnet 的分割结果,
+// 用户拿到的就是一个被啃残的自己。
+
+test('开抠图时在服务端把 mask 备好(写 R2 + 回填 maskKey)', () => {
+  const service = code('../../services/album/album-service.ts');
+  assert.match(service, /ensureCutoutMasks\(/);
+  const mask = code('../../services/album/photo-mask-service.ts');
+  // R2 写成功才回填 maskKey —— 指向不存在对象的 maskKey 比没有更糟。
+  assert.match(mask, /putObject\([\s\S]{0,400}?maskKey:\s*key/);
+  assert.match(mask, /photoMaskKey\(/);
+});
+
+test('渲染侧优先服务端 mask,没有才退回浏览器端', () => {
+  const store = code('../../lib/photo/store.ts');
+  assert.match(store, /setPhotoMaskFetcher/);
+  // applyCutout 是唯一执行点:有 mask 走 applyMaskToBlob,没有才 applyToBlob。
+  assert.match(store, /cutout\.mask[\s\S]{0,120}?applyMaskToBlob[\s\S]{0,120}?applyToBlob/);
+  // 画板与导出走同一个执行点,两边才不会一个抠了一个没抠。
+  assert.match(store, /getPdfDataUrls[\s\S]{0,2000}?applyCutout\(/);
+});
+
+test('先 LUT 再抠图的顺序不许被动过', () => {
+  const store = code('../../lib/photo/store.ts');
+  // 画板路径与导出路径都必须是 toned(LUT 之后)再进 applyCutout。
+  // 只跳过函数**定义**那一处(形参叫 blob),其余每一个调用点都要查 ——
+  // 放宽到「以 base 开头也算过」会把「先抠再调色」这个错误放行(mutation 实测)。
+  const callSites = store.split('applyCutout(').slice(1)
+    .filter((block) => !block.startsWith('blob: Blob'));
+  assert.equal(callSites.length, 2, '画板与导出各一个调用点');
+  for (const block of callSites) {
+    assert.ok(block.startsWith('toned'), `applyCutout 的入参应是 LUT 之后的 toned,收到 ${block.slice(0, 24)}`);
+  }
+});
+
+test('编辑器两个壳都注入 mask fetcher —— 少一个那一端就只有漫水填充', () => {
+  const hook = code('../../lib/hooks/use-photo-mask-source.ts');
+  assert.match(hook, /photoStore\.setPhotoMaskFetcher\(/);
+  // 卸载/换相册必须收回:模块级单例槽位,残留的 fetcher 会替错的相册答题。
+  assert.match(hook, /setPhotoMaskFetcher\(null\)/);
+  for (const shell of [
+    '../../components/album/editor-v2/EditorPort.tsx',
+    '../../components/album/editor-v2/mobile/MobileEditorRoot.tsx',
+  ]) {
+    assert.match(code(shell), /usePhotoMaskSource\(/, `${shell} 应注入 mask fetcher`);
+  }
+});

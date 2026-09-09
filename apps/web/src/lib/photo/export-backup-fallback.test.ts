@@ -298,3 +298,120 @@ test('两端导出策略统一:都能导,都如实告知(桌面不再换成「�
     '§5.4 那道「本机没原图就不给导出」的闸已经撤掉,两端统一为「能导 + 告知」',
   );
 });
+
+/* ════════════════════════════════════════════════════════════════════════════
+   抠图必须也走导出这条路。
+
+   getPdfDataUrls 早先只认 LUT,完全不看 cutouts —— 画板上主体已经抠出来了,导出的
+   PDF / 单页图 / 拼图里背景还在。而抠图的 alpha 必须来自**服务端 mask**(浏览器端
+   那套漫水填充无语义,2026-08-29 实测棚拍人像 5 张 0 张能用而被否决),画板与导出
+   还得用**同一张** mask,否则两边不一致。
+   ════════════════════════════════════════════════════════════════════════════ */
+
+/** Node 里没有 FileReader,而抠图产物走的正是 blobToDataUrl。最小可用的桩。 */
+function installFileReader(): () => void {
+  const g = globalThis as Record<string, unknown>;
+  const had = 'FileReader' in g;
+  const original = g.FileReader;
+  g.FileReader = class {
+    result: string | null = null;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    error: unknown = null;
+    readAsDataURL(blob: Blob) {
+      void blob.arrayBuffer().then((buf) => {
+        this.result = `data:${blob.type};base64,${Buffer.from(buf).toString('base64')}`;
+        this.onload?.();
+      });
+    }
+  };
+  return () => {
+    if (had) g.FileReader = original;
+    else delete g.FileReader;
+  };
+}
+
+async function withCutoutStub<T>(
+  stub: { applyToBlob?: (b: Blob) => Promise<Blob>; applyMaskToBlob?: (b: Blob, m: Blob) => Promise<Blob> },
+  run: () => Promise<T>,
+): Promise<T> {
+  const { cutoutEngine } = await import('./cutout/engine');
+  const originals = { a: cutoutEngine.applyToBlob, m: cutoutEngine.applyMaskToBlob };
+  if (stub.applyToBlob) cutoutEngine.applyToBlob = stub.applyToBlob as typeof cutoutEngine.applyToBlob;
+  if (stub.applyMaskToBlob) {
+    cutoutEngine.applyMaskToBlob = stub.applyMaskToBlob as typeof cutoutEngine.applyMaskToBlob;
+  }
+  try {
+    return await run();
+  } finally {
+    cutoutEngine.applyToBlob = originals.a;
+    cutoutEngine.applyMaskToBlob = originals.m;
+  }
+}
+
+test('导出取数对抠图照片用服务端 mask —— 画板抠了导出也得抠', async () => {
+  const restoreReader = installFileReader();
+  const restore = installDecodeMocks([]);
+  const mask = new Blob(['mask-bytes'], { type: 'image/png' });
+  let maskCalls = 0;
+  photoStore.setPhotoMaskFetcher(async () => mask);
+  try {
+    const store = Object.create(photoStore) as typeof photoStore;
+    store.getBlob = async () => new Blob(['local'], { type: 'image/jpeg' });
+
+    const out = await withCutoutStub({
+      applyMaskToBlob: async (_b, m) => {
+        maskCalls += 1;
+        assert.equal(await m.text(), 'mask-bytes');
+        return new Blob(['cut-webp'], { type: 'image/webp' });
+      },
+      applyToBlob: async () => { throw new Error('有 mask 就不该退回漫水填充'); },
+    }, () => store.getPdfDataUrls(['a'], 900, { default: null, cutouts: { a: true } }));
+
+    assert.equal(maskCalls, 1);
+    assert.match(out.a!, /^data:image\/webp/, '抠图产物带 alpha,不能编码成 JPEG');
+  } finally {
+    photoStore.setPhotoMaskFetcher(null);
+    restore();
+    restoreReader();
+  }
+});
+
+test('导出:没开抠图的照片一个字节都不变(老书零影响)', async () => {
+  const seen: string[] = [];
+  const restore = installDecodeMocks(seen);
+  photoStore.setPhotoMaskFetcher(async () => { throw new Error('没抠图不该问 mask'); });
+  try {
+    const store = Object.create(photoStore) as typeof photoStore;
+    store.getBlob = async () => new Blob(['local'], { type: 'image/jpeg' });
+    const out = await withCutoutStub({
+      applyToBlob: async () => { throw new Error('不该抠'); },
+      applyMaskToBlob: async () => { throw new Error('不该抠'); },
+    }, () => store.getPdfDataUrls(['a'], 900, null));
+    assert.ok(out.a);
+  } finally {
+    photoStore.setPhotoMaskFetcher(null);
+    restore();
+  }
+});
+
+test('导出:取不到 mask 时退回浏览器端抠图,不是干脆不抠', async () => {
+  const restoreReader = installFileReader();
+  const restore = installDecodeMocks([]);
+  photoStore.setPhotoMaskFetcher(async () => undefined);
+  let localCalls = 0;
+  try {
+    const store = Object.create(photoStore) as typeof photoStore;
+    store.getBlob = async () => new Blob(['local'], { type: 'image/jpeg' });
+    const out = await withCutoutStub({
+      applyToBlob: async () => { localCalls += 1; return new Blob(['cut-local'], { type: 'image/webp' }); },
+      applyMaskToBlob: async () => { throw new Error('没 mask 不该走这条'); },
+    }, () => store.getPdfDataUrls(['a'], 900, { default: null, cutouts: { a: true } }));
+    assert.equal(localCalls, 1);
+    assert.match(out.a!, /^data:image\/webp/);
+  } finally {
+    photoStore.setPhotoMaskFetcher(null);
+    restore();
+    restoreReader();
+  }
+});

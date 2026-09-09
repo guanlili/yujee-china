@@ -9,6 +9,7 @@ import { designAgentClient } from '@/lib/agent/design-agent-client';
 import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '@/db/repos/__test__/setup';
 import { albumService } from './album-service';
+import { photoMaskService } from './photo-mask-service';
 
 /**
  * design-chat 一轮结束后把 Agent 改的滤镜落库。
@@ -234,6 +235,107 @@ test('没有分享的书:warnings 是空数组,不给用户刷假警报', async 
     });
     assert.deepEqual(applied?.warnings, []);
   } finally {
+    await cleanupUser(userId);
+  }
+});
+
+// ── 开抠图要顺手把服务端 mask 备好 ────────────────────────────────────────
+// 不备的话渲染只能退回浏览器端的漫水填充 —— 那正是 2026-08-29 验证「5 张 0 张能用」
+// 而被否决的那套。Agent 现在能自动开抠图,用户会拿到一个被啃残的自己。
+function captureMasks(impl?: (albumId: string, photoIds: string[]) => Promise<void>) {
+  const original = photoMaskService.ensureCutoutMasks;
+  const calls: { albumId: string; photoIds: string[] }[] = [];
+  photoMaskService.ensureCutoutMasks = async (albumId, photoIds) => {
+    calls.push({ albumId, photoIds: [...photoIds] });
+    if (impl) await impl(albumId, photoIds);
+    return { created: [...photoIds], deferred: 0 };
+  };
+  return {
+    calls,
+    restore() {
+      photoMaskService.ensureCutoutMasks = original;
+    },
+  };
+}
+
+test('开抠图 → 触发服务端 mask 生成', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seedBook('dcf-mask-on');
+  const capture = captureMasks();
+  try {
+    const before = (await albumRepo.findById(albumId))!.settingsRevision;
+    await albumService.persistDesignChat(userId, albumId, {
+      userMessage: '把这两张的主体抠出来',
+      assistantReply: '抠好了',
+      committed: false,
+      pages: [],
+      photoFilterPatch: { cutouts: { p1: true, p2: true } },
+      baseSettingsRevision: before,
+    });
+    assert.equal(capture.calls.length, 1);
+    assert.equal(capture.calls[0]!.albumId, albumId);
+    assert.deepEqual([...capture.calls[0]!.photoIds].sort(), ['p1', 'p2']);
+  } finally {
+    capture.restore();
+    await cleanupUser(userId);
+  }
+});
+
+test('只调色不抠图的一轮不去烧 mask 推理', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seedBook('dcf-mask-off');
+  const capture = captureMasks();
+  try {
+    const before = (await albumRepo.findById(albumId))!.settingsRevision;
+    await albumService.persistDesignChat(userId, albumId, {
+      ...persistInput,
+      baseSettingsRevision: before,
+    });
+    assert.equal(capture.calls.length, 0);
+  } finally {
+    capture.restore();
+    await cleanupUser(userId);
+  }
+});
+
+test('关抠图不触发 —— 删键那条路没有 mask 要备', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seedBook('dcf-mask-remove');
+  const capture = captureMasks();
+  try {
+    const before = (await albumRepo.findById(albumId))!.settingsRevision;
+    await albumService.persistDesignChat(userId, albumId, {
+      userMessage: '把抠图关掉',
+      assistantReply: '关了',
+      committed: false,
+      pages: [],
+      photoFilterPatch: { cutouts: { p1: null } },
+      baseSettingsRevision: before,
+    });
+    assert.equal(capture.calls.length, 0);
+  } finally {
+    capture.restore();
+    await cleanupUser(userId);
+  }
+});
+
+test('mask 生成炸了也不能把这一轮对话拖垮(滤镜已经落库了)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seedBook('dcf-mask-throw');
+  const capture = captureMasks(async () => { throw new Error('clip worker down'); });
+  try {
+    const before = (await albumRepo.findById(albumId))!.settingsRevision;
+    const applied = await albumService.persistDesignChat(userId, albumId, {
+      userMessage: '抠一下',
+      assistantReply: '好',
+      committed: false,
+      pages: [],
+      photoFilterPatch: { cutouts: { p1: true } },
+      baseSettingsRevision: before,
+    });
+    assert.equal(applied?.photoFilter?.cutouts?.p1, true, '抠图开关照样落库');
+  } finally {
+    capture.restore();
     await cleanupUser(userId);
   }
 });

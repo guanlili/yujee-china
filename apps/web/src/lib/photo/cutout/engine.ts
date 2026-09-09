@@ -7,7 +7,7 @@
 // 产物用 WebP 不用 PNG:抠图结果带 alpha,JPEG 装不下;而 3400px 的抠图 PNG
 // 动辄 5-15MB,WebP 与 JPEG 同量级(这条口径与 photo-snapshot-util 的 snapshotExt 一致)。
 
-import { buildAlphaMask, featherMask, type CutoutOptions } from './cutout-math';
+import { alphaFromMaskPixels, buildAlphaMask, featherMask, type CutoutOptions } from './cutout-math';
 
 const OUTPUT_TYPE = 'image/webp';
 const OUTPUT_QUALITY = 0.9;
@@ -23,7 +23,8 @@ interface CutoutBitmap {
 interface CutoutCanvas {
   width: number;
   height: number;
-  drawImage(bitmap: CutoutBitmap): void;
+  /** width/height 省略 = 按位图原尺寸画;传了 = 缩放到那个尺寸(mask 用)。 */
+  drawImage(bitmap: CutoutBitmap, width?: number, height?: number): void;
   getImageData(): { data: Uint8ClampedArray; width: number; height: number };
   putImageData(image: { data: Uint8ClampedArray; width: number; height: number }): void;
   encode(type: string, quality: number): Promise<Blob>;
@@ -38,10 +39,72 @@ interface CutoutEngineDependencies {
 
 export interface CutoutEngine {
   applyToBlob(original: Blob, opts?: Partial<CutoutOptions & { feather: number }>): Promise<Blob>;
+  /**
+   * 用**服务端 mask**(isnet-general-use 的分割结果,R2 上的 PNG)抠图。
+   *
+   * 与 applyToBlob 的区别只在 alpha 从哪来:那边是漫水填充猜的(无语义,2026-08-29
+   * 验证「棚拍人像 5 张 0 张能用」而被否决),这边是真分割模型算的。**有 mask 就走
+   * 这条**,拿不到才退回 applyToBlob。
+   *
+   * mask 与照片尺寸经常不同(mask 是 1024² 推理出来的),这里负责缩放对齐。
+   * 失败一律原样退回入参 —— 与 applyToBlob 同一条契约:抠不动也不能把照片弄丢。
+   */
+  applyMaskToBlob(original: Blob, mask: Blob): Promise<Blob>;
 }
 
 function createCutoutEngine(deps: CutoutEngineDependencies): CutoutEngine {
   return {
+    async applyMaskToBlob(original, mask) {
+      const canvas = deps.createCanvas();
+      if (!canvas) {
+        deps.logger.warn('cutout(mask): no canvas available; returning original');
+        return original;
+      }
+      try {
+        const bitmap = await deps.decodeBlob(original);
+        try {
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          canvas.drawImage(bitmap);
+          const image = canvas.getImageData();
+
+          // mask 单独一张画布:缩放到照片尺寸后再取像素,尺寸不同的话直接按
+          // 索引对位会整片错位(mask 是 1024² 出来的,照片是 3400 长边)。
+          const maskCanvas = deps.createCanvas();
+          if (!maskCanvas) {
+            deps.logger.warn('cutout(mask): no mask canvas; returning original');
+            return original;
+          }
+          let alpha: Uint8ClampedArray;
+          const maskBitmap = await deps.decodeBlob(mask);
+          try {
+            maskCanvas.width = image.width;
+            maskCanvas.height = image.height;
+            maskCanvas.drawImage(maskBitmap, image.width, image.height);
+            alpha = alphaFromMaskPixels(maskCanvas.getImageData().data);
+          } finally {
+            maskBitmap.close();
+            maskCanvas.dispose();
+          }
+
+          if (alpha.length !== image.width * image.height) {
+            deps.logger.warn('cutout(mask): alpha length mismatch; returning original');
+            return original;
+          }
+          for (let i = 0; i < alpha.length; i += 1) image.data[i * 4 + 3] = alpha[i]!;
+          canvas.putImageData(image);
+          return await canvas.encode(OUTPUT_TYPE, OUTPUT_QUALITY);
+        } finally {
+          bitmap.close();
+        }
+      } catch (error) {
+        deps.logger.warn('cutout(mask): failed; returning original', error);
+        return original;
+      } finally {
+        canvas.dispose();
+      }
+    },
+
     async applyToBlob(original, opts) {
       const canvas = deps.createCanvas();
       if (!canvas) {
@@ -92,7 +155,11 @@ function createCanvasAdapter(): CutoutCanvas | null {
     set width(v: number) { el.width = v; },
     get height() { return el.height; },
     set height(v: number) { el.height = v; },
-    drawImage(bitmap) { ctx.drawImage(bitmap as unknown as CanvasImageSource, 0, 0); },
+    drawImage(bitmap, width, height) {
+      const source = bitmap as unknown as CanvasImageSource;
+      if (width === undefined || height === undefined) ctx.drawImage(source, 0, 0);
+      else ctx.drawImage(source, 0, 0, width, height);
+    },
     getImageData() { return ctx.getImageData(0, 0, el.width, el.height); },
     putImageData(image) { ctx.putImageData(image as ImageData, 0, 0); },
     encode(type, quality) {

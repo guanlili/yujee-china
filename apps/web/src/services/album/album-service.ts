@@ -25,6 +25,7 @@ import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
 import { transientPagePhotoRefs } from './page-photo-refs';
 import { getPhotoProfiles, withPhotoProfiles } from './photo-profile-service';
+import { photoMaskService } from './photo-mask-service';
 import { extractDesignFromPages } from './append-photos';
 import {
   buildCoverSets,
@@ -1050,6 +1051,27 @@ export const albumService = {
         settingsRevision: result.settingsRevision,
         warnings: result.warnings,
       };
+
+      // 这一轮开了抠图的照片,顺手把**服务端分割 mask** 备好(写 R2 + 回填
+      // profile.maskKey)。不备的话渲染只能退回浏览器端的漫水填充 —— 那正是
+      // 2026-08-29 验证「棚拍人像 5 张 0 张能用」而被否决的那套,用户会拿到一个
+      // 被啃残的自己。
+      //
+      // **尽力而为,绝不让它拖垮这一轮**:滤镜/抠图开关此刻已经落库了,mask 只影响
+      // 抠得好不好。ensureCutoutMasks 自己吞异常,这里再兜一层是防它将来改坏。
+      // 没跑成的下一轮会自己补(判据是「开着抠图但还没 maskKey」)。
+      const turnedOn = Object.entries(
+        (input.photoFilterPatch as { cutouts?: Record<string, unknown> }).cutouts ?? {},
+      )
+        .filter(([, on]) => on === true)
+        .map(([photoId]) => photoId);
+      if (turnedOn.length > 0) {
+        try {
+          await photoMaskService.ensureCutoutMasks(albumId, turnedOn);
+        } catch (error) {
+          logger.warn({ albumId, err: String(error) }, 'cutout mask prep failed; browser fallback stands');
+        }
+      }
     }
 
     await db.transaction(async (tx) => {
