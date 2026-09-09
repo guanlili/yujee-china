@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import type { PhotoProfile } from "@yujee/contracts";
 import { resolveImagePos } from "../src/core/album/image-fit.ts";
 
@@ -77,4 +79,20 @@ test("坐标口径是 0-100，不是 0-1", () => {
 	// 铁律:与 imagePos 的 objectPosition 同口径。返回 0-1 会让整条链路静默错位。
 	const out = resolveImagePos("center-subject", profile({ subjectBox: { x: 60, y: 60, w: 20, h: 20 } }));
 	assert.deepEqual(out, { x: 70, y: 70, scale: 1 });
+});
+
+// ── 人脸框现在恒空(A 线拍板不接 YuNet)────────────────────────────────────
+// PhotoProfile.faceBoxes 在生产恒返回 [],所以 avoid-face-crop **必然**退化成
+// center-subject。这不是 bug,是当下的既定事实 —— 下面两条钉住退化路径是对的,
+// 免得后人看到「avoid-face-crop 和 center-subject 结果一样」以为坏了就去乱改。
+
+test("生产现状:faceBoxes 恒空时 avoid-face-crop 等同于 center-subject", () => {
+	const p = profile({ faceBoxes: [] });
+	assert.deepEqual(resolveImagePos("avoid-face-crop", p), resolveImagePos("center-subject", p));
+});
+
+test("image-fit 顶部注释写明人脸框恒空这件事", () => {
+	const source = readFileSync(fileURLToPath(new URL("../src/core/album/image-fit.ts", import.meta.url)), "utf8");
+	assert.match(source, /faceBoxes/);
+	assert.match(source, /恒空|恒为空|一直是空/);
 });

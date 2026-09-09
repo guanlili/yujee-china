@@ -181,3 +181,36 @@ test("接线:/api/chat 响应带回 photoFilter 与累计的 photoFilterPatch", 
 test("接线:装书时 reset 累计 patch —— 不重复落已经落过的库", () => {
 	assert.match(albumServerCode(), /\.reset\(\)/);
 });
+
+// ── 真的注册上了吗 ──────────────────────────────────────────────────────
+// 源码正则只能证明「代码里写了这一笔」,证明不了「工具真的出现在模型的菜单里」。
+// /api/state 把 runtime 实际注册的工具名吐出来,接线通没通一眼可见(也是线上排查
+// 「Agent 怎么不给我调色」的第一手证据)。
+
+test("滤镜/抠图工具在 seam 接通后真的注册了", async () => {
+	await withAlbumServer(async (baseUrl) => {
+		await loadBook(baseUrl, { albumId: "t1", book: BOOK });
+		const names: string[] = (await readState(baseUrl, "t1")).toolNames;
+		assert.ok(names.includes("set_photo_filter"), names.join(","));
+		assert.ok(names.includes("set_photo_cutout"), names.join(","));
+		assert.ok(names.includes("set_image_pos"), names.join(","));
+	});
+});
+
+test("没配 WEB_BASE_URL/AGENT_SHARED_SECRET 时 look_at_photos 不注册", async () => {
+	await withAlbumServer(async (baseUrl) => {
+		await loadBook(baseUrl, { albumId: "t2", book: BOOK });
+		assert.ok(!((await readState(baseUrl, "t2")).toolNames as string[]).includes("look_at_photos"));
+	});
+});
+
+test("配齐取图桥之后 look_at_photos 就注册了", async () => {
+	await withAlbumServer(
+		async (baseUrl) => {
+			await loadBook(baseUrl, { albumId: "t3", book: BOOK });
+			const names: string[] = (await readState(baseUrl, "t3")).toolNames;
+			assert.ok(names.includes("look_at_photos"), names.join(","));
+		},
+		{ WEB_BASE_URL: "https://web.example.com", AGENT_SHARED_SECRET: "s3cret" },
+	);
+});

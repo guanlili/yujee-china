@@ -22,7 +22,11 @@ primary_region = "nrt"
 [build]
 
 # Non-secret config only. Secrets set out-of-band, never committed:
-#   fly secrets set ARK_API_KEY=... DESIGN_AGENT_SHARED_SECRET=... -a yujee-design-agent
+#   fly secrets set ARK_API_KEY=... DESIGN_AGENT_SHARED_SECRET=... \
+#                   WEB_BASE_URL=https://<web> AGENT_SHARED_SECRET=... -a yujee-design-agent
+# WEB_BASE_URL + AGENT_SHARED_SECRET are what look_at_photos needs to pull photo
+# bytes from web's /api/v3/internal/photo-bytes. Missing either one and the tool
+# is simply not registered (no half-working tool the model can call and fail on).
 [env]
   PORT = "8787"
   NODE_ENV = "production"

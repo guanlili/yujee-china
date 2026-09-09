@@ -162,6 +162,8 @@ interface AlbumRuntime {
 	setContext(context: AlbumRuntimeContext): void;
 	/** 滤镜/抠图 seam:本地合并 + 累计 patch,由 /api/chat 响应带回给 web 落库。 */
 	photoFilter: PhotoFilterSeam;
+	/** 实际注册给模型的工具名。条件注册的那几个(滤镜/抠图/看图)通没通,看它。 */
+	toolNames: string[];
 	renderPreview(): string;
 	setActiveTrace(traceId: string | undefined): void;
 	setActiveStreamSink(sink: ((event: AlbumStreamEvent) => void) | undefined): void;
@@ -217,6 +219,19 @@ async function createAlbumRuntime(
 	const sessionRepo = new InMemorySessionRepo();
 	const harnessSession = await sessionRepo.create();
 	const traces = new TraceStore();
+	const tools = createAlbumTools({
+		catalog: deps.catalog,
+		skills,
+		getBookState: () => cloneAlbumBookState(bookState),
+		setBookState: (nextState) => {
+			// 写工具改的是页面;滤镜状态不归它们管,原样带过去(commitWrite 拿到的
+			// 是 getBookState 的克隆,本来就含 photoFilter,这里只是别让它掉队)。
+			bookState = cloneAlbumBookState(nextState);
+		},
+		applyPhotoFilter: (patch) => photoFilterSeam.apply(patch),
+		...(fetchPhotos ? { lookAtPhotos: fetchPhotos } : {}),
+	});
+
 	const session = createDesignAgentSession({
 		env: new NodeExecutionEnv({ cwd: deps.cwd }),
 		session: harnessSession,
@@ -225,18 +240,7 @@ async function createAlbumRuntime(
 		thinkingLevel: "off",
 		resources: { skills, promptTemplates: [] },
 		systemPrompt: buildAlbumSystemPrompt,
-		tools: createAlbumTools({
-			catalog: deps.catalog,
-			skills,
-			getBookState: () => cloneAlbumBookState(bookState),
-			setBookState: (nextState) => {
-				// 写工具改的是页面;滤镜状态不归它们管,原样带过去(commitWrite 拿到的
-				// 是 getBookState 的克隆,本来就含 photoFilter,这里只是别让它掉队)。
-				bookState = cloneAlbumBookState(nextState);
-			},
-			applyPhotoFilter: (patch) => photoFilterSeam.apply(patch),
-			...(fetchPhotos ? { lookAtPhotos: fetchPhotos } : {}),
-		}),
+		tools,
 	});
 
 	let activeTraceId: string | undefined;
@@ -368,6 +372,7 @@ async function createAlbumRuntime(
 			albumContext = context;
 		},
 		photoFilter: photoFilterSeam,
+		toolNames: tools.map((tool) => tool.name),
 		renderPreview(): string {
 			return renderAlbumBookPreviewHtml(bookState, deps.catalog);
 		},
@@ -817,6 +822,7 @@ export async function createAlbumAgentWebServer(options: AlbumAgentWebServerOpti
 					book: runtime.getBook(),
 					context: runtime.getContext(),
 					photoFilterPatch: runtime.photoFilter.pending(),
+					toolNames: runtime.toolNames,
 					artifact: { kind: "html", content: runtime.renderPreview() },
 					traces: runtime.traces.list(),
 				});

@@ -16,6 +16,13 @@
  *
  * ⚠️ 坐标一律 0-100 百分比,与 imagePos 的 objectPosition 同口径。别用 [0,1]。
  *
+ * ⚠️ **人脸框现在恒空,这不是 bug。** A 线拍板不接 YuNet(要自己写 priors 解码 +
+ * NMS,没验过的代码不如明说没有),所以 `PhotoProfile.faceBoxes` 在生产一直是空
+ * 数组 —— `avoid-face-crop` 因此**必然**退化成 `center-subject`(不报错,只是少
+ * 一条约束)。下面那条「没找到脸就退到 center-subject」的分支正是为此而写的,
+ * 别看到「两个意图结果一样」就以为坏了去改它。将来真接上人脸检测,这里零改动
+ * 就会自动生效。
+ *
  * ⚠️ **rotate 本批明确不动**:`ImagePos` 契约里有可选的 `rotate`(90/180/270),
  * `set_image_pos` 的 schema 只收 `x/y/scale`,本函数也只产出这三个字段,既有的
  * rotate 值由工具层原样保留。这是有意为之,不是漏了 —— 对齐 `page-html-dom.ts`

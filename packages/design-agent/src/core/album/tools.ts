@@ -243,7 +243,7 @@ type DeletePageInput = Static<typeof deletePageSchema>;
 // 不去动它的盒交换几何。contracts 的 ImagePos 与 page-html-dom 那两处 rotate
 // 契约不一致是手工编辑那条线的账,混进来只会扩大 diff。这是有意为之,不是漏了。
 const IMAGE_FIT_DESCRIPTION =
-	"构图意图,工具会按照片档案自动算坐标:center-subject=把主体放到画面中心;avoid-face-crop=别把脸切掉(按所有人脸的并集算);fill=铺满不特意对齐(回到 50/50/1)。";
+	"构图意图,工具会按照片档案自动算坐标:center-subject=把主体放到画面中心;avoid-face-crop=尽量避开人脸(按所有人脸的并集算;档案里没有人脸框时自动退回主体居中);fill=铺满不特意对齐(回到 50/50/1)。";
 
 const setImagePosSchema = Type.Object({
 	updates: Type.Array(
@@ -867,7 +867,7 @@ function createSetImagePosTool(
 		name: "set_image_pos",
 		label: "调整照片构图",
 		description:
-			"调整照片在框里的位置和缩放。**优先用 fit 意图**(center-subject=主体居中、avoid-face-crop=别切到脸、fill=铺满不特意对齐),工具会根据照片档案自动算出坐标;只有用户明确说了方向(「往左一点」「再拉近些」)才直接传 x/y/scale。x/y 是 0-100 的百分比,scale ≥ 1。",
+			"调整照片在框里的位置和缩放。**优先用 fit 意图**(center-subject=主体居中、avoid-face-crop=尽量避开人脸、fill=铺满不特意对齐),工具会根据照片档案自动算出坐标;只有用户明确说了方向(「往左一点」「再拉近些」)才直接传 x/y/scale。x/y 是 0-100 的百分比,scale ≥ 1。",
 		parameters: setImagePosSchema,
 		prepareArguments(args: unknown): SetImagePosInput {
 			return { updates: readImagePosUpdates(options, args) };

@@ -246,3 +246,17 @@ for (const [label, load] of skillSources) {
 		}
 	});
 }
+
+// ── 人脸框恒空:技能里别把「保证不切脸」写成承诺 ────────────────────────
+// A 线拍板不接 YuNet(要自己写 priors 解码 + NMS,没验过的代码不如明说没有),
+// 所以 PhotoProfile.faceBoxes 恒为 []。avoid-face-crop 会退化成 center-subject。
+
+for (const [label, load] of skillSources) {
+	test(`${label}的照片技能不把「保证不切脸」写成承诺`, () => {
+		const content = photoSkill(load())?.content ?? "";
+		assert.ok(!/保证不切|一定不会切/.test(content), "人脸框恒空,承诺不了");
+		// 光提一句 faceBoxes 不够 —— 必须明说它现在拿不到,以及由此产生的退化。
+		assert.match(content, /人脸框.{0,60}(暂时|目前|现在|还)?(拿不到|没有|恒空|未接入)/);
+		assert.match(content, /退化|退回|等同于/, "要写明 avoid-face-crop 会退回主体居中");
+	});
+}
