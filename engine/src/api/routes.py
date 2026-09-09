@@ -15,6 +15,7 @@ Stateless(§数据归属):Agent 不持 draft/stage;base64 只在 analyze/compose
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 from datetime import datetime, timezone
@@ -212,6 +213,12 @@ class _PhotoProfileRequest(BaseModel):
     persistMask: bool = False
 
 
+# 一批之内的并发上限。**不能不限**:视觉模型有速率限制,一次 gather 一百个会被
+# 打回来。跟 profile/remote.py 的 PROFILE_BATCH_SIZE 对齐 —— 调用方按 8 分批,
+# 这里就按 8 放行,多出来的排队。
+PROFILE_MAX_CONCURRENCY = 8
+
+
 @router.post("/internal/photo-profile", dependencies=[Depends(require_clip_bearer)])
 async def photo_profile(payload: _PhotoProfileRequest) -> dict:
     _require_clip_worker("photo profile")
@@ -220,13 +227,23 @@ async def photo_profile(payload: _PhotoProfileRequest) -> dict:
 
     from ..workflows.core.profile import build
 
-    profiles: dict[str, dict] = {}
-    for item in payload.images:
-        image = _decode_data_url(item.dataUrl)
-        # ⚠️ 这里**不套** _locked:build_profile 里除了本地分割推理,还有一次视觉
-        # 模型的网络调用(好几秒)。把网络等待也锁进去,一本 100 张的书就是几百秒
-        # 串行,analyze 直接超时。本地推理那段由 geometry.subject_mask 自己的
-        # @locked 兜着(RLock),内存该守的已经守住了。
-        profiles[item.photoId] = await run_in_threadpool(build.build_profile, image)
-    log.info("photo_profile", count=len(payload.images), persist_mask=payload.persistMask)
-    return {"ok": True, "data": {"profiles": profiles}}
+    # 坏 data URL 在跑任何推理之前就 400,别白烧算力。
+    decoded = [(item.photoId, _decode_data_url(item.dataUrl)) for item in payload.images]
+
+    # ⚠️ 批内必须**并发**,不能逐个 await。每张 ≈ 0.6s 本地推理 + 2~3s 视觉网络往返;
+    # 串行的话 100 张的书要跑 5-6 分钟,而 grouping_clip_timeout_seconds 默认才 180s
+    # —— 开关一开 analyze 就废。并发后一批 8 张从 ~28s 降到 ~5s。
+    #
+    # 这里**不套** _locked,也不该套:锁住网络等待就等于没并发。内存不会因此失守
+    # —— geometry.subject_mask 自己带 @locked(RLock),本地推理那段仍然全机串行,
+    # 并发的只是网络 I/O。tests/test_internal_clip_route.py 两头都钉了:
+    # 视觉调用必须有重叠、本地推理必须无重叠。
+    semaphore = asyncio.Semaphore(PROFILE_MAX_CONCURRENCY)
+
+    async def _build(photo_id: str, image: Image.Image) -> tuple[str, dict]:
+        async with semaphore:
+            return photo_id, await run_in_threadpool(build.build_profile, image)
+
+    pairs = await asyncio.gather(*(_build(pid, img) for pid, img in decoded))
+    log.info("photo_profile", count=len(decoded), persist_mask=payload.persistMask)
+    return {"ok": True, "data": {"profiles": dict(pairs)}}

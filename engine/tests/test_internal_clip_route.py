@@ -21,6 +21,7 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from src.api.routes import PROFILE_MAX_CONCURRENCY
 from src.main import app
 from src.settings import reset_settings_cache
 
@@ -285,3 +286,137 @@ def test_photo_profile_rejects_non_data_url(monkeypatch):
         headers={"Authorization": "Bearer s3cret"},
     )
     assert resp.status_code == 400
+
+
+class _Overlap:
+    """记录一段代码的进出窗口,数出「同时在里面的最大路数」。
+
+    用真实进出计数,不看代码里有没有 gather/锁 —— 「并发了但锁失效」和
+    「锁住了但没并发」这两种病只测一条都漏得掉。
+    """
+
+    def __init__(self) -> None:
+        import threading
+
+        self._guard = threading.Lock()
+        self.inside = 0
+        self.max_inside = 0
+        self.calls = 0
+
+    def enter(self) -> None:
+        with self._guard:
+            self.inside += 1
+            self.calls += 1
+            self.max_inside = max(self.max_inside, self.inside)
+
+    def exit(self) -> None:
+        with self._guard:
+            self.inside -= 1
+
+
+def _instrument_profile_pipeline(monkeypatch, *, inference_delay=0.05, vision_delay=0.20):
+    """把「本地推理」和「视觉网络调用」各插一个探针。
+
+    本地推理走**真的** subject_mask(连带它的 @locked),只把 onnx session 换掉;
+    视觉那头把 _call_vision 换成一段 sleep,模拟网络等待。
+    """
+    import numpy as np
+
+    from src.workflows.core.profile import geometry, semantic
+
+    inference = _Overlap()
+    vision = _Overlap()
+
+    class _FakeSession:
+        def get_inputs(self):
+            class _I:
+                name = "input"
+
+            return [_I()]
+
+        def run(self, _outputs, feed):
+            inference.enter()
+            try:
+                time.sleep(inference_delay)
+                out = np.zeros((1, 1, 320, 320), dtype=np.float32)
+                out[0, 0, 80:240, 80:240] = 1.0
+                return [out]
+            finally:
+                inference.exit()
+
+    monkeypatch.setattr(geometry, "_session", lambda spec: _FakeSession())
+
+    def _fake_call_vision(image):
+        vision.enter()
+        try:
+            time.sleep(vision_delay)  # 视觉模型的网络往返
+            return (
+                '{"composition":"focal","scene":"outdoor","peopleCount":"1",'
+                '"mood":"warm","description":"海边"}'
+            )
+        finally:
+            vision.exit()
+
+    monkeypatch.setattr(semantic, "_call_vision", _fake_call_vision)
+    return inference, vision
+
+
+def test_photo_profile_runs_the_batch_concurrently(monkeypatch):
+    """一批之内必须真并发,否则开关一开 analyze 就废。
+
+    每张 ≈ 0.6s 本地推理 + 2~3s 视觉网络。逐个 await 的话 100 张 ≈ 5-6 分钟,
+    而 grouping_clip_timeout_seconds 默认才 180s。
+
+    两条一起断言:
+      - 视觉调用**有重叠** —— 网络等待真并发了
+      - 本地推理**无重叠** —— 单飞锁还在守着 2GB 内存
+    只测一条会漏掉「并发了但锁失效」或「锁住了但没并发」。
+    """
+    _enable(monkeypatch)
+    inference, vision = _instrument_profile_pipeline(monkeypatch)
+
+    count = 6
+    client = TestClient(app)
+    resp = client.post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": f"p{i}", "dataUrl": _data_url()} for i in range(count)]},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+
+    assert resp.status_code == 200
+    assert len(resp.json()["data"]["profiles"]) == count
+    assert vision.calls == count and inference.calls == count
+
+    assert vision.max_inside > 1, (
+        f"视觉调用没有并发(最大同时 {vision.max_inside} 路)—— 逐个 await 的话"
+        " 100 张的书要跑 5-6 分钟,analyze 必超时"
+    )
+    assert inference.max_inside == 1, (
+        f"本地推理并发了 {inference.max_inside} 路 —— 单飞锁失效,2GB 会被撑爆"
+    )
+
+
+def test_photo_profile_concurrency_is_bounded(monkeypatch):
+    """并发度必须有上限:视觉模型有速率限制,不能一次 gather 一百个。
+
+    ⚠️ 本地推理的耗时必须调到 ~0:推理是串行的,它会把各路错开着送进视觉阶段,
+    重叠数天然被 vision_delay/inference_delay 压住,根本摸不到上限 —— 那样这条
+    断言就是废的(第一版正是这个毛病,去掉信号量它照样绿)。
+    """
+    _enable(monkeypatch)
+    inference, vision = _instrument_profile_pipeline(
+        monkeypatch, inference_delay=0.0, vision_delay=0.30
+    )
+
+    client = TestClient(app)
+    over = PROFILE_MAX_CONCURRENCY + 6
+    resp = client.post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": f"p{i}", "dataUrl": _data_url()} for i in range(over)]},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+
+    assert resp.status_code == 200
+    assert vision.max_inside <= PROFILE_MAX_CONCURRENCY, (
+        f"并发放到了 {vision.max_inside} 路,超过上限 {PROFILE_MAX_CONCURRENCY}"
+    )
