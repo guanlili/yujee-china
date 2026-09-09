@@ -142,7 +142,13 @@ Key files:
   (2026-09-09)。鉴权同上(`AGENT_SHARED_SECRET`)。请求体只收 `albumId` + `photoIds`,
   **不收 R2 key** —— key 由服务端从 `(albumId, photoId)` 推导、用 `album_photos` 校验
   归属;收 key 会让那把 secret 变成整桶任意对象的读取钥匙。没有服务端缩图(apps/web
-  没装图像库),靠「单张 3MB / 单次 6MB」的预算兜住模型请求体,超了如实报给模型。
+  没装图像库),靠预算兜住模型请求体,超了如实报给模型。预算按 **base64 之后**的大小
+  算(单张 2.5MiB / 单次 3.5MiB):这个口用普通 JSON 返回 base64,编码涨 4/3,按原始
+  字节记预算的话取满就是 8MB 响应体,顶穿 Vercel 的 4.5MB —— 那不是「跳过几张」,
+  是整次 500,兜底路径直接废。
+- `src/app/api/v1/albums/[uuid]/photo-masks/urls/`: 抠图 mask 的签名 GET(2026-09-09)。
+  渲染侧按 photoId 问,只有真有 `profile.maskKey` 的照片才出 URL;没出的浏览器退回自己
+  那套抠图。key 同样由 `(albumId, photoId)` 推导,归属走 `collaborationService.requireAccess`。
 - 设计对话的滤镜落库:design-agent **不写库**,它把本轮累计的 `photoFilterPatch` 随
   `/api/chat` 响应带回,`persistDesignChat` 调 `applyAgentPhotoFilter` 在 album 行锁内
   落 `albums.photo_filter`。**这一步独立于 `committed`** —— 滤镜走 `settingsRevision`,
@@ -209,13 +215,33 @@ full payloads under `public/luts/`; source `.cube` files are intentionally not t
 一次行锁、一个 normalize。它**只认 `true`**,关掉是删键(允许 `false` 会让「没抠」有两种
 表示,`renderVersion` 与派生缓存 key 立刻有歧义),且没有 album 级默认值。派生管线里的
 顺序是**先 LUT 后抠图**(LUT 要在完整 RGB 上算);抠图产物带 alpha,所以快照存 WebP
-而不是 JPEG。算法在 `src/lib/photo/cutout/cutout-math.ts`(边缘漫水填充,浏览器内跑,
-不上传照片、零边际成本),引擎抠不动时原样退回原图。已知局限:主体与背景同色、或背景
-杂乱时基本吃不动 —— 这是像素法的天花板,接口留窄了,换分割模型只动 `cutout-math.ts`。
+而不是 JPEG。
+
+alpha 从哪来有**两条路,优先服务端**(2026-09-09):
+
+1. **服务端分割 mask**(`isnet-general-use`,1024²)。开抠图时 `persistDesignChat` 调
+   `services/album/photo-mask-service.ts` 的 `ensureCutoutMasks`:取 R2 规范原图 → CLIP
+   worker 的 `/internal/photo-profile`(`persistMask=true`)→ mask 写
+   `photo-masks/{albumId}/{photoId}.png` → 回填 `album_photos.profile.maskKey`;渲染侧
+   经 `/api/v1/albums/{uuid}/photo-masks/urls` 换 300s 签名 GET 取回。尽力而为:R2 写成功
+   才回填 maskKey(指向不存在对象的 maskKey 比没有更糟),单轮上限 8 张,没跑完下一轮
+   自己补(判据是「开着抠图但还没 maskKey」)。没配 `AGENT_CLIP_BASE_URL` = 这条能力不
+   存在,安静降级。
+2. **浏览器端漫水填充**(`src/lib/photo/cutout/cutout-math.ts`)—— 只是**兜底**。它没有
+   语义:主体与背景同色、背景杂乱时基本吃不动(2026-08-29 实测棚拍人像 5 张 0 张能用,
+   自动抠图当时正是因此被否决)。拿不到服务端 mask 才走它。
+
+画板与导出共用 `store.ts` 里同一个 `applyCutout` 执行点、同一张 mask,两边不会一个抠了
+一个没抠(导出此前压根不抠图)。派生/URL 缓存 key 带抠法维度(`@cut1` / `@cut1m`),
+mask 到货后不会被先前那份兜底产物喂回来。两条路都遵守「抠不动原样退回入参」。
+⚠️ 已知欠账:`effectiveRenderVersion` **不含** mask 维度(升它会让所有存量分享快照一次性
+失配)。所以「先用兜底备份过、mask 之后才到货」这个组合,分享快照里仍是那份兜底像素。
 
 Changing the filter row-locks the album, persists only normalized filter state,
 invalidates stored PDF and cover-thumbnail metadata, and moves a `COMPLETED` album
-back to `EDITING`. Cover thumbnail signing returns an opaque SHA-256
+back to `EDITING`. 同值重写是**空操作**(`photoFilterStatesEqual`,归一化之后比较):
+不判这一条的话,用户再问一句「确认下调色」让 Agent 把同一份滤镜再写一遍,PDF 链接和
+封面缩略图就凭空消失、书还被打回 `EDITING`。 Cover thumbnail signing returns an opaque SHA-256
 `coverRevision` bound to normalized filter state, album `updatedAt`, and page 0.
 The immutable key is
 `cover-thumbs/{userId}/{albumId}/{coverRevision}.jpg`; confirmation re-locks and
@@ -332,6 +358,8 @@ Defaults live in `src/lib/env.ts`. Common fields:
 | `DATABASE_URL` | Postgres connection |
 | `AGENT_BASE_URL` | 生成 Agent base URL, default `http://localhost:8001` |
 | `AGENT_SHARED_SECRET` | Bearer secret shared with 生成 Agent |
+| `AGENT_CLIP_BASE_URL` | 2GB CLIP worker(`yujee-agent-clip`)base URL。**不是** `AGENT_BASE_URL` 那台:`/internal/photo-profile` 只在它上面开。可选,没配 = 抠图 mask 能力不存在,渲染退回浏览器端 |
+| `AGENT_CLIP_SECRET` | CLIP worker 的 bearer,未设则回落 `AGENT_SHARED_SECRET`(与 engine 的 `grouping_clip_secret or agent_shared_secret` 同一条回落规则) |
 | `DESIGN_AGENT_BASE_URL` | 设计 Agent base URL, default `http://localhost:8787` |
 | `DESIGN_AGENT_SHARED_SECRET` | Bearer secret shared with 设计 Agent(未设则不带鉴权头) |
 | `WEB_BASE_URL` | Web origin used in callbacks |
@@ -384,5 +412,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 1adaef05
+checked-at: ce04db52
 -->
