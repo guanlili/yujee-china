@@ -230,9 +230,39 @@ test("照片技能写明 look_at_photos 是兜底且有张数上限", () => {
 });
 
 test("照片技能提醒改滤镜可能影响已分享的书", () => {
-	// 工具结果的 notes 会带 warning，模型要知道那是必须转告用户的东西。
+	// 提醒得在调工具**之前**说 —— 写工具 terminate,模型看不到工具结果(见下面那组守卫)。
 	assert.match(photoSkill()?.content ?? "", /分享/);
 });
+
+// ── 别教模型做它物理上做不到的事 ────────────────────────────────────────
+// set_image_pos / set_photo_filter / set_photo_cutout 都是 terminate 写工具:
+// 工具一返回,agent 循环当场结束(agent-loop 的 hasMoreToolCalls = !terminate),
+// 用户看到的是模型**调工具之前**写的那句话。所以「工具结果的 notes 里若提到已分享,
+// 必须转告用户」这条指令模型这一轮根本执行不了 —— 跟刚清掉的 sceneDescription
+// 是同一种病:技能在教一件做不到的事,还让人以为这条路是通的。
+// 可靠的通道是 web 在 done 事件里直接把 warnings 展示给用户。
+
+for (const [label, load] of skillSources) {
+	test(`${label}的照片技能不教模型转述工具结果 —— 写工具 terminate，它看不到`, () => {
+		const content = photoSkill(load())?.content ?? "";
+		assert.ok(!/notes/i.test(content), "三个写工具都 terminate,notes 这一轮到不了模型");
+		assert.ok(!/转告/.test(content), "转述工具结果这件事模型做不到,别教");
+	});
+
+	test(`${label}的照片技能把分享风险写成动手之前就要说的话`, () => {
+		const content = photoSkill(load())?.content ?? "";
+		assert.match(content, /分享/);
+		assert.match(content, /之前/, "分享风险要写成「调工具之前就说」");
+		assert.match(content, /看不到|读不到/, "要写明写工具返回后模型这一轮没有发言机会");
+	});
+
+	test(`${label}的照片技能写明没建过档的照片用不了主体类 fit`, () => {
+		// 工具现在直接报错(不再静默退回 50/50/1),技能要先说清楚,别让模型撞了才知道。
+		const content = photoSkill(load())?.content ?? "";
+		assert.match(content, /报错/);
+		assert.match(content, /fill/);
+	});
+}
 
 for (const [label, load] of skillSources) {
 	test(`${label}的 skills 里都不再教 sceneDescription`, () => {

@@ -110,17 +110,36 @@ test("fit=fill 回到 50/50/1", async () => {
 	assert.deepEqual(getBook().pages[1]?.imagePos?.image, { x: 50, y: 50, scale: 1 });
 });
 
-test("没有档案的照片走 fit 时退回默认，并在 notes 里说清楚", async () => {
+// 没档案就算不出主体中心。以前的做法是退回 50/50/1 + 在 notes 里说一句 ——
+// 但写工具是 terminate 的,模型这一轮**看不到**工具结果,只会照着调用前那句
+// 「已按主体重新构图」交差,用户拿到的却是被推平的构图。所以这里必须报错:
+// 报错是这一轮唯一能到达模型的通道,它才有机会说实话或改用坐标。
+test("照片没有档案时 fit 意图报错，一个字节都不写", async () => {
 	const { tools, getBook } = createHarness();
-	const result = JSON.parse(
+	await assert.rejects(
 		// 内页 4 = 数组 3(双宽页吃掉了 2 和 3 两个号)。
-		await run(tools, "set_image_pos", { updates: [{ pageNo: 4, positions: { image: { fit: "center-subject" } } }] }),
+		() => run(tools, "set_image_pos", { updates: [{ pageNo: 4, positions: { image: { fit: "center-subject" } } }] }),
+		/档案/,
 	);
+	assert.equal(getBook().pages[3]?.imagePos ?? null, null, "算不出来就别写 —— 静默推平成 50/50/1 是反向执行");
+	assert.equal(getBook().version, 1, "报错不该前进 book version");
+});
+
+test("没有档案也能用 fit=fill —— 铺满不需要几何", async () => {
+	const { tools, getBook } = createHarness();
+	await run(tools, "set_image_pos", { updates: [{ pageNo: 4, positions: { image: { fit: "fill" } } }] });
 	assert.deepEqual(getBook().pages[3]?.imagePos?.image, { x: 50, y: 50, scale: 1 });
-	assert.ok(
-		(result.notes ?? []).some((note: string) => note.includes("档案")),
-		`notes 应说明没有档案：${JSON.stringify(result.notes)}`,
-	);
+});
+
+test("有档案但 subjectBox 为 null(纯风景)时按契约走默认，不报错", async () => {
+	// 契约写明 subjectBox=null 就是「没跑出主体,走默认 50/50/1」—— 这是**已知**事实,
+	// 跟「没建过档」的未知不是一回事,不能混为一谈。
+	const { tools, getBook } = createHarness((raw) => {
+		const photos = (raw.chapters as Array<Record<string, unknown>>)[0]!.photos as Array<Record<string, unknown>>;
+		photos[0]!.profile = { ...profile, subjectBox: null, faceBoxes: [] };
+	});
+	await run(tools, "set_image_pos", { updates: [{ pageNo: 1, positions: { image: { fit: "center-subject" } } }] });
+	assert.deepEqual(getBook().pages[1]?.imagePos?.image, { x: 50, y: 50, scale: 1 });
 });
 
 test("手动模式直接写 x/y/scale", async () => {
@@ -257,4 +276,116 @@ test("schema 里的 fit 枚举与 IMAGE_FIT_MODES 一致 —— 手写字面量�
 	const fitVariant = variants.find((variant: { properties?: { fit?: unknown } }) => variant.properties?.fit);
 	const literals = fitVariant.properties.fit.anyOf.map((entry: { const: string }) => entry.const);
 	assert.deepEqual(literals, [...IMAGE_FIT_MODES]);
+});
+
+// ── 非法入参必须报错,不许静默降级 ─────────────────────────────────────
+// 旧写法:isImageFit 不成立就掉进手工坐标分支、缺项补 50/50/1。
+// 用户说「把这几页的人像居中」→ 模型写 fit:"center"(少了 -subject)→ N 页构图被
+// 推平成 50/50/1、book version 前进、回执报成功 —— 用户以为「已按主体重新构图」。
+//
+// prepareArguments 之后其实**有**一道 typebox 兜底(pi-ai 的 validateToolArguments),
+// 但它看到的是 prepareArguments 改写之后的入参:非法值已经被折成合法形状,防线形同虚设。
+// 所以判非法这件事必须发生在 prepareArguments 自己身上。
+
+test("fit 拼错时报错，错误里列出全部合法值", async () => {
+	const { tools } = createHarness();
+	await assert.rejects(
+		() => run(tools, "set_image_pos", { updates: [{ pageNo: 1, positions: { image: { fit: "center" } } }] }),
+		(error: Error) => {
+			for (const mode of IMAGE_FIT_MODES) assert.match(error.message, new RegExp(mode));
+			return true;
+		},
+	);
+});
+
+test("fit 拼错时一页都不写，book version 不前进", async () => {
+	const { tools, getBook } = createHarness();
+	await assert.rejects(() =>
+		run(tools, "set_image_pos", {
+			updates: [
+				{ pageNo: 1, positions: { image: { fit: "center-subject" } } },
+				{ pageNo: 2, positions: { image1: { fit: "center" } } },
+			],
+		}),
+	);
+	assert.equal(getBook().pages[1]?.imagePos ?? null, null, "整批拒绝,不能有半截写入");
+	assert.equal(getBook().version, 1);
+});
+
+test("x/y/scale 传字符串时报错，不静默补 50/50/1", async () => {
+	const { tools, getBook } = createHarness();
+	await assert.rejects(
+		() => run(tools, "set_image_pos", { updates: [{ pageNo: 1, positions: { image: { x: "20", y: "80", scale: "1.4" } } }] }),
+		/x/,
+	);
+	assert.equal(getBook().pages[1]?.imagePos ?? null, null);
+});
+
+test("坐标缺项时报错 —— 补默认等于把没提到的那一维推平", async () => {
+	const { tools, getBook } = createHarness();
+	await assert.rejects(
+		() => run(tools, "set_image_pos", { updates: [{ pageNo: 1, positions: { image: { x: 20 } } }] }),
+		/y|scale/,
+	);
+	assert.equal(getBook().pages[1]?.imagePos ?? null, null);
+});
+
+test("既没 fit 也没坐标时报错", async () => {
+	const { tools } = createHarness();
+	await assert.rejects(
+		() => run(tools, "set_image_pos", { updates: [{ pageNo: 1, positions: { image: {} } }] }),
+		/fit/,
+	);
+});
+
+test("同时给 fit 和坐标时报错 —— 二选一，不替模型挑", async () => {
+	const { tools } = createHarness();
+	await assert.rejects(
+		() => run(tools, "set_image_pos", { updates: [{ pageNo: 1, positions: { image: { fit: "fill", x: 20, y: 30, scale: 1 } } }] }),
+		/fit/,
+	);
+});
+
+test("positions 的条目不是对象时报错，不静默丢弃", async () => {
+	const { tools, getBook } = createHarness();
+	await assert.rejects(
+		() => run(tools, "set_image_pos", { updates: [{ pageNo: 1, positions: { image: "center-subject" } }] }),
+		/image/,
+	);
+	assert.equal(getBook().version, 1);
+});
+
+// ── 空 positions 不许推进 book version(协同 OCC 下白给别人制造冲突面)────
+
+test("positions 是空对象时报错，book version 不前进", async () => {
+	const { tools, getBook } = createHarness();
+	await assert.rejects(() => run(tools, "set_image_pos", { updates: [{ pageNo: 1, positions: {} }] }), /positions/);
+	assert.equal(getBook().version, 1, "没有实际改动就不该 commit —— 整书 replaceAll 会给协作者制造冲突");
+});
+
+test("execute 兜底：空 positions 直落到 execute 也不 commit", async () => {
+	const { tools, getBook } = createHarness();
+	const tool = tools.get("set_image_pos");
+	assert.ok(tool);
+	await assert.rejects(() => tool.execute("test-call", { updates: [{ pageNo: 1, positions: {} }] } as never), /positions/);
+	assert.equal(getBook().version, 1);
+});
+
+test("整批里有一页 positions 为空就整批拒绝", async () => {
+	const { tools, getBook } = createHarness();
+	await assert.rejects(() =>
+		run(tools, "set_image_pos", {
+			updates: [
+				{ pageNo: 1, positions: { image: { fit: "fill" } } },
+				{ pageNo: 4, positions: {} },
+			],
+		}),
+	);
+	assert.equal(getBook().version, 1);
+});
+
+test("缺 positions 的单页调用报错，不当成空写入", async () => {
+	const { tools, getBook } = createHarness();
+	await assert.rejects(() => run(tools, "set_image_pos", { pageNo: 1 }), /positions/);
+	assert.equal(getBook().version, 1);
 });

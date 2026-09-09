@@ -42,7 +42,6 @@ import { createDefaultAlbumSkills } from "./skills.ts";
 import { type FontRole, fontAllowsRole, fontsForRole, getFontEntry } from "./font-registry.ts";
 import { derivePageTexts, patchHtmlImagePos, patchHtmlText, validatePageHtml } from "./html-guard.ts";
 import {
-	DEFAULT_IMAGE_POS,
 	type ImageFit,
 	IMAGE_FIT_MODES,
 	type ImagePosValue,
@@ -860,6 +859,9 @@ function createUpdatePageImagesTool(
 /** 一个槽的构图请求:要么给意图(工具算坐标),要么给坐标(用户明确说了方向)。 */
 type ImagePosRequest = { fit: ImageFit } | ImagePosValue;
 
+/** 手工坐标必须三项齐给 —— 缺项补默认 = 把没提到的那一维静默推平。 */
+const IMAGE_POS_COORD_KEYS = ["x", "y", "scale"] as const;
+
 function createSetImagePosTool(
 	options: AlbumToolsOptions,
 ): AgentTool<typeof setImagePosSchema, AlbumWriteDetails> {
@@ -884,6 +886,11 @@ function createSetImagePosTool(
 				const page = requirePage(options, state, internalNo);
 				const template = requireTemplate(options.catalog, page.templateId);
 				const label = pageLabelOf(options, state, internalNo);
+				// 没有实际改动就不写:空 positions 也走 commitWrite 会白白前进 book version
+				// → 整书 replaceAll + draftRevision 前进 → 协同 OCC 下给别的协作者凭空造冲突面。
+				if (Object.keys(update.positions).length === 0) {
+					throw new Error(`${label}的 positions 是空的 —— 至少要给一个图槽,没有实际改动就不该写。`);
+				}
 				const allowed = new Set(template.imageSlotIds);
 				const positions: Record<string, ImagePosValue> = {};
 
@@ -905,10 +912,19 @@ function createSetImagePosTool(
 					if ("fit" in request) {
 						const photoId = page.images[slotId];
 						const photo = photoId ? findAlbumPhoto(state, photoId) : undefined;
-						if (!photo?.profile) {
-							notes.push(
-								`${label}的图槽 "${slotId}" 没有照片档案,fit 意图退回默认构图(50/50/1)。`,
-							);
+						// fill 的定义就是 50/50/1,不需要几何;其余意图算不出来就必须报错。
+						// ⚠️ 以前是退回默认 + 在 notes 里说一句 —— 但写工具 terminate,模型这一轮
+						// 根本读不到 notes,只会照着调用前那句「已按主体重新构图」交差,用户拿到的
+						// 却是被推平的构图。报错是这一轮唯一能到达模型的通道。
+						if (request.fit !== "fill") {
+							if (!photoId) {
+								throw new Error(`${label}的图槽 "${slotId}" 是空槽(没有照片),fit 意图无从算起。`);
+							}
+							if (!photo?.profile) {
+								throw new Error(
+									`${label}的图槽 "${slotId}" 的照片没有视觉档案(存量书没建过档),算不出主体位置,做不了 ${request.fit}。要么改用 fit:"fill"(铺满,回到 50/50/1),要么等用户说了方向再给 x/y/scale —— 别声称已按主体重新构图。`,
+								);
+							}
 						}
 						positions[slotId] = resolveImagePos(request.fit, photo?.profile);
 						continue;
@@ -1102,6 +1118,10 @@ function createSetPhotoFilterTool(
 	};
 }
 
+/** 抠图开关的错误话术:只有布尔 true 才开,方向不猜(见 prepareArguments 里的注释)。 */
+const REQUIRE_CUTOUT_ON =
+	'on 必须是布尔值:true = 抠出主体,false = 恢复原图。字符串 "true"/"false" 与 0/1 都不接受 —— 开关方向不猜。';
+
 function createSetPhotoCutoutTool(
 	options: AlbumToolsOptions,
 	applyPhotoFilter: NonNullable<AlbumToolsOptions["applyPhotoFilter"]>,
@@ -1110,14 +1130,21 @@ function createSetPhotoCutoutTool(
 		name: "set_photo_cutout",
 		label: "抠出照片主体",
 		description:
-			"把照片主体从背景里抠出来(用于主体叠加类版式)。**逐张开,不要整本默认全抠** —— 抠图会改变照片观感,用户没要求就别动。开了之后要在回复里说清楚改了哪几张。",
+			"把照片主体从背景里抠出来(用于主体叠加类版式)。**逐张开,不要整本默认全抠** —— 抠图会改变照片观感,用户没要求就别动。要改哪几张,在调这个工具之前就说清楚:它一返回本轮就结束了,你没有补话的机会。",
 		parameters: setPhotoCutoutSchema,
 		prepareArguments(args: unknown): SetPhotoCutoutInput {
-			if (!isRecord(args)) return { photoIds: [], on: true };
+			if (!isRecord(args)) throw new Error(REQUIRE_CUTOUT_ON);
 			const rawIds = Array.isArray(args.photoIds) ? args.photoIds : args.photoId !== undefined ? [args.photoId] : [];
+			// ⚠️ 开关方向**不许猜**。旧写法 `args.on !== false` 把 "false"(字符串)、0、
+			// 缺省全折成 true:用户说「把抠图关掉」,系统反而给他抠了背景,renderVersion
+			// 一变已发布的分享快照当场失配 —— 反向执行比不执行糟得多。非布尔一律报错,
+			// 错误里带合法取值让模型自己改对。
+			if (typeof args.on !== "boolean") {
+				throw new Error(`${REQUIRE_CUTOUT_ON}收到 ${describeValue(args.on)}。`);
+			}
 			return {
 				photoIds: rawIds.filter((entry): entry is string => typeof entry === "string"),
-				on: args.on !== false,
+				on: args.on,
 			};
 		},
 		async execute(
@@ -1131,7 +1158,9 @@ function createSetPhotoCutoutTool(
 				requireBookPhoto(state, photoId);
 				// ⚠️ 契约铁律:关掉抠图是**删键**(null),绝不写 false。允许 false 会让
 				// 「没抠」有两种表示,renderVersion 和派生缓存 key 立刻产生歧义。
-				cutouts[photoId] = params.on ? true : null;
+				// ⚠️ 判等写 `=== true` 而不是真值判断:第二道防线,万一有非布尔绕过
+				// prepareArguments 落到这里,方向也只会倒向安全的那一侧(关闭)。
+				cutouts[photoId] = params.on === true ? true : null;
 			}
 
 			const { warnings } = await applyPhotoFilter({ cutouts });
@@ -2067,35 +2096,95 @@ function readImagePosUpdates(
 ): Array<{ pageNo: number; positions: Record<string, ImagePosRequest> }> {
 	if (!isRecord(args)) return [];
 	if (Array.isArray(args.updates)) {
-		return args.updates.filter(isRecord).map((update) => ({
-			pageNo: resolveRefToInternal(options, update.pageNo ?? update.pageIndex),
-			positions: readImagePosRecord(update.positions ?? update.imagePos),
-		}));
+		return args.updates.filter(isRecord).map((update) => {
+			const rawRef = update.pageNo ?? update.pageIndex;
+			return {
+				pageNo: resolveRefToInternal(options, rawRef),
+				positions: readImagePosRecord(update.positions ?? update.imagePos, rawRef),
+			};
+		});
 	}
-	const pageNo = resolveRefToInternal(options, args.pageNo ?? args.pageIndex);
-	const positions = readImagePosRecord(args.positions ?? args.imagePos);
-	if (pageNo > 0 && Object.keys(positions).length > 0) return [{ pageNo, positions }];
-	return [];
+	const rawRef = args.pageNo ?? args.pageIndex;
+	// 连页码都没有 = 不是单页调用,交给 execute 报「updates 至少要包含一页」。
+	if (rawRef === undefined || rawRef === null) return [];
+	return [
+		{
+			pageNo: resolveRefToInternal(options, rawRef),
+			positions: readImagePosRecord(args.positions ?? args.imagePos, rawRef),
+		},
+	];
 }
 
-function readImagePosRecord(value: unknown): Record<string, ImagePosRequest> {
-	if (!isRecord(value)) return {};
+/** 报错话术里的页码位置:直接回显模型自己写的那个值,它才知道改哪一处。 */
+function imagePosRefLabel(rawRef: unknown): string {
+	return `pageNo ${typeof rawRef === "string" ? JSON.stringify(rawRef) : String(rawRef)}`;
+}
+
+function readImagePosRecord(value: unknown, rawRef: unknown): Record<string, ImagePosRequest> {
+	if (!isRecord(value)) {
+		throw new Error(
+			`${imagePosRefLabel(rawRef)} 的 positions 必须是 { 图槽 id: { fit: ... } 或 { x, y, scale } } 这样的对象,收到 ${describeValue(value)}。`,
+		);
+	}
 	const out: Record<string, ImagePosRequest> = {};
 	for (const [slotId, entry] of Object.entries(value)) {
-		if (!isRecord(entry)) continue;
-		if (isImageFit(entry.fit)) {
-			out[slotId] = { fit: entry.fit };
-			continue;
-		}
-		// 坐标缺项按 render default 补齐(#165:50/50/1),越界留给 execute 报错 ——
-		// 静默夹到合法区间会让模型以为自己写对了。
-		out[slotId] = {
-			x: typeof entry.x === "number" ? entry.x : DEFAULT_IMAGE_POS.x,
-			y: typeof entry.y === "number" ? entry.y : DEFAULT_IMAGE_POS.y,
-			scale: typeof entry.scale === "number" ? entry.scale : DEFAULT_IMAGE_POS.scale,
-		};
+		out[slotId] = readImagePosRequest(entry, `${imagePosRefLabel(rawRef)} 的图槽 "${slotId}"`);
 	}
 	return out;
+}
+
+/**
+ * 一个槽的构图请求。**非法输入一律报错,绝不静默降级。**
+ *
+ * 旧写法:`isImageFit(entry.fit)` 不成立就掉进手工坐标分支,缺项补 50/50/1。
+ * 于是 `fit:"center"`(少了 `-subject`)= 把这一槽的构图推平成默认值,book version
+ * 前进,回执还报成功 —— 用户听到的是「已按主体重新构图」,拿到的是全被推平。
+ * 静默降级比报错糟得多:报错模型能自己改对,降级它连错都不知道。
+ *
+ * ⚠️ 别指望 prepareArguments 之后那道 typebox 校验(pi-ai 的 validateToolArguments)
+ * 兜底 —— 它看到的是本函数改写之后的入参。非法值在这里被折成合法形状,那道防线
+ * 就永远看不到原始值。判非法必须发生在这里。
+ */
+function readImagePosRequest(entry: unknown, label: string): ImagePosRequest {
+	if (!isRecord(entry)) {
+		throw new Error(`${label} 的构图必须是 { fit: ... } 或 { x, y, scale },收到 ${describeValue(entry)}。`);
+	}
+	const hasFit = Object.hasOwn(entry, "fit");
+	const hasCoord = IMAGE_POS_COORD_KEYS.some((key) => Object.hasOwn(entry, key));
+	if (hasFit && hasCoord) {
+		throw new Error(
+			`${label} 同时给了 fit 和坐标 —— 二选一:要么只给 fit(工具照档案算坐标),要么只给 x/y/scale(用户明确说了方向时)。`,
+		);
+	}
+	if (hasFit) {
+		if (!isImageFit(entry.fit)) {
+			throw new Error(
+				`${label} 的 fit ${describeValue(entry.fit)} 不是可用的构图意图。可用值:${IMAGE_FIT_MODES.join("、")}。`,
+			);
+		}
+		return { fit: entry.fit };
+	}
+	if (!hasCoord) {
+		throw new Error(
+			`${label} 既没给 fit 也没给 x/y/scale。优先给 fit(${IMAGE_FIT_MODES.join("、")}),只有用户明确说了方向才给三项齐全的坐标。`,
+		);
+	}
+	// 三项逐个读,少一项就报错 —— 这里**没有**默认值:缺项按 50/50/1 补,等于把模型
+	// 没提到的那一维静默推平(x 给了、y 没给 = y 被拉回 50)。
+	const readCoord = (key: (typeof IMAGE_POS_COORD_KEYS)[number]): number => {
+		const raw = entry[key];
+		if (typeof raw !== "number" || !Number.isFinite(raw)) {
+			throw new Error(
+				`${label} 的 ${key} 必须是数字(x/y 是 0-100 百分比,scale 是 ${MIN_IMAGE_SCALE}-${MAX_IMAGE_SCALE}),收到 ${describeValue(raw)}。三项要齐给;想让工具代劳算坐标就改用 fit 意图(${IMAGE_FIT_MODES.join("、")})。`,
+			);
+		}
+		return raw;
+	};
+	return { x: readCoord("x"), y: readCoord("y"), scale: readCoord("scale") };
+}
+
+function describeValue(value: unknown): string {
+	return value === undefined ? "undefined" : JSON.stringify(value);
 }
 
 // 兼容：既接受批量 { updates: [{pageNo, images}] }，也接受单页 { pageNo, images }。

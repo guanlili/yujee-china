@@ -7,6 +7,7 @@ import { type AlbumBookState, cloneAlbumBookState, parseAlbumBookInput } from ".
 import { LUT_IDS, type PhotoFilterPatch } from "../src/core/album/photo-filter.ts";
 import { loadTemplateCatalog } from "../src/core/album/templates-catalog.ts";
 import { type AlbumToolsOptions, createAlbumTools } from "../src/core/album/tools.ts";
+import { stripComments } from "./helpers/source-comments.ts";
 
 /**
  * set_photo_filter / set_photo_cutout —— 整本定调与抠图。
@@ -209,6 +210,55 @@ test("set_photo_cutout 也不碰书状态", async () => {
 	assert.equal(harness.getBook().version, 1);
 });
 
+// ── on 的方向不能猜 ─────────────────────────────────────────────────────
+// 旧写法 `on: args.on !== false` 把 "false"(字符串)、0、缺省全部折成 true:
+// 用户说「把这张的抠图关掉」→ 模型吐 on:"false" → 照片反而被抠掉背景 →
+// renderVersion 变化 → 已发布的分享快照失配。**反向执行比不执行糟得多**,
+// 所以只有布尔 true 才开,非布尔一律报错(错误里带合法值让模型自己改对),绝不猜。
+
+const NON_BOOLEAN_ON: Array<[string, unknown]> = [
+	["字符串 false", "false"],
+	["字符串 true", "true"],
+	["数字 0", 0],
+	["数字 1", 1],
+	["null", null],
+];
+
+for (const [label, value] of NON_BOOLEAN_ON) {
+	test(`set_photo_cutout 的 on 收到${label}时报错，不替模型猜方向`, async () => {
+		const harness = createHarness();
+		await assert.rejects(
+			() => run(harness.tools, "set_photo_cutout", { photoIds: ["p1"], on: value }),
+			/on 必须是布尔值/,
+		);
+		assert.equal(harness.calls.length, 0, "非布尔 on 不该穿到 seam —— 猜错方向就是反向执行");
+	});
+}
+
+test("set_photo_cutout 缺 on 时报错 —— 缺省当成开，用户要关反而被抠", async () => {
+	const harness = createHarness();
+	await assert.rejects(() => run(harness.tools, "set_photo_cutout", { photoIds: ["p1"] }), /on 必须是布尔值/);
+	assert.equal(harness.calls.length, 0);
+});
+
+test("set_photo_cutout 的 on 报错信息里带合法取值，模型能自己改对", async () => {
+	const harness = createHarness();
+	await assert.rejects(() => run(harness.tools, "set_photo_cutout", { photoIds: ["p1"], on: "false" }), (error: Error) => {
+		assert.match(error.message, /true/);
+		assert.match(error.message, /false/);
+		return true;
+	});
+});
+
+test("execute 兜底：非布尔 on 直落到 execute 时也只走关闭(删键)方向", async () => {
+	// prepareArguments 已经拦在前面,这是第二道防线:方向的默认值必须是安全的那一侧。
+	const harness = createHarness();
+	const tool = harness.tools.get("set_photo_cutout");
+	assert.ok(tool);
+	await tool.execute("test-call", { photoIds: ["p1"], on: "false" } as never);
+	assert.equal(harness.calls[0]?.cutouts?.p1, null, "只有布尔 true 才准开抠图");
+});
+
 test("抠图工具描述里写明不做整本默认全抠", () => {
 	const description = createHarness().tools.get("set_photo_cutout")?.description ?? "";
 	assert.match(description, /不要|别|逐张/);
@@ -242,14 +292,36 @@ test("seam 抛错时工具原样抛出，不吞", async () => {
 // design-agent 是 packages/** 里的库,不能反向依赖 apps/web,所以 LUT id 清单是
 // 抄的一份镜像。抄的东西一定会漂 —— 加一道机械守卫直接读真相源比对。
 
+/**
+ * 从真相源文本里读出 LUT id 清单(抽成函数才测得动:真相源不方便为了跑守卫去改)。
+ * **先剥注释** —— 见 test/helpers/source-comments.ts 顶部那段为什么。
+ */
+function parseLutIds(source: string): Array<string | undefined> {
+	const body = stripComments(source).split("export const LUT_DEFINITIONS = [")[1]?.split("] as const;")[0];
+	assert.ok(body, "真相源结构变了 —— LUT_DEFINITIONS 数组没找到");
+	return [...body.matchAll(/\{\s*id:\s*'([^']+)'/g)].map((match) => match[1]);
+}
+
+test("清单解析先剥注释 —— 注释掉的 LUT 不该被数进来", () => {
+	// 这道守卫存在的全部理由就是拦漂移;不剥注释的话,谁加一行注释掉的 LUT,
+	// 26 这个数量闸和 deepEqual 就一起被喂饱,守卫从此永远绿。
+	const faux = [
+		"export const LUT_DEFINITIONS = [",
+		"  { id: 'alpha', label: '甲' },",
+		"  // { id: 'ghost-line', label: '被行注释掉的' },",
+		"  /* { id: 'ghost-block' }, */",
+		"  { id: 'beta', label: '乙' },",
+		"] as const;",
+	].join("\n");
+	assert.deepEqual(parseLutIds(faux), ["alpha", "beta"]);
+});
+
 test("LUT_IDS 与 apps/web 的 LUT_DEFINITIONS 逐字一致", () => {
 	const source = readFileSync(
 		fileURLToPath(new URL("../../../apps/web/src/lib/photo/filter-state.ts", import.meta.url)),
 		"utf8",
 	);
-	const body = source.split("export const LUT_DEFINITIONS = [")[1]?.split("] as const;")[0];
-	assert.ok(body, "真相源结构变了 —— LUT_DEFINITIONS 数组没找到");
-	const webIds = [...body.matchAll(/\{\s*id:\s*'([^']+)'/g)].map((match) => match[1]);
+	const webIds = parseLutIds(source);
 	assert.equal(webIds.length, 26, `真相源里应有 26 个 LUT，读到 ${webIds.length} 个`);
 	assert.deepEqual([...LUT_IDS], webIds, "滤镜清单漂移：apps/web 改了 LUT_DEFINITIONS，这边没跟上");
 });

@@ -10,6 +10,7 @@ import { loadTemplateCatalog } from "../src/core/album/templates-catalog.ts";
 import { createAlbumTools } from "../src/core/album/tools.ts";
 import { createDesignAgentSession } from "../src/core/design-agent-session.ts";
 import { ALBUM_WRITE_TOOL_NAMES, pickStepText } from "../src/web/album-server.ts";
+import { stripComments } from "./helpers/source-comments.ts";
 
 // 步骤叙述 = 工具循环里【每一条带读类 tool_call 的助手消息】的可见文本(AI 边做边说)。
 // 写类工具会 terminate 本轮(commitWrite terminate:true),所以带写类 tool_call 的消息
@@ -148,7 +149,8 @@ test("集成:工具循环里每条读类步骤的文本都被逐条捕获,终稿
 // 接线守卫:album-server 的 subscribe(message_end)确实用 pickStepText 并发 assistant_step,
 // 且没有「每轮只发一条」的旧闸门(openingStepEmitted 已删,逐条流出)。
 test("接线:album-server 在 message_end 里逐条发 assistant_step 步骤事件", () => {
-	const src = readFileSync(fileURLToPath(new URL("../src/web/album-server.ts", import.meta.url)), "utf8");
+	// 断言前先剥注释:不剥的话 assert.match 会被注释喂成假绿、doesNotMatch 会被喂成假红。
+	const src = stripComments(readFileSync(fileURLToPath(new URL("../src/web/album-server.ts", import.meta.url)), "utf8"));
 	assert.match(src, /message_end[\s\S]*?pickStepText\(event\.message\)/);
 	assert.match(src, /type:\s*"assistant_step"/);
 	assert.doesNotMatch(src, /openingStepEmitted/, "一次性闸门必须保持拆除");

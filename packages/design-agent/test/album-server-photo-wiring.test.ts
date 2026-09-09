@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { ALBUM_WRITE_TOOL_NAMES, createAlbumAgentWebServer } from "../src/web/album-server.ts";
+import { stripComments } from "./helpers/source-comments.ts";
 
 /**
  * 三个 seam 的接线:滤镜/抠图走「响应带回」,look_at_photos 走 internal 端点取图。
@@ -102,59 +103,12 @@ test("三个新写工具都在 ALBUM_WRITE_TOOL_NAMES 里", () => {
 // ── 接线守卫 ────────────────────────────────────────────────────────────
 // ⚠️ 源码正则守卫必须**先剥注释**再断言 —— 否则注释里提一句工具名就把断言喂饱,
 // 假绿。本仓踩过这个坑(2026-09-09 web 侧 DESIGN_WRITE_TOOLS 那次)。
+// stripComments 与它自己的自测都在 test/helpers/source-comments.ts + test/source-comments.test.ts。
 
 function albumServerCode(): string {
 	const source = readFileSync(fileURLToPath(new URL("../src/web/album-server.ts", import.meta.url)), "utf8");
 	return stripComments(source);
 }
-
-/** 去掉 // 行注释与 /* *\/ 块注释;字符串字面量里的 // 不误伤(用最朴素的状态机)。 */
-export function stripComments(source: string): string {
-	let out = "";
-	let index = 0;
-	let quote: string | null = null;
-	while (index < source.length) {
-		const char = source[index]!;
-		const next = source[index + 1];
-		if (quote) {
-			if (char === "\\") {
-				out += char + (next ?? "");
-				index += 2;
-				continue;
-			}
-			if (char === quote) quote = null;
-			out += char;
-			index += 1;
-			continue;
-		}
-		if (char === '"' || char === "'" || char === "`") {
-			quote = char;
-			out += char;
-			index += 1;
-			continue;
-		}
-		if (char === "/" && next === "/") {
-			while (index < source.length && source[index] !== "\n") index += 1;
-			continue;
-		}
-		if (char === "/" && next === "*") {
-			index += 2;
-			while (index < source.length && !(source[index] === "*" && source[index + 1] === "/")) index += 1;
-			index += 2;
-			continue;
-		}
-		out += char;
-		index += 1;
-	}
-	return out;
-}
-
-test("剥注释的小工具本身是对的（否则守卫全是假绿）", () => {
-	assert.equal(stripComments("a // applyPhotoFilter\nb").includes("applyPhotoFilter"), false);
-	assert.equal(stripComments("a /* lookAtPhotos */ b").includes("lookAtPhotos"), false);
-	assert.equal(stripComments('const x = "// not a comment";').includes("not a comment"), true);
-	assert.equal(stripComments("const u = 'https://x';").includes("https://x"), true);
-});
 
 test("接线:createAlbumTools 真的收到了 applyPhotoFilter 与 lookAtPhotos", () => {
 	const code = albumServerCode();
