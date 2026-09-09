@@ -138,6 +138,16 @@ Key files:
   (刷成纯白的书里插进一页深红)。它是自证式的:现状解释得了页面就原样返回同一个
   对象,解释不了且能自证出新状态才改写,两条都对不上就不猜。
 - `src/app/api/v3/internal/job-progress/handler.ts`: Agent callback sink。
+- `src/app/api/v3/internal/photo-bytes/`: design-agent 的 `look_at_photos` 取图口
+  (2026-09-09)。鉴权同上(`AGENT_SHARED_SECRET`)。请求体只收 `albumId` + `photoIds`,
+  **不收 R2 key** —— key 由服务端从 `(albumId, photoId)` 推导、用 `album_photos` 校验
+  归属;收 key 会让那把 secret 变成整桶任意对象的读取钥匙。没有服务端缩图(apps/web
+  没装图像库),靠「单张 3MB / 单次 6MB」的预算兜住模型请求体,超了如实报给模型。
+- 设计对话的滤镜落库:design-agent **不写库**,它把本轮累计的 `photoFilterPatch` 随
+  `/api/chat` 响应带回,`persistDesignChat` 调 `applyAgentPhotoFilter` 在 album 行锁内
+  落 `albums.photo_filter`。**这一步独立于 `committed`** —— 滤镜走 `settingsRevision`,
+  不进页面 `version`,只调色不改版面的一轮 `committed` 是 false,拿它当闸门会让调色
+  永远存不下来。
 
 ## Browser Data Boundary
 

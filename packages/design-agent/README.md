@@ -31,10 +31,46 @@ Web 侧客户端:`apps/web/src/lib/agent/design-agent-client.ts`。
 
 **后两个是条件注册的**:`set_photo_filter` / `set_photo_cutout` 写的是
 `albums.photo_filter` 列(走 `settingsRevision` 那套 OCC),不是页面 draft ——
-它们不调 `commitWrite`,而是走 `AlbumToolsOptions.applyPhotoFilter` 这个注入的 seam
-(实现在 web 侧 `applyAgentPhotoFilter`,album 行锁内)。**seam 没注入就不注册**:
-宁可没这个能力,也不能让模型调一个写不进去的工具、还在回复里跟用户说改好了。
-同理,兜底读工具 `look_at_photos` 由 `lookAtPhotos` seam 决定注册与否。
+它们不调 `commitWrite`,而是走 `AlbumToolsOptions.applyPhotoFilter` 这个注入的 seam。
+**seam 没注入就不注册**:宁可没这个能力,也不能让模型调一个写不进去的工具、还在
+回复里跟用户说改好了。同理,兜底读工具 `look_at_photos` 由 `lookAtPhotos` seam 决定。
+
+### 照片三件套的接线(2026-09-09)
+
+**滤镜/抠图走「响应带回」,不开跨服务回调** —— 沿用本服务的既有约定:agent 不直接
+写库,写入后的书由响应带回,调用方负责持久化。具体:
+
+- 装书(`POST /api/book`)时 web 多推三样:`book.photoFilter`(全书调色现状)、
+  顶层的 `hasPublishedShare`(这本书发布过分享没有)、`viewablePhotoIds`
+  (有 R2 原图可看的照片)。后两样走顶层不进 `book` —— 它们是相册属性,掺进书契约
+  会污染 `parseAlbumBookInput`。
+- `applyPhotoFilter` seam 是**本地**的(`src/web/album-photo-seams.ts`):合进内存
+  的书(同一轮 `read_page` 要立刻读得到)+ 累计 patch;书已分享时返回一条固定
+  warning 进工具 `notes`。
+- `POST /api/chat` 响应带回 `photoFilter`(最终状态)和 `photoFilterPatch`(累计
+  patch)。**web 落库要用的是后者**。
+
+⚠️ **落库必须用累计 patch,不能拿最终状态反推**:最终状态里 `cutouts` 只有 `true`,
+「这张关掉了」表现为键不存在,而 patch 里键不存在的语义是「没提到,别动」——
+反推会让关抠图永远落不了库。
+
+⚠️ 分享 warning **不精确到 photoId**:要算「哪几张的 renderVersion 变了」就得在
+agent 侧镜像 web 的 `effectiveRenderVersion`,白多一个漂移面。精确判定留在 web 的
+`shareMismatchWarnings`(那边拿得到备份集合)。
+
+**`look_at_photos` 按需取图**:POST 到 web 的 `/api/v3/internal/photo-bytes`,鉴权
+与 `job-progress` / `agent-data` / `photo-profiles` 同款(`AGENT_SHARED_SECRET` 的
+Bearer)。请求体只送 `albumId` + `photoIds`,**不送 R2 key** —— key 由 web 从
+`(albumId, photoId)` 推导并用 `album_photos` 校验归属,否则那把 secret 就成了整桶
+任意对象的读取钥匙。不发签名 URL:`ImageContent` 只收 base64,图终究要经过本进程,
+何况 `signGetUrl` 默认 300s 比一轮对话短。
+
+需要两个环境变量才通(缺一样 `look_at_photos` 就不注册):
+
+```bash
+fly secrets set WEB_BASE_URL=https://<web> AGENT_SHARED_SECRET=... -a yujee-design-agent
+```
+
 
 `set_text_colors` 带对比度硬校验(2026-08-29):三色配到该页**实际底色**上(取
 carrier → 模板自带深底 → 白底默认的优先级,即 `effectivePageBackground`)任何一色
@@ -181,5 +217,5 @@ print/RPC/interactive 三种模式。**通用 agent loop 在 `packages/agent`**,
 
 <!-- doc-scope
 paths: packages/design-agent/src/**, packages/design-agent/fly.toml, apps/web/src/lib/agent/design-agent-client.ts
-checked-at: d227a895
+checked-at: 8d1100ee
 -->

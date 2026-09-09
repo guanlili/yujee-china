@@ -75,6 +75,11 @@ memoir-agent-rebuild/
 `/api/v3/albums/[uuid]/design-chat` 转给 Design Agent(`POST /api/book` + `POST /api/chat`),
 与上面七步无关。别把它和生成链路混为一谈。
 
+Design Agent 也**不写库**:装书时 Web 把书 + 相册语境(滤镜现状 / 这本书分享过没有 /
+哪些照片有原图可看)推过去,改动经 `/api/chat` 响应带回,Web 负责落库。它唯一会反过来
+调 Web 的口是 `POST /api/v3/internal/photo-bytes`(`look_at_photos` 按需取照片字节,
+`AGENT_SHARED_SECRET` 鉴权)。
+
 已设计的书之后再加照片:增量排版一旦落地,Web 会自动为新章单独发一单范围收窄的
 `POST /v3/compose`(空封面/封尾槽、只送新章,Agent 侧全局批次因此跳过,只补新页文案,
 老页与手改文案不动);未设计的书维持现状,新页文案等选封面时随全书成稿一起写。
