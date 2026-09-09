@@ -57,13 +57,19 @@ Postgres + Cloudflare R2
 - **必须单机运行。** 每册的 session/trace/书状态在进程内存里,Web 每轮先 `POST /api/book`
   再 `POST /api/chat`,两个请求必须命中同一台机器。`fly scale count 1`,不要开 HA,
   不要 `auto_stop_machines`。理由和部署命令写在 `packages/design-agent/fly.toml` 注释里。
-- 十个写工具:`update_page_texts` / `write_page_html` / `swap_page_template` /
-  `update_page_images` / `set_text_colors` / `set_page_background` / `apply_book_style` /
-  `set_text_fonts` / `move_pages` / `delete_page`(后两个是 2026-08-29 风格理解那批加的:
-  前者逐页/全书刷底色,后者整本换四风格之一)。新增写工具时,
+- 十三个写工具:`update_page_texts` / `write_page_html` / `swap_page_template` /
+  `update_page_images` / `set_image_pos` / `set_text_colors` / `set_page_background` /
+  `apply_book_style` / `set_text_fonts` / `move_pages` / `delete_page` /
+  `set_photo_filter` / `set_photo_cutout`(最后三个是 2026-09-09 照片视觉档案那批加的:
+  构图裁切 / 整本调色 / 逐张抠图)。新增写工具时,
   `design-chat/route.ts` 的 `DESIGN_WRITE_TOOLS` 集合、
   `editor-v2/chat-history.ts` 的 `DESIGN_CHANGE_CATEGORY` 映射都必须同步,
   否则历史回放会丢更新/少一类彩色条。
+- **后两个写工具与兜底读工具 `look_at_photos` 是条件注册的**:滤镜/抠图写的是
+  `albums.photo_filter` 列(走 `settingsRevision`,不是页面 draft 的 version),
+  经 `AlbumToolsOptions.applyPhotoFilter` seam 落到 web 的 `applyAgentPhotoFilter`;
+  看真图经 `lookAtPhotos` seam。seam 没注入就不注册 —— 宁可没这个能力,也不能让模型
+  调一个写不进去/看不到图的工具。
 
 ### 页面真相
 

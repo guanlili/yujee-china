@@ -23,11 +23,18 @@ Web 侧客户端:`apps/web/src/lib/agent/design-agent-client.ts`。
 | `POST /api/chat` | 一轮对话;`?stream=1` 走 NDJSON 事件流 |
 | `GET /api/albums` · `/api/traces` · `/api/state` | 调试/观测 |
 
-## 十个写工具
+## 十三个写工具
 
 `update_page_texts` · `write_page_html` · `swap_page_template` · `update_page_images` ·
-`set_text_colors` · `set_page_background` · `apply_book_style` · `set_text_fonts` ·
-`move_pages` · `delete_page`
+`set_image_pos` · `set_text_colors` · `set_page_background` · `apply_book_style` ·
+`set_text_fonts` · `move_pages` · `delete_page` · `set_photo_filter` · `set_photo_cutout`
+
+**后两个是条件注册的**:`set_photo_filter` / `set_photo_cutout` 写的是
+`albums.photo_filter` 列(走 `settingsRevision` 那套 OCC),不是页面 draft ——
+它们不调 `commitWrite`,而是走 `AlbumToolsOptions.applyPhotoFilter` 这个注入的 seam
+(实现在 web 侧 `applyAgentPhotoFilter`,album 行锁内)。**seam 没注入就不注册**:
+宁可没这个能力,也不能让模型调一个写不进去的工具、还在回复里跟用户说改好了。
+同理,兜底读工具 `look_at_photos` 由 `lookAtPhotos` seam 决定注册与否。
 
 `set_text_colors` 带对比度硬校验(2026-08-29):三色配到该页**实际底色**上(取
 carrier → 模板自带深底 → 白底默认的优先级,即 `effectivePageBackground`)任何一色
@@ -56,6 +63,30 @@ carrier → 模板自带深底 → 白底默认的优先级,即 `effectivePageBa
 postcard 旅行画报,定义见 `packages/contracts/src/design/book-styles.ts`)。换版式会
 重排封面/封尾文案,迁不过去的槽会清空,回复里必须提醒用户,动手前先确认。
 
+`set_image_pos`(2026-09-09 新增)调整照片在框里的位置和缩放。**几何归代码,模型只
+表达意图**:优先传 `fit`(`center-subject` / `avoid-face-crop` / `fill`),坐标由
+`image-fit.ts` 的 `resolveImagePos` 拿照片档案的 `subjectBox` / `faceBoxes` 算出来 ——
+LLM 心算坐标必错,而且错得没规律、测不出来。手动 `x/y/scale` 只在用户明确说了方向
+时才用(x/y 是 0-100 百分比,与 `objectPosition` 同口径;scale 1-2)。
+
+⚠️ 两条容易踩的:① `object-position` / `transform` 是**烘进 `page.html` 的**
+(fill-template 的 `IMG_POS` / `IMG_TF` token),所以写 `imagePos` 必须同步
+`patchHtmlImagePos` 槽位级 patch —— 只改数据不改 html,画板上照片纹丝不动;整页重烘
+则会冲掉 `write_page_html` 的手工版面。② `fit` 是**近似解**:精确把主体推到容器正中
+需要「照片宽高比 / 槽位宽高比」,而槽位宽高比在 catalog 和模板 JSON 里都没有(只在
+HTML 模板的 CSS 里),所以取「object-position = 主体中心」,保证主体落在可见区内。
+这不是 bug。③ rotate 本批明确不动:schema 不收它,旋转过的槽直接拒绝(它的 html 是
+盒交换几何,按无旋转分支 patch 会毁掉旋转)。
+
+`set_photo_filter` / `set_photo_cutout`(2026-09-09 新增)整本定调与逐张抠图。
+滤镜真相源是 `apps/web/src/lib/photo/filter-state.ts`;design-agent 是 `packages/**`
+里的库,够不着 `apps/web`,所以 `photo-filter.ts` 是一份本地镜像,由
+`album-photo-filter-tools.test.ts` 的守卫直接读真相源比对 LUT 清单防漂移。
+**契约铁律:`cutouts` 只认 `true`,关掉是删键(patch 里写 `null`),绝不写 `false`** ——
+允许 `false` 会让「没抠」有两种表示,renderVersion 和派生缓存 key 立刻产生歧义。
+`strength` 一律过 `quantizeStrength`(5 的倍数),与 web 同一归一化,否则两边算出的
+renderVersion 对不齐、分享快照直接失配。
+
 `move_pages` 挪动页面:批量 move(插入)/swap(对调)重排页序,只动内页
 (封面/目录/封尾钉死),单纯挪位置不改任何页内容(纯逻辑在 `page-move.ts`)。
 
@@ -73,7 +104,7 @@ postcard 旅行画报,定义见 `packages/contracts/src/design/book-styles.ts`)�
 `docs/specs/2026-08-05-write-todos-design.md`)。整表覆盖、服务端无状态、纯 no-op
 不动书 —— 它**不是写工具,不进** `DESIGN_WRITE_TOOLS`,与 read_page 同类。
 
-## 六个技能
+## 七个技能
 
 `read_skill` 按名字取一份技能说明书的**全文**(不是工具描述里那句摘要)。这里不重复
 抄内容,只记名字和数量,避免说明书抄成三份、抄着抄着就漂了(与上面写工具/类别映射
@@ -85,7 +116,12 @@ postcard 旅行画报,定义见 `packages/contracts/src/design/book-styles.ts`)�
 或为空时的内置兜底**。两份的实质内容由 `album-style-skill.test.ts` /
 `album-skills-theme.test.ts` 钉着,不许各说各话。
 
-`页面HTML编辑` · `相册文案` · `相册排版` · `相册配色` · `相册字体` · `风格理解`
+`页面HTML编辑` · `相册文案` · `相册排版` · `相册配色` · `相册字体` · `风格理解` ·
+`照片处理`
+
+`照片处理`(2026-09-09 新增,技能从六个变七个)收口调色/构图裁切/抠图三件事的策略:
+先读 `read_page` 每个图槽的 `profile`(照片视觉档案),`look_at_photos` 是兜底不是默认
+输入(一次最多 6 张);构图用 `fit` 意图别自己算坐标;抠图逐张开,不做整本默认全抠。
 
 `风格理解`(2026-08-29 新增,技能从五个变六个)是用户对**整本书**观感不满或提气质
 诉求时用的(「太素/太花/不够活泼/想文艺点/换个感觉」),负责判断该换哪个风格,
@@ -145,5 +181,5 @@ print/RPC/interactive 三种模式。**通用 agent loop 在 `packages/agent`**,
 
 <!-- doc-scope
 paths: packages/design-agent/src/**, packages/design-agent/fly.toml, apps/web/src/lib/agent/design-agent-client.ts
-checked-at: a7db82ef
+checked-at: d227a895
 -->
