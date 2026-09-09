@@ -10,12 +10,12 @@ export const en: Copy = {
   footerStory: 'Our story',
   login: 'Log in',
   menu: 'Menu',
-  createTitle: 'Turn your scattered photos into a photo book you can read, touch, and keep',
+  createTitle: 'Turn your scattered photos into a story-driven photobook you can read, touch, and keep',
   createSub: 'No sign-in needed, free to use.',
   sampleCta: 'See example',
   makeSame: 'Make one like this',
   samplesNote: 'Demo books made by the Yujee team to show what the product can do — fictional content, not customer work.',
-  heroEyebrow: 'AI photobooks & memoir books · from shots to bound book',
+  heroEyebrow: 'AI photo storytelling & memoir books · from shots to bound book',
   heroTitle: (
     <>
       Turn your everyday snapshots

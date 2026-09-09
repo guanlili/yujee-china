@@ -16,13 +16,24 @@ export const en: MarketingMessages = {
     languageLabel: 'English',
   },
   landing: {
-    // "Free" leads because the free grant is real (FREE_PLAN_CREDITS covers a
-    // whole book) and because "layout" is the winnable half of that demand —
-    // bare "free photo book maker" is Shutterfly/Canva territory. "Memoir"
-    // stays: it is the higher-intent term and the one this site can rank for.
-    metaTitle: 'Free AI Photo Book & Memoir Maker — Auto Layout to PDF | Yujee',
+    // "AI Photobook Generator" leads as of 2026-09: it is the generator-intent
+    // term, and the one-word "photobook" spelling the earlier copy never
+    // carried. "Free" and the two-word "photo book" both stay in the tail —
+    // the free grant is real (FREE_PLAN_CREDITS covers a whole book), and
+    // "photo book layout" is the winnable half of that demand (bare "free
+    // photo book maker" is Shutterfly/Canva territory). Both spellings on one
+    // title is the point, not an oversight.
+    //
+    // "Memoir" also stays, for the reason the pre-2026-09 comment gave: it is
+    // the higher-intent term and the one this site can actually rank for. It
+    // survived the rewrite only because the budget had room — no guard covers
+    // it, so a future edit can still drop it silently.
+    //
+    // "AI travel photobook" is deliberately absent — it belongs to
+    // /examples/travel-journal, and seo.test.ts fails if it shows up here.
+    metaTitle: 'AI Photobook Generator — Free Photo Book & Memoir Maker | Yujee',
     metaDesc:
-      'Free photo book layout online — Yujee’s AI groups your photos, writes the story, and lays out a magazine-style book. Chat to edit, export a print-ready PDF.',
+      'Turn your photos into a story-driven photobook. Free photo book layout with AI photo storytelling — it groups, captions, and lays out every page for you.',
     composerUploadLabel: 'Upload photos',
     composerHints: [
       { label: 'Travel Album', fill: 'Make me a photo album of my trip to Bali last week — I have lots of beach and temple photos.' },
@@ -320,7 +331,7 @@ export const en: MarketingMessages = {
       {
         head: 'Photo Books',
         items: [
-          { label: 'Travel photo book example', href: '/examples/travel-journal' },
+          { label: 'AI travel photobook example', href: '/examples/travel-journal' },
           { label: 'Life story book example', href: '/examples/life-story' },
           { label: 'All memoir examples', href: '/examples' },
           { label: 'Photo book guides', href: '/guides' },

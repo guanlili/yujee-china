@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import React from 'react';
 import robots from '@/app/robots';
 import sitemap from '@/app/sitemap';
 import { ADDON_PACKS, FREE_PLAN_CREDITS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config/pricing';
@@ -13,6 +14,14 @@ import { INDEXABLE_ROUTES, localesForRoute, NOINDEX_ROUTES } from './routes';
 import { articleSchema, faqPageSchema, organizationSchema, softwareApplicationSchema } from './schema';
 import { absoluteUrl, SITE_URL } from './site';
 import { getMarketingMessages } from '@/messages/marketing';
+
+// copy/en.tsx is JSX and tsx emits the classic transform (tsconfig.base.json
+// sets jsx: "preserve", which tsx ignores), so importing it into a plain
+// node:test run needs React in scope. Supplying it is what lets the keyword
+// guards below assert the value the page ACTUALLY renders — an earlier version
+// of them regex'd the source file instead, and a dead `const legacy = {...}`
+// carrying the keywords kept them green while the exported copy had none.
+(globalThis as unknown as { React: typeof React }).React = React;
 
 function disallowedPaths(): string[] {
   const { rules } = robots();
@@ -197,6 +206,37 @@ test('the landing title and description carry the free + photo book keywords in 
   assert.match(zh.metaDesc, /排版/, 'zh description dropped 排版');
 });
 
+// The four terms 小雨 picked for the 2026-09 push. They deliberately span two
+// pages — the "one keyword, one page" test below is what keeps them from
+// colliding, and this one keeps a later copy rewrite from silently dropping
+// any of them. Same reasoning as the free + photo book layer above.
+test('the four 2026-09 target keywords each still sit on their assigned page', () => {
+  const landing = getMarketingMessages('en').landing;
+  const landingMeta = `${landing.metaTitle} ${landing.metaDesc}`;
+  assert.match(landing.metaTitle, /ai photobook generator/i, 'landing title dropped "AI Photobook Generator"');
+  assert.match(landingMeta, /story-driven photobook/i, 'landing dropped "story-driven photobook"');
+  assert.match(landingMeta, /ai photo storytelling/i, 'landing dropped "AI photo storytelling"');
+
+  // "AI Travel Photobook" belongs to /examples/travel-journal, never the
+  // landing — the other half of that split is the doesNotMatch below.
+  const travel = getExample('travel-journal');
+  assert.ok(travel, 'the travel-journal example disappeared');
+  assert.match(
+    exampleContent(travel, 'en').metaTitle,
+    /ai travel photobook/i,
+    'travel-journal title dropped "AI Travel Photobook"',
+  );
+});
+
+// The landing H1 and eyebrow carry two of those terms in visible copy, not just
+// in <head>. A meta-only keyword with no on-page backing is the pattern Google
+// discounts, so they are pinned here too.
+test('the landing hero copy carries the story-driven and storytelling terms', async () => {
+  const { en } = await import('@/components/landing/copy/en');
+  assert.match(en.createTitle, /story-driven photobook/i, 'the H1 dropped "story-driven photobook"');
+  assert.match(en.heroEyebrow, /ai photo storytelling/i, 'the eyebrow dropped "AI photo storytelling"');
+});
+
 test('the landing title and description stay inside what a SERP actually shows', () => {
   // Past these lengths Google truncates mid-phrase and the keyword we just paid
   // for never renders. Latin script only — the zh budget is pixel-width, not
@@ -210,7 +250,7 @@ test('the landing title and description stay inside what a SERP actually shows',
 // "travel photobook" and "biography book" at once, and trying is what keyword
 // stuffing looks like to Google. The landing keeps the generic terms; the
 // /examples detail pages each own their format's term.
-test('each example page owns its own format keyword — no two pages chase the same term', () => {
+test('each example page owns its own format keyword — no two pages chase the same term', async () => {
   const owned: Record<string, RegExp[]> = {
     'travel-journal': [/travel photobook/i],
     'life-story': [/biography book/i, /memoir book/i],
@@ -229,9 +269,14 @@ test('each example page owns its own format keyword — no two pages chase the s
   // The landing must NOT also chase the per-format terms, or the example pages
   // compete with their own homepage for them.
   const landing = getMarketingMessages('en').landing;
-  const landingMeta = `${landing.metaTitle} ${landing.metaDesc}`;
-  assert.doesNotMatch(landingMeta, /travel photobook/i, 'the landing is competing with /examples/travel-journal');
-  assert.doesNotMatch(landingMeta, /biography book/i, 'the landing is competing with /examples/life-story');
+  const { en: copy } = await import('@/components/landing/copy/en');
+  // The landing's VISIBLE copy counts too, not just its <head>. Checking only
+  // the meta string let the hero eyebrow chase "AI travel photobook" while this
+  // test stayed green — the presence half of the split reads on-page copy, so
+  // the absence half has to read the same surface or the split is one-sided.
+  const landingText = [landing.metaTitle, landing.metaDesc, copy.createTitle, copy.heroEyebrow].join(' ');
+  assert.doesNotMatch(landingText, /travel photobook/i, 'the landing is competing with /examples/travel-journal');
+  assert.doesNotMatch(landingText, /biography book/i, 'the landing is competing with /examples/life-story');
 });
 
 test('every example page title and description stays inside the SERP budget', () => {

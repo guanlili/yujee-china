@@ -3,8 +3,8 @@ import type { ExampleContent } from './types';
 export const en: Record<string, ExampleContent> = {
   'travel-journal': {
     title: 'Travel Journal',
-    tagline: 'A trip laid out as a story of place and time.',
-    metaTitle: 'Travel Photo Book Example — A Yujee AI Memoir',
+    tagline: 'An AI travel photobook — a trip laid out as a story of place and time.',
+    metaTitle: 'AI Travel Photobook Example — A Yujee AI Memoir',
     metaDesc:
       'See how Yujee turns a whole trip of scattered photos into a magazine-style travel photobook — grouped by place, captioned by AI, exported as a print-ready PDF.',
     intro: [
