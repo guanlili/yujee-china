@@ -29,7 +29,15 @@ import {
 	validateTextsPatch,
 } from "./book-state.ts";
 import { applyPageMoves, type PageMoveOperation } from "./page-move.ts";
-import { isCutout, resolveEffectiveFilter } from "./photo-filter.ts";
+import {
+	isCutout,
+	isLutId,
+	LUT_IDS,
+	type PhotoFilterPatch,
+	type PhotoFilterRef,
+	quantizeStrength,
+	resolveEffectiveFilter,
+} from "./photo-filter.ts";
 import { createDefaultAlbumSkills } from "./skills.ts";
 import { type FontRole, fontAllowsRole, fontsForRole, getFontEntry } from "./font-registry.ts";
 import { derivePageTexts, patchHtmlImagePos, patchHtmlText, validatePageHtml } from "./html-guard.ts";
@@ -52,6 +60,13 @@ export interface AlbumToolsOptions {
 	setBookState: (state: AlbumBookState) => void;
 	now?: () => Date;
 	skills?: Skill[];
+	/** 滤镜/抠图走 albums.photo_filter + settingsRevision,**不走 commitWrite** ——
+	 * 两套存储两套 OCC,混在一起必并发脏写(设计文档 §6②)。未注入时
+	 * set_photo_filter / set_photo_cutout 两个工具不注册:宁可没这个能力,
+	 * 也不能让模型调一个写不进去的工具。
+	 * 实现方是 web 侧的 applyAgentPhotoFilter(album 行锁内走 lockAlbumForSettingsWrite)。
+	 * warnings 原样进工具结果的 notes(如「这本书已分享」),让 Agent 转告用户。 */
+	applyPhotoFilter?: (patch: PhotoFilterPatch) => Promise<{ warnings: string[] }>;
 }
 
 // ── 用户口径页码(铁律:模型看到/传入的页码 = 用户画面上看到的页码)──
@@ -262,6 +277,43 @@ const setImagePosSchema = Type.Object({
 
 type SetImagePosInput = Static<typeof setImagePosSchema>;
 
+// ── set_photo_filter / set_photo_cutout:整本定调与抠图 ─────────────────────
+// 两者共用 albums.photo_filter 这一列(滤镜与抠图同属「每张照片的派生像素状态」),
+// 走 settingsRevision 那套 OCC,与页面 draft 的 version 彻底分开。
+//
+// ⚠️ 契约铁律:cutouts 只认 true,关掉是**删键**(patch 里写 null),绝不写 false ——
+// 允许 false 会让「没抠」有两种表示,renderVersion 和派生缓存 key 立刻产生歧义。
+const lutIdSchema = Type.String({
+	enum: [...LUT_IDS],
+	description: "滤镜 id(26 个确定性胶片 LUT 之一)。",
+} as never);
+
+const photoFilterRefSchema = Type.Object({
+	lutId: lutIdSchema,
+	strength: Type.Number({ description: "滤镜强度 0-100,会被归到 5 的倍数。一般 50-70;超过 80 会明显失真。" }),
+});
+
+const setPhotoFilterSchema = Type.Object({
+	default: Type.Optional(
+		Type.Union([photoFilterRefSchema, Type.Null()], {
+			description: "全书默认滤镜。传 null = 整本回到原片。不传 = 不动全书默认。",
+		}),
+	),
+	overrides: Type.Optional(
+		Type.Record(Type.String(), Type.Union([photoFilterRefSchema, Type.Null()]), {
+			description: "单张覆盖:photoId → 滤镜,或 null 表示这张用原片。不传 = 不动已有覆盖。",
+		}),
+	),
+});
+
+const setPhotoCutoutSchema = Type.Object({
+	photoIds: Type.Array(Type.String(), { minItems: 1, description: "要开/关抠图的照片 id(来自 read_page 的 images[slot].photoId)。" }),
+	on: Type.Boolean({ description: "true = 抠出主体,false = 恢复原图。" }),
+});
+
+type SetPhotoFilterInput = Static<typeof setPhotoFilterSchema>;
+type SetPhotoCutoutInput = Static<typeof setPhotoCutoutSchema>;
+
 const listTemplatesSchema = Type.Object({
 	category: Type.Optional(Type.String({ description: "按类目过滤：cover / toc / interior / ending。" })),
 	imageSlotCount: Type.Optional(Type.Number({ description: "按图槽数量过滤。" })),
@@ -312,6 +364,7 @@ const DEFAULT_SEARCH_LIMIT = 10;
 const MAX_SEARCH_LIMIT = 30;
 
 export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
+	const applyPhotoFilter = options.applyPhotoFilter;
 	return [
 		createReadPagesTool(options),
 		createSearchBookTool(options),
@@ -329,6 +382,14 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 		createDeletePageTool(options),
 		createReadSkillTool(options),
 		createWriteTodosTool(),
+		// 跨存储写入的 seam 没注入就不注册这两个工具 —— 让模型看见一个写不进去的
+		// 工具比没有这个能力更糟(它会以为改成功了,还会在回复里跟用户说改好了)。
+		...(applyPhotoFilter
+			? [
+					createSetPhotoFilterTool(options, applyPhotoFilter) as AgentTool,
+					createSetPhotoCutoutTool(options, applyPhotoFilter) as AgentTool,
+				]
+			: []),
 	];
 }
 
@@ -870,6 +931,138 @@ function createSetImagePosTool(
 				pageNo: Number(params.updates[0]!.pageNo),
 				operations,
 				notes,
+			});
+		},
+	};
+}
+
+// ── 滤镜/抠图:跨存储写入,不走 commitWrite ────────────────────────────────
+
+interface PhotoFilterWriteDetails {
+	target: string;
+	changed: number;
+	notes?: string[];
+}
+
+function photoFilterResult(details: PhotoFilterWriteDetails): AgentToolResult<PhotoFilterWriteDetails> {
+	return {
+		content: [{ type: "text", text: JSON.stringify(details, null, 1) }],
+		details,
+		terminate: true,
+	};
+}
+
+/** photoId 必须真的在这本书里 —— 模型编 id 时要当场拒,别把垃圾写进设置列。 */
+function requireBookPhoto(state: AlbumBookState, photoId: string): void {
+	if (typeof photoId !== "string" || photoId.length === 0) {
+		throw new Error("photoId 必须是非空字符串");
+	}
+	if (!findAlbumPhoto(state, photoId)) {
+		throw new Error(`photoId "${photoId}" 不存在于这本书的任何章节。用 read_page 查 images[slot].photoId。`);
+	}
+}
+
+function normalizeFilterRef(raw: unknown, label: string): PhotoFilterRef | null {
+	if (raw === null || raw === undefined) return null;
+	if (!isRecord(raw)) throw new Error(`${label} 必须是 { lutId, strength } 或 null(null = 原片)`);
+	if (!isLutId(raw.lutId)) {
+		throw new Error(
+			`${label} 的 lutId "${String(raw.lutId)}" 不是可用滤镜。可用滤镜:${LUT_IDS.join("、")}`,
+		);
+	}
+	const strength = raw.strength;
+	if (typeof strength !== "number" || !Number.isFinite(strength) || strength < 0 || strength > 100) {
+		throw new Error(`${label} 的 strength 必须是 0-100 的数字,收到 ${JSON.stringify(strength)}`);
+	}
+	// strength 一律过 quantizeStrength(5 的倍数) —— 与 web 侧同一归一化,
+	// 不然同一档强度在两边算出不同的 renderVersion,分享快照直接失配。
+	return { lutId: raw.lutId, strength: quantizeStrength(strength) };
+}
+
+function createSetPhotoFilterTool(
+	options: AlbumToolsOptions,
+	applyPhotoFilter: NonNullable<AlbumToolsOptions["applyPhotoFilter"]>,
+): AgentTool<typeof setPhotoFilterSchema, PhotoFilterWriteDetails> {
+	return {
+		name: "set_photo_filter",
+		label: "设置照片滤镜",
+		description:
+			"给整本书定调色(26 个胶片滤镜),也可以给单张照片单独指定。先读照片档案里的 colorTemp/brightness/mood 再选,别凭书名猜。strength 是 0-100,一般 50-70 之间;超过 80 会明显失真。传 default:null 让整本回到原片,overrides 里某张传 null 让那张回到原片。",
+		parameters: setPhotoFilterSchema,
+		prepareArguments(args: unknown): SetPhotoFilterInput {
+			return isRecord(args) ? (args as SetPhotoFilterInput) : ({} as SetPhotoFilterInput);
+		},
+		async execute(
+			_toolCallId: string,
+			params: SetPhotoFilterInput,
+		): Promise<AgentToolResult<PhotoFilterWriteDetails>> {
+			const raw = params as Record<string, unknown>;
+			const hasDefault = Object.hasOwn(raw, "default");
+			const hasOverrides = Object.hasOwn(raw, "overrides") && isRecord(raw.overrides);
+			if (!hasDefault && !hasOverrides) {
+				throw new Error("至少要给 default(全书默认滤镜)或 overrides(单张覆盖)之一");
+			}
+
+			const state = options.getBookState();
+			const patch: PhotoFilterPatch = {};
+			if (hasDefault) patch.default = normalizeFilterRef(raw.default, "default");
+			if (hasOverrides) {
+				const overrides: Record<string, PhotoFilterRef | null> = {};
+				for (const [photoId, value] of Object.entries(raw.overrides as Record<string, unknown>)) {
+					requireBookPhoto(state, photoId);
+					overrides[photoId] = normalizeFilterRef(value, `overrides["${photoId}"]`);
+				}
+				patch.overrides = overrides;
+			}
+
+			// **不走 commitWrite** —— 这里一个字节的书状态都不改。
+			const { warnings } = await applyPhotoFilter(patch);
+			return photoFilterResult({
+				target: hasDefault && hasOverrides ? "default+overrides" : hasDefault ? "default" : "overrides",
+				changed: (hasDefault ? 1 : 0) + Object.keys(patch.overrides ?? {}).length,
+				notes: warnings.length > 0 ? warnings : undefined,
+			});
+		},
+	};
+}
+
+function createSetPhotoCutoutTool(
+	options: AlbumToolsOptions,
+	applyPhotoFilter: NonNullable<AlbumToolsOptions["applyPhotoFilter"]>,
+): AgentTool<typeof setPhotoCutoutSchema, PhotoFilterWriteDetails> {
+	return {
+		name: "set_photo_cutout",
+		label: "抠出照片主体",
+		description:
+			"把照片主体从背景里抠出来(用于主体叠加类版式)。**逐张开,不要整本默认全抠** —— 抠图会改变照片观感,用户没要求就别动。开了之后要在回复里说清楚改了哪几张。",
+		parameters: setPhotoCutoutSchema,
+		prepareArguments(args: unknown): SetPhotoCutoutInput {
+			if (!isRecord(args)) return { photoIds: [], on: true };
+			const rawIds = Array.isArray(args.photoIds) ? args.photoIds : args.photoId !== undefined ? [args.photoId] : [];
+			return {
+				photoIds: rawIds.filter((entry): entry is string => typeof entry === "string"),
+				on: args.on !== false,
+			};
+		},
+		async execute(
+			_toolCallId: string,
+			params: SetPhotoCutoutInput,
+		): Promise<AgentToolResult<PhotoFilterWriteDetails>> {
+			if (params.photoIds.length === 0) throw new Error("photoIds 至少要包含一张照片");
+			const state = options.getBookState();
+			const cutouts: Record<string, true | null> = {};
+			for (const photoId of params.photoIds) {
+				requireBookPhoto(state, photoId);
+				// ⚠️ 契约铁律:关掉抠图是**删键**(null),绝不写 false。允许 false 会让
+				// 「没抠」有两种表示,renderVersion 和派生缓存 key 立刻产生歧义。
+				cutouts[photoId] = params.on ? true : null;
+			}
+
+			const { warnings } = await applyPhotoFilter({ cutouts });
+			return photoFilterResult({
+				target: params.on ? "cutout:on" : "cutout:off",
+				changed: params.photoIds.length,
+				notes: warnings.length > 0 ? warnings : undefined,
 			});
 		},
 	};

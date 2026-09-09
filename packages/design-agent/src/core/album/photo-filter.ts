@@ -3,12 +3,52 @@
  *
  * ⚠️ 真相源是 `apps/web/src/lib/photo/filter-state.ts`(持久化在 `albums.photo_filter`
  * 列,走 settingsRevision 那套 OCC)。这里之所以抄一份而不是 import:design-agent 是
- * `packages/**` 里的库,不能反向依赖 `apps/web`。
+ * `packages/**` 里的库,不能反向依赖 `apps/web`。两边漂移由
+ * `test/album-photo-filter-tools.test.ts` 的机械守卫拦住 —— 它直接读 web 那个文件
+ * 比对 LUT id 清单,清单一变就红。
  *
  * ⚠️ 契约铁律:`cutouts` **只认 `true`,关掉是删键,绝不写 `false`**。允许 `false` 会让
  * 「没抠」有两种表示,renderVersion 和派生缓存 key 立刻产生歧义(web 侧注释有完整说明)。
  * 本文件的 patch 类型用 `null` 表达删键,任何地方都不许出现 `false`。
  */
+
+/** 26 个确定性 LUT 的 id 清单。逐字镜像 web 侧 LUT_DEFINITIONS 的顺序与拼写。 */
+export const LUT_IDS = [
+	"cloudy-cool",
+	"street-negative",
+	"airy-japanese",
+	"travel-cinematic",
+	"city-street",
+	"daily-soft",
+	"teal-orange-outdoor",
+	"cool-cyan",
+	"rich-teal-orange",
+	"fuji-portrait",
+	"night-film",
+	"forest-green",
+	"retro-film",
+	"fuji-clear",
+	"dark-cool-cinema",
+	"kodak-daylight",
+	"eighties-retro",
+	"sunny-soft",
+	"autumn-warm",
+	"altay-wilderness",
+	"warm-cinema-film",
+	"muted-cinema",
+	"nostalgic-film",
+	"kodak-2383",
+	"fresh-clear",
+	"green-book",
+] as const;
+
+export type LutId = (typeof LUT_IDS)[number];
+
+const LUT_ID_SET: ReadonlySet<string> = new Set(LUT_IDS);
+
+export function isLutId(value: unknown): value is LutId {
+	return typeof value === "string" && LUT_ID_SET.has(value);
+}
 
 export interface PhotoFilterRef {
 	lutId: string;
@@ -20,6 +60,24 @@ export interface PhotoFilterState {
 	overrides?: Record<string, PhotoFilterRef | null>;
 	/** 只认 true —— 关掉是删键。见文件抬头。 */
 	cutouts?: Record<string, true>;
+}
+
+/**
+ * 写入补丁:未出现的键 = 不动;`null` = 删键/置原片。
+ * 形状与 web 侧 `applyAgentPhotoFilter(userId, albumId, patch, baseSettingsRevision)`
+ * 的 patch 参数逐字对应。
+ */
+export interface PhotoFilterPatch {
+	default?: PhotoFilterRef | null;
+	overrides?: Record<string, PhotoFilterRef | null>;
+	/** `true` = 开抠图,`null` = **删键**(关抠图)。永远不会是 `false`。 */
+	cutouts?: Record<string, true | null>;
+}
+
+/** strength 归一化到 5 的倍数 —— 与 web 侧 quantizeStrength 同算法。
+ * 两边算法必须一致:否则同一档强度在两侧算出不同的 renderVersion,分享快照直接失配。 */
+export function quantizeStrength(value: number): number {
+	return Math.round(value / 5) * 5;
 }
 
 /** 某张照片当前生效的滤镜:单张覆盖优先(含显式 null=原片),否则取全书默认。 */
