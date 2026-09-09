@@ -99,7 +99,7 @@ def test_disabled_by_default_does_not_build_profiles(monkeypatch, captured):
     called: list[int] = []
     monkeypatch.setattr(
         analyze.profile_remote, "fetch_photo_profiles",
-        lambda photos, settings: called.append(1) or {},
+        lambda photos, settings, **_: called.append(1) or {},
     )
 
     asyncio.run(analyze._run_analyze(analyze._Job(_req())))
@@ -115,7 +115,7 @@ def test_enabled_backfills_composition_and_description(monkeypatch, captured):
     reset_settings_cache()
     monkeypatch.setattr(
         analyze.profile_remote, "fetch_photo_profiles",
-        lambda photos, settings: {
+        lambda photos, settings, **_: {
             p.photoId: {"composition": "wide", "description": f"{p.photoId} 的画面"}
             for p in photos
         },
@@ -133,7 +133,7 @@ def test_profile_failure_does_not_break_analyze(monkeypatch, captured):
     monkeypatch.setenv("AGENT_ENABLE_PHOTO_PROFILE", "true")
     reset_settings_cache()
 
-    def _boom(photos, settings):
+    def _boom(photos, settings, **_):
         raise RuntimeError("clip worker down")
 
     monkeypatch.setattr(analyze.profile_remote, "fetch_photo_profiles", _boom)
@@ -160,10 +160,104 @@ def test_profiles_are_built_before_the_tree_is_assembled(monkeypatch, captured):
 
     monkeypatch.setattr(
         analyze.profile_remote, "fetch_photo_profiles",
-        lambda photos, settings: (order.append("profiles") or {p.photoId: {"composition": "focal"} for p in photos}),
+        lambda photos, settings, **_: (order.append("profiles") or {p.photoId: {"composition": "focal"} for p in photos}),
     )
     monkeypatch.setattr(analyze.tree_builder, "assemble_stage1_tree", _spy_assemble)
 
     asyncio.run(analyze._run_analyze(analyze._Job(_req())))
 
     assert order == ["profiles", "assemble"]
+
+
+# ── 档案必须回传 web,否则整批功能空转 ──────────────────────────────────────────
+#
+# 树里那次回填只写 composition/sceneDescription;档案本体要落到
+# `album_photos.profile` 才有人读得到。不回传的后果不是报错,是三个照片能力集体空转。
+
+
+def _capture_publish(monkeypatch):
+    seen: list[dict] = []
+
+    async def _fake_publish(*, album_id, profiles, callback_url, settings):
+        seen.append(
+            {
+                "album_id": album_id,
+                "profiles": profiles,
+                "callback_url": callback_url,
+            }
+        )
+        return True
+
+    monkeypatch.setattr(analyze.profile_publish, "publish_photo_profiles", _fake_publish)
+    return seen
+
+
+def _enable_profiles(monkeypatch):
+    monkeypatch.setenv("AGENT_ENABLE_PHOTO_PROFILE", "true")
+    reset_settings_cache()
+    monkeypatch.setattr(
+        analyze.profile_remote,
+        "fetch_photo_profiles",
+        lambda photos, settings, **_: {p.photoId: {"v": 1, "composition": "wide"} for p in photos},
+    )
+
+
+def test_profiles_are_published_back_to_web(monkeypatch, captured):
+    _enable_profiles(monkeypatch)
+    seen = _capture_publish(monkeypatch)
+
+    req = _req()
+    asyncio.run(analyze._run_analyze(analyze._Job(req)))
+
+    assert len(seen) == 1, "档案没有回传 —— album_photos.profile 会恒 NULL,三个照片能力全空转"
+    assert seen[0]["album_id"] == req.albumId
+    assert set(seen[0]["profiles"]) == {"p1", "p2", "p3"}
+    assert seen[0]["callback_url"] == str(req.callbackUrl)
+
+
+def test_publish_failure_does_not_break_analyze(monkeypatch, captured):
+    """回传是增强不是必需 —— 它挂了 analyze 照常 completed。"""
+    _enable_profiles(monkeypatch)
+
+    async def _boom(**kwargs):
+        raise RuntimeError("web down")
+
+    monkeypatch.setattr(analyze.profile_publish, "publish_photo_profiles", _boom)
+
+    asyncio.run(analyze._run_analyze(analyze._Job(_req())))
+
+    completed = _completed(captured)
+    assert completed["event"] == "completed"
+    # 回传挂了不影响树里那次回填 —— 那是两条独立的收益。
+    assert _photos(completed)["p1"]["composition"] == "wide"
+
+
+def test_no_publish_when_the_feature_is_off(monkeypatch, captured):
+    seen = _capture_publish(monkeypatch)
+    asyncio.run(analyze._run_analyze(analyze._Job(_req())))
+    assert seen == []
+
+
+def test_usage_reports_the_real_vision_call_count(monkeypatch, captured):
+    """开关打开后每本书 N 次视觉调用,usage.visionCallCount 不能再恒 0 ——
+    「翻这一页要先有人算过成本」正是这个开关存在的理由。"""
+    monkeypatch.setenv("AGENT_ENABLE_PHOTO_PROFILE", "true")
+    reset_settings_cache()
+    _capture_publish(monkeypatch)
+
+    def _fetch(photos, settings, *, stats=None):
+        if stats is not None:
+            stats["visionCalls"] = len(photos)
+        return {p.photoId: {"v": 1, "composition": "wide"} for p in photos}
+
+    monkeypatch.setattr(analyze.profile_remote, "fetch_photo_profiles", _fetch)
+
+    asyncio.run(analyze._run_analyze(analyze._Job(_req())))
+
+    assert _completed(captured)["usage"]["visionCallCount"] == 3
+
+
+def test_vision_call_count_stays_zero_when_profiles_are_off(monkeypatch, captured):
+    """默认关闭 -> analyze 仍然是「零 AI 调用的纯确定性分组」。"""
+    asyncio.run(analyze._run_analyze(analyze._Job(_req())))
+    assert _completed(captured)["usage"]["visionCallCount"] == 0

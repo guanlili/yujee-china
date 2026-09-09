@@ -286,13 +286,20 @@ async def photo_profile(payload: _PhotoProfileRequest) -> dict:
     # 视觉调用必须有重叠、本地推理必须无重叠。
     semaphore = _profile_semaphore()
 
-    async def _build(photo_id: str, image: Image.Image) -> dict:
+    # 成本计数:调用方那台 1GB Agent 自己看不见视觉调用,只能由这里带回去。
+    # 每张一个独立的 dict —— 它们在不同线程里被写(run_in_threadpool),共用一个会掉数。
+    stats: list[dict] = [{} for _ in decoded]
+
+    async def _build(index: int, photo_id: str, image: Image.Image) -> dict:
         async with semaphore:
-            return await run_in_threadpool(build.build_profile, image, photo_id=photo_id)
+            return await run_in_threadpool(
+                build.build_profile, image, photo_id=photo_id, stats=stats[index]
+            )
 
     # return_exceptions=True:少一张档案 vs 整批 500,前者是这个 endpoint 的设计意图。
     results = await asyncio.gather(
-        *(_build(pid, img) for pid, img in decoded), return_exceptions=True
+        *(_build(i, pid, img) for i, (pid, img) in enumerate(decoded)),
+        return_exceptions=True,
     )
     profiles: dict[str, dict] = {}
     for (photo_id, _image), result in zip(decoded, results):
@@ -305,12 +312,17 @@ async def photo_profile(payload: _PhotoProfileRequest) -> dict:
             continue
         profiles[photo_id] = result
 
+    vision_calls = sum(int(s.get("visionCalls", 0)) for s in stats)
     log.info(
         "photo_profile",
         count=len(payload.images),
         built=len(profiles),
         undecodable=len(undecodable),
         failed=len(decoded) - len(profiles),
+        vision_calls=vision_calls,
         persist_mask=payload.persistMask,
     )
-    return {"ok": True, "data": {"profiles": profiles}}
+    return {
+        "ok": True,
+        "data": {"profiles": profiles, "visionCallCount": vision_calls},
+    }

@@ -261,3 +261,33 @@ def test_per_request_timeout_is_clamped_to_the_remaining_budget(monkeypatch):
     remote.fetch_photo_profiles([_photo("p1")], _slow_settings(5))
 
     assert calls[0]["timeout"] <= 5
+
+
+def test_vision_call_count_is_summed_across_batches(monkeypatch):
+    """成本计数按批累加带回 analyze —— 主 Agent 自己看不见视觉调用。"""
+    _install_fake_client(
+        monkeypatch,
+        lambda body: _FakeResponse(
+            {
+                "ok": True,
+                "data": {
+                    "profiles": {i["photoId"]: {} for i in body["images"]},
+                    "visionCallCount": len(body["images"]),
+                },
+            }
+        ),
+    )
+    photos = [_photo(f"p{i}") for i in range(remote.PROFILE_BATCH_SIZE * 2 + 3)]
+    stats: dict = {}
+
+    remote.fetch_photo_profiles(photos, _Settings(), stats=stats)
+
+    assert stats["visionCalls"] == len(photos)
+
+
+def test_missing_vision_call_count_does_not_break_the_caller(monkeypatch):
+    """老版本 worker 不带这个字段 —— 当 0,不抛。"""
+    _install_fake_client(monkeypatch, _ok)
+    stats: dict = {}
+    remote.fetch_photo_profiles([_photo("p1")], _Settings(), stats=stats)
+    assert stats.get("visionCalls", 0) == 0

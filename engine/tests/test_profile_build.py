@@ -160,3 +160,23 @@ def test_semantic_failure_leaves_composition_none_not_a_made_up_focal(monkeypatc
     profile = build.build_profile(Image.new("RGB", (32, 32)))
     assert profile["composition"] is None
     assert profile["description"] == ""
+
+
+def test_vision_call_stats_are_threaded_through(monkeypatch):
+    """成本计数要能从组装层穿到语义组 —— 否则 usage.visionCallCount 只能靠猜。"""
+    seen: dict = {}
+
+    def _semantic(image, *, photo_id="", stats=None):
+        seen["stats_is"] = stats
+        if stats is not None:
+            stats["visionCalls"] = stats.get("visionCalls", 0) + 1
+        return {
+            "composition": "focal", "scene": "outdoor", "peopleCount": "1",
+            "mood": "warm", "description": "",
+        }
+
+    monkeypatch.setattr(build, "semantic_features", _semantic)
+    stats: dict = {}
+    build.build_profile(Image.new("RGB", (32, 32)), photo_id="p1", stats=stats)
+    assert seen["stats_is"] is stats
+    assert stats["visionCalls"] == 1

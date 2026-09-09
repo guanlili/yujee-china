@@ -46,7 +46,9 @@ _SEMANTIC_FALLBACK = {
 }
 
 
-def build_profile(image: Image.Image, *, photo_id: str = "") -> dict:
+def build_profile(
+    image: Image.Image, *, photo_id: str = "", stats: dict | None = None
+) -> dict:
     # 惰性解码在这里兑现。放在最前面有两个好处:坏图不用白烧一次分割推理 + 一次
     # 视觉模型调用才被发现;而且炸在一个调用方包了 try 的地方。
     try:
@@ -70,7 +72,7 @@ def build_profile(image: Image.Image, *, photo_id: str = "") -> dict:
         geometry = dict(_GEOMETRY_FALLBACK)
 
     try:
-        semantic = semantic_features(image, photo_id=photo_id)
+        semantic = semantic_features(image, photo_id=photo_id, stats=stats)
     except Exception as exc:  # noqa: BLE001 —— 一张照片的语义失败不该打挂整本分析
         log.warning(
             "photo_profile.semantic_failed",

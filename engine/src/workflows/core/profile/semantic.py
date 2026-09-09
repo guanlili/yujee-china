@@ -65,7 +65,12 @@ _FALLBACK = {
 _DESCRIPTION_MAX = 300
 
 
-def semantic_features(image: Image.Image, *, photo_id: str = "") -> dict:
+def semantic_features(
+    image: Image.Image, *, photo_id: str = "", stats: dict | None = None
+) -> dict:
+    """`stats`:成本计数的出参。记的是**真的发出去并回来了**的调用数 ——
+    失败的调用不计费,拿档案份数去凑会让成本表虚高,还反过来掩盖「视觉组全挂了」
+    (那种情况下每张照片都有档案,但一次调用都没成功)。"""
     try:
         raw = _call_vision(image)
     except Exception as exc:  # noqa: BLE001 —— 一张照片的模型失败不该打挂整本分析
@@ -75,6 +80,9 @@ def semantic_features(image: Image.Image, *, photo_id: str = "") -> dict:
             error=f"{type(exc).__name__}: {exc}",
         )
         return dict(_FALLBACK)
+    if stats is not None:
+        # 解不出 JSON 也照计:token 已经烧掉了。
+        stats["visionCalls"] = stats.get("visionCalls", 0) + 1
     return _parse(raw, photo_id=photo_id)
 
 

@@ -21,7 +21,9 @@ log = get_logger("photo_profile")
 PROFILE_BATCH_SIZE = 8
 
 
-def fetch_photo_profiles(photos: Sequence[Any], settings: Any) -> dict[str, dict]:
+def fetch_photo_profiles(
+    photos: Sequence[Any], settings: Any, *, stats: dict | None = None
+) -> dict[str, dict]:
     """批量建档。返回 {photoId: profile}。
 
     **失败按批局部化**:一批 502/超时/形状不对,只丢这一批,其余批照常返回。
@@ -30,6 +32,9 @@ def fetch_photo_profiles(photos: Sequence[Any], settings: Any) -> dict[str, dict
 
     形状不对的那一批也是丢整批,**不**把半份档案混进来 —— 那样错会一路飘到排版
     还查不出来。整个 worker 都挂了就返回 {},上游退回今天的行为。
+
+    `stats`:成本计数的出参(`visionCalls`)。视觉调用发生在对面那台 worker 上,
+    本机看不见,只能靠响应带回来 —— usage.visionCallCount 唯一的真实来源。
 
     **总时长有预算**(settings.photo_profile_budget_seconds)。分批是串行的,每批的
     超时是 grouping_clip_timeout_seconds(180s),而 analyze 的总预算才 600s:100 张
@@ -76,7 +81,7 @@ def fetch_photo_profiles(photos: Sequence[Any], settings: Any) -> dict[str, dict
             chunk = items[start : start + PROFILE_BATCH_SIZE]
             batches += 1
             try:
-                out.update(_fetch_batch(client, url, headers, chunk, timeout))
+                out.update(_fetch_batch(client, url, headers, chunk, timeout, stats))
             except Exception as exc:  # noqa: BLE001 —— 一批的失败只该丢这一批
                 failed_batches += 1
                 log.warning(
@@ -100,12 +105,23 @@ def fetch_photo_profiles(photos: Sequence[Any], settings: Any) -> dict[str, dict
 
 
 def _fetch_batch(
-    client: Any, url: str, headers: dict, chunk: list[dict], timeout: float
+    client: Any,
+    url: str,
+    headers: dict,
+    chunk: list[dict],
+    timeout: float,
+    stats: dict | None = None,
 ) -> dict[str, dict]:
     response = client.post(url, json={"images": chunk}, headers=headers, timeout=timeout)
     response.raise_for_status()
     body = response.json()
-    profiles = body.get("data", {}).get("profiles") if isinstance(body, dict) else None
+    data = body.get("data", {}) if isinstance(body, dict) else {}
+    profiles = data.get("profiles") if isinstance(data, dict) else None
     if not isinstance(profiles, dict):
         raise ValueError("remote photo-profile service returned invalid profiles")
+    if stats is not None:
+        # 老版本 worker 不带这个字段 —— 当 0,别为一个计数器把整批档案判死。
+        calls = data.get("visionCallCount")
+        if isinstance(calls, int):
+            stats["visionCalls"] = stats.get("visionCalls", 0) + calls
     return profiles

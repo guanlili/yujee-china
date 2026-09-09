@@ -220,3 +220,40 @@ def test_unparseable_response_is_logged_too(monkeypatch):
 
     assert spy.warnings, "解析失败没有打任何日志"
     assert dict(spy.warnings[0][1]).get("photo_id") == "p43"
+
+
+# ── 成本计数 ────────────────────────────────────────────────────────────────────
+#
+# 开关打开后每本书 N 次视觉调用,而 usage.visionCallCount 一直硬编码 0 ——
+# 「翻这一页要先有人算过成本」正是这个开关存在的理由,计数器恒 0 等于没算。
+# 计的是**真的发出去了**的调用:失败的调用不计费,拿档案份数去凑跟编 focal 是同一种病
+# (视觉槽整体不可用时每张都会有档案,但一次调用都没成功)。
+
+
+def test_successful_vision_call_is_counted(monkeypatch):
+    _stub(monkeypatch, json.dumps({
+        "composition": "wide", "scene": "nature", "peopleCount": "0",
+        "mood": "quiet", "description": "山脊线",
+    }))
+    stats: dict = {}
+    semantic.semantic_features(_img(), stats=stats)
+    assert stats["visionCalls"] == 1
+
+
+def test_unparseable_response_still_counts_as_a_call(monkeypatch):
+    """模型回了东西但解不出 JSON —— token 已经烧掉了,照计。"""
+    _stub(monkeypatch, "对不起，我无法分析这张图片。")
+    stats: dict = {}
+    semantic.semantic_features(_img(), stats=stats)
+    assert stats["visionCalls"] == 1
+
+
+def test_failed_vision_call_is_not_counted(monkeypatch):
+    """调用根本没成功 = 没花钱。计进去会让成本表虚高,反过来掩盖「视觉组全挂了」。"""
+    def _boom(image):
+        raise RuntimeError("upstream down")
+
+    monkeypatch.setattr(semantic, "_call_vision", _boom)
+    stats: dict = {}
+    semantic.semantic_features(_img(), stats=stats)
+    assert stats.get("visionCalls", 0) == 0

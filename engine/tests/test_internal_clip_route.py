@@ -562,3 +562,42 @@ def test_concurrency_limit_is_shared_across_requests(monkeypatch):
         f"{requests} 个并发请求跑出了 {vision.max_inside} 路视觉调用,上限是 {batch}"
         " —— 信号量是每请求新建的,限流形同虚设"
     )
+
+
+def test_response_reports_the_real_vision_call_count(monkeypatch):
+    """成本计数必须从这里往回带 —— 调用它的那台 1GB Agent 自己看不见视觉调用。"""
+    _enable(monkeypatch)
+    _instrument_profile_pipeline(monkeypatch, inference_delay=0.0, vision_delay=0.0)
+
+    resp = _client().post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": f"p{i}", "dataUrl": _data_url()} for i in range(3)]},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["data"]["visionCallCount"] == 3
+
+
+def test_vision_call_count_excludes_failed_calls(monkeypatch):
+    """视觉槽整体挂掉时每张照片仍然有档案(语义组降级),但一次调用都没成功 ——
+    计数必须是 0,否则成本表虚高,还掩盖了「视觉组全挂了」这个信号。"""
+    _enable(monkeypatch)
+    _instrument_profile_pipeline(monkeypatch, inference_delay=0.0, vision_delay=0.0)
+
+    from src.workflows.core.profile import semantic
+
+    def _boom(image):
+        raise RuntimeError("ARK down")
+
+    monkeypatch.setattr(semantic, "_call_vision", _boom)
+
+    resp = _client().post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": f"p{i}", "dataUrl": _data_url()} for i in range(3)]},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+
+    body = resp.json()
+    assert len(body["data"]["profiles"]) == 3
+    assert body["data"]["visionCallCount"] == 0

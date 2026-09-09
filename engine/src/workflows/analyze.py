@@ -15,6 +15,7 @@ from ..api import callback
 from .core.chaptering import grouping as chapter_grouping
 from .core.chaptering import tree_builder
 from .core.chaptering import unplaced as chapter_unplaced
+from .core.profile import publish as profile_publish
 from .core.profile import remote as profile_remote
 from ..logging_config import get_logger, request_id_var
 from ..contracts.schemas import (
@@ -107,14 +108,34 @@ async def _run_analyze(job: _Job) -> None:
     # 委托给 2GB 的 CLIP worker(这台 1GB 机器没有分割权重);失败**绝不打挂
     # analyze** —— 建档是锦上添花,挂了就退回今天的行为。
     profiles: dict[str, dict] = {}
+    # 视觉调用发生在对面那台 CLIP worker 上,本机看不见 —— 计数只能靠它带回来。
+    profile_stats: dict[str, int] = {}
     if get_settings().agent_enable_photo_profile:
         try:
             profiles = await asyncio.to_thread(
-                profile_remote.fetch_photo_profiles, req.photos, get_settings()
+                lambda: profile_remote.fetch_photo_profiles(
+                    req.photos, get_settings(), stats=profile_stats
+                )
             )
         except Exception as exc:  # noqa: BLE001 —— 档案挂了不该连坐整次 analyze
             log.warning("v3_analyze.photo_profile_failed", error=str(exc))
             profiles = {}
+
+        # 档案回传 web 落 `album_photos.profile`。**这一步是整批功能的出口** ——
+        # 下面那次回填只写章节树的 composition/sceneDescription,档案本体
+        # (subjectBox/色彩组/语义组)不落库就没人读得到:profile 列恒 NULL ->
+        # design-agent 看不到档案 -> 整本调色 / 构图裁切 / 抠图三个工具全在猜。
+        # 失败只记日志,不打挂 analyze(档案是增强不是必需)。
+        if profiles:
+            try:
+                await profile_publish.publish_photo_profiles(
+                    album_id=req.albumId,
+                    profiles=profiles,
+                    callback_url=str(req.callbackUrl),
+                    settings=get_settings(),
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning("v3_analyze.photo_profile_publish_failed", error=str(exc))
 
     # 散落照片走确定性就近归章(按时间/位置),树里的章标识由时间/地点派生:
     # 分析期不再有任何 AI 调用。
@@ -132,19 +153,28 @@ async def _run_analyze(job: _Job) -> None:
     await _emit_progress(job, "group", 100)
 
     duration_ms = int((time.monotonic() - started) * 1000)
+    # 建档开关关着时分析期确实零 AI 调用(计数为 0);开着就是每张照片一次视觉调用,
+    # 计数必须是真的 —— 「翻这一页要先有人算过成本」正是那个开关存在的理由,
+    # 而这里原来硬编码 0,等于开关打开之后成本表永远显示不花钱。
+    # 计的是**真的发出去并回来了**的调用数,不是档案份数:视觉槽整体挂掉时每张照片
+    # 仍然有档案(语义组降级),但一次调用都没成功。
+    vision_call_count = int(profile_stats.get("visionCalls", 0))
     envelope = V3AnalyzeCompleted(
         event="completed",
         jobKind="analyze",
         requestId=req.requestId,
         tree=tree,
-        # 分析期已无 AI 调用:识图计数恒为 0,models 不填。
-        usage=V3Usage(durationMs=duration_ms, visionCallCount=0, models=V3Models()),
+        usage=V3Usage(
+            durationMs=duration_ms, visionCallCount=vision_call_count, models=V3Models()
+        ),
     )
     await callback.post(str(req.callbackUrl), envelope)
     log.info(
         "v3_analyze.completed",
         duration_ms=duration_ms,
         chapters=len(tree.chapters),
+        profiles=len(profiles),
+        vision_calls=vision_call_count,
     )
 
 
