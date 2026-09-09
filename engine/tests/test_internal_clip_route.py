@@ -18,12 +18,32 @@ import io
 import time
 
 import pytest
-from fastapi.testclient import TestClient
 from PIL import Image
 
-from src.api.routes import PROFILE_MAX_CONCURRENCY
-from src.main import app
 from src.settings import reset_settings_cache
+
+
+def _client():
+    """TestClient —— app 必须在**用例体内**才 import。
+
+    ⚠️ 别改回模块级 `from src.main import app`:模块级 import 在**收集期**执行,
+    那时 conftest 的 autouse fixture 还没跑、AGENT_SHARED_SECRET 没设,
+    `src/main.py:47` 的 `get_settings()` 当场 ValidationError —— 整条
+    `PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests`
+    (CLAUDE.md 写死的仓根跑法)在收集期就 `Interrupted: 1 error during collection`,
+    四百多个用例一个都跑不了。旁边 test_v3_route_surface.py 每个用例都在函数体内
+    import,就是为了避这个坑。
+    """
+    from fastapi.testclient import TestClient
+    from src.main import app
+
+    return TestClient(app)
+
+
+def _max_concurrency() -> int:
+    from src.api.routes import PROFILE_MAX_CONCURRENCY
+
+    return PROFILE_MAX_CONCURRENCY
 
 
 def _data_url() -> str:
@@ -52,7 +72,7 @@ def _enable(monkeypatch, enabled: str = "true") -> None:
 def test_disabled_by_default_returns_404(monkeypatch):
     """普通 1GB Agent 没装 torch,这个口必须是关的。"""
     _enable(monkeypatch, "false")
-    client = TestClient(app)
+    client = _client()
     resp = client.post(
         "/internal/open-clip/embeddings",
         json={"images": [_data_url()]},
@@ -63,7 +83,7 @@ def test_disabled_by_default_returns_404(monkeypatch):
 
 def test_requires_bearer(monkeypatch):
     _enable(monkeypatch)
-    client = TestClient(app)
+    client = _client()
     resp = client.post("/internal/open-clip/embeddings", json={"images": [_data_url()]})
     assert resp.status_code == 401
 
@@ -76,7 +96,7 @@ def test_returns_shape_the_caller_expects(monkeypatch):
 
     monkeypatch.setattr(features, "clip_embeddings", lambda images: [[0.1, 0.2]] * len(images))
 
-    client = TestClient(app)
+    client = _client()
     resp = client.post(
         "/internal/open-clip/embeddings",
         json={"images": [_data_url(), _data_url()]},
@@ -90,7 +110,7 @@ def test_returns_shape_the_caller_expects(monkeypatch):
 
 def test_empty_images_returns_empty_list(monkeypatch):
     _enable(monkeypatch)
-    client = TestClient(app)
+    client = _client()
     resp = client.post(
         "/internal/open-clip/embeddings",
         json={"images": []},
@@ -108,7 +128,7 @@ def test_rejects_non_data_url(monkeypatch):
 
     monkeypatch.setattr(features, "clip_embeddings", lambda images: [[0.1]] * len(images))
 
-    client = TestClient(app)
+    client = _client()
     resp = client.post(
         "/internal/open-clip/embeddings",
         json={"images": ["https://evil.example.com/a.jpg"]},
@@ -145,7 +165,7 @@ def test_inference_is_single_flight(monkeypatch):
 
     monkeypatch.setattr(features, "clip_embeddings", _slow_embeddings)
 
-    client = TestClient(app)
+    client = _client()
 
     def _post():
         return client.post(
@@ -191,7 +211,7 @@ def _stub_build(monkeypatch):
 
 def test_photo_profile_disabled_returns_404(monkeypatch):
     _enable(monkeypatch, "false")
-    client = TestClient(app)
+    client = _client()
     resp = client.post(
         "/internal/photo-profile",
         json={"images": [{"photoId": "p1", "dataUrl": _data_url()}]},
@@ -202,7 +222,7 @@ def test_photo_profile_disabled_returns_404(monkeypatch):
 
 def test_photo_profile_requires_bearer(monkeypatch):
     _enable(monkeypatch)
-    client = TestClient(app)
+    client = _client()
     resp = client.post(
         "/internal/photo-profile",
         json={"images": [{"photoId": "p1", "dataUrl": _data_url()}]},
@@ -213,7 +233,7 @@ def test_photo_profile_requires_bearer(monkeypatch):
 def test_photo_profile_returns_profiles_keyed_by_photo_id(monkeypatch):
     _enable(monkeypatch)
     _stub_build(monkeypatch)
-    client = TestClient(app)
+    client = _client()
     resp = client.post(
         "/internal/photo-profile",
         json={
@@ -237,7 +257,7 @@ def test_photo_profile_output_parses_as_contract(monkeypatch):
 
     _enable(monkeypatch)
     _stub_build(monkeypatch)
-    client = TestClient(app)
+    client = _client()
     resp = client.post(
         "/internal/photo-profile",
         json={"images": [{"photoId": "p1", "dataUrl": _data_url()}]},
@@ -248,7 +268,7 @@ def test_photo_profile_output_parses_as_contract(monkeypatch):
 
 def test_photo_profile_empty_returns_empty_map(monkeypatch):
     _enable(monkeypatch)
-    client = TestClient(app)
+    client = _client()
     resp = client.post(
         "/internal/photo-profile",
         json={"images": []},
@@ -266,7 +286,7 @@ def test_photo_profile_accepts_persist_mask_without_implementing_it(monkeypatch)
     """
     _enable(monkeypatch)
     _stub_build(monkeypatch)
-    client = TestClient(app)
+    client = _client()
     resp = client.post(
         "/internal/photo-profile",
         json={"images": [{"photoId": "p1", "dataUrl": _data_url()}], "persistMask": True},
@@ -279,7 +299,7 @@ def test_photo_profile_accepts_persist_mask_without_implementing_it(monkeypatch)
 def test_photo_profile_rejects_non_data_url(monkeypatch):
     _enable(monkeypatch)
     _stub_build(monkeypatch)
-    client = TestClient(app)
+    client = _client()
     resp = client.post(
         "/internal/photo-profile",
         json={"images": [{"photoId": "p1", "dataUrl": "https://evil.example.com/a.jpg"}]},
@@ -376,7 +396,7 @@ def test_photo_profile_runs_the_batch_concurrently(monkeypatch):
     inference, vision = _instrument_profile_pipeline(monkeypatch)
 
     count = 6
-    client = TestClient(app)
+    client = _client()
     resp = client.post(
         "/internal/photo-profile",
         json={"images": [{"photoId": f"p{i}", "dataUrl": _data_url()} for i in range(count)]},
@@ -408,8 +428,8 @@ def test_photo_profile_concurrency_is_bounded(monkeypatch):
         monkeypatch, inference_delay=0.0, vision_delay=0.30
     )
 
-    client = TestClient(app)
-    over = PROFILE_MAX_CONCURRENCY + 6
+    client = _client()
+    over = _max_concurrency() + 6
     resp = client.post(
         "/internal/photo-profile",
         json={"images": [{"photoId": f"p{i}", "dataUrl": _data_url()} for i in range(over)]},
@@ -417,6 +437,6 @@ def test_photo_profile_concurrency_is_bounded(monkeypatch):
     )
 
     assert resp.status_code == 200
-    assert vision.max_inside <= PROFILE_MAX_CONCURRENCY, (
-        f"并发放到了 {vision.max_inside} 路,超过上限 {PROFILE_MAX_CONCURRENCY}"
+    assert vision.max_inside <= _max_concurrency(), (
+        f"并发放到了 {vision.max_inside} 路,超过上限 {_max_concurrency()}"
     )

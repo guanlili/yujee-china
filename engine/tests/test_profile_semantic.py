@@ -5,6 +5,7 @@
 """
 
 import json
+import re
 
 from PIL import Image
 
@@ -75,9 +76,37 @@ def test_description_is_truncated_to_contract_limit(monkeypatch):
     assert len(semantic.semantic_features(_img())["description"]) <= 300
 
 
+# 位置类词 + 禁令词。子串检查(`"地名" in PROMPT`)拦不住把提示词改成
+# 「请写出地名」—— 而那正是这道闸唯一要防的改动,所以必须匹配「禁令 + 位置词」
+# 这个组合,而不是光看位置词出没出现过。
+_LOCATION_WORD = re.compile(r"地名|地点|位置|坐标|经纬|location|place|gps|coordinate", re.I)
+_PROHIBITION = re.compile(
+    r"(严禁|禁止|不得|不许|不准|不要|别写|never|do not|don't|avoid)[^。\n]{0,24}"
+    r"(地名|地点|位置|坐标|经纬|location|place|gps|coordinate)",
+    re.I,
+)
+
+
 def test_prompt_forbids_location_info():
-    """隐私红线:提示词必须明确禁止写地名。这是红线的第一道闸。"""
-    assert "地名" in semantic.PROMPT or "location" in semantic.PROMPT.lower()
+    """隐私红线:提示词必须明确**禁止**写地名。这是红线的第一道闸。"""
+    assert _PROHIBITION.search(semantic.PROMPT), (
+        "提示词里没有一条「禁止写位置信息」的指令"
+    )
+
+
+def test_prompt_has_no_line_that_asks_for_location():
+    """反向断言:凡提到位置的行都必须是禁令。
+
+    ⚠️ 别退回子串检查。旧写法是 `"地名" in PROMPT`,把整条禁令换成
+    「请写出地名和位置,越具体越好」照样绿 —— 隐私红线的第一道闸等于没有。
+    实测过这个变异:旧断言 passed,这一条 failed。
+    """
+    offenders = [
+        line
+        for line in semantic.PROMPT.splitlines()
+        if _LOCATION_WORD.search(line) and not _PROHIBITION.search(line)
+    ]
+    assert offenders == [], f"这些行提到位置却不是禁令:{offenders}"
 
 
 def test_model_failure_falls_back_not_raises(monkeypatch):

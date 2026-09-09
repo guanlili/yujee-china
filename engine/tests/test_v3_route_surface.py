@@ -37,6 +37,14 @@ def test_agent_route_surface_is_recognize_layout_compose_only() -> None:
     # 而当时这份清单还把它列进了 removed,等于给误删盖了章。
     assert "/internal/open-clip/embeddings" in paths
 
+    # ⚠️ 第二个 internal 口,同样**必须在**。CLAUDE.md 的 route surface 写的是
+    # 「四个对外 + 两个 internal」,这道守卫此前只钉了上面那一个 —— 等于给
+    # /internal/photo-profile 留了跟 0cfc019d 一模一样的静默删除口子。它的调用方是
+    # profile/remote.py:fetch_photo_profiles(主 engine 配了 GROUPING_CLIP_BASE_URL),
+    # 删掉的表现不是报错而是**整本书没有档案**:analyze 照常 completed,
+    # composition/sceneDescription 悄悄退回恒 None/恒空,三个照片能力集体空转。
+    assert "/internal/photo-profile" in paths
+
     # 排版改纯确定性 + AI 调用收敛成 compose 一次之后,这些端点都已删除。
     removed = {
         "/v3/judge-layout",
