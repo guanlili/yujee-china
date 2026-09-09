@@ -711,6 +711,21 @@ function EditorShell({
   }, [filterSaver, photoFilter]);
   useEffect(() => () => filterSaver.dispose(), [filterSaver]);
 
+  /* 设计对话落库后回来的权威滤镜状态。三样一起推,少一样都会出事:
+       · settingsRevisionRef —— 不推的话用户下一次改标题/背景/滤镜带的是旧基线,必吃 409;
+       · lastPersistedFilter —— 不推的话下面那个防抖保存 effect 会立刻把同一份状态
+         再 PATCH 一遍(白白多一次写 + 再推一次 settingsRevision);
+       · setPhotoFilter —— 画板重绘靠它(reloadPhotoFilter 的 effect 依赖 photoFilter)。
+     滤镜引擎只在 Browser 跑,服务端改完不告诉画板,用户看到的就还是旧观感。 */
+  const onAgentPhotoFilter = useCallback(
+    (state: PhotoFilterState | null, settingsRevision: number) => {
+      settingsRevisionRef.current = settingsRevision;
+      lastPersistedFilter.current = JSON.stringify(state);
+      setPhotoFilter(state);
+    },
+    [setPhotoFilter],
+  );
+
   const breadcrumbStage = storyProgress?.stage ?? detail.album.stage ?? 'analysing';
   // §4.2: chapter confirmation moved off the breadcrumb into the in-flow satisfaction
   // card. hasStoryGate is kept only for the authoring export-lock口径 below (§4.5a).
@@ -790,6 +805,7 @@ function EditorShell({
             storyProgress={storyProgress}
             setStoryProgress={setStoryProgress}
             setStoryProgressLoading={setStoryProgressLoading}
+            onAgentPhotoFilter={onAgentPhotoFilter}
           />
         </div>
 

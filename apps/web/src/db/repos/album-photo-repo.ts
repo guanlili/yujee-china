@@ -83,26 +83,34 @@ export const albumPhotoRepo = {
   /**
    * 批量写照片视觉档案。**只更新已存在的行,不 INSERT** —— 照片行的真相源是上传
    * 流程,档案只是贴上去的附加信息;凭空造行会让 countByStatus 之类的统计错乱。
+   *
+   * 返回**真的更新了几行**。调用方必须拿它当 saved,别拿「校验过几条」充数:
+   * 回调早于照片行落库时(engine 建完档而 confirm 还没到)两个数字会差一整批,
+   * 报出去的 {saved:100, skipped:0} 会把排障引到完全错的方向。
    */
   setProfiles: async (
     albumId: string,
     profiles: Record<string, PhotoProfile>,
     tx: DbOrTx = db,
-  ): Promise<void> => {
+  ): Promise<number> => {
     const entries = Object.entries(profiles);
-    if (entries.length === 0) return;
+    if (entries.length === 0) return 0;
     // 单条 UPDATE ... FROM (VALUES ...) —— 一本书上百张照片,逐条 UPDATE 是上百个
     // round trip。
     const values = sql.join(
       entries.map(([photoId, profile]) => sql`(${photoId}, ${JSON.stringify(profile)}::jsonb)`),
       sql`, `,
     );
-    await tx.execute(sql`
+    // RETURNING + 数行数:postgres-js 的 UPDATE 结果 `count` 在不同驱动/版本上口径
+    // 不一,数 RETURNING 出来的行是驱动无关的。
+    const updated = await tx.execute(sql`
       UPDATE ${albumPhotos} AS p
          SET profile = v.profile, updated_at = now()
         FROM (VALUES ${values}) AS v(photo_id, profile)
        WHERE p.album_id = ${albumId} AND p.photo_id = v.photo_id
+      RETURNING p.photo_id
     `);
+    return Array.isArray(updated) ? updated.length : (updated as { rowCount?: number }).rowCount ?? 0;
   },
 
   /**

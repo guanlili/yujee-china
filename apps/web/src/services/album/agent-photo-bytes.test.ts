@@ -6,7 +6,8 @@ import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '@/db/repos/__te
 import {
   AGENT_PHOTO_BYTES_MAX,
   AGENT_PHOTO_MAX_BYTES,
-  AGENT_PHOTO_TOTAL_BYTES,
+  AGENT_PHOTO_TOTAL_BASE64_BYTES,
+  base64Length,
   getAgentPhotoBytes,
 } from './agent-photo-bytes';
 
@@ -139,9 +140,15 @@ test('累计超总预算后停手，剩下的记 over-budget', async (t) => {
     const result = await getAgentPhotoBytes(albumId, ['p1', 'p2', 'p4'], {
       readObject: async () => bytes(AGENT_PHOTO_MAX_BYTES),
     });
-    assert.equal(AGENT_PHOTO_MAX_BYTES * 2, AGENT_PHOTO_TOTAL_BYTES, '预算常量变了就把这条用例的算术一起改');
-    assert.deepEqual(result.photos.map((p) => p.photoId), ['p1', 'p2']);
-    assert.deepEqual(result.skipped, [{ photoId: 'p4', reason: 'over-budget' }]);
+    // 预算与判定都在 base64 口径上,所以这里的算术也按编码后算。
+    const perPhoto = base64Length(AGENT_PHOTO_MAX_BYTES);
+    const fits = Math.floor(AGENT_PHOTO_TOTAL_BASE64_BYTES / perPhoto);
+    assert.ok(fits >= 1 && fits < 3, `预算常量变了就把这条用例的算术一起改(fits=${fits})`);
+    assert.deepEqual(result.photos.map((p) => p.photoId), ['p1', 'p2', 'p4'].slice(0, fits));
+    assert.deepEqual(
+      result.skipped,
+      ['p1', 'p2', 'p4'].slice(fits).map((photoId) => ({ photoId, reason: 'over-budget' })),
+    );
   } finally {
     await cleanupUser(userId);
   }
@@ -181,6 +188,47 @@ test('同一张重复请求只读一次 R2', async (t) => {
     });
     assert.equal(reads, 1);
     assert.equal(result.photos.length, 1);
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+// ── 响应体不能顶穿 Vercel 的 4.5MB ────────────────────────────────────────
+// 这个口用普通 JSON 返回 base64(膨胀 ×4/3)。预算按**原始**字节算的话,取满就是
+// 8MB 响应体 → 整次 500,不是「跳过几张」,是兜底路径直接废。
+const VERCEL_RESPONSE_BODY_LIMIT = 4.5 * 1024 * 1024;
+
+/** 路由实际发出去的那层信封(handler 走 ok(result))。 */
+const responseBodySize = (result: unknown) =>
+  Buffer.byteLength(JSON.stringify({ ok: true, data: result }), 'utf8');
+
+test('取满预算时响应体仍在 Vercel 4.5MB 之下(留足余量)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seed('apb-budget');
+  try {
+    // 六张都顶到单张上限 —— 最坏情况。
+    const result = await getAgentPhotoBytes(albumId, ['p1', 'p2', 'p4'], {
+      readObject: async () => bytes(AGENT_PHOTO_MAX_BYTES),
+    });
+    const size = responseBodySize(result);
+    assert.ok(
+      size < VERCEL_RESPONSE_BODY_LIMIT,
+      `响应体 ${size} 字节已经超过 Vercel 的 ${VERCEL_RESPONSE_BODY_LIMIT}`,
+    );
+    assert.ok(result.photos.length >= 1, '预算再紧也得让第一张过去,否则这条路等于没有');
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('单张顶到上限时,一张就把响应体撑爆也不行', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seed('apb-budget-single');
+  try {
+    const result = await getAgentPhotoBytes(albumId, ['p1'], {
+      readObject: async () => bytes(AGENT_PHOTO_MAX_BYTES),
+    });
+    assert.ok(responseBodySize(result) < VERCEL_RESPONSE_BODY_LIMIT);
   } finally {
     await cleanupUser(userId);
   }

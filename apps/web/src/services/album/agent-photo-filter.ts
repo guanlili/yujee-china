@@ -7,6 +7,7 @@ import {
   PhotoFilterRefSchema,
   effectiveRenderVersion,
   normalizePhotoFilterState,
+  photoFilterStatesEqual,
   type PhotoFilterState,
 } from '@/lib/photo/filter-state';
 import { lockAlbumForSettingsWrite } from './album-service';
@@ -92,6 +93,21 @@ export async function applyAgentPhotoFilter(
     const latest = await lockAlbumForSettingsWrite(tx, userId, albumId, baseSettingsRevision);
     // strength 归一化沿用 normalizePhotoFilterState 里的 quantizeStrength,不新写。
     const photoFilter = normalizePhotoFilterState(mergePatch(latest.photoFilter, parsed.data));
+
+    // 同值重写是**空操作**。下面那次 update 是无条件清 PDF/封面派生物 + 把
+    // COMPLETED 打回 EDITING 的:不判「真的变了没有」的话,用户再问一句
+    // 「确认下调色」→ Agent 把同一份滤镜再写一遍 → PDF 链接和封面缩略图凭空
+    // 消失、书退回 EDITING。判定过 normalizePhotoFilterState(strength 52 与 50
+    // 归一后同值),返回的是**库里那份**权威状态,调用方照常拿得到。
+    if (photoFilterStatesEqual(latest.photoFilter, photoFilter)) {
+      return {
+        photoFilter: normalizePhotoFilterState(latest.photoFilter),
+        settingsRevision: latest.settingsRevision,
+        // 版本串逐字节没变 => 分享快照不会失配,没什么要告知的。
+        warnings: [],
+      };
+    }
+
     const settingsRevision = latest.settingsRevision + 1;
 
     const warnings = await shareMismatchWarnings(tx, albumId, latest, photoFilter);

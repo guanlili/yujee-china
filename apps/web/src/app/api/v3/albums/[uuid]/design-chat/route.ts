@@ -134,6 +134,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
               // 还是旧观感 —— 而滤镜不进 book.version,committed 为 false 的一轮
               // 也可能改了它,所以这一项独立于上面的 pages。
               ...(appliedFilter ? { photoFilter: appliedFilter.photoFilter, settingsRevision: appliedFilter.settingsRevision } : {}),
+              // 分享快照失配一类的告知。**必须由这里送到用户眼前** —— design-agent
+              // 那侧的工具 notes 走不出 agent 循环(写工具 terminate: true 会掐断,
+              // 模型没机会转述)。空数组不发,免得前端每轮都判一次空。
+              ...(appliedFilter && appliedFilter.warnings.length > 0
+                ? { warnings: appliedFilter.warnings }
+                : {}),
             },
           });
         };

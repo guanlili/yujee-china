@@ -24,6 +24,7 @@ import { r2 } from '@/lib/r2/r2-client';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
 import { transientPagePhotoRefs } from './page-photo-refs';
+import { getPhotoProfiles, withPhotoProfiles } from './photo-profile-service';
 import { extractDesignFromPages } from './append-photos';
 import {
   buildCoverSets,
@@ -855,10 +856,10 @@ export const albumService = {
     userId: string,
     albumId: string,
     input: { userMessage: string; currentPageIndex?: number },
-  ): Promise<{ assistantReply: string; committed: boolean; pageCount: number }> {
+  ): Promise<{ assistantReply: string; committed: boolean; pageCount: number; warnings: string[] }> {
     const { baseSettingsRevision } = await this.prepareDesignChat(userId, albumId);
     const result = await designAgentClient.chat(albumId, input.userMessage, input.currentPageIndex);
-    await this.persistDesignChat(userId, albumId, {
+    const applied = await this.persistDesignChat(userId, albumId, {
       userMessage: input.userMessage,
       assistantReply: result.assistantReply,
       committed: result.committed,
@@ -870,6 +871,8 @@ export const albumService = {
       assistantReply: result.assistantReply,
       committed: result.committed,
       pageCount: result.book.pages.length,
+      // 分享失配一类的告知也要走非流式这条路 —— 两条路径同一口径。
+      warnings: applied?.warnings ?? [],
     };
   },
 
@@ -906,14 +909,19 @@ export const albumService = {
     //    (share-service 拿 effectiveRenderVersion 精确核对备份快照)。
     //  · viewablePhotoIds —— look_at_photos 取得到字节的那批。只传 id 不传图:
     //    一本书几十张,base64 全塞进装书请求太贵,而看图是兜底路径。
-    const [hasPublishedShare, photoRows] = await Promise.all([
+    //  · profiles —— 照片视觉档案。**在这里合进载荷,不进 draft_json**:
+    //    `V3ChapterPhoto` 是 `.strict()` 且没有 profile 字段,塞进树里整棵树会 parse
+    //    失败。design-agent 的 `AlbumChapterPhoto.profile` 就是给这一步准备的。
+    //    没建档的照片不带这个键(而不是带一个空档案)—— 读取方一律要能降级。
+    const [hasPublishedShare, photoRows, profiles] = await Promise.all([
       albumShareRepo.existsByAlbum(albumId),
       albumPhotoRepo.findByAlbum(albumId),
+      getPhotoProfiles(albumId),
     ]);
     await designAgentClient.loadBook(
       albumId,
       {
-        chapters: normalized.tree.chapters,
+        chapters: withPhotoProfiles(normalized.tree.chapters, profiles),
         pages: normalized.pages,
         brief: {
           theme: [album.title, album.prompt].filter(Boolean).join(' — ').slice(0, 200) || undefined,
@@ -952,7 +960,16 @@ export const albumService = {
     // 返回落库后的权威滤镜状态(归一化过、与并发写合并过),供路由回发浏览器
     // 原地重绘 —— 滤镜引擎只在 Browser 跑,画板不知道新值就还是旧观感。
     // 没写滤镜时返回 null。
-  ): Promise<{ photoFilter: PhotoFilterState | null; settingsRevision: number } | null> {
+    //
+    // warnings:分享快照失配一类的告知(applyAgentPhotoFilter 算的)。**必须一路
+    // 送到用户眼前** —— design-agent 那侧工具 `terminate: true` 会掐断 agent 循环,
+    // 模型没机会把 notes 转述出来;失败场景是真的:已发布分享的书被整本改色 →
+    // 全书 renderVersion 变 → 分享页照片全糊、要重备全书,而用户全程零提示。
+  ): Promise<{
+    photoFilter: PhotoFilterState | null;
+    settingsRevision: number;
+    warnings: string[];
+  } | null> {
     if (input.committed) {
       // 数组序是唯一真相,pageIndex 按位置重编号(0..n-1)。design-agent 的写工具
       // (move_pages;delete_page 同理)只动数组顺序、不改页对象的 pageIndex 字段
@@ -1016,7 +1033,11 @@ export const albumService = {
     // 写序:页面 → 滤镜 → 聊天记录。滤镜失配时聊天记录不落 —— 宁可让用户看见报错
     // 重来,也不能留一条「已经调成旅行大片」的回复而实际没改(静默撒谎)。两套 OCC
     // 跨不了同一个事务,这个次序是权衡后的取舍,别随手调换。
-    let applied: { photoFilter: PhotoFilterState | null; settingsRevision: number } | null = null;
+    let applied: {
+      photoFilter: PhotoFilterState | null;
+      settingsRevision: number;
+      warnings: string[];
+    } | null = null;
     if (input.photoFilterPatch) {
       const result = await applyAgentPhotoFilter(
         userId,
@@ -1024,7 +1045,11 @@ export const albumService = {
         input.photoFilterPatch,
         input.baseSettingsRevision,
       );
-      applied = { photoFilter: result.photoFilter, settingsRevision: result.settingsRevision };
+      applied = {
+        photoFilter: result.photoFilter,
+        settingsRevision: result.settingsRevision,
+        warnings: result.warnings,
+      };
     }
 
     await db.transaction(async (tx) => {

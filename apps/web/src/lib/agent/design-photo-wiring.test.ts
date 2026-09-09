@@ -174,3 +174,79 @@ test('落库带上 baseSettingsRevision —— 漏传会让协作者调色每次
   assert.match(route, /baseSettingsRevision\s*\}\s*=\s*await\s+albumService\.prepareDesignChat/);
   assert.match(route, /persistDesignChat\([\s\S]{0,500}?baseSettingsRevision/);
 });
+
+// ── 分享失配 warning 必须到得了用户眼前 ────────────────────────────────────
+// seam 会算出 warning,但 design-agent 那侧工具 `terminate: true` 会掐断 agent 循环,
+// 模型没机会把 notes 转述出来。所以这条链必须在 web 侧闭合:
+//   applyAgentPhotoFilter → persistDesignChat 返回 → done 事件 → ChatPanel 显示。
+// 断了任何一环,用户就会在零提示的情况下发现分享页照片全糊。
+
+test('persistDesignChat 的返回类型带上 warnings', () => {
+  const service = code('../../services/album/album-service.ts');
+  assert.match(
+    service,
+    /persistDesignChat\([\s\S]{0,1800}?\):\s*Promise<\{[^}]*warnings[^}]*\}\s*\|\s*null>/,
+  );
+});
+
+test('done 事件把 warnings 一起发给浏览器', () => {
+  const route = code('../../app/api/v3/albums/[uuid]/design-chat/route.ts');
+  assert.match(route, /type:\s*'done'[\s\S]{0,900}?warnings/);
+});
+
+test('ChatPanel 真的消费 done 里的 warnings 并渲染出来', () => {
+  const panel = code('../../components/album/editor-v2/ChatPanel.tsx');
+  // 解构/读取 done 载荷里的 warnings。
+  assert.match(panel, /final\.warnings/);
+  // 渲染成一张提示卡贴进对话(不是只存进变量)。
+  assert.match(panel, /buildDesignWarningCard\(/);
+  assert.match(panel, /stream\.host\.appendChild\(buildDesignWarningCard\(/);
+  // 模型/服务端文案一律 textContent,绝不进 innerHTML(与工具入参同一条安全口径)。
+  assert.match(panel, /function buildDesignWarningCard[\s\S]{0,900}?textContent/);
+});
+
+// ── 落库后的 photoFilter / settingsRevision 必须有人接 ──────────────────────
+// 两个后果都是真的:
+//   ① 调色后画板纹丝不动,用户要刷新才看得到(滤镜引擎只在 Browser 跑);
+//   ② settingsRevisionRef 不更新 → 用户下一次改设置带着旧基线 → 必吃一次 409 回滚。
+// 而纯调色那一轮 `committed` 恒 false,所以这条**绝不能**挂在 committed 里面。
+
+test('ChatPanel 把 done 里的 photoFilter/settingsRevision 交给外壳,且不被 committed 挡住', () => {
+  const panel = code('../../components/album/editor-v2/ChatPanel.tsx');
+  assert.match(panel, /final\.photoFilter/);
+  assert.match(panel, /final\.settingsRevision/);
+  assert.match(panel, /onAgentPhotoFilter/);
+  // ⚠️ 找的是**调用点**(`?.(`),不是那行 ref 赋值 —— 赋值在组件顶部,恒早于
+  // committed 分支,拿它比位置等于把这条断言喂饱(mutation 实测:把调用点挪进
+  // committed 分支里,断言仍绿)。
+  const applyAt = panel.indexOf('onAgentPhotoFilterRef.current?.(');
+  const committedAt = panel.indexOf('if (final.committed)');
+  assert.ok(applyAt > 0, 'ChatPanel 应经 ref 调用外壳给的回调');
+  assert.ok(committedAt > 0, 'committed 分支应仍在');
+  assert.ok(
+    applyAt < committedAt,
+    '滤镜回填必须在 committed 分支之前 —— 纯调色那一轮 committed 恒 false',
+  );
+});
+
+test('桌面壳把回调传给 ChatPanel,并同时推进三样本地状态', () => {
+  const editor = code('../../components/album/editor-v2/EditorPort.tsx');
+  assert.match(editor, /<ChatPanel[\s\S]{0,600}?onAgentPhotoFilter=\{/);
+  // 回调体:推进设置基线 + 认账已持久化(否则防抖保存器会立刻把同一份再 PATCH 一遍)
+  // + 把新状态灌进 React 状态(reloadPhotoFilter 的 effect 靠它触发重绘)。
+  const body = /const onAgentPhotoFilter[\s\S]{0,900}?\n  \);/.exec(editor)?.[0] ?? '';
+  assert.ok(body.length > 0, 'EditorPort 应定义 onAgentPhotoFilter');
+  assert.match(body, /settingsRevisionRef\.current\s*=/);
+  assert.match(body, /lastPersistedFilter\.current\s*=/);
+  assert.match(body, /setPhotoFilter\(/);
+});
+
+test('移动壳同样接上 —— 否则手机上调色只能靠刷新', () => {
+  const mobile = code('../../components/album/editor-v2/mobile/MobileEditorRoot.tsx');
+  assert.match(mobile, /<ChatPanel[\s\S]{0,600}?onAgentPhotoFilter=\{/);
+  const body = /const onAgentPhotoFilter[\s\S]{0,900}?\n  \);/.exec(mobile)?.[0] ?? '';
+  assert.ok(body.length > 0, 'MobileEditorRoot 应定义 onAgentPhotoFilter');
+  assert.match(body, /settingsRevisionRef\.current\s*=/);
+  assert.match(body, /lastPersistedFilter\.current\s*=/);
+  assert.match(body, /setPhotoFilter\(/);
+});

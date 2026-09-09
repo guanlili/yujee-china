@@ -380,6 +380,18 @@ export function MobileEditorRoot({
   }, [filterSaver, photoFilter]);
   useEffect(() => () => filterSaver.dispose(), [filterSaver]);
 
+  /* 设计对话落库后回来的权威滤镜状态(桌面同一份口径,见 EditorPort 的同名回调)。
+     三样一起推:设置基线(否则下次改设置带旧基线必吃 409)、已持久化标记(否则上面
+     那个防抖 effect 立刻把同一份再 PATCH 一遍)、React 状态(画板重绘靠它)。 */
+  const onAgentPhotoFilter = useCallback(
+    (state: PhotoFilterState | null, settingsRevision: number) => {
+      settingsRevisionRef.current = settingsRevision;
+      lastPersistedFilter.current = JSON.stringify(state);
+      setPhotoFilter(state);
+    },
+    [setPhotoFilter],
+  );
+
   // ── 落库:与桌面同一通道(PATCH /api/v1/albums/{id}/pages/{index})。 ────────
   // 服务端按同一批 patcher 把改动打进存库 html,前端不重复实现落库侧写回。
   // 协同保存协调器(collab plan §9):同页串行、在途合并、baseVersion 串接、
@@ -1419,6 +1431,7 @@ export function MobileEditorRoot({
         storyProgress={storyProgress}
         setStoryProgress={setStoryProgress}
         setStoryProgressLoading={ignoreStoryProgressLoading}
+        onAgentPhotoFilter={onAgentPhotoFilter}
       />
     </div>
     <MobileToast text={toast} />

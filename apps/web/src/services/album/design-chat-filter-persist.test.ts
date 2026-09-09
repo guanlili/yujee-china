@@ -4,6 +4,8 @@ import type { Page } from '@yujee/contracts';
 import { db } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumMemberRepo } from '@/db/repos/album-member-repo';
+import { albumShareRepo } from '@/db/repos/album-share-repo';
+import { designAgentClient } from '@/lib/agent/design-agent-client';
 import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '@/db/repos/__test__/setup';
 import { albumService } from './album-service';
@@ -28,14 +30,54 @@ const seededPage: Page = {
   html: '<div data-template="mag-01">Hello</div>',
 };
 
+const hasCode = (code: string) => (err: unknown) =>
+  typeof err === 'object' && err !== null && (err as { code?: string }).code === code;
+
 async function seedBook(suffix: string) {
   const user = await makeUser(suffix);
   const album = await makeAlbum(user.id);
   await db.transaction(async (tx) => {
     await draftPageRepo.replaceAll(tx, album.id, [seededPage], 1, user.id);
   });
-  await albumRepo.update(db, album.id, { draftRevision: 1, draftStructureRevision: 1 });
+  // ⚠️ 必须写一份能过 loadStoryDraft 的 V3 信封:少了它 prepareDesignChat 会在
+  // 「album has no V3 story draft」当场抛,下面那条基线用例就变成一条永不执行的
+  // 断言(2026-09-09 评审揪出的假绿正是这个形状)。
+  await albumRepo.update(db, album.id, {
+    status: 'EDITING',
+    stage: 'story',
+    draftRevision: 1,
+    draftStructureRevision: 1,
+    draftJson: {
+      version: 'v3-story',
+      tree: {
+        chapters: [
+          {
+            chapterId: 'c1',
+            title: '第一章',
+            description: '',
+            accentColor: null,
+            artFont: null,
+            chapterContext: '',
+            place: '',
+            keywords: [],
+            photos: [],
+          },
+        ],
+      },
+      pages: [],
+      progress: { currentChapterId: 'c1', doneChapterIds: [] },
+    },
+  });
   return { userId: user.id, albumId: album.id };
+}
+
+/** 拦下装书那一趟网络。design-agent 起不起得来与「基线从哪来」无关。 */
+function captureLoadBook() {
+  const original = designAgentClient.loadBook;
+  designAgentClient.loadBook = async () => {};
+  return () => {
+    designAgentClient.loadBook = original;
+  };
 }
 
 const persistInput = {
@@ -71,7 +113,11 @@ test('editor:带上基线就能调色 —— 不带基线会被 lockAlbumForSett
     const before = (await albumRepo.findById(albumId))!.settingsRevision;
 
     // 不带基线:协作者被拒(这正是接线漏传基线时线上会发生的事)。
-    await assert.rejects(() => albumService.persistDesignChat(editor.id, albumId, persistInput));
+    // ⚠️ 必须钉错误码:不带码的 assert.rejects 换成任何别的错误也绿。
+    await assert.rejects(
+      () => albumService.persistDesignChat(editor.id, albumId, persistInput),
+      hasCode('VALIDATION_FAILED'),
+    );
 
     const applied = await albumService.persistDesignChat(editor.id, albumId, {
       ...persistInput,
@@ -93,8 +139,9 @@ test('对话期间有人改过设置 → 基线失配,拒写,零改动', async (
     // 模拟对话进行中另一端改了设置。
     await albumRepo.update(db, albumId, { settingsRevision: stale + 5 });
 
-    await assert.rejects(() =>
-      albumService.persistDesignChat(userId, albumId, { ...persistInput, baseSettingsRevision: stale }),
+    await assert.rejects(
+      () => albumService.persistDesignChat(userId, albumId, { ...persistInput, baseSettingsRevision: stale }),
+      hasCode('SETTINGS_CONFLICT'),
     );
     const after = (await albumRepo.findById(albumId))!;
     assert.equal(after.photoFilter, null, '失配必须零写入');
@@ -125,17 +172,67 @@ test('没有 photoFilterPatch 时不碰设置,也不需要基线', async (t) => 
 test('prepareDesignChat 把基线吐出来给这一轮用', async (t) => {
   if (!(await isDbReachable())) return t.skip('db unreachable');
   const { userId, albumId } = await seedBook('dcf-baseline');
+  const restore = captureLoadBook();
   try {
     await albumRepo.update(db, albumId, { settingsRevision: 7 });
-    // design-agent 起不来时 loadBook 会抛;这里只关心「基线从哪来」,所以捕获后
-    // 直接读库对账 —— 基线必须等于装书那一刻的 settingsRevision。
-    let baseline: number | undefined;
-    try {
-      baseline = (await albumService.prepareDesignChat(userId, albumId))?.baseSettingsRevision;
-    } catch {
-      baseline = undefined;
-    }
-    if (baseline !== undefined) assert.equal(baseline, 7);
+    // 基线必须等于**装书那一刻**的 settingsRevision(70d38c4e 修的就是这个)。
+    // 断言无条件执行 —— 早先这里是 `if (baseline !== undefined)` 加一个必抛的
+    // fixture,于是这条不变量零运行时断言。
+    const { baseSettingsRevision } = await albumService.prepareDesignChat(userId, albumId);
+    assert.equal(baseSettingsRevision, 7);
+  } finally {
+    restore();
+    await cleanupUser(userId);
+  }
+});
+
+test('已发布分享的书:落库把 warning 吐出来 —— 路由才有东西转述给用户', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seedBook('dcf-warn');
+  try {
+    // 已备份 + 已发布分享:改滤镜会让全书 renderVersion 失配,用户必须重备全书。
+    await albumRepo.update(db, albumId, {
+      photoSnapshot: {
+        photoIds: ['p1'],
+        renderVersions: { p1: 'pf-v1__original' },
+        updatedAt: new Date().toISOString(),
+      },
+    });
+    await db.transaction(async (tx) =>
+      albumShareRepo.create(tx, {
+        token: `dcf-warn-${Date.now()}`,
+        albumId,
+        title: 'shared',
+        snapshotJson: { pages: [], photoUrls: {}, boardBackground: null, locale: 'zh' },
+      }),
+    );
+    const before = (await albumRepo.findById(albumId))!.settingsRevision;
+
+    const applied = await albumService.persistDesignChat(userId, albumId, {
+      ...persistInput,
+      baseSettingsRevision: before,
+    });
+
+    assert.ok(applied, '写了滤镜就该有返回');
+    assert.ok(
+      applied.warnings.some((w) => w.includes('分享')),
+      `warning 必须一路传到 persistDesignChat 的返回值:${JSON.stringify(applied.warnings)}`,
+    );
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('没有分享的书:warnings 是空数组,不给用户刷假警报', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seedBook('dcf-nowarn');
+  try {
+    const before = (await albumRepo.findById(albumId))!.settingsRevision;
+    const applied = await albumService.persistDesignChat(userId, albumId, {
+      ...persistInput,
+      baseSettingsRevision: before,
+    });
+    assert.deepEqual(applied?.warnings, []);
   } finally {
     await cleanupUser(userId);
   }

@@ -48,10 +48,18 @@ test('过程披露:每个工具调用一行人话步骤,内部工具名/入参�
 });
 
 // ── 第三段:一条彩色「更新了什么」条(按类别去重,只报真正改了的) ──
-test('更新条:彩色摘要按类别去重,字体/颜色/页面三类,含 set_text_fonts 与 write_page_html', () => {
+test('更新条:彩色摘要按类别去重,字体/颜色/页面三类,十三个写工具都在映射里', () => {
   assert.match(chatSrc, /buildDesignChangeCard/);
-  // 十个写工具都要进类别映射(注意 set_text_fonts / write_page_html 之前不在集合里;
-  // set_page_background / apply_book_style 是 2026-08-29 风格理解新增的两个)。
+  // ⚠️ 断言前必须**从映射块里取、并剥掉注释**:早先这里拿整份 chat-history.ts 源码
+  // 做 includes,块里的注释就把断言喂饱了 —— mutation 实测:删掉真实的
+  // `set_page_background: 'colors'` 那一行,断言仍为真(喂饱它的是文件里两处注释)。
+  // 同文件下方 route 那条早就剥了注释,这里补齐到同一写法。
+  const rawCatBlock = /const DESIGN_CHANGE_CATEGORY[\s\S]*?\n\};/.exec(historySrc)?.[0] ?? '';
+  assert.ok(rawCatBlock.length > 0, 'DESIGN_CHANGE_CATEGORY 映射块应存在');
+  const catBlock = rawCatBlock.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  // 十三个写工具都要进类别映射(set_text_fonts / write_page_html 曾漏在集合外;
+  // set_page_background / apply_book_style 是 2026-08-29 风格理解新增的两个;
+  // 照片三件套是 2026-09-09 那批)。
   for (const tool of [
     'set_text_fonts',
     'set_text_colors',
@@ -61,9 +69,16 @@ test('更新条:彩色摘要按类别去重,字体/颜色/页面三类,含 set_t
     'swap_page_template',
     'update_page_images',
     'write_page_html',
+    'move_pages',
+    'delete_page',
+    'set_image_pos',
+    'set_photo_filter',
+    'set_photo_cutout',
   ]) {
-    assert.ok(historySrc.includes(tool), `类别映射应含 ${tool}`);
+    assert.ok(catBlock.includes(tool), `类别映射应含 ${tool}`);
   }
+  // look_at_photos 是读工具:进了映射会让每次「看图」都被报成一次改动。
+  assert.ok(!catBlock.includes('look_at_photos'), '类别映射不该含读工具 look_at_photos');
   // 三类中文标签。
   assert.match(chatSrc, /字体/);
   assert.match(chatSrc, /颜色/);
@@ -75,9 +90,8 @@ test('更新条:彩色摘要按类别去重,字体/颜色/页面三类,含 set_t
   // 彩色更新条贴进 host,位于终稿回复之前。
   assert.match(chatSrc, /stream\.host\.appendChild\(buildDesignChangeCard\(/);
   // 封面/整体设计两类本次 defer:类别映射里不得出现封面/主题类工具。
-  const catBlock = /const DESIGN_CHANGE_CATEGORY[\s\S]*?\n\};/.exec(historySrc)?.[0] ?? '';
-  assert.ok(catBlock.length > 0, 'DESIGN_CHANGE_CATEGORY 映射块应存在');
-  assert.doesNotMatch(catBlock, /cover|theme|封面|set_cover|apply_theme/i);
+  // 这条用**未剥注释**的原始块,注释里提到也算违规(宁可紧一点)。
+  assert.doesNotMatch(rawCatBlock, /cover|theme|封面|set_cover|apply_theme/i);
 });
 
 // ── 第四段:终稿文本气泡(总结回复),置于最底 ──

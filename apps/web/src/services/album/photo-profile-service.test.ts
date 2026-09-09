@@ -119,3 +119,36 @@ test('getPhotoProfiles: 没建档的书返回空对象,不抛', async (t) => {
     await cleanupUser(userId);
   }
 });
+
+// ── saved 数必须是真落库的行数 ────────────────────────────────────────────
+// setProfiles 只 UPDATE 不 INSERT。数「契约校验过了几条」的话,回调早于照片行落库时
+// 会回报 {saved:100, skipped:0} 而库里一条没有 —— 排障会往完全错的方向查。
+test('savePhotoProfiles: 照片行还没落库时 saved 必须是 0,不是「校验过几条」', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { userId, albumId } = await seedAlbum('profile-svc-rowcount', []);
+  try {
+    const result = await savePhotoProfiles(albumId, {
+      ghost1: sampleProfile,
+      ghost2: sampleProfile,
+    });
+    assert.equal(result.saved, 0, '库里一行都没有,saved 不能报 2');
+    assert.equal(result.skipped, 2, '没落成的也要算进 skipped,数字才对得上');
+    assert.deepEqual(await getPhotoProfiles(albumId), {});
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('savePhotoProfiles: 部分照片有行时 saved 只数落成的那几条', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { userId, albumId } = await seedAlbum('profile-svc-rowcount-partial', ['real']);
+  try {
+    const result = await savePhotoProfiles(albumId, {
+      real: sampleProfile,
+      ghost: sampleProfile,
+    });
+    assert.deepEqual(result, { saved: 1, skipped: 1 });
+  } finally {
+    await cleanupUser(userId);
+  }
+});

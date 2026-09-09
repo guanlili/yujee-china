@@ -125,3 +125,29 @@ export function effectiveRenderVersion(
 
   return `pf-v1__${filter.lutId}__${quantizeStrength(filter.strength)}${cut}`;
 }
+
+/** 键序无关的深比较用的规范化序列化(overrides/cutouts 的键序由合并顺序决定,
+ *  不该影响「变没变」的判定)。 */
+function stableStringify(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  return `{${Object.entries(value as Record<string, unknown>)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`)
+    .join(',')}}`;
+}
+
+/**
+ * 两份滤镜状态**语义**上是不是同一份。先过 normalizePhotoFilterState 再比 ——
+ * strength 52 与 50 归一后同值,不该被当成一次改动。
+ *
+ * 为什么需要它:滤镜写入会**无条件**清 PDF/封面派生物并把 COMPLETED 打回 EDITING。
+ * 不判「真的变了没有」的话,用户再问一句「确认下调色」,PDF 链接和封面缩略图就凭空
+ * 消失了(design-agent 侧有同名函数,那边只用来压 warning,不管写不写)。
+ */
+export function photoFilterStatesEqual(
+  a: PhotoFilterState | null | undefined,
+  b: PhotoFilterState | null | undefined,
+): boolean {
+  return stableStringify(normalizePhotoFilterState(a)) === stableStringify(normalizePhotoFilterState(b));
+}

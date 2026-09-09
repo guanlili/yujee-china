@@ -360,3 +360,79 @@ test('applyAgentPhotoFilter: 开抠图同样让备份失配,要 warning(__cut1 �
     await cleanupUser(userId);
   }
 });
+
+// ── 同值重写必须是空操作 ────────────────────────────────────────────────────
+// 派生物清理和 COMPLETED→EDITING 都是**无条件**做的,所以用户再问一句「确认下调色」
+// 让 Agent 把同一份滤镜再写一遍,PDF 链接和封面缩略图就凭空消失了。
+test('applyAgentPhotoFilter: 同值重写不清 PDF/封面、不把 COMPLETED 打回 EDITING、不推进 revision', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { userId, albumId } = await seedBook('agent-filter-noop');
+  try {
+    const rev0 = (await albumRepo.findById(albumId))!.settingsRevision;
+    await applyAgentPhotoFilter(userId, albumId, { default: { lutId: 'night-film', strength: 50 } }, rev0);
+    // 落完滤镜之后再挂上派生物,模拟「调完色又导出过一次」的书。
+    await albumRepo.update(db, albumId, {
+      status: 'COMPLETED',
+      pdfUrl: 'https://cdn.yujee.test/book.pdf',
+      pdfR2Key: `pdfs/${userId}/${albumId}.pdf`,
+      coverThumbnailUrl: 'https://cdn.yujee.test/cover.jpg',
+      coverThumbnailR2Key: `cover-thumbs/${userId}/${albumId}.jpg`,
+    });
+    const before = (await albumRepo.findById(albumId))!;
+
+    const result = await applyAgentPhotoFilter(
+      userId,
+      albumId,
+      { default: { lutId: 'night-film', strength: 50 } },
+      before.settingsRevision,
+    );
+
+    const after = (await albumRepo.findById(albumId))!;
+    assert.equal(after.settingsRevision, before.settingsRevision, '没变就别推进 revision');
+    assert.equal(after.pdfUrl, 'https://cdn.yujee.test/book.pdf');
+    assert.equal(after.pdfR2Key, before.pdfR2Key);
+    assert.equal(after.coverThumbnailUrl, 'https://cdn.yujee.test/cover.jpg');
+    assert.equal(after.coverThumbnailR2Key, before.coverThumbnailR2Key);
+    assert.equal(after.status, 'COMPLETED', '没改任何像素,不该把书打回 EDITING');
+    // 返回的仍是库里那份权威状态,调用方照常拿得到。
+    assert.equal(result.photoFilter?.default?.lutId, 'night-film');
+    assert.equal(result.settingsRevision, before.settingsRevision);
+    assert.deepEqual(result.warnings, []);
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('applyAgentPhotoFilter: strength 归一化之后才判同值(52 与 50 归一后同值)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { userId, albumId } = await seedBook('agent-filter-noop-quantize');
+  try {
+    const rev0 = (await albumRepo.findById(albumId))!.settingsRevision;
+    await applyAgentPhotoFilter(userId, albumId, { default: { lutId: 'night-film', strength: 50 } }, rev0);
+    const before = (await albumRepo.findById(albumId))!;
+    await applyAgentPhotoFilter(
+      userId, albumId, { default: { lutId: 'night-film', strength: 52 } }, before.settingsRevision,
+    );
+    assert.equal((await albumRepo.findById(albumId))!.settingsRevision, before.settingsRevision);
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('applyAgentPhotoFilter: 真的变了就照常写(同值短路不能把正常写入也吞掉)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { userId, albumId } = await seedBook('agent-filter-noop-negative');
+  try {
+    const rev0 = (await albumRepo.findById(albumId))!.settingsRevision;
+    await applyAgentPhotoFilter(userId, albumId, { default: { lutId: 'night-film', strength: 50 } }, rev0);
+    const before = (await albumRepo.findById(albumId))!;
+    await applyAgentPhotoFilter(
+      userId, albumId, { default: { lutId: 'night-film', strength: 70 } }, before.settingsRevision,
+    );
+    const after = (await albumRepo.findById(albumId))!;
+    assert.equal(after.settingsRevision, before.settingsRevision + 1);
+    assert.equal(after.photoFilter?.default?.strength, 70);
+  } finally {
+    await cleanupUser(userId);
+  }
+});

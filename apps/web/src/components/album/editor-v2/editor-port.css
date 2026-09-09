@@ -755,6 +755,15 @@
   background:linear-gradient(115deg, rgba(19,184,166,0.18) 0%, rgba(140,94,244,0.15) 50%, rgba(218,244,94,0.18) 100%);
   padding:2px 9px; border-radius:9999px;
 }
+/* 设计对话的服务端告知条(分享快照失配等):op-card 同族,琥珀色以示区别于「已更新」。 */
+.editor-port .op-card-warn{ align-items:flex-start; border-color:rgba(217,119,6,.32); }
+.editor-port .op-ic-warn{
+  color:#b45309;
+  background:linear-gradient(135deg, rgba(245,158,11,.20), rgba(217,119,6,.16));
+}
+.editor-port .op-notes{ margin-top:2px; }
+.editor-port .op-note{ font-size:12.5px; line-height:1.7; color:var(--fg-2); }
+.editor-port .op-note + .op-note{ margin-top:4px; }
 .editor-port .ai-doc{ margin-top:8px; }
 .editor-port .ai-doc h4{ font-size:13.5px; font-weight:700; color:var(--fg); margin:13px 0 3px; }
 .editor-port .ai-doc h4:first-of-type{ margin-top:2px; }

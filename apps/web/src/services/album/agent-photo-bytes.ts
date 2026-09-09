@@ -22,10 +22,37 @@ import { PHOTO_ORIGINAL_CONTENT_TYPE, photoOriginalKey } from './photo-original-
 
 /** 与 design-agent 的 look_at_photos 上限同口径(一次最多看 6 张)。 */
 export const AGENT_PHOTO_BYTES_MAX = 6;
-/** 单张原始字节上限:一张巨图能把整个模型请求顶爆。 */
-export const AGENT_PHOTO_MAX_BYTES = 3 * 1024 * 1024;
-/** 单次请求的原始字节总预算。base64 会再涨 4/3,留出正文和历史的余量。 */
-export const AGENT_PHOTO_TOTAL_BYTES = 6 * 1024 * 1024;
+
+/**
+ * ⚠️ 预算一律按 **base64 之后**的大小算,不是原始字节。
+ *
+ * 这个口用普通 JSON 返回 base64(`handler.ts` 走 `ok(result)`),编码后涨 4/3。
+ * 按原始字节记预算的话,6MB 的「总预算」到线上就是 8MB 响应体 —— 顶穿 Vercel 的
+ * 4.5MB,于是取 4 张 1.5MB 的原图不是「跳过几张」,是整次请求 500,兜底路径直接废。
+ *
+ * 余量:4.5MB 上限,总预算 3.5MiB,留约 1MB 给信封/skipped 列表/未来字段。
+ *
+ * ⚠️ 已知欠账(与文件抬头同一条):这里返回的是**规范原图**(长边 3400/q0.82),
+ * 没有服务端缩图,所以预算一紧就会有照片被跳过。治本是给这条路加一步服务端缩图
+ * (长边 ~1024),那时这两个常量可以大幅放宽。
+ */
+export const AGENT_PHOTO_MAX_BASE64_BYTES = Math.floor(2.5 * 1024 * 1024);
+export const AGENT_PHOTO_TOTAL_BASE64_BYTES = Math.floor(3.5 * 1024 * 1024);
+
+/** base64 编码后的长度(每 3 字节 → 4 字符,含 padding)。 */
+export function base64Length(rawBytes: number): number {
+  return Math.ceil(rawBytes / 3) * 4;
+}
+
+/** base64 预算换算回原始字节 —— 只为让调用方/测试有个可读的等价数,判定仍走 base64。 */
+function rawBudgetOf(base64Budget: number): number {
+  return Math.floor(base64Budget / 4) * 3;
+}
+
+/** 单张原始字节上限(由 base64 上限换算)。一张巨图能把整个模型请求顶爆。 */
+export const AGENT_PHOTO_MAX_BYTES = rawBudgetOf(AGENT_PHOTO_MAX_BASE64_BYTES);
+/** 单次请求的原始字节总预算(由 base64 总预算换算)。 */
+export const AGENT_PHOTO_TOTAL_BYTES = rawBudgetOf(AGENT_PHOTO_TOTAL_BASE64_BYTES);
 
 export type AgentPhotoSkipReason =
   | 'not-in-album'
@@ -81,16 +108,18 @@ export async function getAgentPhotoBytes(
       skipped.push({ photoId, reason: 'missing-object' });
       continue;
     }
-    if (bytes.byteLength > AGENT_PHOTO_MAX_BYTES) {
+    // 判定用编码**后**的大小 —— 响应体里躺的是 base64,不是这些原始字节。
+    const encodedSize = base64Length(bytes.byteLength);
+    if (encodedSize > AGENT_PHOTO_MAX_BASE64_BYTES) {
       skipped.push({ photoId, reason: 'too-large' });
       continue;
     }
-    if (spent + bytes.byteLength > AGENT_PHOTO_TOTAL_BYTES) {
+    if (spent + encodedSize > AGENT_PHOTO_TOTAL_BASE64_BYTES) {
       skipped.push({ photoId, reason: 'over-budget' });
       continue;
     }
 
-    spent += bytes.byteLength;
+    spent += encodedSize;
     photos.push({
       photoId,
       data: Buffer.from(bytes).toString('base64'),

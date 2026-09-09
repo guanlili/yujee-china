@@ -79,6 +79,7 @@ import {
 } from '@/lib/generation/client';
 import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
 import { photoStore } from '@/lib/photo/store';
+import type { PhotoFilterState } from '@/lib/photo/filter-state';
 import { MAX_PHOTOS_PER_GENERATION } from '@/config/pricing';
 import { albumRecipe } from '@/lib/generation/draft';
 import { fetchChapterSummary, fetchDraftSkeleton, postChapterContexts } from '@/lib/album/authoring-client';
@@ -131,6 +132,7 @@ export function ChatPanel({
   storyProgress,
   setStoryProgress,
   setStoryProgressLoading,
+  onAgentPhotoFilter,
 }: {
   detail: AlbumDetail;
   locale: Locale;
@@ -142,9 +144,18 @@ export function ChatPanel({
   storyProgress: StoryProgress | null;
   setStoryProgress: (p: StoryProgress | null) => void;
   setStoryProgressLoading: (v: boolean) => void;
+  /** 设计对话落库后回来的权威滤镜状态 + 新的设置基线。外壳拿它重绘画板并推进
+   *  OCC 基线;不接的话 ① 调色后画板要刷新才动 ② 用户下一次改设置带旧基线必吃 409。
+   *  滤镜写的是 albums.photo_filter,与页面 committed 完全独立 —— 纯调色那一轮
+   *  committed 恒 false,所以调用点不能挂在 committed 分支里。 */
+  onAgentPhotoFilter?: (state: PhotoFilterState | null, settingsRevision: number) => void;
 }) {
   const latestAuthoringRef = useRef({ draftChapters, storyProgress, mode });
   latestAuthoringRef.current = { draftChapters, storyProgress, mode };
+  // 命令式聊天引擎住在一个挂载时跑一次的 effect 里,直接闭包捕获 prop 会永远停在
+  // 挂载那一刻的那个函数。经 ref 取最新的一份(同 coordinator 的先例)。
+  const onAgentPhotoFilterRef = useRef(onAgentPhotoFilter);
+  onAgentPhotoFilterRef.current = onAgentPhotoFilter;
 
   // #236 ①: the per-chapter guide-opener dedup set lives at COMPONENT scope (a ref),
   // not inside the mount effect, so React StrictMode's double-invoke doesn't hand each
@@ -869,6 +880,33 @@ export function ChatPanel({
       });
       return card;
     }
+    // 服务端在这一轮落库时算出来的**告知**(目前只有分享快照失配那一条)。
+    //
+    // 为什么必须由前端渲染:design-agent 那侧把同样的话塞进工具结果的 notes,但写工具
+    // 是 `terminate: true`,agent 循环当场结束,模型没机会把 notes 转述进回复。于是
+    // 「已发布分享的书被整本改色 → 全书 renderVersion 变 → 分享页照片全糊、要重备
+    // 全书」这件事在用户那儿是零提示的。
+    //
+    // 安全:文案虽由服务端生成,仍一律走 textContent —— 与工具入参同一条口径,
+    // 不给任何非白名单文本进 innerHTML 的机会。
+    const OP_WARN_SVG =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>';
+    function buildDesignWarningCard(notes: string[]): HTMLElement {
+      const card = document.createElement('div');
+      card.className = 'op-card op-card-warn';
+      card.innerHTML =
+        `<div class="op-ic op-ic-warn">${OP_WARN_SVG}</div>` +
+        `<div class="op-body"><div class="op-kicker">${aT('需要注意', 'Heads up')}</div>` +
+        `<div class="op-notes"></div></div>`;
+      const notesEl = card.querySelector('.op-notes') as HTMLElement;
+      for (const note of notes) {
+        const line = document.createElement('div');
+        line.className = 'op-note';
+        line.textContent = note;
+        notesEl.appendChild(line);
+      }
+      return card;
+    }
     // 从落库的 layout_patch 里解析 design chat 写操作（{ designOps: [{toolName, input}] }）。
 
     // 底部钉着水母的流式过程面板。2026-08-08 起逐步披露(此前整回合只有一条笼统「使用工具中」、
@@ -1081,6 +1119,10 @@ export function ChatPanel({
               // C 方案页面真相:AI 的改动可能只落在烘焙 html 里,原地重绘必须带上。
               html?: string | null;
             }>;
+            // 服务端落库时算出的告知(分享快照失配等)。缺省 = 没什么要说的。
+            warnings?: string[];
+            photoFilter?: PhotoFilterState | null;
+            settingsRevision?: number;
           } | null;
           error: string | null;
         } = { final: null, error: null };
@@ -1114,6 +1156,9 @@ export function ChatPanel({
                 imagePos?: Record<string, { x: number; y: number; scale: number }> | null;
                 html?: string | null;
               }>;
+              warnings?: string[];
+              photoFilter?: PhotoFilterState | null;
+              settingsRevision?: number;
             };
           } else if (event.type === 'error') {
             outcome.error = typeof event.error === 'string' ? event.error : 'stream failed';
@@ -1128,6 +1173,16 @@ export function ChatPanel({
         if (cats.length > 0) stream.host.appendChild(buildDesignChangeCard(cats));
         // ④终稿总结回复,置于最底。
         appendReplyBody(stream.host, final.assistantReply);
+        // ⑤服务端告知(分享快照失配等)贴在回复之后 —— 见 buildDesignWarningCard 注释。
+        if (final.warnings && final.warnings.length > 0) {
+          stream.host.appendChild(buildDesignWarningCard(final.warnings));
+        }
+        // 滤镜/抠图落库后的权威状态。**在 committed 分支之外** —— 它写的是
+        // albums.photo_filter(settingsRevision 那套 OCC),不进 book.version,
+        // 所以只调色不改版面的一轮 committed 恒 false,挂在里面等于永远不生效。
+        if (final.photoFilter !== undefined && typeof final.settingsRevision === 'number') {
+          onAgentPhotoFilterRef.current?.(final.photoFilter ?? null, final.settingsRevision);
+        }
         if (final.committed) {
           // 原地重绘：把服务端回来的新页整体喂给画板（不重挂、不重载图，无"全局刷新闪一下"）。
           // 拿不到 pages 或 coordinator 未就绪时，回退到旧的重挂式刷新事件。
