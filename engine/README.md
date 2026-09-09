@@ -9,7 +9,7 @@ The previous edit-chat/theme/cover/finalize surfaces, plus `/v3/judge-layout`, `
 
 ## Current Surface
 
-Exactly four routes (`src/api/routes.py`):
+四个对外路由 + 两个 internal(`src/api/routes.py`):
 
 | Endpoint | Mode | Purpose |
 |---|---:|---|
@@ -17,6 +17,18 @@ Exactly four routes (`src/api/routes.py`):
 | `POST /v3/analyze` | async `202` + callback | 确定性分组(CLIP embedding / 拍摄时间 / GPS / 像素特征)+ 确定性归散图 + 提取章节主色 → tree-only `V3LayoutTree`;章标题由拍摄时间跨度确定性派生到 `V3Chapter.title`。零 AI 调用 |
 | `POST /v3/select-layout` | async `202` + callback | Deterministic layout selection; one `completed` callback returns final `pages` (with template sample copy). 零 AI 调用 |
 | `POST /v3/compose` | async `202` + callback | 一次性成稿:按章并发让 Gemini 看真实照片 + 读用户讲的故事写满全书文案,并出封面/封尾文案与字体。**全链路唯一的 AI 调用** |
+
+另有两个 internal 路由,**只在专用的 2GB CLIP worker 上开**
+(`fly.clip.toml`,`AGENT_ENABLE_CLIP_EMBEDDINGS=true`);普通 1GB Agent 开关关着 => 404。
+鉴权走 `GROUPING_CLIP_SECRET`(未设则回落 `AGENT_SHARED_SECRET`):
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /internal/open-clip/embeddings` | 分章用的 CLIP 图片 embedding。调用方 `chaptering/features.py` |
+| `POST /internal/photo-profile` | 照片视觉档案(几何/色彩/语义三组)。调用方 `profile/remote.py`。带 `persistMask=true` 时额外跑一次 isnet/1024² 出高精度抠图 mask |
+
+⚠️ 这两个口都有活的调用方,**别当「后续环节端点」清掉**(2026-07-06 的 `0cfc019d`
+就那么删过第一个)。`tests/test_v3_route_surface.py` 有守卫钉着。
 
 All business endpoints require:
 
@@ -78,7 +90,25 @@ Agent -> callback completed: pagesTexts + coverTexts/endingTexts + fonts
   -> Web 组页落库并推 stage='ready'
 ```
 
-`/v3/analyze` is fully deterministic (no AI call): grouping runs on local CLIP embeddings plus EXIF time/GPS and cheap pixel features, stray photos are re-attached deterministically, and each chapter's `title` is derived from its shooting-time span. `visionCallCount` is therefore always `0`.
+`/v3/analyze` is deterministic by default (no AI call): grouping runs on local CLIP embeddings plus EXIF time/GPS and cheap pixel features, stray photos are re-attached deterministically, and each chapter's `title` is derived from its shooting-time span.
+
+**唯一的例外是照片视觉档案**(`AGENT_ENABLE_PHOTO_PROFILE`,**默认关**)。打开之后
+analyze 会多一步:把照片委托给 2GB CLIP worker 的 `/internal/photo-profile`,每张跑一次
+分割推理(u2netp/320²,只取主体包围盒)+ 一次视觉模型调用(五个语义字段),然后
+
+1. 把 `composition` / `description` 回填进章节树的
+   `V3ChapterPhoto.composition` / `.sceneDescription`(此前分别恒 `None` / 恒空,
+   前者让模板槽位的构图约束在生产里完全没生效);
+2. 把档案本体 POST 回 web 的 `/api/v3/internal/photo-profiles` 落
+   `album_photos.profile` —— **这一步是三个照片能力(整本调色 / 构图裁切 / 抠图)的
+   唯一数据来源**,不回传的话 design-agent 什么都看不到。
+
+开关打开后 `visionCallCount` 是**真实计数**(每张照片一次视觉调用,只计真的发出去
+并回来了的);关着时分析期零 AI 调用,计数为 `0`。
+
+建档整条链路的失败一律降级、绝不打挂 analyze:单张坏图只丢那一张;单批失败只丢那一批;
+总时长有预算(`PHOTO_PROFILE_BUDGET_SECONDS`,默认 240s,超了就用已拿到的部分继续)。
+每一处降级都打带 photoId 的日志 —— 静默丢档案在生产上查不出来。
 
 `/v3/select-layout` is fully deterministic (no AI call): each unit takes a single seeded candidate, gets finalized into pages, and the template `sample` strings are filled into `texts`. 用户在这一步看到的是**有字的版面**,不是空文字框 —— 但那还不是真文案。
 
@@ -198,5 +228,5 @@ CLIP embedding worker 是另一个 app(`engine/fly.clip.toml` → `yujee-agent-c
 
 <!-- doc-scope
 paths: engine/src/**, engine/fly*.toml, engine/pyproject.toml
-checked-at: 293b1d2d
+checked-at: 676b97ab
 -->
