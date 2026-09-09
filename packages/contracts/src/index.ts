@@ -4,3 +4,4 @@ export * from './api';
 export * from './templates';
 export * from './theme-carrier';
 export * from './v3';
+export * from './photo-profile';
