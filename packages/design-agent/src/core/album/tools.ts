@@ -29,6 +29,7 @@ import {
 	validateTextsPatch,
 } from "./book-state.ts";
 import { applyPageMoves, type PageMoveOperation } from "./page-move.ts";
+import { isCutout, resolveEffectiveFilter } from "./photo-filter.ts";
 import { createDefaultAlbumSkills } from "./skills.ts";
 import { type FontRole, fontAllowsRole, fontsForRole, getFontEntry } from "./font-registry.ts";
 import { derivePageTexts, patchHtmlText, validatePageHtml } from "./html-guard.ts";
@@ -295,6 +296,9 @@ function readPagePayload(
 		images: Object.fromEntries(
 			Object.entries(page.images).map(([slotId, photoId]) => {
 				const photo = findAlbumPhoto(state, photoId);
+				// maskKey 是 R2 存储实现细节,对模型决策零价值,只占上下文 —— 剥掉。
+				const { maskKey: _droppedMaskKey, ...profile } = photo?.profile ?? {};
+				const filter = resolveEffectiveFilter(state.photoFilter, photoId);
 				return [
 					slotId,
 					{
@@ -302,6 +306,14 @@ function readPagePayload(
 						sceneDescription: photo?.sceneDescription ?? "",
 						orientation: photo?.orientation,
 						takenAt: photo?.takenAt ?? undefined,
+						// 照片视觉档案:Agent 判断调色/裁切/抠图的唯一常规输入。
+						// 存量书没建过档 => 整个键不出现(降级路径必须活着)。
+						...(photo?.profile ? { profile } : {}),
+						// 当前构图位置。**没设过也显式给默认值**(#165 的 render default) ——
+						// 省略会让模型以为这个槽不支持调位置。
+						imagePos: page.imagePos?.[slotId] ?? { x: 50, y: 50, scale: 1 },
+						// 当前生效的滤镜 + 抠图状态。没滤镜时只剩 { cutout }。
+						filter: { ...(filter ?? {}), cutout: isCutout(state.photoFilter, photoId) },
 					},
 				];
 			}),

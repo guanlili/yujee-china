@@ -19,6 +19,9 @@
 			"@earendil-works/pi-agent-core/*": [
 				"../agent/dist/*.d.ts"
 			],
+			"@yujee/contracts": [
+				"./src/types/contracts-photo-profile.d.ts"
+			],
 			"@yujee/contracts/render": [
 				"./src/types/contracts-render.d.ts"
 			],

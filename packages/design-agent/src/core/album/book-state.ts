@@ -1,3 +1,5 @@
+import { type PhotoProfile, PhotoProfileSchema } from "@yujee/contracts";
+import { parsePhotoFilterState, type PhotoFilterState } from "./photo-filter.ts";
 import {
 	parseThemeCarrierKey,
 	slotBaseId,
@@ -19,6 +21,9 @@ export interface AlbumChapterPhoto {
 	takenAt?: string | null;
 	width?: number;
 	height?: number;
+	/** 照片视觉档案(几何/色彩/语义,契约见 @yujee/contracts 的 PhotoProfile)。
+	 * 存量书没建过档 => undefined,所有读取方必须能降级。 */
+	profile?: PhotoProfile;
 }
 
 export interface AlbumChapter {
@@ -55,15 +60,30 @@ export interface AlbumBookState {
 	version: number;
 	updatedAt: string;
 	brief?: AlbumBookBrief;
+	/** 全书滤镜/抠图状态。**存在 albums.photo_filter 列,不在 draft_json 里** ——
+	 * 写它要走 settingsRevision 那套 OCC,不能混进 commitWrite(那是页面 version 的路)。
+	 * 这里只读:工具改滤镜走 AlbumToolsOptions.applyPhotoFilter 这个 seam。 */
+	photoFilter?: PhotoFilterState | null;
 }
 
 export function cloneAlbumBookState(state: AlbumBookState): AlbumBookState {
 	return {
-		chapters: state.chapters.map((chapter) => ({ ...chapter, photos: chapter.photos.map((photo) => ({ ...photo })) })),
+		chapters: state.chapters.map((chapter) => ({
+			...chapter,
+			// profile 是嵌套对象(subjectBox/faceBoxes/dominantColors),浅拷贝会让工具
+			// 写入时和上一份状态共享引用 —— 深拷贝一份。
+			photos: chapter.photos.map((photo) => ({
+				...photo,
+				...(photo.profile ? { profile: JSON.parse(JSON.stringify(photo.profile)) as PhotoProfile } : {}),
+			})),
+		})),
 		pages: state.pages.map(clonePage),
 		version: state.version,
 		updatedAt: state.updatedAt,
 		brief: state.brief ? JSON.parse(JSON.stringify(state.brief)) as AlbumBookBrief : undefined,
+		// 滤镜状态不是页面状态,但它跟着书状态一起在进程里传递 —— 克隆时丢了,
+		// 任何一次写工具调用都会把 read_page 的 filter 字段清空。
+		photoFilter: state.photoFilter ? (JSON.parse(JSON.stringify(state.photoFilter)) as PhotoFilterState) : state.photoFilter,
 	};
 }
 
@@ -88,7 +108,7 @@ export function parseAlbumBookInput(raw: unknown, now = new Date()): ParseAlbumB
 
 	const chaptersRaw = raw.chapters ?? (isRecord(raw.tree) ? (raw.tree as Record<string, unknown>).chapters : undefined);
 	if (!Array.isArray(chaptersRaw)) throw new Error("book.chapters（或 book.tree.chapters）必须是数组");
-	const chapters = chaptersRaw.map((chapter, index) => parseChapter(chapter, index));
+	const chapters = chaptersRaw.map((chapter, index) => parseChapter(chapter, index, warnings));
 
 	if (!Array.isArray(raw.pages)) throw new Error("book.pages 必须是数组");
 	// 保留输入数组顺序（draft 的页序是真相；真实管线的 pageIndex 按章节计数、会重复，
@@ -118,6 +138,7 @@ export function parseAlbumBookInput(raw: unknown, now = new Date()): ParseAlbumB
 			version: typeof raw.version === "number" ? raw.version : 1,
 			updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : now.toISOString(),
 			brief,
+			photoFilter: parsePhotoFilterState(raw.photoFilter, warnings),
 		},
 		warnings,
 	};
@@ -404,7 +425,7 @@ function isKnownTextBase(template: TemplateCatalogEntry, slotId: string): boolea
 	return template.textDefsByBase.has(base) || template.svgSlotIds.has(base);
 }
 
-function parseChapter(raw: unknown, index: number): AlbumChapter {
+function parseChapter(raw: unknown, index: number, warnings: string[]): AlbumChapter {
 	if (!isRecord(raw) || typeof raw.chapterId !== "string") {
 		throw new Error(`chapters[${index}] 缺少 chapterId`);
 	}
@@ -415,16 +436,22 @@ function parseChapter(raw: unknown, index: number): AlbumChapter {
 		chapterContext: typeof raw.chapterContext === "string" ? raw.chapterContext : undefined,
 		accentColor: typeof raw.accentColor === "string" ? raw.accentColor : null,
 		artFont: typeof raw.artFont === "string" ? raw.artFont : null,
-		photos: photosRaw.map((photo, photoIndex) => parsePhoto(photo, index, photoIndex)),
+		photos: photosRaw.map((photo, photoIndex) => parsePhoto(photo, index, photoIndex, warnings)),
 	};
 }
 
-function parsePhoto(raw: unknown, chapterIndex: number, photoIndex: number): AlbumChapterPhoto {
+function parsePhoto(
+	raw: unknown,
+	chapterIndex: number,
+	photoIndex: number,
+	warnings: string[],
+): AlbumChapterPhoto {
 	if (!isRecord(raw) || typeof raw.photoId !== "string") {
 		throw new Error(`chapters[${chapterIndex}].photos[${photoIndex}] 缺少 photoId`);
 	}
 	return {
 		photoId: raw.photoId,
+		...parsePhotoProfile(raw.profile, raw.photoId, warnings),
 		sceneDescription: typeof raw.sceneDescription === "string" ? raw.sceneDescription : "",
 		orientation: typeof raw.orientation === "string" ? raw.orientation : undefined,
 		composition: typeof raw.composition === "string" ? raw.composition : null,
@@ -432,6 +459,21 @@ function parsePhoto(raw: unknown, chapterIndex: number, photoIndex: number): Alb
 		width: typeof raw.width === "number" ? raw.width : undefined,
 		height: typeof raw.height === "number" ? raw.height : undefined,
 	};
+}
+
+/** 档案解析走契约 schema,但**非法即降级为 warning**(装书入口一律宽容,不因档案拒书)。 */
+function parsePhotoProfile(
+	raw: unknown,
+	photoId: string,
+	warnings: string[],
+): { profile?: PhotoProfile } {
+	if (raw === undefined || raw === null) return {};
+	const parsed = PhotoProfileSchema.safeParse(raw);
+	if (!parsed.success) {
+		warnings.push(`照片 ${photoId} 的 profile 不符合档案契约，已忽略：${parsed.error.issues[0]?.message ?? "unknown"}`);
+		return {};
+	}
+	return { profile: parsed.data };
 }
 
 function parsePage(raw: unknown, index: number): AlbumPage {

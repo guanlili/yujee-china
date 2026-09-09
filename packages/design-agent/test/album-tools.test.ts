@@ -314,3 +314,138 @@ test("read_page 读全书时 html 同样默认不给", async () => {
 	const result = JSON.parse(await run(tools, "read_page", {}));
 	assert.ok(result.pages.every((p: { html?: string }) => p.html === undefined), "读全书更不该带 html");
 });
+
+// ── 照片视觉档案 + 滤镜(C1)──────────────────────────────────────────────
+// 在这之前 Agent 对照片内容一无所知:sceneDescription 恒空、没有任何视觉输入。
+// read_page 现在每个图槽带档案(几何/色彩/语义)、当前 imagePos、当前滤镜与抠图状态。
+
+const sampleProfile = {
+	v: 1 as const,
+	subjectBox: { x: 10, y: 20, w: 50, h: 60 },
+	faceBoxes: [{ x: 30, y: 25, w: 12, h: 14 }],
+	maskKey: "masks/p-sea-01.png",
+	colorTemp: "warm" as const,
+	brightness: "mid" as const,
+	saturation: "normal" as const,
+	dominantColors: ["#C8A05A", "#2E3B4E"],
+	composition: "focal" as const,
+	scene: "outdoor" as const,
+	peopleCount: "1" as const,
+	mood: "warm" as const,
+	description: "傍晚海边，一个人背对镜头站在礁石上",
+};
+
+/** 装一本带档案/滤镜的书 —— 走 parseAlbumBookInput,顺带证明装书入口不丢这两组新字段。 */
+function createProfileHarness(): { tools: Map<string, AgentTool>; getBook: () => AlbumBookState } {
+	const raw = JSON.parse(readFileSync(fixturePath, "utf8")) as {
+		chapters: Array<{ photos: Array<Record<string, unknown>> }>;
+		pages: Array<Record<string, unknown>>;
+		photoFilter?: unknown;
+	};
+	for (const chapter of raw.chapters) {
+		for (const photo of chapter.photos) {
+			if (photo.photoId === "p-sea-01") photo.profile = sampleProfile;
+		}
+	}
+	// 数组位 1 = 用户口径第 1 页(mag-05,单图槽 image,照片 p-sea-01)。
+	raw.pages[1].imagePos = { image: { x: 30, y: 40, scale: 1.2 } };
+	raw.photoFilter = {
+		default: { lutId: "travel-cinematic", strength: 60 },
+		overrides: { "p-kit-02": null },
+		cutouts: { "p-kit-03": true },
+	};
+
+	const catalog = loadTemplateCatalog();
+	let book = parseAlbumBookInput(raw).book;
+	const tools = new Map(
+		createAlbumTools({
+			catalog,
+			getBookState: () => cloneAlbumBookState(book),
+			setBookState: (next) => {
+				book = cloneAlbumBookState(next);
+			},
+		}).map((tool) => [tool.name, tool as AgentTool]),
+	);
+	return { tools, getBook: () => book };
+}
+
+async function readProfileSlot(pageNo: number | string, slotId: string): Promise<Record<string, any>> {
+	const { tools } = createProfileHarness();
+	const page = JSON.parse(await run(tools, "read_page", { pageNo })).pages[0];
+	return page.images[slotId];
+}
+
+test("read_page 吐出照片档案，Agent 不再是瞎的", async () => {
+	const slot = await readProfileSlot(1, "image");
+	assert.equal(slot.profile.composition, "focal");
+	assert.equal(slot.profile.subjectBox.x, 10);
+	assert.equal(slot.profile.mood, "warm");
+	assert.deepEqual(slot.profile.faceBoxes, [{ x: 30, y: 25, w: 12, h: 14 }]);
+});
+
+test("read_page 不把 maskKey 喂给模型", async () => {
+	// maskKey 是存储实现细节，对模型决策零价值，只占上下文。
+	const slot = await readProfileSlot(1, "image");
+	assert.equal(slot.profile.maskKey, undefined);
+	assert.ok(!Object.hasOwn(slot.profile, "maskKey"));
+});
+
+test("read_page 吐出当前 imagePos", async () => {
+	assert.deepEqual((await readProfileSlot(1, "image")).imagePos, { x: 30, y: 40, scale: 1.2 });
+});
+
+test("没设过 imagePos 的槽显式吐默认值，而不是省略", async () => {
+	// 省略会让模型以为「这个槽不支持调位置」。
+	assert.deepEqual((await readProfileSlot(2, "image[0]")).imagePos, { x: 50, y: 50, scale: 1 });
+});
+
+test("read_page 吐出当前生效的滤镜与抠图状态", async () => {
+	assert.deepEqual((await readProfileSlot(1, "image")).filter, {
+		lutId: "travel-cinematic",
+		strength: 60,
+		cutout: false,
+	});
+});
+
+test("read_page 的滤镜按单张覆盖与抠图状态分别解析", async () => {
+	// p-kit-02 被显式覆盖成 null(原片) —— 不该继承全书默认。
+	assert.deepEqual((await readProfileSlot(3, "image")).filter, { cutout: false });
+	// p-kit-03 开了抠图。
+	assert.deepEqual((await readProfileSlot(4, "image")).filter, {
+		lutId: "travel-cinematic",
+		strength: 60,
+		cutout: true,
+	});
+});
+
+test("没有档案的照片不炸，profile 为 undefined", async () => {
+	// 存量书没建过档 —— 这条路径必须活着。
+	const slot = await readProfileSlot(2, "image[1]");
+	assert.equal(slot.profile, undefined);
+	assert.deepEqual(slot.imagePos, { x: 50, y: 50, scale: 1 });
+	assert.deepEqual(slot.filter, { lutId: "travel-cinematic", strength: 60, cutout: false });
+});
+
+test("整本没有 photoFilter 时 filter 只有 cutout:false，不炸", async () => {
+	const { tools } = createHarness();
+	const slot = JSON.parse(await run(tools, "read_page", { pageNo: 1 })).pages[0].images.image;
+	assert.deepEqual(slot.filter, { cutout: false });
+});
+
+test("写工具改完页面，档案与滤镜都不丢", async () => {
+	const { tools, getBook } = createProfileHarness();
+	await run(tools, "update_page_texts", { pageNo: 1, texts: { title: "海边那天" } });
+	const book = getBook();
+	assert.equal(book.photoFilter?.default?.lutId, "travel-cinematic");
+	assert.equal(book.chapters[0]?.photos[0]?.profile?.composition, "focal");
+});
+
+test("装书入口对非法档案宽容：只 warn，不拒书", () => {
+	const raw = JSON.parse(readFileSync(fixturePath, "utf8")) as {
+		chapters: Array<{ photos: Array<Record<string, unknown>> }>;
+	};
+	raw.chapters[0].photos[0].profile = { v: 1, colorTemp: "purple" };
+	const parsed = parseAlbumBookInput(raw);
+	assert.equal(parsed.book.chapters[0]?.photos[0]?.profile, undefined);
+	assert.ok(parsed.warnings.some((warning) => warning.includes("profile")), parsed.warnings.join("\n"));
+});

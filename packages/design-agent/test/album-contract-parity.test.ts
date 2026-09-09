@@ -98,3 +98,32 @@ test("工具写入之后所有页仍然契约合法", async () => {
 	assert.equal(book.version, 5);
 	assertPagesContractLegal(book.pages);
 });
+
+// ── PhotoProfile 的类型 shim 防漂移 ─────────────────────────────────────
+// 本包能独立 tsgo 构建的既有约定:`@yujee/contracts` 在 tsconfig.build.json 里
+// 映射到 src/types/*.d.ts 的手写 shim(contracts 自己的 tsconfig 不是 node16,
+// 相对 import 不带扩展名在那边合法,直指源码会让本包 TS2835)。手写 shim 会漂,
+// 所以加一道机械守卫:字段名必须与契约真相源逐一对应。
+
+test("PhotoProfile 的本地类型 shim 与 contracts 真相源字段一致", () => {
+	const shimPath = fileURLToPath(new URL("../src/types/contracts-photo-profile.d.ts", import.meta.url));
+	const contractPath = fileURLToPath(new URL("../../contracts/src/photo-profile.ts", import.meta.url));
+
+	const contractSource = readFileSync(contractPath, "utf8");
+	const body = contractSource
+		.split("export const PhotoProfileSchema = z.object({")[1]
+		?.split("}).strict();")[0];
+	assert.ok(body, "契约文件结构变了 —— PhotoProfileSchema 的对象体没找到");
+	const contractFields = new Set([...body.matchAll(/^ {2}(\w+):/gm)].map((match) => match[1]));
+
+	const shimSource = readFileSync(shimPath, "utf8");
+	const shimBody = shimSource.split("export interface PhotoProfile {")[1]?.split("\n}")[0];
+	assert.ok(shimBody, "shim 里没有 PhotoProfile 接口");
+	const shimFields = new Set([...shimBody.matchAll(/^\t(\w+)[?]?:/gm)].map((match) => match[1]));
+
+	assert.deepEqual(
+		[...shimFields].sort(),
+		[...contractFields].sort(),
+		"契约漂移：design-agent 的 PhotoProfile shim 与 packages/contracts 的字段对不上",
+	);
+});
