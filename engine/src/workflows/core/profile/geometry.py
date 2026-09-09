@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import io
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -209,6 +210,21 @@ def subject_mask(image: Image.Image, *, quality: Quality = "profile") -> Image.I
     quality="cutout"  真抠图用(isnet/1024²,要精细边缘)。
     """
     return _segment(image, SPECS[quality])[0]
+
+
+def cutout_mask_png(image: Image.Image) -> bytes:
+    """高精度抠图 mask 的 PNG 字节(L 模式,与原图同尺寸)。
+
+    走 quality="cutout" —— 1024² 的 isnet,**并且连带 SPECS 里的 alpha_stretch**。
+    ⚠️ 别为了「省一步」直接拿 _segment/_mask_from_output 的结果:isnet 出的是软 mask,
+    灰度区 = 模型不确定的区域,不拉伸的话光线复杂的照片抠出来就是半透明鬼影
+    (fa7bb7d5 治的正是这个)。
+
+    engine 只出 mask;写 R2、回填 maskKey 是 web 侧的事。
+    """
+    buf = io.BytesIO()
+    subject_mask(image, quality="cutout").save(buf, format="PNG", optimize=True)
+    return buf.getvalue()
 
 
 def detect_faces(image: Image.Image) -> list[dict]:

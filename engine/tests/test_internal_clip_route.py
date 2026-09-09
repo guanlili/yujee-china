@@ -46,9 +46,9 @@ def _max_concurrency() -> int:
     return PROFILE_MAX_CONCURRENCY
 
 
-def _data_url() -> str:
+def _data_url(color=(120, 90, 60)) -> str:
     buf = io.BytesIO()
-    Image.new("RGB", (8, 8), (120, 90, 60)).save(buf, format="JPEG")
+    Image.new("RGB", (8, 8), color).save(buf, format="JPEG")
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
 
 
@@ -278,22 +278,6 @@ def test_photo_profile_empty_returns_empty_map(monkeypatch):
     assert resp.json()["data"]["profiles"] == {}
 
 
-def test_photo_profile_accepts_persist_mask_without_implementing_it(monkeypatch):
-    """persistMask 收下但本批不实现(要等 B 线的 R2 写入口)。
-
-    关键是**不能报错** —— 调用方带了这个参数不该 422,否则 B 线接上之前
-    连普通建档都调不通。
-    """
-    _enable(monkeypatch)
-    _stub_build(monkeypatch)
-    client = _client()
-    resp = client.post(
-        "/internal/photo-profile",
-        json={"images": [{"photoId": "p1", "dataUrl": _data_url()}], "persistMask": True},
-        headers={"Authorization": "Bearer s3cret"},
-    )
-    assert resp.status_code == 200
-    assert resp.json()["data"]["profiles"]["p1"]["maskKey"] is None
 
 
 def test_photo_profile_rejects_non_data_url(monkeypatch):
@@ -601,3 +585,174 @@ def test_vision_call_count_excludes_failed_calls(monkeypatch):
     body = resp.json()
     assert len(body["data"]["profiles"]) == 3
     assert body["data"]["visionCallCount"] == 0
+
+
+# ── persistMask:按需跑第二次高精度推理 ─────────────────────────────────────────
+#
+# 建档只取包围盒(u2netp/320²,mask 用完就丢);真要抠图时带 persistMask=true 再来一次,
+# 走 isnet/1024² 出精细边缘。engine 只负责跑推理 + 把 mask 编成 PNG 回去,
+# **写 R2 和回填 maskKey 是 web 侧的事**。
+
+
+def _install_spec_aware_sessions(monkeypatch, *, plateau=False):
+    """按 spec.size 出对应尺寸的假 logits,并记下用过哪些模型。"""
+    import numpy as np
+
+    from src.workflows.core.profile import geometry, semantic
+
+    used: list[str] = []
+
+    class _S:
+        def __init__(self, spec):
+            self.spec = spec
+
+        def get_inputs(self):
+            class _I:
+                name = "input"
+
+            return [_I()]
+
+        def run(self, _outputs, feed):
+            side = self.spec.size
+            out = np.zeros((1, 1, side, side), dtype=np.float32)
+            if plateau:
+                # 背景 0、大片 2/3(min-max 归一化后正好 170 —— 软 mask 的灰度区)、
+                # 一小块 1.0。不拉伸的话那片 170 抠出来就是半透明鬼影。
+                out[0, 0, side // 5 : side * 4 // 5, side // 5 : side * 4 // 5] = 2.0 / 3.0
+                out[0, 0, side // 2 : side // 2 + 10, side // 2 : side // 2 + 10] = 1.0
+            else:
+                out[0, 0, side // 4 : side * 3 // 4, side // 4 : side * 3 // 4] = 1.0
+            return [out]
+
+    def _session(spec):
+        used.append(spec.name)
+        return _S(spec)
+
+    monkeypatch.setattr(geometry, "_session", _session)
+    monkeypatch.setattr(
+        semantic,
+        "_call_vision",
+        lambda image: '{"composition":"focal","scene":"outdoor","peopleCount":"1",'
+        '"mood":"warm","description":"海边"}',
+    )
+    return used
+
+
+def _decode_mask(b64: str):
+    return Image.open(io.BytesIO(base64.b64decode(b64)))
+
+
+def test_persist_mask_returns_a_base64_png_per_photo(monkeypatch):
+    _enable(monkeypatch)
+    _install_spec_aware_sessions(monkeypatch)
+
+    resp = _client().post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": "p1", "dataUrl": _data_url()}], "persistMask": True},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert set(data["masks"]) == {"p1"}
+    mask = _decode_mask(data["masks"]["p1"])
+    assert mask.format == "PNG"
+    assert mask.mode == "L"
+    assert mask.size == (8, 8)  # 与原图同尺寸
+
+
+def test_persist_mask_uses_the_fine_cutout_model(monkeypatch):
+    """拿 320² 的糙边去抠人像正是 2026-08-29 否决自动抠图的那个病。"""
+    _enable(monkeypatch)
+    used = _install_spec_aware_sessions(monkeypatch)
+
+    _client().post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": "p1", "dataUrl": _data_url()}], "persistMask": True},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+
+    assert "cutout" in used, "persistMask 没跑 isnet —— 拿建档那个 320² 的糙 mask 去抠图"
+
+
+def test_persist_mask_goes_through_the_alpha_stretch(monkeypatch):
+    """⚠️ mask 必须经过 _stretch_alpha(fa7bb7d5)。
+
+    isnet 出的是软 mask,灰度区 = 模型不确定的区域。光线复杂、背景有帘子的照片,
+    大片衣服区域 alpha 只有一百多 —— 抠出来叠到版式上就是**鬼影**,用户点了「抠图」
+    拿到一个半透明的自己。绕过这一步的 mask 不能发出去。
+    """
+    _enable(monkeypatch)
+    _install_spec_aware_sessions(monkeypatch, plateau=True)
+
+    resp = _client().post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": "p1", "dataUrl": _data_url()}], "persistMask": True},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+
+    mask = _decode_mask(resp.json()["data"]["masks"]["p1"])
+    # 那片归一化后 170 的区域必须被推到 255(拉伸区间上界)。
+    assert mask.getpixel((4, 4)) == 255, "mask 没过 alpha 分段拉伸,抠出来会是半透明鬼影"
+
+
+def test_no_masks_without_persist_mask(monkeypatch):
+    """建档路径**不**跑 1024²:一本 100 张的书白烧 100 次高精度推理 + 5-20MB 净浪费。"""
+    _enable(monkeypatch)
+    used = _install_spec_aware_sessions(monkeypatch)
+
+    resp = _client().post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": "p1", "dataUrl": _data_url()}]},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+
+    assert resp.json()["data"]["masks"] == {}
+    assert "cutout" not in used
+
+
+def test_mask_key_stays_none_engine_does_not_write_r2(monkeypatch):
+    """写 R2、回填 maskKey 是 web 侧的事 —— engine 只出 mask。"""
+    _enable(monkeypatch)
+    _install_spec_aware_sessions(monkeypatch)
+
+    resp = _client().post(
+        "/internal/photo-profile",
+        json={"images": [{"photoId": "p1", "dataUrl": _data_url()}], "persistMask": True},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+
+    assert resp.json()["data"]["profiles"]["p1"]["maskKey"] is None
+
+
+def test_one_failed_mask_does_not_kill_the_batch(monkeypatch):
+    """抠图推理挂了只该少那一张 mask,档案照常返回。"""
+    _enable(monkeypatch)
+    _install_spec_aware_sessions(monkeypatch)
+
+    from src.workflows.core.profile import geometry
+
+    real = geometry.subject_mask
+
+    # ⚠️ 按**图像内容**判该谁失败,不能按调用序号:mask 任务是并发派发的,
+    # 「第二次调用」落在哪张照片上由调度决定,那样断言必 flaky(实测过)。
+    def _flaky(image, *, quality="profile"):
+        if image.convert("RGB").getpixel((0, 0))[0] > 200:  # 只有 p1 是红的
+            raise RuntimeError("onnx exploded")
+        return real(image, quality=quality)
+
+    monkeypatch.setattr(geometry, "subject_mask", _flaky)
+
+    images = [{"photoId": f"p{i}", "dataUrl": _data_url()} for i in range(3)]
+    images[1]["dataUrl"] = _data_url((255, 0, 0))
+
+    resp = _client().post(
+        "/internal/photo-profile",
+        json={"images": images, "persistMask": True},
+        headers={"Authorization": "Bearer s3cret"},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert len(data["profiles"]) == 3
+    assert set(data["masks"]) == {"p0", "p2"}

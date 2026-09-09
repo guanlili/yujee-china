@@ -216,9 +216,10 @@ class _PhotoProfileItem(BaseModel):
 
 class _PhotoProfileRequest(BaseModel):
     images: list[_PhotoProfileItem]
-    # ⚠️ 本批**收下但不实现**:真抠图要跑第二次高精度推理(isnet/1024²)、写 R2、
-    # 回填 maskKey,而 R2 写入口在 B 线。收下是为了让调用方现在就能带上这个参数
-    # 而不至于 422 —— 接上之后只在这里加分支,调用方不用改。见 Task Z1。
+    # 真抠图:再跑一次高精度推理(isnet/1024²)出精细边缘,mask 以 base64 PNG 从
+    # data.masks 回去。**写 R2、回填 maskKey 是 web 侧的事**,engine 只出 mask。
+    # 建档路径不跑它 —— 一本 100 张的书白烧 100 次 1024² 推理,而且预存 mask 是
+    # 5-20MB 净浪费(绝大多数照片不会被抠)。
     persistMask: bool = False
 
 
@@ -257,7 +258,7 @@ async def photo_profile(payload: _PhotoProfileRequest) -> dict:
     if not payload.images:
         return {"ok": True, "data": {"profiles": {}}}
 
-    from ..workflows.core.profile import build
+    from ..workflows.core.profile import build, geometry
 
     # 坏图在跑任何推理之前就筛掉,别白烧算力 —— 但**逐张筛**,不是整批 400。
     # 三个模块的抬头都写着「一张照片的失败不该打挂整本」,而这里原来是列表推导:
@@ -312,6 +313,28 @@ async def photo_profile(payload: _PhotoProfileRequest) -> dict:
             continue
         profiles[photo_id] = result
 
+    # persistMask:按需的第二次推理(isnet/1024²)。一张 mask 失败只丢这一张,
+    # 档案照常返回 —— 跟上面同一个道理。
+    masks: dict[str, str] = {}
+    if payload.persistMask:
+
+        async def _mask(image: Image.Image) -> str:
+            png = await run_in_threadpool(geometry.cutout_mask_png, image)
+            return base64.b64encode(png).decode("ascii")
+
+        mask_results = await asyncio.gather(
+            *(_mask(img) for _pid, img in decoded), return_exceptions=True
+        )
+        for (photo_id, _image), mask_result in zip(decoded, mask_results):
+            if isinstance(mask_result, BaseException):
+                log.warning(
+                    "photo_profile.mask_failed",
+                    photo_id=photo_id,
+                    error=f"{type(mask_result).__name__}: {mask_result}",
+                )
+                continue
+            masks[photo_id] = mask_result
+
     vision_calls = sum(int(s.get("visionCalls", 0)) for s in stats)
     log.info(
         "photo_profile",
@@ -321,8 +344,14 @@ async def photo_profile(payload: _PhotoProfileRequest) -> dict:
         failed=len(decoded) - len(profiles),
         vision_calls=vision_calls,
         persist_mask=payload.persistMask,
+        masks=len(masks),
     )
+    # masks 恒有这个键(persistMask=false 时是空 dict):省掉调用方一次 undefined 判断。
     return {
         "ok": True,
-        "data": {"profiles": profiles, "visionCallCount": vision_calls},
+        "data": {
+            "profiles": profiles,
+            "masks": masks,
+            "visionCallCount": vision_calls,
+        },
     }
