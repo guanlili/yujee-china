@@ -9,6 +9,7 @@ features.py:_remote_clip_embeddings(同一个 base_url、同一把 secret、同�
 
 from __future__ import annotations
 
+import time
 from typing import Any, Sequence
 
 from ....logging_config import get_logger
@@ -29,6 +30,13 @@ def fetch_photo_profiles(photos: Sequence[Any], settings: Any) -> dict[str, dict
 
     形状不对的那一批也是丢整批,**不**把半份档案混进来 —— 那样错会一路飘到排版
     还查不出来。整个 worker 都挂了就返回 {},上游退回今天的行为。
+
+    **总时长有预算**(settings.photo_profile_budget_seconds)。分批是串行的,每批的
+    超时是 grouping_clip_timeout_seconds(180s),而 analyze 的总预算才 600s:100 张
+    = 13 批,每批只要慢到 60s 就是 780s,整本 AGENT_TIMEOUT。上游的 try/except 只接得住
+    异常,接不住「耗时」。超预算就停止建档、用已经拿到的那部分继续 —— 建档是锦上添花,
+    不能让它把 analyze 拖挂。单批超时同时压进剩余预算里,否则「还剩 1s 还去发一批,
+    这批自己等 180s」照样冲出预算,预算就只是个装饰。
     """
     base_url = getattr(settings, "grouping_clip_base_url", None)
     if not base_url or not photos:
@@ -40,16 +48,35 @@ def fetch_photo_profiles(photos: Sequence[Any], settings: Any) -> dict[str, dict
     secret = settings.grouping_clip_secret or settings.agent_shared_secret
     headers = {"Authorization": f"Bearer {secret}"}
 
+    per_batch_timeout = settings.grouping_clip_timeout_seconds
+    budget = getattr(settings, "photo_profile_budget_seconds", None)
+    deadline = time.monotonic() + budget if budget else None
+
     items = [{"photoId": photo.photoId, "dataUrl": photo.base64} for photo in photos]
+    total_batches = (len(items) + PROFILE_BATCH_SIZE - 1) // PROFILE_BATCH_SIZE
     out: dict[str, dict] = {}
     failed_batches = 0
     batches = 0
-    with httpx.Client(timeout=settings.grouping_clip_timeout_seconds) as client:
+    with httpx.Client(timeout=per_batch_timeout) as client:
         for start in range(0, len(items), PROFILE_BATCH_SIZE):
+            timeout = per_batch_timeout
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    log.warning(
+                        "photo_profile.budget_exhausted",
+                        budget_seconds=budget,
+                        done_batches=batches,
+                        total_batches=total_batches,
+                        profiles=len(out),
+                    )
+                    break
+                timeout = min(per_batch_timeout, remaining)
+
             chunk = items[start : start + PROFILE_BATCH_SIZE]
             batches += 1
             try:
-                out.update(_fetch_batch(client, url, headers, chunk))
+                out.update(_fetch_batch(client, url, headers, chunk, timeout))
             except Exception as exc:  # noqa: BLE001 —— 一批的失败只该丢这一批
                 failed_batches += 1
                 log.warning(
@@ -72,8 +99,10 @@ def fetch_photo_profiles(photos: Sequence[Any], settings: Any) -> dict[str, dict
     return out
 
 
-def _fetch_batch(client: Any, url: str, headers: dict, chunk: list[dict]) -> dict[str, dict]:
-    response = client.post(url, json={"images": chunk}, headers=headers)
+def _fetch_batch(
+    client: Any, url: str, headers: dict, chunk: list[dict], timeout: float
+) -> dict[str, dict]:
+    response = client.post(url, json={"images": chunk}, headers=headers, timeout=timeout)
     response.raise_for_status()
     body = response.json()
     profiles = body.get("data", {}).get("profiles") if isinstance(body, dict) else None

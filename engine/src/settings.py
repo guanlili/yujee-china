@@ -109,6 +109,14 @@ class Settings(BaseSettings):
     # 而 analyze 至今是「零 AI 调用的纯确定性分组」(架构里写明的性质)。翻这一页
     # 要先有人算过成本 —— 打开之前请看 docs 里那份设计文档的 §5。
     agent_enable_photo_profile: bool = False
+    # 建档的**总时长预算**。分批是串行的,每批超时 grouping_clip_timeout_seconds(180s),
+    # 而 analyze 的总预算 background_task_timeout_seconds 才 600s —— 100 张的书 13 批,
+    # 每批只要慢到 60s 就是 780s,整本 AGENT_TIMEOUT failed。超了就停止建档、用已经
+    # 拿到的部分继续:建档是锦上添花,不能让它把 analyze 拖挂。
+    # 单批超时同时被压进剩余预算,所以建档总时长 ≤ 这个值。留的余量按
+    # grouping(最坏 grouping_clip_timeout_seconds=180s)+ 建档(240s)= 420 < 600 算。
+    # ⚠️ 改这个值前看 tests/test_startup_config.py 里那条预算算术的守卫。
+    photo_profile_budget_seconds: float = Field(default=240, gt=0)
 
     # 仓里唯一的 Gemini 槽(native generateContent)。名字是历史产物:select-layout
     # 如今是纯确定性选版、根本不用 key,这把 key 唯一的消费者是 ④ /v3/compose 成稿。

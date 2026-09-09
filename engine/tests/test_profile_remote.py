@@ -48,8 +48,8 @@ def _install_fake_client(monkeypatch, handler):
         def __exit__(self, *a):
             return False
 
-        def post(self, url, json, headers):
-            calls.append({"url": url, "json": json, "headers": headers})
+        def post(self, url, json, headers, timeout=None):
+            calls.append({"url": url, "json": json, "headers": headers, "timeout": timeout})
             return handler(json)
 
     import httpx
@@ -194,3 +194,70 @@ def test_every_batch_failing_returns_empty_instead_of_raising(monkeypatch):
     上游那个 except 兜(那个 except 兜住的是异常,兜不住「静默丢了一半」)。"""
     _install_fake_client(monkeypatch, lambda body: _BoomResponse())
     assert remote.fetch_photo_profiles([_photo("p1")], _Settings()) == {}
+
+
+# ── 建档必须有总时长预算 ────────────────────────────────────────────────────────
+#
+# 分批是**串行**的,每批的超时是 grouping_clip_timeout_seconds(180s),而 analyze 的
+# 总预算是 background_task_timeout_seconds(600s)。100 张 = 13 批,只要每批慢到 60s
+# (冷启 + 模型变慢,完全可能)就是 780s -> 整本 AGENT_TIMEOUT failed。
+# 上游那个 try/except 只接得住异常,接不住「耗时」。
+
+
+class _SlowResponse(_FakeResponse):
+    def __init__(self, payload, delay):
+        super().__init__(payload)
+        import time
+
+        time.sleep(delay)
+
+
+def _slow_settings(budget):
+    settings = _Settings()
+    settings.photo_profile_budget_seconds = budget
+    return settings
+
+
+def test_stops_starting_new_batches_once_the_budget_is_blown(monkeypatch):
+    """超预算就停止建档,**用已经拿到的那部分继续** —— 不能让 analyze 因为建档超时。"""
+    calls: list[int] = []
+
+    def _handler(body):
+        calls.append(len(calls))
+        return _SlowResponse(
+            {"ok": True, "data": {"profiles": {i["photoId"]: {"composition": "focal"} for i in body["images"]}}},
+            0.05,
+        )
+
+    _install_fake_client(monkeypatch, _handler)
+    photos = [_photo(f"p{i}") for i in range(remote.PROFILE_BATCH_SIZE * 4)]
+
+    out = remote.fetch_photo_profiles(photos, _slow_settings(0.01))
+
+    assert len(calls) == 1, f"预算烧光之后还在发批次(共发了 {len(calls)} 批)"
+    # 已经拿到的那一批必须留着,不能因为超时就整个丢掉。
+    assert len(out) == remote.PROFILE_BATCH_SIZE
+    assert "p0" in out
+
+
+def test_no_budget_configured_means_every_batch_runs(monkeypatch):
+    calls: list[int] = []
+    _install_fake_client(monkeypatch, lambda body: (calls.append(1), _ok(body))[1])
+    photos = [_photo(f"p{i}") for i in range(remote.PROFILE_BATCH_SIZE * 3)]
+
+    out = remote.fetch_photo_profiles(photos, _Settings())
+
+    assert len(calls) == 3
+    assert len(out) == len(photos)
+
+
+def test_per_request_timeout_is_clamped_to_the_remaining_budget(monkeypatch):
+    """单批的超时也要压进预算里。
+
+    否则「检查预算 -> 还剩 1s -> 发一批 -> 这批自己等 180s」,总时长照样冲出预算,
+    预算就只是个装饰。
+    """
+    calls = _install_fake_client(monkeypatch, _ok)
+    remote.fetch_photo_profiles([_photo("p1")], _slow_settings(5))
+
+    assert calls[0]["timeout"] <= 5

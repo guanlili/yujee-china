@@ -49,3 +49,24 @@ def test_real_mode_passes_with_all_keys(monkeypatch):
 
     _real_mode(monkeypatch, **_REAL_KEYS)
     _validate_startup_config()
+
+
+def test_photo_profile_budget_fits_inside_the_analyze_budget():
+    """建档预算 + grouping 最坏耗时必须装得进 analyze 的总预算。
+
+    这条守的是**算术**,不是代码路径:三个数字分别在三处调,谁把 analyze 的总预算
+    调小、或把建档预算调大,就是「整本书 AGENT_TIMEOUT failed」——
+    而失败发生在后台任务里,页面上只看到一本没生成出来的书。
+    单批超时被压进剩余预算(见 profile/remote.py),所以建档总时长 ≤ 建档预算。
+    """
+    from src.settings import Settings
+
+    settings = Settings(agent_shared_secret="x")
+    assert (
+        settings.grouping_clip_timeout_seconds + settings.photo_profile_budget_seconds
+        < settings.background_task_timeout_seconds
+    ), (
+        f"grouping({settings.grouping_clip_timeout_seconds}s) + "
+        f"建档({settings.photo_profile_budget_seconds}s) 已经不小于 analyze 总预算"
+        f"({settings.background_task_timeout_seconds}s)"
+    )
