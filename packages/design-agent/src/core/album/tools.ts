@@ -32,7 +32,17 @@ import { applyPageMoves, type PageMoveOperation } from "./page-move.ts";
 import { isCutout, resolveEffectiveFilter } from "./photo-filter.ts";
 import { createDefaultAlbumSkills } from "./skills.ts";
 import { type FontRole, fontAllowsRole, fontsForRole, getFontEntry } from "./font-registry.ts";
-import { derivePageTexts, patchHtmlText, validatePageHtml } from "./html-guard.ts";
+import { derivePageTexts, patchHtmlImagePos, patchHtmlText, validatePageHtml } from "./html-guard.ts";
+import {
+	DEFAULT_IMAGE_POS,
+	type ImageFit,
+	IMAGE_FIT_MODES,
+	type ImagePosValue,
+	isImageFit,
+	MAX_IMAGE_SCALE,
+	MIN_IMAGE_SCALE,
+	resolveImagePos,
+} from "./image-fit.ts";
 import { bakeAlbumPageHtml, ensureAlbumPageHtml } from "./page-html.ts";
 import { parseThemeCarrierKey, type TemplateCatalog, type TemplateCatalogEntry } from "./templates-catalog.ts";
 
@@ -205,6 +215,53 @@ const deletePageSchema = Type.Object({
 
 type DeletePageInput = Static<typeof deletePageSchema>;
 
+// ── set_image_pos:构图裁切 ────────────────────────────────────────────────
+// 分工原则(设计文档 §4.4):**语义交给模型,几何交给代码**。模型只表达意图,
+// x/y/scale 由 resolveImagePos 拿档案的 subjectBox/faceBoxes 算 —— LLM 心算坐标
+// 必错,而且错得没规律、测不出来。
+//
+// ⚠️ rotate 本批明确不动:schema 只收 x/y/scale,不收 rotate;旋转过的槽直接拒绝,
+// 不去动它的盒交换几何。contracts 的 ImagePos 与 page-html-dom 那两处 rotate
+// 契约不一致是手工编辑那条线的账,混进来只会扩大 diff。这是有意为之,不是漏了。
+const IMAGE_FIT_DESCRIPTION =
+	"构图意图,工具会按照片档案自动算坐标:center-subject=把主体放到画面中心;avoid-face-crop=别把脸切掉(按所有人脸的并集算);fill=铺满不特意对齐(回到 50/50/1)。";
+
+const setImagePosSchema = Type.Object({
+	updates: Type.Array(
+		Type.Object({
+			pageNo: PageRefSchema,
+			positions: Type.Record(
+				Type.String(),
+				Type.Union([
+					Type.Object({
+						// 逐个字面量列出(不是 IMAGE_FIT_MODES.map) —— typebox 需要元组才能推出
+						// 联合类型,map 出来的数组会把 fit 推成 never。与 IMAGE_FIT_MODES 的
+						// 一致性由 album-image-pos-tool.test.ts 的守卫钉住。
+						fit: Type.Union(
+							[Type.Literal("center-subject"), Type.Literal("avoid-face-crop"), Type.Literal("fill")],
+							{ description: IMAGE_FIT_DESCRIPTION },
+						),
+					}),
+					Type.Object({
+						x: Type.Number({ description: "横向 object-position 百分比,0-100(0=左边缘,100=右边缘)。" }),
+						y: Type.Number({ description: "纵向 object-position 百分比,0-100(0=上边缘,100=下边缘)。" }),
+						scale: Type.Number({
+							description: `放大倍数,${MIN_IMAGE_SCALE}-${MAX_IMAGE_SCALE};${MIN_IMAGE_SCALE} = 不放大。小于 ${MIN_IMAGE_SCALE} 会露底,被拒。`,
+						}),
+					}),
+				]),
+				{
+					description:
+						"图槽 id → 该槽的构图。**优先给 { fit: ... } 意图**,让工具照档案算坐标;只有用户明确说了方向(「往左一点」「再拉近些」)才给 { x, y, scale }。只需列出要改的槽,没列到的槽原样不动。",
+				},
+			),
+		}),
+		{ description: "一次可提交多页、每页多槽的构图调整。" },
+	),
+});
+
+type SetImagePosInput = Static<typeof setImagePosSchema>;
+
 const listTemplatesSchema = Type.Object({
 	category: Type.Optional(Type.String({ description: "按类目过滤：cover / toc / interior / ending。" })),
 	imageSlotCount: Type.Optional(Type.Number({ description: "按图槽数量过滤。" })),
@@ -263,6 +320,7 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 		createWritePageHtmlTool(options),
 		createSwapPageTemplateTool(options),
 		createUpdatePageImagesTool(options),
+		createSetImagePosTool(options),
 		createSetTextColorsTool(options),
 		createSetPageBackgroundTool(options),
 		createApplyBookStyleTool(options),
@@ -712,6 +770,107 @@ function createUpdatePageImagesTool(
 				operations.push(`p${internalNo}:images`);
 			}
 			return commitWrite(options, nextState, { pageNo: Number(params.updates[0].pageNo), operations });
+		},
+	};
+}
+
+/** 一个槽的构图请求:要么给意图(工具算坐标),要么给坐标(用户明确说了方向)。 */
+type ImagePosRequest = { fit: ImageFit } | ImagePosValue;
+
+function createSetImagePosTool(
+	options: AlbumToolsOptions,
+): AgentTool<typeof setImagePosSchema, AlbumWriteDetails> {
+	return {
+		name: "set_image_pos",
+		label: "调整照片构图",
+		description:
+			"调整照片在框里的位置和缩放。**优先用 fit 意图**(center-subject=主体居中、avoid-face-crop=别切到脸、fill=铺满不特意对齐),工具会根据照片档案自动算出坐标;只有用户明确说了方向(「往左一点」「再拉近些」)才直接传 x/y/scale。x/y 是 0-100 的百分比,scale ≥ 1。",
+		parameters: setImagePosSchema,
+		prepareArguments(args: unknown): SetImagePosInput {
+			return { updates: readImagePosUpdates(options, args) };
+		},
+		async execute(_toolCallId: string, params: SetImagePosInput): Promise<AgentToolResult<AlbumWriteDetails>> {
+			const state = options.getBookState();
+			if (params.updates.length === 0) throw new Error("updates 至少要包含一页");
+
+			// 先整批校验(与 update_page_images 同一道防线):任一页非法则整批拒绝,不改状态。
+			const notes: string[] = [];
+			const resolved: Array<{ internalNo: number; positions: Record<string, ImagePosValue> }> = [];
+			for (const update of params.updates) {
+				const internalNo = Number(update.pageNo);
+				const page = requirePage(options, state, internalNo);
+				const template = requireTemplate(options.catalog, page.templateId);
+				const label = pageLabelOf(options, state, internalNo);
+				const allowed = new Set(template.imageSlotIds);
+				const positions: Record<string, ImagePosValue> = {};
+
+				for (const [slotId, request] of Object.entries(update.positions)) {
+					if (!allowed.has(slotId)) {
+						throw new Error(
+							`${label}的模板 ${template.id} 没有图片槽 "${slotId}"。可用槽:${template.imageSlotIds.join("、") || "(无)"}`,
+						);
+					}
+					// 旋转过的槽:html 里是「盒交换」几何(绝对定位 + 转置尺寸 + rotate),
+					// 按无旋转分支去 patch 会把旋转毁掉。rotate 本批不动 —— 直接拒。
+					const previous = page.imagePos?.[slotId] as (ImagePosValue & { rotate?: number }) | undefined;
+					if (previous?.rotate) {
+						throw new Error(
+							`${label}的图槽 "${slotId}" 被旋转过(${previous.rotate}°),本工具不改旋转过的图。请让用户在编辑器里手动调整。`,
+						);
+					}
+
+					if ("fit" in request) {
+						const photoId = page.images[slotId];
+						const photo = photoId ? findAlbumPhoto(state, photoId) : undefined;
+						if (!photo?.profile) {
+							notes.push(
+								`${label}的图槽 "${slotId}" 没有照片档案,fit 意图退回默认构图(50/50/1)。`,
+							);
+						}
+						positions[slotId] = resolveImagePos(request.fit, photo?.profile);
+						continue;
+					}
+
+					for (const axis of ["x", "y"] as const) {
+						const value = request[axis];
+						if (!Number.isFinite(value) || value < 0 || value > 100) {
+							throw new Error(`${label}的图槽 "${slotId}" 的 ${axis} 必须在 0-100 之间(object-position 百分比),收到 ${value}。`);
+						}
+					}
+					if (!Number.isFinite(request.scale) || request.scale < MIN_IMAGE_SCALE || request.scale > MAX_IMAGE_SCALE) {
+						throw new Error(
+							`${label}的图槽 "${slotId}" 的 scale 必须在 ${MIN_IMAGE_SCALE}-${MAX_IMAGE_SCALE} 之间(小于 ${MIN_IMAGE_SCALE} 会露出底色),收到 ${request.scale}。`,
+						);
+					}
+					positions[slotId] = { x: request.x, y: request.y, scale: request.scale };
+				}
+				resolved.push({ internalNo, positions });
+			}
+
+			const nextState = cloneAlbumBookState(state);
+			const operations: string[] = [];
+			for (const { internalNo, positions } of resolved) {
+				const nextPage = requirePage(options, nextState, internalNo);
+				const nextImagePos: Record<string, ImagePosValue> = { ...(nextPage.imagePos ?? {}) };
+				for (const [slotId, pos] of Object.entries(positions)) {
+					nextImagePos[slotId] = pos;
+					// 页面真相是 html,object-position / transform 是烘进去的 —— 只改数据
+					// 不改 html,画板上照片纹丝不动(存库 html 优先于即时渲染)。
+					// 槽位级 patch 而不是整页重烘:重烘会把 write_page_html 的手工版面冲掉。
+					if (nextPage.html) {
+						const patched = patchHtmlImagePos(nextPage.html, slotId, pos);
+						if (patched) nextPage.html = patched;
+						else notes.push(`${pageLabelOf(options, nextState, internalNo)}的 HTML 里找不到图槽 "${slotId}" 的锚点,构图已记在数据层,渲染端会按它重烘。`);
+					}
+				}
+				nextPage.imagePos = nextImagePos;
+				operations.push(`p${internalNo}:imagePos(${Object.keys(positions).join(",")})`);
+			}
+			return commitWrite(options, nextState, {
+				pageNo: Number(params.updates[0]!.pageNo),
+				operations,
+				notes,
+			});
 		},
 	};
 }
@@ -1631,6 +1790,46 @@ function readTextUpdates(
 	const pageNo = resolveRefToInternal(options, args.pageNo ?? args.pageIndex);
 	if (pageNo > 0 && isRecord(args.texts)) return [{ pageNo, texts: readStringRecord(args.texts) }];
 	return [];
+}
+
+// 兼容：既接受批量 { updates: [{pageNo, positions}] }，也接受单页 { pageNo, positions }。
+// pageNo 是用户口径页码(数字=内页,"cover"/"toc"/"ending"),此处转内部页位 ——
+// 换算走 resolveRefToInternal,它带 isSpread(双宽页占两个号,漏传会比画布少号)。
+function readImagePosUpdates(
+	options: AlbumToolsOptions,
+	args: unknown,
+): Array<{ pageNo: number; positions: Record<string, ImagePosRequest> }> {
+	if (!isRecord(args)) return [];
+	if (Array.isArray(args.updates)) {
+		return args.updates.filter(isRecord).map((update) => ({
+			pageNo: resolveRefToInternal(options, update.pageNo ?? update.pageIndex),
+			positions: readImagePosRecord(update.positions ?? update.imagePos),
+		}));
+	}
+	const pageNo = resolveRefToInternal(options, args.pageNo ?? args.pageIndex);
+	const positions = readImagePosRecord(args.positions ?? args.imagePos);
+	if (pageNo > 0 && Object.keys(positions).length > 0) return [{ pageNo, positions }];
+	return [];
+}
+
+function readImagePosRecord(value: unknown): Record<string, ImagePosRequest> {
+	if (!isRecord(value)) return {};
+	const out: Record<string, ImagePosRequest> = {};
+	for (const [slotId, entry] of Object.entries(value)) {
+		if (!isRecord(entry)) continue;
+		if (isImageFit(entry.fit)) {
+			out[slotId] = { fit: entry.fit };
+			continue;
+		}
+		// 坐标缺项按 render default 补齐(#165:50/50/1),越界留给 execute 报错 ——
+		// 静默夹到合法区间会让模型以为自己写对了。
+		out[slotId] = {
+			x: typeof entry.x === "number" ? entry.x : DEFAULT_IMAGE_POS.x,
+			y: typeof entry.y === "number" ? entry.y : DEFAULT_IMAGE_POS.y,
+			scale: typeof entry.scale === "number" ? entry.scale : DEFAULT_IMAGE_POS.scale,
+		};
+	}
+	return out;
 }
 
 // 兼容：既接受批量 { updates: [{pageNo, images}] }，也接受单页 { pageNo, images }。

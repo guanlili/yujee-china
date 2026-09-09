@@ -124,3 +124,63 @@ export function patchHtmlText(html: string, slotId: string, value: string): stri
 	const openTag = /[\r\n]/.test(value) ? withPreWrap(m[0]) : m[0];
 	return html.slice(0, m.index) + openTag + escapeHtmlText(value) + html.slice(end);
 }
+
+// ── 图片位置的槽位级 patch ───────────────────────────────────────────────
+// 页面真相是 html,而 object-position / transform 是**烘进 html 的**(fill-template
+// 的 IMG_POS / IMG_TF token)。所以 set_image_pos 只改 page.imagePos 是不够的 ——
+// 存库 html 优先于即时渲染(web preferredPageHtml),画板上照片会纹丝不动。
+//
+// ⚠️ 与 web `components/album/page-html-dom.patchHtmlImagePos` 是同名对偶实现,
+// 改一边要同步另一边。**本实现只覆盖无旋转分支** —— 旋转要做「盒交换」
+// (90/270 时把 img 盒换成图框转置尺寸),那套几何留在 web 侧;design-agent 的
+// set_image_pos 对旋转过的槽直接拒绝,不去动它(rotate 本批明确不动)。
+
+const STYLE_ATTR_RE = /style="([^"]*)"/i;
+
+/** 行内 style 的声明级 upsert:值为 null = 删除该声明。保留其余声明与顺序。 */
+function upsertStyleAttr(openTag: string, patch: Record<string, string | null>): string {
+	const match = STYLE_ATTR_RE.exec(openTag);
+	const declarations: Array<[string, string]> = [];
+	if (match) {
+		for (const part of match[1]!.split(";")) {
+			const index = part.indexOf(":");
+			if (index === -1) continue;
+			const key = part.slice(0, index).trim();
+			if (key) declarations.push([key, part.slice(index + 1).trim()]);
+		}
+	}
+	for (const [key, value] of Object.entries(patch)) {
+		const at = declarations.findIndex(([name]) => name.toLowerCase() === key.toLowerCase());
+		if (value === null) {
+			if (at !== -1) declarations.splice(at, 1);
+		} else if (at === -1) {
+			declarations.push([key, value]);
+		} else {
+			declarations[at] = [key, value];
+		}
+	}
+	const style = declarations.map(([key, value]) => `${key}:${value}`).join(";");
+	const styleAttr = style ? `${style};` : "";
+	if (match) return openTag.replace(match[0], `style="${styleAttr}"`);
+	return openTag.replace(/\s*\/?>$/, (tail) => ` style="${styleAttr}"${tail.trimStart()}`);
+}
+
+/** 槽位级改图片位置:替换 html 中 data-image-slot 那个 <img> 的行内定位样式。
+ * 找不到锚点返回 null(调用方决定报错还是放弃)。 */
+export function patchHtmlImagePos(
+	html: string,
+	slotId: string,
+	pos: { x: number; y: number; scale: number },
+): string | null {
+	const escapedSlot = slotId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+	const openRe = new RegExp(`<img\\b[^>]*data-image-slot="${escapedSlot}"[^>]*>`, "i");
+	const match = openRe.exec(html);
+	if (!match) return null;
+	const patched = upsertStyleAttr(match[0], {
+		"object-position": `${pos.x}% ${pos.y}%`,
+		// scale 回到 1 时要把 transform 删干净,否则上一次放大会留成残影。
+		transform: pos.scale > 1 ? `scale(${pos.scale})` : null,
+		"transform-origin": pos.scale > 1 ? `${pos.x}% ${pos.y}%` : null,
+	});
+	return html.slice(0, match.index) + patched + html.slice(match.index + match[0].length);
+}

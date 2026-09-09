@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { derivePageTexts, validatePageHtml } from "../src/core/album/html-guard.ts";
+import { derivePageTexts, patchHtmlImagePos, validatePageHtml } from "../src/core/album/html-guard.ts";
 
 // write_page_html 的守门:AI 可以自由改版面(挪/改样式/加装饰),但
 // ① 锚点(data-text-key / data-image-slot)一个不能丢 ② 图片 src 必须仍是
@@ -94,4 +94,72 @@ test("patchHtmlText:含换行的文案给槽元素补 white-space:pre-wrap(多�
 	assert.equal(single.includes("white-space"), false);
 	// 往返:derivePageTexts 把多行文案原样读回(\n 保留)
 	assert.equal(derivePageTexts(next).title, "第一行\n第二行");
+});
+
+// ── 图片位置的槽位级 html patch ──────────────────────────────────────────
+// 页面真相是 html,而 object-position / transform 是**烘进 html 的**(fill-template
+// 的 IMG_POS / IMG_TF token)。只改 page.imagePos 不改 html,画板上照片纹丝不动 ——
+// 存库 html 优先于即时渲染(web preferredPageHtml)。与 web page-html-dom 的同名
+// 实现保持同步(本批只覆盖无旋转分支,旋转的盒交换见那边)。
+
+const IMG_HTML =
+	'<div data-template="mag-05">' +
+	'<img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" style="display:block;width:100%;height:100%;object-fit:cover;object-position:50% 50%;" />' +
+	'<img data-image-slot="other" src="{{IMG_SRC:other}}" alt="" style="object-fit:cover;object-position:50% 50%;" />' +
+	"</div>";
+
+test("patchHtmlImagePos 改写目标槽的 object-position", () => {
+	const out = patchHtmlImagePos(IMG_HTML, "image", { x: 30, y: 40, scale: 1 });
+	assert.ok(out);
+	assert.match(out, /data-image-slot="image"[^>]*object-position:\s*30% 40%/);
+});
+
+test("patchHtmlImagePos 不碰同页其它图槽", () => {
+	const out = patchHtmlImagePos(IMG_HTML, "image", { x: 30, y: 40, scale: 1 });
+	assert.ok(out);
+	assert.match(out, /data-image-slot="other"[^>]*object-position:\s*50% 50%/);
+});
+
+test("patchHtmlImagePos 保留 style 里的其它声明", () => {
+	const out = patchHtmlImagePos(IMG_HTML, "image", { x: 30, y: 40, scale: 1 });
+	assert.ok(out);
+	const tag = /<img[^>]*data-image-slot="image"[^>]*>/.exec(out)?.[0] ?? "";
+	assert.match(tag, /object-fit:\s*cover/);
+	assert.match(tag, /src="\{\{IMG_SRC:image\}\}"/);
+});
+
+test("scale > 1 时写 transform 与 transform-origin", () => {
+	const out = patchHtmlImagePos(IMG_HTML, "image", { x: 30, y: 40, scale: 1.5 });
+	assert.ok(out);
+	const tag = /<img[^>]*data-image-slot="image"[^>]*>/.exec(out)?.[0] ?? "";
+	assert.match(tag, /transform:\s*scale\(1\.5\)/);
+	assert.match(tag, /transform-origin:\s*30% 40%/);
+});
+
+test("scale 回到 1 时把 transform 删干净，不留残影", () => {
+	const zoomed = patchHtmlImagePos(IMG_HTML, "image", { x: 30, y: 40, scale: 1.5 });
+	assert.ok(zoomed);
+	const out = patchHtmlImagePos(zoomed, "image", { x: 50, y: 50, scale: 1 });
+	assert.ok(out);
+	const tag = /<img[^>]*data-image-slot="image"[^>]*>/.exec(out)?.[0] ?? "";
+	assert.ok(!/transform\s*:/.test(tag), `transform 残留：${tag}`);
+	assert.ok(!/transform-origin\s*:/.test(tag), `transform-origin 残留：${tag}`);
+});
+
+test("找不到图槽锚点返回 null，交给调用方决定", () => {
+	assert.equal(patchHtmlImagePos(IMG_HTML, "missing", { x: 10, y: 10, scale: 1 }), null);
+});
+
+test("图槽 id 带方括号（重复槽）也能命中", () => {
+	const html = '<img data-image-slot="image[1]" src="{{IMG_SRC:image[1]}}" style="object-position:50% 50%;" />';
+	const out = patchHtmlImagePos(html, "image[1]", { x: 20, y: 80, scale: 1 });
+	assert.ok(out);
+	assert.match(out, /object-position:\s*20% 80%/);
+});
+
+test("原本没有 style 属性的 img 也能加上 object-position", () => {
+	const html = '<img data-image-slot="image" src="{{IMG_SRC:image}}" alt="" />';
+	const out = patchHtmlImagePos(html, "image", { x: 25, y: 75, scale: 1 });
+	assert.ok(out);
+	assert.match(out, /object-position:\s*25% 75%/);
 });
