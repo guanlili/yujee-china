@@ -1,9 +1,11 @@
 import { z } from 'zod';
-import { db } from '@/db/client';
+import { db, type DbOrTx } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
+import { albumShareRepo } from '@/db/repos/album-share-repo';
 import { ERRORS } from '@/lib/api/error-codes';
 import {
   PhotoFilterRefSchema,
+  effectiveRenderVersion,
   normalizePhotoFilterState,
   type PhotoFilterState,
 } from '@/lib/photo/filter-state';
@@ -41,6 +43,8 @@ export type AgentPhotoFilterPatch = z.infer<typeof AgentPhotoFilterPatchSchema>;
 export type AgentPhotoFilterResult = {
   photoFilter: PhotoFilterState | null;
   settingsRevision: number;
+  /** 给工具层塞进模型 notes 的提醒。空数组 = 没什么要说的。 */
+  warnings: string[];
 };
 
 /** patch 合并进现有状态。cutouts 的 null 走删键,全空时连壳一起删。 */
@@ -90,6 +94,8 @@ export async function applyAgentPhotoFilter(
     const photoFilter = normalizePhotoFilterState(mergePatch(latest.photoFilter, parsed.data));
     const settingsRevision = latest.settingsRevision + 1;
 
+    const warnings = await shareMismatchWarnings(tx, albumId, latest, photoFilter);
+
     await albumRepo.update(tx, albumId, {
       photoFilter,
       settingsRevision,
@@ -102,6 +108,41 @@ export async function applyAgentPhotoFilter(
       ...(latest.status === 'COMPLETED' ? { status: 'EDITING' as const } : {}),
     });
 
-    return { photoFilter, settingsRevision };
+    return { photoFilter, settingsRevision, warnings };
   });
+}
+
+/**
+ * 分享快照护栏。改滤镜/抠图会改 `effectiveRenderVersion`,而 share-service 建分享时
+ * 拿它跟备份里记的版本串精确比对(share-service.ts:108)—— 一句「整本调成旅行大片」
+ * 就能让全书失配,用户得重新备份全书,还撞备份 300 张上限那堵墙。
+ *
+ * 按小雨拍板的「Agent 全权」:**告知,不阻断**。warning 走工具 notes 让 Agent 在
+ * 回复里说清楚,不静默改。
+ *
+ * 判定口径与 share-service 的闸门一致:只看**已备份的那批 photoId**(备份集合就是
+ * 分享页引用的那批)。没分享 / 版本串逐字节没变 / 只动了不在备份里的照片 —— 都不
+ * 出声,免得每次调色都刷一条假警报。
+ */
+async function shareMismatchWarnings(
+  tx: DbOrTx,
+  albumId: string,
+  before: { photoFilter: PhotoFilterState | null; photoSnapshot: { photoIds: string[] } | null },
+  after: PhotoFilterState | null,
+): Promise<string[]> {
+  const photoIds = before.photoSnapshot?.photoIds ?? [];
+  const changed = photoIds.filter(
+    (photoId) =>
+      effectiveRenderVersion(before.photoFilter, photoId)
+      !== effectiveRenderVersion(after, photoId),
+  );
+  if (changed.length === 0) return [];
+  // 版本串真变了才去查分享 —— 大多数调用不会走到这条查询。
+  if (!(await albumShareRepo.existsByAlbum(albumId, tx))) return [];
+
+  return [
+    `这本书已经分享过。这次改动会让 ${changed.length} 张照片的渲染版本变化,`
+    + '已发出的分享链接会显示不出这些照片,需要在编辑器里重新备份全书后重新分享'
+    + '(备份单次上限 300 张,大书要分几次)。请在回复里告诉用户这件事。',
+  ];
 }

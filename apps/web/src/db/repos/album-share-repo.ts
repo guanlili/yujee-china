@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { db, type DbOrTx } from '../client';
 import { albumShares, type AlbumShare, type NewAlbumShare } from '../schema';
 
@@ -18,6 +18,18 @@ export const albumShareRepo = {
       .orderBy(desc(albumShares.createdAt))
       .limit(1)
       .then((r) => r[0]),
+
+  // 这本书有没有已发布的分享链接。刻意只 select 一个常量而不是整行:snapshotJson
+  // 是整本书的冻结 HTML,动辄几 MB —— 只为判存在把它拉回来是纯浪费。
+  // 接受 tx:调用方在 albums 行锁事务内查(与 agentJobRepo.findLatestByAlbum 同款)。
+  existsByAlbum: async (albumId: string, tx: DbOrTx = db): Promise<boolean> => {
+    const rows = await tx
+      .select({ one: sql<number>`1` })
+      .from(albumShares)
+      .where(eq(albumShares.albumId, albumId))
+      .limit(1);
+    return rows.length > 0;
+  },
 
   // 生成分享:总是插入新行(新 token + 当前快照),不改写已有行。
   create: async (tx: DbOrTx, row: NewAlbumShare): Promise<AlbumShare> => {

@@ -4,6 +4,7 @@ import type { Page } from '@yujee/contracts';
 import { db } from '@/db/client';
 import { albumRepo } from '@/db/repos/album-repo';
 import { albumMemberRepo } from '@/db/repos/album-member-repo';
+import { albumShareRepo } from '@/db/repos/album-share-repo';
 import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '@/db/repos/__test__/setup';
 import { applyAgentPhotoFilter } from './agent-photo-filter';
@@ -240,6 +241,121 @@ test('applyAgentPhotoFilter: 改滤镜清掉 PDF/封面派生物(与 updatePhoto
     assert.equal(after.coverThumbnailUrl, null);
     assert.equal(after.coverThumbnailR2Key, null);
     assert.equal(after.status, 'EDITING');
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+// ── 分享快照护栏(B4)────────────────────────────────────────────────────────
+// Agent 一句「整本调成旅行大片」会让全书 renderVersion 失配,已发布的分享页需要
+// 重新备份全书(还撞 300 张上限)。按小雨拍板的「Agent 全权」:告知,不阻断。
+
+// 已备份但**没分享**的书。护栏的两个条件(版本串真变了 + 存在已发布分享)必须
+// 都测到:只用「没备份也没分享」的书当反例是假绿 —— 空备份集合会在查分享之前
+// 就早退,把 existsByAlbum 那道闸整个跳过(mutation 实测:删掉那行仍 15/15 全绿)。
+async function seedBackedUpBook(suffix: string, photoIds: string[]) {
+  const seeded = await seedBook(suffix);
+  await albumRepo.update(db, seeded.albumId, {
+    photoSnapshot: {
+      photoIds,
+      renderVersions: Object.fromEntries(photoIds.map((id) => [id, 'pf-v1__original'])),
+      updatedAt: new Date().toISOString(),
+    },
+  });
+  return seeded;
+}
+
+async function seedSharedBook(suffix: string, photoIds: string[]) {
+  const seeded = await seedBackedUpBook(suffix, photoIds);
+  await db.transaction(async (tx) =>
+    albumShareRepo.create(tx, {
+      token: `agent-filter-${suffix}-${Date.now()}`,
+      albumId: seeded.albumId,
+      title: 'shared',
+      snapshotJson: { pages: [], photoUrls: {}, boardBackground: null, locale: 'zh' },
+    }),
+  );
+  return seeded;
+}
+
+test('applyAgentPhotoFilter: 书有已发布分享时,返回 warning 说明会失配', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { userId, albumId } = await seedSharedBook('shared-warn', ['p1', 'p2']);
+  try {
+    const rev = (await albumRepo.findById(albumId))!.settingsRevision;
+    const result = await applyAgentPhotoFilter(
+      userId, albumId, { default: { lutId: 'night-film', strength: 50 } }, rev,
+    );
+    assert.ok(result.warnings.some((w) => w.includes('分享')), result.warnings.join(' | '));
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('applyAgentPhotoFilter: 没有分享时不产生噪音 warning', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  // 已备份、版本串确实会变 —— 唯一不 warning 的理由就是这本书没分享过。
+  const { userId, albumId } = await seedBackedUpBook('unshared-quiet', ['p1', 'p2']);
+  try {
+    const rev = (await albumRepo.findById(albumId))!.settingsRevision;
+    const result = await applyAgentPhotoFilter(
+      userId, albumId, { default: { lutId: 'night-film', strength: 50 } }, rev,
+    );
+    assert.deepEqual(result.warnings, []);
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('applyAgentPhotoFilter: warning 不阻断写入', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { userId, albumId } = await seedSharedBook('shared-nonblocking', ['p1']);
+  try {
+    const rev = (await albumRepo.findById(albumId))!.settingsRevision;
+    const result = await applyAgentPhotoFilter(
+      userId, albumId, { default: { lutId: 'night-film', strength: 50 } }, rev,
+    );
+    assert.equal(result.warnings.length > 0, true);
+    // 小雨拍板 Agent 全权:告知,不阻断。
+    assert.equal((await albumRepo.findById(albumId))!.photoFilter?.default?.lutId, 'night-film');
+    assert.equal(result.settingsRevision, rev + 1);
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('applyAgentPhotoFilter: 只改了不影响 renderVersion 的东西时不 warning', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { userId, albumId } = await seedSharedBook('shared-noop', ['p1']);
+  try {
+    let rev = (await albumRepo.findById(albumId))!.settingsRevision;
+    rev = (await applyAgentPhotoFilter(
+      userId, albumId, { default: { lutId: 'night-film', strength: 50 } }, rev,
+    )).settingsRevision;
+
+    // (a) 原样重放同一个 patch:每张照片的版本串逐字节不变 → 别吓唬用户。
+    const replay = await applyAgentPhotoFilter(
+      userId, albumId, { default: { lutId: 'night-film', strength: 50 } }, rev,
+    );
+    assert.deepEqual(replay.warnings, [], replay.warnings.join(' | '));
+
+    // (b) 只动一张**不在备份集合里**的照片:分享页压根不引用它,同样不该 warning。
+    const unrelated = await applyAgentPhotoFilter(
+      userId, albumId, { overrides: { not_in_snapshot: null } }, replay.settingsRevision,
+    );
+    assert.deepEqual(unrelated.warnings, [], unrelated.warnings.join(' | '));
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('applyAgentPhotoFilter: 开抠图同样让备份失配,要 warning(__cut1 尾段)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { userId, albumId } = await seedSharedBook('shared-cutout', ['p1']);
+  try {
+    const rev = (await albumRepo.findById(albumId))!.settingsRevision;
+    const result = await applyAgentPhotoFilter(userId, albumId, { cutouts: { p1: true } }, rev);
+    assert.ok(result.warnings.some((w) => w.includes('分享')), result.warnings.join(' | '));
   } finally {
     await cleanupUser(userId);
   }
