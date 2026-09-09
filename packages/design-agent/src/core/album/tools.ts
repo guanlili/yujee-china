@@ -67,6 +67,10 @@ export interface AlbumToolsOptions {
 	 * 实现方是 web 侧的 applyAgentPhotoFilter(album 行锁内走 lockAlbumForSettingsWrite)。
 	 * warnings 原样进工具结果的 notes(如「这本书已分享」),让 Agent 转告用户。 */
 	applyPhotoFilter?: (patch: PhotoFilterPatch) => Promise<{ warnings: string[] }>;
+	/** 真图直喂的**兜底**通道(复用 compose 的 ref200px 路径):photoId → 图像字节。
+	 * 常规视觉输入是 read_page 带回来的照片档案 —— 这条路只在档案答不了时走
+	 * (「这张不对劲」)。未注入时 look_at_photos 不注册。 */
+	lookAtPhotos?: (photoIds: string[]) => Promise<Array<{ photoId: string; data: string; mimeType: string }>>;
 }
 
 // ── 用户口径页码(铁律:模型看到/传入的页码 = 用户画面上看到的页码)──
@@ -314,6 +318,21 @@ const setPhotoCutoutSchema = Type.Object({
 type SetPhotoFilterInput = Static<typeof setPhotoFilterSchema>;
 type SetPhotoCutoutInput = Static<typeof setPhotoCutoutSchema>;
 
+// ── look_at_photos:真图兜底 ──────────────────────────────────────────────
+// 上限 6 张。真图进上下文很贵(#307 刚因为上下文把整页 HTML 改成默认不发),
+// 而且模型为了「稳妥」会每轮都想看图 —— 边界写死在工具描述和这个常量里。
+const MAX_LOOK_AT_PHOTOS = 6;
+
+const lookAtPhotosSchema = Type.Object({
+	photoIds: Type.Array(Type.String(), {
+		minItems: 1,
+		maxItems: MAX_LOOK_AT_PHOTOS,
+		description: `要看的照片 id(来自 read_page 的 images[slot].photoId)。一次最多 ${MAX_LOOK_AT_PHOTOS} 张。`,
+	}),
+});
+
+type LookAtPhotosInput = Static<typeof lookAtPhotosSchema>;
+
 const listTemplatesSchema = Type.Object({
 	category: Type.Optional(Type.String({ description: "按类目过滤：cover / toc / interior / ending。" })),
 	imageSlotCount: Type.Optional(Type.Number({ description: "按图槽数量过滤。" })),
@@ -365,6 +384,7 @@ const MAX_SEARCH_LIMIT = 30;
 
 export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 	const applyPhotoFilter = options.applyPhotoFilter;
+	const lookAtPhotos = options.lookAtPhotos;
 	return [
 		createReadPagesTool(options),
 		createSearchBookTool(options),
@@ -390,6 +410,8 @@ export function createAlbumTools(options: AlbumToolsOptions): AgentTool[] {
 					createSetPhotoCutoutTool(options, applyPhotoFilter) as AgentTool,
 				]
 			: []),
+		// 取图 seam 没注入就不注册 —— 同上,写不进去/看不到图的工具不该出现在菜单里。
+		...(lookAtPhotos ? [createLookAtPhotosTool(options, lookAtPhotos) as AgentTool] : []),
 	];
 }
 
@@ -932,6 +954,46 @@ function createSetImagePosTool(
 				operations,
 				notes,
 			});
+		},
+	};
+}
+
+function createLookAtPhotosTool(
+	options: AlbumToolsOptions,
+	lookAtPhotos: NonNullable<AlbumToolsOptions["lookAtPhotos"]>,
+): AgentTool<typeof lookAtPhotosSchema, { photoIds: string[] }> {
+	return {
+		name: "look_at_photos",
+		label: "看照片原图",
+		description: `直接看照片原图。**这是兜底,不是默认输入** —— 常规判断先读 read_page 给的照片档案(profile:构图/场景/人数/色温/明暗/情绪/一句话描述),只有档案答不了的时候(用户说「这张不对劲」「这张为什么这么怪」)才调它。一次最多 ${MAX_LOOK_AT_PHOTOS} 张:真图进上下文很贵,每轮都看图会让上下文和成本双爆。`,
+		parameters: lookAtPhotosSchema,
+		prepareArguments(args: unknown): LookAtPhotosInput {
+			if (!isRecord(args)) return { photoIds: [] };
+			const raw = Array.isArray(args.photoIds) ? args.photoIds : args.photoId !== undefined ? [args.photoId] : [];
+			return { photoIds: raw.filter((entry): entry is string => typeof entry === "string") };
+		},
+		async execute(
+			_toolCallId: string,
+			params: LookAtPhotosInput,
+		): Promise<AgentToolResult<{ photoIds: string[] }>> {
+			if (params.photoIds.length === 0) throw new Error("photoIds 至少要包含一张照片");
+			if (params.photoIds.length > MAX_LOOK_AT_PHOTOS) {
+				throw new Error(
+					`一次最多看 ${MAX_LOOK_AT_PHOTOS} 张照片,收到 ${params.photoIds.length} 张。先读 read_page 的照片档案,只对真正判断不了的那几张调这个工具。`,
+				);
+			}
+			const state = options.getBookState();
+			for (const photoId of params.photoIds) requireBookPhoto(state, photoId);
+
+			const images = await lookAtPhotos(params.photoIds);
+			// 读工具:不 terminate —— 模型看完图还要接着改书。
+			return {
+				content: [
+					{ type: "text", text: JSON.stringify({ photoIds: params.photoIds }, null, 1) },
+					...images.map((image) => ({ type: "image" as const, data: image.data, mimeType: image.mimeType })),
+				],
+				details: { photoIds: params.photoIds },
+			};
 		},
 	};
 }
@@ -1894,16 +1956,13 @@ function searchAlbumBook(
 	// 章节背景(chapterContext)不再参与搜索(写文案素材已烘进页面 html/texts)。
 	for (const chapter of state.chapters) {
 		for (const photo of chapter.photos) {
-			if (photo.sceneDescription.toLowerCase().includes(lowerQuery)) {
-				if (
-					push({
-						where: "photo",
-						photoId: photo.photoId,
-						preview: preview(photo.sceneDescription, query),
-					})
-				) {
-					return matches;
-				}
+			// 照片描述有两处来源:档案的 description(建过档的书)与 sceneDescription
+			// (存量书 / 档案回填后)。engine 侧 sceneDescription 长期恒空,只搜它这条
+			// 分支一直搜不到东西 —— 档案优先,两处都看,但同一张照片只报一次。
+			const candidates = [photo.profile?.description ?? "", photo.sceneDescription];
+			const hit = candidates.find((text) => text.length > 0 && text.toLowerCase().includes(lowerQuery));
+			if (hit && push({ where: "photo", photoId: photo.photoId, preview: preview(hit, query) })) {
+				return matches;
 			}
 		}
 	}

@@ -29,10 +29,16 @@ function createHarness() {
 	return { tools, getBook: () => book, catalog };
 }
 
-test("文件化 skills 从 skills/ 目录加载六个技能", () => {
+test("文件化 skills 从 skills/ 目录加载七个技能", () => {
 	const skills = loadAlbumSkills();
 	const names = skills.map((skill) => skill.name).sort();
-	assert.deepEqual(names, ["页面HTML编辑", "相册字体", "相册排版", "相册文案", "相册配色", "风格理解"].sort());
+	assert.deepEqual(
+		names,
+		["页面HTML编辑", "照片处理", "相册字体", "相册排版", "相册文案", "相册配色", "风格理解"].sort(),
+	);
+	const photos = skills.find((skill) => skill.name === "照片处理");
+	assert.ok(photos?.content.includes("set_image_pos"), "照片技能应指向 set_image_pos 工具");
+	assert.ok(photos?.filePath.endsWith("SKILL.md"));
 	const pageHtml = skills.find((skill) => skill.name === "页面HTML编辑");
 	assert.ok(pageHtml?.content.includes("write_page_html"), "HTML 编辑技能应指向 write_page_html 工具");
 	assert.ok(pageHtml?.filePath.endsWith("SKILL.md"));
