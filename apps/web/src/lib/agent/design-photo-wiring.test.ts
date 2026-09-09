@@ -162,3 +162,15 @@ test('done 事件带上落库后的 photoFilter，前端才可能原地重绘', 
   const route = code('../../app/api/v3/albums/[uuid]/design-chat/route.ts');
   assert.match(route, /type:\s*'done'[\s\S]{0,700}?photoFilter/);
 });
+
+test('落库带上 baseSettingsRevision —— 漏传会让协作者调色每次必失败', () => {
+  const service = code('../../services/album/album-service.ts');
+  // prepareDesignChat 把基线吐出来
+  assert.match(service, /prepareDesignChat\([^)]*\):\s*Promise<\{\s*baseSettingsRevision:\s*number\s*\}>/);
+  // 落库时真的传给了 applyAgentPhotoFilter
+  assert.match(service, /applyAgentPhotoFilter\([\s\S]{0,200}?input\.baseSettingsRevision/);
+  // 流式路由把它从装书一路带到落库
+  const route = code('../../app/api/v3/albums/[uuid]/design-chat/route.ts');
+  assert.match(route, /baseSettingsRevision\s*\}\s*=\s*await\s+albumService\.prepareDesignChat/);
+  assert.match(route, /persistDesignChat\([\s\S]{0,500}?baseSettingsRevision/);
+});

@@ -986,13 +986,27 @@ function createLookAtPhotosTool(
 			for (const photoId of params.photoIds) requireBookPhoto(state, photoId);
 
 			const images = await lookAtPhotos(params.photoIds);
+			// ⚠️ 回执报的是**真的拿到的那几张**,不是请求的那几张。web 侧会按预算跳过
+			// 一部分(没有服务端缩图,单张/单次都有字节上限),照抄请求 id 会让模型对着
+			// 一张自己没看到的照片评头论足 —— 幻觉的直接来源。
+			const seen = images.map((image) => image.photoId);
+			const missing = params.photoIds.filter((photoId) => !seen.includes(photoId));
+			const payload = {
+				photoIds: seen,
+				...(missing.length > 0
+					? {
+							missingPhotoIds: missing,
+							note: `这些照片没取到(可能还没上传完成,或体积超出单次预算):${missing.join("、")}。别评价没看到的照片,需要的话告诉用户。`,
+						}
+					: {}),
+			};
 			// 读工具:不 terminate —— 模型看完图还要接着改书。
 			return {
 				content: [
-					{ type: "text", text: JSON.stringify({ photoIds: params.photoIds }, null, 1) },
+					{ type: "text", text: JSON.stringify(payload, null, 1) },
 					...images.map((image) => ({ type: "image" as const, data: image.data, mimeType: image.mimeType })),
 				],
-				details: { photoIds: params.photoIds },
+				details: { photoIds: seen },
 			};
 		},
 	};

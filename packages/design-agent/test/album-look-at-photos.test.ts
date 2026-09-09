@@ -260,3 +260,36 @@ for (const [label, load] of skillSources) {
 		assert.match(content, /退化|退回|等同于/, "要写明 avoid-face-crop 会退回主体居中");
 	});
 }
+
+// ── 只报「真的看到的那几张」 ────────────────────────────────────────────
+// web 侧会按预算跳过一些照片(单张 3MB / 单次 6MB,没有服务端缩图)。工具回执若
+// 照抄「请求的 id」,模型就会对着一张自己没看到的照片评头论足 —— 这是幻觉的直接
+// 来源,必须如实报告缺了哪几张。
+
+test("回执列出真正拿到的照片，而不是请求的那几张", async () => {
+	const catalog = loadTemplateCatalog();
+	let book = parseAlbumBookInput(bookInput()).book;
+	const tools = new Map(
+		createAlbumTools({
+			catalog,
+			getBookState: () => cloneAlbumBookState(book),
+			setBookState: (next) => {
+				book = cloneAlbumBookState(next);
+			},
+			// 只回来一张:另一张被 web 侧按预算跳过了。
+			lookAtPhotos: async () => [{ photoId: "p1", data: "aGVsbG8=", mimeType: "image/jpeg" }],
+		}).map((tool) => [tool.name, tool as AgentTool]),
+	);
+	const text = await runText(tools, "look_at_photos", { photoIds: ["p1", "p2"] });
+	const payload = JSON.parse(text);
+	assert.deepEqual(payload.photoIds, ["p1"], "回执里的 id 必须是真看到的那批");
+	assert.deepEqual(payload.missingPhotoIds, ["p2"]);
+	assert.match(text, /没取到|别评价|没看到/);
+});
+
+test("全部拿到时不出现 missing 字段，别给模型加噪音", async () => {
+	const { tools } = createHarness();
+	const payload = JSON.parse(await runText(tools, "look_at_photos", { photoIds: ["p1", "p2"] }));
+	assert.deepEqual(payload.photoIds, ["p1", "p2"]);
+	assert.equal(payload.missingPhotoIds, undefined);
+});

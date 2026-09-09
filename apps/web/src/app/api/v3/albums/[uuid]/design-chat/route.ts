@@ -74,7 +74,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
       return ok(result);
     }
 
-    await albumService.prepareDesignChat(user.id, uuid);
+    // 设置基线在装书那一刻取,横跨整轮 —— 落库时带上它,协作者(editor)才写得进
+    // 滤镜(lockAlbumForSettingsWrite 对省略基线的 editor 一律拒绝)。
+    const { baseSettingsRevision } = await albumService.prepareDesignChat(user.id, uuid);
     const upstream = await designAgentClient.chatStream(uuid, body.userMessage, body.currentPageIndex);
     const encoder = new TextEncoder();
     const readable = new ReadableStream<Uint8Array>({
@@ -118,6 +120,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
             // 滤镜独立于 committed:只调色不改版面的一轮 committed 是 false,
             // 但 albums.photo_filter 照样要落(理由见 persistDesignChat 的注释)。
             photoFilterPatch,
+            baseSettingsRevision,
           });
           emit({
             type: 'done',

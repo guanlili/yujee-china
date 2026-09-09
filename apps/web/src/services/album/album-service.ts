@@ -856,7 +856,7 @@ export const albumService = {
     albumId: string,
     input: { userMessage: string; currentPageIndex?: number },
   ): Promise<{ assistantReply: string; committed: boolean; pageCount: number }> {
-    await this.prepareDesignChat(userId, albumId);
+    const { baseSettingsRevision } = await this.prepareDesignChat(userId, albumId);
     const result = await designAgentClient.chat(albumId, input.userMessage, input.currentPageIndex);
     await this.persistDesignChat(userId, albumId, {
       userMessage: input.userMessage,
@@ -864,6 +864,7 @@ export const albumService = {
       committed: result.committed,
       pages: result.book.pages,
       photoFilterPatch: result.photoFilterPatch,
+      baseSettingsRevision,
     });
     return {
       assistantReply: result.assistantReply,
@@ -874,7 +875,9 @@ export const albumService = {
 
   // 装书前置：所有权校验 + draft 校验 + 把当前书推给设计 Agent。流式与同步两条
   // 路径共用。
-  async prepareDesignChat(userId: string, albumId: string): Promise<void> {
+  // 返回本轮的设置基线(装书那一刻的 settingsRevision)。落库时带上它,
+  // OCC 才横跨整轮 —— 与 AI 长任务派发时记 baseline、回写前重验同一套路数。
+  async prepareDesignChat(userId: string, albumId: string): Promise<{ baseSettingsRevision: number }> {
     const { album } = await collaborationService.requireAccess(userId, albumId);
     // 行读(同 getDraftSkeleton,2026-08-03 线上事故):否则设计 Agent 装的是 legacy
     // 陈旧书,commit 回写时 replaceAll 会用陈旧页覆盖用户在编辑器里的行级编辑。
@@ -924,6 +927,7 @@ export const albumService = {
         viewablePhotoIds: photoRows.filter((row) => row.status === 'uploaded').map((row) => row.photoId),
       },
     );
+    return { baseSettingsRevision: album.settingsRevision };
   },
 
   // 对话结果落库：committed 时 pages 逐页过 contracts Page strict 后事务写回
@@ -940,6 +944,10 @@ export const albumService = {
       ops?: Array<{ toolName: string; input: unknown }>;
       /** design-agent 本轮累计的滤镜/抠图 patch;没动过传 null/省略。 */
       photoFilterPatch?: Record<string, unknown> | null;
+      /** 装书那一刻的 settingsRevision(prepareDesignChat 返回)。**必须带** ——
+       * 不带的话 lockAlbumForSettingsWrite 会把协作者(editor)一律拒掉,
+       * 协作者用设计对话调色每次必失败。 */
+      baseSettingsRevision?: number;
     },
     // 返回落库后的权威滤镜状态(归一化过、与并发写合并过),供路由回发浏览器
     // 原地重绘 —— 滤镜引擎只在 Browser 跑,画板不知道新值就还是旧观感。
@@ -1000,13 +1008,22 @@ export const albumService = {
     // 四步(行锁 / 锁内 resolveRole / 基线校验 / settingsRevision 比较)是协同 OCC 的
     // 防线,绕开一步就是并发脏写。
     //
-    // baseSettingsRevision 故意不传:design-agent 那一路没有基线可带(装书时它拿到
-    // 的是书内容,不是 settingsRevision),传一个自己现读的值等于假 OCC —— 读到写
-    // 之间照样有窗口,却让人以为有防线。缺省走 lockAlbumForSettingsWrite 的既有
-    // 口径(owner 盲写 / editor 拒绝)。
+    // baseSettingsRevision 来自 prepareDesignChat(装书那一刻读的),横跨整轮 ——
+    // 对话期间另一端改过设置就失配 409、零写入,让用户重来。这不是「写之前现读」
+    // 那种假 OCC。**必须带**:lockAlbumForSettingsWrite 的过渡口径是「owner 省略走
+    // 旧盲写,editor 省略一律拒绝」,漏传会让协作者用设计对话调色每次必失败。
+    //
+    // 写序:页面 → 滤镜 → 聊天记录。滤镜失配时聊天记录不落 —— 宁可让用户看见报错
+    // 重来,也不能留一条「已经调成旅行大片」的回复而实际没改(静默撒谎)。两套 OCC
+    // 跨不了同一个事务,这个次序是权衡后的取舍,别随手调换。
     let applied: { photoFilter: PhotoFilterState | null; settingsRevision: number } | null = null;
     if (input.photoFilterPatch) {
-      const result = await applyAgentPhotoFilter(userId, albumId, input.photoFilterPatch);
+      const result = await applyAgentPhotoFilter(
+        userId,
+        albumId,
+        input.photoFilterPatch,
+        input.baseSettingsRevision,
+      );
       applied = { photoFilter: result.photoFilter, settingsRevision: result.settingsRevision };
     }
 
