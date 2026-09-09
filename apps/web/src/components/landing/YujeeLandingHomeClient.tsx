@@ -352,30 +352,21 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
            ③ ::before 的 mask-composite 镶边 —— 挖空中心只留 1.6px 描边,形成全周高光圈;
            ④ ::after 的上缘反光薄条 —— 70% 处淡出,不压正文对比度。
            ::before/::after 都不裁剪(不加 overflow:hidden),否则会切掉语言下拉与移动抽屉。 ── */
-        .nav-wrap { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; justify-content: center; padding: 12px 16px; transition: padding .4s cubic-bezier(.4,0,.2,1); }
+        .nav-wrap { position: fixed; top: 0; left: 0; right: 0; z-index: 50; display: flex; justify-content: center; padding: 0; transition: padding .4s cubic-bezier(.4,0,.2,1); }
         .nav-wrap.scrolled { padding: 9px 16px; }
         .nav-pill {
           position: relative;
-          width: 100%; max-width: 1320px;
+          width: 100%; max-width: none;
           display: flex; align-items: center; justify-content: space-between; gap: 10px;
-          padding: 10px 16px 10px 18px; border-radius: 9999px;
-          background: rgba(255,255,255,.42); border: 0;
-          -webkit-backdrop-filter: blur(8px) saturate(205%) brightness(1.06);
-          backdrop-filter: blur(8px) saturate(205%) brightness(1.06) url(#navGlass);
-          box-shadow:
-            0 8px 30px rgba(0,0,0,.09),
-            0 1px 2px rgba(0,0,0,.05),
-            0 0 0 .5px rgba(0,0,0,.045),
-            inset 0 1.5px 1.5px rgba(255,255,255,.95),
-            inset 0 -1.5px 2px rgba(255,255,255,.55),
-            inset 1.5px 0 2px rgba(255,255,255,.4),
-            inset -1.5px 0 2px rgba(255,255,255,.4);
+          padding: 14px 28px; border-radius: 0;
+          background: transparent; border: 0;
+          box-shadow: none;
           transition: max-width .45s cubic-bezier(.4,0,.2,1), padding .4s ease,
-                      background .35s ease, box-shadow .4s ease,
+                      background .35s ease, box-shadow .4s ease, border-radius .4s ease,
                       -webkit-backdrop-filter .35s ease, backdrop-filter .35s ease;
         }
         .nav-pill::before {
-          content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1.6px;
+          content: ''; opacity: 0; transition: opacity .35s ease; position: absolute; inset: 0; border-radius: inherit; padding: 1.6px;
           background: linear-gradient(180deg,
             rgba(255,255,255,1) 0%,
             rgba(255,255,255,.45) 20%,
@@ -388,13 +379,15 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
           pointer-events: none;
         }
         .nav-pill::after {
-          content: ''; position: absolute; left: 1.6px; right: 1.6px; top: 1.6px; height: 44%;
+          content: ''; opacity: 0; transition: opacity .35s ease; position: absolute; left: 1.6px; right: 1.6px; top: 1.6px; height: 44%;
           border-radius: 9999px 9999px 40px 40px;
           background: linear-gradient(180deg, rgba(255,255,255,.32), rgba(255,255,255,0) 70%);
           pointer-events: none;
         }
+        .nav-wrap.scrolled .nav-pill::before,
+        .nav-wrap.scrolled .nav-pill::after { opacity: 1; }
         .nav-wrap.scrolled .nav-pill {
-          max-width: 1120px; padding: 8px 12px 8px 18px;
+          max-width: 1120px; padding: 8px 12px 8px 18px; border-radius: 9999px;
           background: rgba(255,255,255,.52);
           -webkit-backdrop-filter: blur(10px) saturate(215%) brightness(1.08);
           backdrop-filter: blur(10px) saturate(215%) brightness(1.08) url(#navGlass);
@@ -435,7 +428,7 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
         /* 不支持 backdrop-filter 的浏览器:回落成近乎不透明的白,保证文字可读 ——
            半透明 + 不模糊会让背后内容直接透出来糊在导航文字上。 */
         @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-          .nav-pill { background: rgba(255,255,255,.92); }
+          /* 静止平铺态本就没有底色,不需要回落;只有胶囊态要保证文字压在半透明底上可读。 */
           .nav-wrap.scrolled .nav-pill { background: rgba(255,255,255,.96); }
           .glass-dock { background: rgba(255,255,255,.92); }
         }
