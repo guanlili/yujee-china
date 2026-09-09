@@ -34,7 +34,13 @@ def test_box_scales_with_canvas_size():
 
 
 def test_empty_mask_returns_none():
-    """纯风景/抽象构图跑不出主体 —— 返回 None,让 imagePos 走默认 50/50/1。"""
+    """全黑 mask -> None。
+
+    ⚠️ 这条**盖不住真实管线**:_mask_from_output 的 min-max 归一化让最大值恒为 255,
+    全黑 mask 是它永远产不出的输入,所以这条断言一直是绿的却什么也没守住。真正让
+    「跑不出主体」这条路走得到的判据是 MIN_SUBJECT_CONFIDENCE,守在本文件末尾那组
+    低置信度用例里。这条留着只当 box_from_mask 的纯函数单测。
+    """
     assert box_from_mask(Image.new("L", (50, 50), 0)) is None
 
 
@@ -275,3 +281,90 @@ def test_stretch_does_not_move_the_bounding_box():
     after = box_from_mask(geometry._stretch_alpha(raw, 40, 170))
     for key in ("x", "y", "w", "h"):
         assert abs(before[key] - after[key]) < 0.5, f"{key} 被拉伸挪动了"
+
+
+# ── 「没主体」这条路必须真的走得到 ──────────────────────────────────────────────
+#
+# _mask_from_output 的 min-max 归一化让**最大值恒为 255**,box_from_mask 的 128 阈值
+# 因此必有像素通过 —— subjectBox=None 那条分支在真实管线里根本不可达。实测:纯噪声、
+# 以及全是 0.001~0.01 背景概率的输入,两者都出 {x:0,y:0,w:100,h:100}。
+#
+# 满屏框危害有限(中心恰好 50/50),但**有梯度的背景**(天亮地暗)会被切出一个编造的
+# 半屏主体框,构图裁切就照着它挪。上面那条 test_empty_mask_returns_none 喂的是全黑
+# mask —— 归一化之后永远产不出的输入,所以它一直是绿的,守不住这件事。
+#
+# 判据放在归一化**之前**:看原始输出的绝对置信度上限。
+
+
+def _session_returning(array):
+    class _S:
+        def get_inputs(self):
+            class _I:
+                name = "input"
+
+            return [_I()]
+
+        def run(self, _outputs, feed):
+            return [array]
+
+    return _S()
+
+
+def _profile_output(fill):
+    """(1,1,320,320) 的建档模型输出。"""
+    out = np.zeros((1, 1, 320, 320), dtype=np.float32)
+    out[0, 0] = fill
+    return out
+
+
+def test_uniformly_low_confidence_means_no_subject(monkeypatch):
+    """全是 0.001~0.01 的背景概率 = 模型没看出主体。别归一化出一个满屏框。"""
+    ramp = np.linspace(0.001, 0.01, 320 * 320, dtype=np.float32).reshape(320, 320)
+    monkeypatch.setattr(geometry, "_session", lambda spec: _session_returning(_profile_output(ramp)))
+    assert geometry.subject_geometry(Image.new("RGB", (400, 300)))["subjectBox"] is None
+
+
+def test_pure_noise_means_no_subject(monkeypatch):
+    rng = np.random.default_rng(7)
+    noise = rng.random((320, 320), dtype=np.float32) * 0.02
+    monkeypatch.setattr(geometry, "_session", lambda spec: _session_returning(_profile_output(noise)))
+    assert geometry.subject_geometry(Image.new("RGB", (400, 300)))["subjectBox"] is None
+
+
+def test_low_confidence_gradient_does_not_invent_a_half_frame_subject(monkeypatch):
+    """天亮地暗那类梯度背景:归一化会把上半屏抬到 255,切出一个编造的半屏主体框,
+    构图裁切照着它挪。这是满屏框之外真正有害的那种假框。"""
+    gradient = np.tile(
+        np.linspace(0.02, 0.001, 320, dtype=np.float32).reshape(320, 1), (1, 320)
+    )
+    monkeypatch.setattr(
+        geometry, "_session", lambda spec: _session_returning(_profile_output(gradient))
+    )
+    assert geometry.subject_geometry(Image.new("RGB", (400, 300)))["subjectBox"] is None
+
+
+def test_a_confident_subject_still_gets_a_box(monkeypatch):
+    """反向:置信度地板不能把真主体也误杀。"""
+    out = _profile_output(0.01)
+    out[0, 0, 80:240, 80:240] = 0.97
+    monkeypatch.setattr(geometry, "_session", lambda spec: _session_returning(out))
+    box = geometry.subject_geometry(Image.new("RGB", (400, 300)))["subjectBox"]
+    assert box is not None
+    assert box["x"] == pytest.approx(25.0, abs=1.0)
+
+
+def test_confidence_reads_logits_through_a_sigmoid(monkeypatch):
+    """各家显著性模型的输出量纲不一(有的过了 sigmoid 有的没有)。超出 [0,1] 的
+    一律先过 sigmoid 拉回概率口径再比,否则对 logits 输出这条地板会乱判。"""
+    # ⚠️ 这个值要挑在**两种口径判得不一样**的地方,否则这条断言测不出 sigmoid 有没有
+    # 真的过:0.2 的 logit 直接比是 <0.5(判没主体),过 sigmoid 是 0.550(判有主体)。
+    # 取 4.0 那种「两边都判有」的值,把 sigmoid 删掉这条照样绿。
+    logits_yes = _profile_output(-8.0)
+    logits_yes[0, 0, 80:240, 80:240] = 0.2  # sigmoid(0.2) ≈ 0.550
+    monkeypatch.setattr(geometry, "_session", lambda spec: _session_returning(logits_yes))
+    assert geometry.subject_geometry(Image.new("RGB", (400, 300)))["subjectBox"] is not None
+
+    logits_no = _profile_output(-8.0)
+    logits_no[0, 0, 80:240, 80:240] = -3.0  # sigmoid(-3) ≈ 0.047
+    monkeypatch.setattr(geometry, "_session", lambda spec: _session_returning(logits_no))
+    assert geometry.subject_geometry(Image.new("RGB", (400, 300)))["subjectBox"] is None

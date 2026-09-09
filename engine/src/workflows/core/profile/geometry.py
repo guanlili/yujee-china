@@ -125,6 +125,31 @@ def _preprocess(image: Image.Image, spec: _ModelSpec):
     return array.transpose(2, 0, 1)[None, ...].astype(np.float32)
 
 
+# 「有没有主体」的判据。**必须看归一化之前的绝对置信度** —— _mask_from_output 的
+# min-max 归一化让最大值恒为 255,box_from_mask 的 128 阈值因此必有像素通过,
+# subjectBox=None 那条分支在真实管线里根本走不到(实测:纯噪声出满屏框;而
+# 天亮地暗那类**有梯度的背景**会被切出一个编造的半屏主体框 —— h≈49.7% ——
+# 构图裁切就照着这个假框去挪)。
+#
+# 0.5 是概率口径上的地板:模型对整张图最有把握的那个像素都没到「一半可能是前景」,
+# 就当它没看出主体。真主体在 u2netp 上一般是 0.9+,离地板很远,不会误杀。
+MIN_SUBJECT_CONFIDENCE = 0.5
+
+
+def _subject_confidence(output) -> float:
+    """原始输出的绝对置信度上限(概率口径)。
+
+    各家显著性模型输出量纲不一:有的已经过了 sigmoid(0..1),有的是 logits。
+    超出 [0,1] 的一律先过 sigmoid 拉回概率口径再比,否则对 logits 输出这条地板会乱判。
+    """
+    import numpy as np
+
+    prediction = np.asarray(output)[0, 0].astype("float64")
+    if prediction.min() < 0.0 or prediction.max() > 1.0:
+        prediction = 1.0 / (1.0 + np.exp(-prediction))
+    return float(prediction.max())
+
+
 def _mask_from_output(output, size: tuple[int, int]) -> Image.Image:
     """模型 logits -> 与原图同尺寸的 L mask。
 
@@ -160,22 +185,30 @@ def _stretch_alpha(mask: Image.Image, lo: int, hi: int) -> Image.Image:
 
 
 @locked
-def subject_mask(image: Image.Image, *, quality: Quality = "profile") -> Image.Image:
-    """前景 mask(L 模式,与原图同尺寸)。
+def _segment(image: Image.Image, spec: _ModelSpec) -> tuple[Image.Image, float]:
+    """跑一次分割,回 (mask, 归一化前的绝对置信度)。
 
-    quality="profile" 建档用(u2netp/320²,只为取包围盒);
-    quality="cutout"  真抠图用(isnet/1024²,要精细边缘)。
+    置信度必须在这里取:出了这个函数,mask 已经被 min-max 拉成满量程,
+    「模型到底有多确定」的信息就没了。
 
     @locked:全机推理串行,理由见 inference.py。
     """
-    spec = SPECS[quality]
     session = _session(spec)
     tensor = _preprocess(image, spec)
     output = session.run(None, {session.get_inputs()[0].name: tensor})[0]
     mask = _mask_from_output(output, image.size)
     if spec.alpha_stretch is not None:
         mask = _stretch_alpha(mask, *spec.alpha_stretch)
-    return mask
+    return mask, _subject_confidence(output)
+
+
+def subject_mask(image: Image.Image, *, quality: Quality = "profile") -> Image.Image:
+    """前景 mask(L 模式,与原图同尺寸)。
+
+    quality="profile" 建档用(u2netp/320²,只为取包围盒);
+    quality="cutout"  真抠图用(isnet/1024²,要精细边缘)。
+    """
+    return _segment(image, SPECS[quality])[0]
 
 
 def detect_faces(image: Image.Image) -> list[dict]:
@@ -193,8 +226,14 @@ def detect_faces(image: Image.Image) -> list[dict]:
 
 def subject_geometry(image: Image.Image) -> dict:
     """几何组的对外入口。mask 只用来取框,**不返回也不保存** ——
-    绝大多数照片不会被抠,预存 mask 是净浪费(见契约注释)。"""
+    绝大多数照片不会被抠,预存 mask 是净浪费(见契约注释)。
+
+    置信度不到地板就判定没主体(subjectBox=None,imagePos 走默认 50/50/1)——
+    理由见 MIN_SUBJECT_CONFIDENCE。宁可没有框,也不要一个编造的框:
+    构图裁切会照着框挪,假框比没框更坏。
+    """
+    mask, confidence = _segment(image, SPECS["profile"])
     return {
-        "subjectBox": box_from_mask(subject_mask(image)),
+        "subjectBox": box_from_mask(mask) if confidence >= MIN_SUBJECT_CONFIDENCE else None,
         "faceBoxes": detect_faces(image),
     }
