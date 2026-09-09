@@ -66,7 +66,7 @@ texts/html 都在），照片它一点都看不见。
 export const PhotoProfileSchema = z.object({
   v: z.literal(1),
 
-  // ── 几何组（确定性，RMBG mask 派生）────────────────────────
+  // ── 几何组（确定性，分割 mask 派生）────────────────────────
   // ⚠️ 坐标系一律 0-100 百分比，与 imagePos 的 objectPosition 同口径。
   // 别用 [0,1] —— 两套坐标系并存必然出现 Agent 心算换算错误（页码换算已经
   // 栽过一次，见 33a790c8）。
@@ -182,9 +182,42 @@ LLM 心算坐标必然出错，而且错得没有规律、测不出来。所以 
 
 - CLIP worker（`yujee-agent-clip`，shared-cpu-1x / 2GB，`min_machines_running=0`）
   加 `/internal/photo-profile` endpoint
-- 装 RMBG-1.4（~44MB ONNX，CPU 单张几秒，2GB 内存够）。**建档时只取 mask 的
-  包围盒当 `subjectBox`，mask 本身丢弃**（理由见契约注释）；真抠图时同一个
-  endpoint 带 `persistMask=true` 再跑一次，写 R2 并回填 `maskKey`
+- 装两个 **Apache-2.0** 的分割模型（2026-09-09 拍板，见下面「为什么不是 RMBG-1.4」）：
+  - **建档 `u2netp`**（4MB ONNX，320²，CPU 单张 ~0.6s）—— 档案只要**包围盒**，
+    320² 足够。**建档时只取 mask 的包围盒当 `subjectBox`，mask 本身丢弃**
+    （理由见契约注释）
+  - **真抠图 `isnet-general-use`**（170MB ONNX，1024²，CPU 单张 ~4s）—— 抠图要精细
+    边缘；拿 320² 的糙边啃人像，正是风险④里 2026-08-29 否决自动抠图的那个病。
+    走同一个 endpoint 带 `persistMask=true` 再跑一次，写 R2 并回填 `maskKey`
+
+  **为什么不是 RMBG-1.4（原方案点名的模型）**：它的许可是 `bria-rmbg-1.4`，
+  HuggingFace 官方元数据写明 *"source-available model for **non-commercial** use"*
+  （license_link: bria.ai/bria-huggingface-model-license-agreement）。Yujee 是收费
+  产品，烘进镜像就是拿非商用许可的模型商用。**这是硬约束，别因为「RMBG 效果更好」
+  改回去。**
+
+  顺带纠正原方案的一处事实错误：「ONNX ~44MB 比 torch 版 176MB 省」不成立 ——
+  fp32 ONNX 就是 176MB，44MB 那个是 int8 量化版，而且实测量化版反而更吃内存。
+
+- **内存实测**（2026-09-09，本机原生；开发机没装 docker，不是 2g 容器内的数）：
+
+  | | 峰值 RSS | 单张耗时 |
+  |---|---|---|
+  | torch + open_clip + ViT-B-32 加载 | ~1356 MB | — |
+  | 　+ u2netp（320²）推理 | ~1356 MB（**没再抬高**） | 0.6s |
+  | 　+ RMBG-1.4（1024²）推理 | 1478 MB | 7.2s |
+  | isnet 单独跑 | 951 MB | 4.1s |
+
+  结论：**吃内存的是 CLIP 的加载瞬时峰值，不是档案模型**（2048MB 的机器剩 ~690MB）。
+  三条退路（升内存 / 拆第三个 worker / 改调外部 API）一条都没用上。
+
+  两条实现约束由此而来：ORT 的 `enable_cpu_mem_arena` 必须**关掉**（开着会一路只涨
+  不还，1095MB 且继续爬）；`intra/inter_op_num_threads` 钉成 1（shared-cpu-1x 就一个核）。
+
+- **推理必须全机串行**：`run_in_threadpool` 默认 40 线程，并发推理会把工作集乘上去，
+  两三路就撑爆 2GB。CLIP 与档案**共用同一把 RLock**（`profile/inference.py`）——
+  它们抢的是同一台机器的同一块内存，各锁各的等于没锁。但**视觉模型的网络调用不进锁**：
+  那是好几秒的 I/O，锁进去 100 张的书就是几百秒串行，analyze 直接超时。
 - 人脸框：轻量检测器（不引入新的重依赖，优先复用已装的）
 - 色彩组：纯直方图/统计，不用模型
 - 语义组：豆包 vision（`ARK_VISION_MODEL=doubao-seed-1-6-vision-250815`），
@@ -262,7 +295,8 @@ baseRevision；OCC 冲突直接报错让 Agent 重试，不做自动合并。
 ### ④ 自动抠图的产品下限
 
 2026-08-29 已验证否决过自动抠图，技术理由是 `cutout-math.ts` 漫水填充无语义
-（棚拍人像 5 张 0 张能用）。换 RMBG-1.4 后技术理由消失，但**产品理由仍然成立**：
+（棚拍人像 5 张 0 张能用）。换成真正的显著性分割模型（`isnet-general-use`，1024²）
+后技术理由消失，但**产品理由仍然成立**：
 未经确认就把人脸啃出缺口印进书里，下限太低。
 
 **结论**：抠图能力给 Agent，但**不做书级默认全抠**。Agent 只在用户明确要求或
@@ -302,5 +336,11 @@ baseRevision；OCC 冲突直接报错让 Agent 重试，不做自动合并。
 5. **存量书档案补跑**：懒加载 —— 用户下次打开书时后台补跑，不做全量扫库。
    理由：很多老书不会再被打开，全量跑是白花钱。
 6. **人脸检测器选型**：A 线自行决定，硬约束是**不引入新的重依赖**，优先用
-   RMBG 那套推理栈已有的能力或体积可忽略的轻量检测器（CLIP worker 只有
-   2GB 内存、shared-cpu-1x，别把它撑爆）。
+   分割那套推理栈已有的能力（onnxruntime）或体积可忽略的轻量检测器（CLIP worker
+   只有 2GB 内存、shared-cpu-1x，别把它撑爆）。
+
+   **现状（2026-09-09）：人脸框未接入，`detect_faces` 恒返回 `[]`**，
+   `avoid-face-crop` 因此退化成 `center-subject`（不报错，只是少一条约束）。
+   计划首选的 YuNet 要自己写 priors 解码 + NMS，而手上没有真实人脸样本可验证，
+   写了也是没验过的代码；走 opencv 又要给只剩 ~690MB 余量的机器加重依赖。
+   签名和 0-100 口径已钉死，将来接上不用动调用方。

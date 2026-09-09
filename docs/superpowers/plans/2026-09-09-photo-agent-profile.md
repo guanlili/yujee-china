@@ -6,7 +6,7 @@
 
 **Architecture:** 三组档案字段（几何/色彩/语义）在 analyze 阶段一次算完，存 `album_photos.profile` jsonb。engine 侧新增推理 endpoint，web 侧落库并提供跨存储写入 seam，design-agent 侧加 4 个工具读写。契约先锁死（Task 0），之后 A/B/C 三线在同一工作区并行（文件不重叠），最后汇合验收。
 
-**Tech Stack:** Python 3.14 / FastAPI / Pillow / RMBG-1.4（engine）；TypeScript / Next.js / drizzle / zod（web）；TypeScript / typebox / `tsx --test`（design-agent）
+**Tech Stack:** Python 3.14 / FastAPI / Pillow / u2netp + isnet-general-use（engine，均 Apache-2.0）；TypeScript / Next.js / drizzle / zod（web）；TypeScript / typebox / `tsx --test`（design-agent）
 
 **Spec:** `docs/superpowers/specs/2026-09-09-photo-agent-profile-design.md`
 
@@ -149,7 +149,7 @@ export type PhotoBox = z.infer<typeof Box>;
 export const PhotoProfileSchema = z.object({
   v: z.literal(PHOTO_PROFILE_VERSION),
 
-  // ── 几何组（RMBG mask 派生，确定性）──────────────────────────
+  // ── 几何组（分割 mask 派生，确定性）──────────────────────────
   /** 主体包围盒。null = 没跑出主体（纯风景/抽象构图），此时 imagePos 走默认 50/50/1。 */
   subjectBox: Box.nullable(),
   /** 人脸框（0..n 个）。给 imagePos 的「别切脸」当硬约束。 */
@@ -371,6 +371,28 @@ MSG
 ---
 
 ## Task A0：查明远程 CLIP 在生产是通是断（spike，不走 TDD）
+
+> **✅ 2026-09-09 已查完，结论与下面的前提相反 —— 别再照着下面的 Expected 走。**
+>
+> - **endpoint 在生产是通的**：不带鉴权打回 **401**（不是 404），带上
+>   `GROUPING_CLIP_SECRET` 打回 **200 + 合法 embeddings**，形状正是调用方读的
+>   `body["data"]["embeddings"]`。对照组：真不存在的路径回 404 +
+>   `AGENT_INTERNAL_ERROR`。**analyze 今天没坏。**
+> - **真实情况是源码落后于生产**，而且那个生产镜像**在本仓历史里复现不出来**
+>   （它同时满足「有 open-clip + 有 agent-ack + 没有 judge-layout」，任何一个
+>   commit 都不是这个组合）。最可能是当年有人在本地工作树手加了路由直接 deploy，
+>   没提交。
+> - 路由是 `0cfc019d`（2026-07-06「瘦身到最小版」）从源码删掉的，而
+>   `features.py` 一直在调它。
+> - **所以风险方向是反的**：不是「现在坏了要修」，是**哑雷** —— 谁下次拿当前源码
+>   重新 `fly deploy -c engine/fly.clip.toml`，analyze 就当场 404。
+> - 触发门槛极低：`clipMinPhotos = 3` / `subsplitMin = 3`
+>   （`chaptering/schema.py:36-37`），任一时间/GPS 单元 ≥3 张就走视觉子分组，
+>   几乎每本书都会走到。
+> - 计划漏了一环：`engine/tests/test_v3_route_surface.py` 当时**主动断言这个路由
+>   必须不存在** —— 正是它给误删盖了章。A1 必须同时把那条守卫反过来。
+>
+> A1 已按此执行（commit `3aa9f113`），并把 `/internal/agent-ack` 的同类漂移单独记账。
 
 这个任务的产出是**一个结论**，不是代码。它决定 A1 是「修生产 bug」还是「加新功能」。
 
@@ -715,7 +737,7 @@ Expected: FAIL —— `ModuleNotFoundError: src.workflows.core.profile.color`
 # engine/src/workflows/core/profile/__init__.py
 """照片视觉档案(PhotoProfile)的三组特征提取。
 
-色彩组纯像素、几何组走 RMBG、语义组走视觉模型 —— 三组互不依赖,可分别测。
+色彩组纯像素、几何组走分割模型、语义组走视觉模型 —— 三组互不依赖,可分别测。
 """
 ```
 
@@ -903,7 +925,7 @@ def test_full_mask_returns_full_frame():
 
 
 def test_threshold_ignores_faint_noise():
-    """RMBG 输出的边缘是渐变的,弱于阈值的噪点不该把包围盒撑大。"""
+    """分割模型输出的边缘是渐变的,弱于阈值的噪点不该把包围盒撑大。"""
     mask = _mask_with_rect((100, 100), (40, 40, 60, 60), fg=255, bg=0)
     mask.putpixel((2, 2), 40)  # 远处一个弱噪点
     box = box_from_mask(mask, threshold=128)
@@ -930,7 +952,7 @@ Expected: FAIL —— `ModuleNotFoundError: src.workflows.core.profile.geometry`
 ⚠️ 坐标一律 0-100 百分比,与 imagePos 的 objectPosition 同口径。
 别改成 0-1 —— 两套坐标系并存,Agent 心算必错。
 
-模型(RMBG-1.4)按需惰性加载,进程内缓存一份。box_from_mask 是纯函数,
+模型按需惰性加载,进程内缓存一份。box_from_mask 是纯函数,
 可以脱离模型单测。
 """
 
@@ -942,7 +964,7 @@ from PIL import Image
 def box_from_mask(mask: Image.Image, threshold: int = 128) -> dict | None:
     """alpha mask -> 主体包围盒(0-100 百分比)。前景为空返回 None。
 
-    threshold:RMBG 输出边缘是渐变的,低于阈值的弱像素视作背景,免得噪点撑大框。
+    threshold:分割输出边缘是渐变的,低于阈值的弱像素视作背景,免得噪点撑大框。
     """
     grey = mask.convert("L")
     width, height = grey.size
@@ -983,13 +1005,40 @@ MSG
 )"
 ```
 
-- [ ] **Step 7: 接 RMBG-1.4，产出 mask**
+- [ ] **Step 7: 接分割模型，产出 mask**
+
+> **⚠️ 2026-09-09 已拍板改选型 —— RMBG-1.4 不能用。**
+>
+> 它的许可是 `bria-rmbg-1.4`，HuggingFace 官方元数据写明 *"source-available model
+> for **non-commercial** use"*。Yujee 是收费产品，烘进镜像就是拿非商用许可的模型
+> 商用。**这是硬约束，别因为「RMBG 效果更好」改回去。**
+>
+> 改用两个 **Apache-2.0** 的（实测数字见 Step 8）：
+>
+> | 用途 | 模型 | 权重 | 输入 | 峰值 RSS | 单张 |
+> |---|---|---|---|---|---|
+> | 建档（只要包围盒） | **u2netp** | 4MB | 320² | 323MB | 0.6s |
+> | 真抠图（要精细边缘） | **isnet-general-use** | 170MB | 1024² | 951MB | 4.1s |
+>
+> 权重直链固定在 rembg 的 `v0.0.0` release 资产上：
+> `https://github.com/danielgatis/rembg/releases/download/v0.0.0/{u2netp,isnet-general-use}.onnx`
+>
+> 320² 的糙边**不能**拿去抠图 —— 那正是风险④里 2026-08-29 否决自动抠图的病。
+>
+> 另：原文「ONNX ~44MB 比 torch 版 176MB 省」是**错的**。fp32 ONNX 就是 176MB，
+> 44MB 那个是 int8 量化版，而且实测量化版反而更吃内存（876MB vs 832MB）。
 
 选型硬约束（不满足就走 Step 8 退路）：
 
-- 优先 **ONNX 版本 + onnxruntime**（~44MB 权重），比 torch 版（~176MB）省得多，而且不跟 open_clip 抢 torch 版本
+- 用 **ONNX + onnxruntime**，不跟 open_clip 抢 torch 版本
+- 两个模型的**归一化常数不一样**（u2netp 用 imagenet mean/std，isnet 用 0.5/1.0），
+  张冠李戴 mask 会整个糊掉 —— 绑进 spec，别写成全局常量
+- ORT 的 `enable_cpu_mem_arena` 必须**关掉**：开着会一路只涨不还（1095MB 且继续爬），
+  关掉才稳在平台期。`intra/inter_op_num_threads` 钉成 1（shared-cpu-1x 就一个核）
 - 权重**不进镜像的 git 层**，走构建期下载或运行时首次加载缓存到 `/app/models`
 - 加载必须是**惰性 + 进程内单例**：`min_machines_running=0` 的机器冷启已经慢，别在 import 期加载
+- **推理必须全机串行**（`run_in_threadpool` 默认 40 线程，并发就撑爆 2GB），
+  但**视觉模型的网络调用不进锁** —— 那是好几秒的 I/O，锁进去 analyze 会超时
 
 在 `geometry.py` 追加：
 
@@ -1010,11 +1059,11 @@ def _rmbg_session():
 
 
 def subject_mask(image: Image.Image) -> Image.Image:
-    """RMBG-1.4 前景 mask(L 模式,与原图同尺寸)。"""
+    """前景 mask(L 模式,与原图同尺寸)。"""
     import numpy as np
 
     session = _rmbg_session()
-    size = (1024, 1024)  # RMBG-1.4 的输入尺寸
+    size = (320, 320)  # u2netp 的输入尺寸;抠图那条走 isnet/1024²
     resized = image.convert("RGB").resize(size, Image.Resampling.BILINEAR)
     array = np.asarray(resized, dtype=np.float32) / 255.0
     array = (array - 0.5) / 1.0
@@ -1040,8 +1089,9 @@ def subject_geometry(image: Image.Image) -> dict:
 `settings.py` 追加：
 
 ```python
-    # 照片档案:RMBG-1.4 ONNX 权重路径。只有 CLIP worker 装。
-    profile_rmbg_model_path: str = "/app/models/rmbg-1.4.onnx"
+    # 照片档案的两个分割模型权重(ONNX)。只有 CLIP worker 装。都是 Apache-2.0。
+    profile_seg_model_path: str = "/app/models/u2netp.onnx"
+    profile_matting_model_path: str = "/app/models/isnet-general-use.onnx"
 ```
 
 Dockerfile 的 `INSTALL_CLIP` 段追加（与 torch 同一个 `if` 块内）：
@@ -1049,7 +1099,8 @@ Dockerfile 的 `INSTALL_CLIP` 段追加（与 torch 同一个 `if` 块内）：
 ```dockerfile
       pip install onnxruntime==1.20.1 numpy && \
       mkdir -p /app/models && \
-      python -c "import urllib.request; urllib.request.urlretrieve('<RMBG-1.4 ONNX 权重 URL>', '/app/models/rmbg-1.4.onnx')" ; \
+      python -c "import urllib.request; urllib.request.urlretrieve('https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx', '/app/models/u2netp.onnx')" && \
+      python -c "import urllib.request; urllib.request.urlretrieve('https://github.com/danielgatis/rembg/releases/download/v0.0.0/isnet-general-use.onnx', '/app/models/isnet-general-use.onnx')" ; \
 ```
 
 ⚠️ 权重 URL 要用固定版本的直链，不要用会漂的 `main` 分支链接。确定 URL 后把它写进这份计划的这一行，别留占位。
@@ -1069,10 +1120,21 @@ print('peak:', resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024, 'MB')
 
 Expected: 不 OOM，peak 明显低于 2048MB。
 
+> **✅ 2026-09-09 实测结论(本机原生 —— 开发机没装 docker，不是 2g 容器内的数)：**
+>
+> | | 峰值 RSS |
+> |---|---|
+> | torch + open_clip + ViT-B-32 加载 | **~1356 MB** ← 瓶颈在这，占 2048 的 66% |
+> | 　+ u2netp（320²）推理 | ~1356 MB（**一点没抬高**） |
+> | 　+ RMBG-1.4（1024²）推理 | 1478 MB |
+>
+> **吃内存的是 CLIP 的加载瞬时峰值，不是档案模型。** 走 u2netp 剩 ~690MB 余量，
+> 下面三条退路一条都没用上。
+
 **若 OOM 或逼近上限，退路按这个顺序选，选完汇报**：
 1. CLIP worker 的 `[[vm]] memory` 提到 4096mb（`min_machines_running=0`，不跑就不烧钱，这是最省事的一条）
 2. 档案推理拆成第三个 worker（新 fly app + 新 build arg），跟 CLIP 彻底分开
-3. 放弃本地 RMBG，改调外部抠图 API —— **这条要先算每张单价，会改变整个方案的成本结构，必须回来拍板**
+3. 放弃本地分割，改调外部抠图 API —— **这条要先算每张单价，会改变整个方案的成本结构，必须回来拍板**
 
 - [ ] **Step 9: 人脸框**
 
@@ -1089,9 +1151,10 @@ Expected: 不 OOM，peak 明显低于 2048MB。
 git add engine/src/workflows/core/profile/geometry.py engine/tests/test_profile_geometry.py \
         engine/Dockerfile engine/src/settings.py
 git commit -m "$(cat <<'MSG'
-feat(engine): 档案几何组接入 RMBG-1.4 + 人脸框
+feat(engine): 档案几何组接入分割模型 + 人脸框
 
-ONNX + onnxruntime(44MB 权重),惰性加载进程内单例,冷启不预热。
+ONNX + onnxruntime(建档 u2netp 4MB / 抠图 isnet 170MB,均 Apache-2.0),
+惰性加载进程内单例,冷启不预热。
 建档只取 mask 的包围盒,mask 本身丢弃 —— 绝大多数照片不会被抠。
 内存已在 2g 限制的容器里实测。
 
