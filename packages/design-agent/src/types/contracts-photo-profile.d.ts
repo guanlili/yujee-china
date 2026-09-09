@@ -28,7 +28,8 @@ export interface PhotoProfile {
 	brightness: "dark" | "mid" | "bright";
 	saturation: "muted" | "normal" | "vivid";
 	dominantColors: string[];
-	composition: "closeup" | "focal" | "wide";
+	/** 可空是刻意的:视觉调用失败时语义组落 null,不编造 focal。见契约同名字段的注释。 */
+	composition: "closeup" | "focal" | "wide" | null;
 	scene: "indoor" | "outdoor" | "nature" | "city" | "interior";
 	peopleCount: "0" | "1" | "2-3" | "4+";
 	mood: "warm" | "cool" | "sentimental" | "energetic" | "quiet";

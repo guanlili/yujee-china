@@ -176,12 +176,44 @@ test("faceBoxes 与 subjectBox 同一个 0-100 口径", () => {
 	assert.ok(!accepts({ faceBoxes: [{ x: 0, y: 0, w: 100, h: 101 }] }));
 });
 
+type ZodNode = { options?: unknown; _def?: { innerType?: ZodNode; typeName?: string } };
+
+/** 剥掉 .nullable()/.default()/.optional() 的包装,拿到里面那个 z.enum。 */
+function unwrap(node: ZodNode | undefined): ZodNode | undefined {
+	let cur = node;
+	for (let i = 0; cur && !Array.isArray(cur.options) && cur._def?.innerType && i < 8; i++) {
+		cur = cur._def.innerType;
+	}
+	return cur;
+}
+
+function fieldNode(field: string): ZodNode | undefined {
+	const shape = (PhotoProfileSchema as unknown as { shape?: Record<string, ZodNode> }).shape;
+	return shape?.[field];
+}
+
 /** 真 schema 里某个 z.enum 的取值。结构变了就直接红,不静默放行。 */
 function contractEnum(field: string): string[] {
-	const shape = (PhotoProfileSchema as unknown as { shape?: Record<string, { options?: unknown }> }).shape;
-	const options = shape?.[field]?.options;
+	const options = unwrap(fieldNode(field))?.options;
 	assert.ok(Array.isArray(options), `${field} 不再是 z.enum —— 契约结构变了,这道守卫必须跟着改`);
 	return [...(options as string[])];
+}
+
+/** 契约里这个字段收不收 null。**取值列表比不出可空性** —— shimEnum 只抓带引号的
+ * 字面量,`| null` 它看不见,于是「一侧可空一侧不可空」能从取值对齐里溜过去。
+ * 2026-09-09 真栽过:Python 侧 composition 改可空、TS 侧没跟,语义降级的照片
+ * 在 web 的逐条 safeParse 里被整条拒绝,连色彩/几何一起丢。 */
+function contractNullable(field: string): boolean {
+	return fieldNode(field)?.safeParse === undefined
+		? (PhotoProfileSchema.shape as Record<string, { safeParse(v: unknown): { success: boolean } }>)[field]!.safeParse(null).success
+		: (fieldNode(field) as unknown as { safeParse(v: unknown): { success: boolean } }).safeParse(null).success;
+}
+
+/** shim 里同一字段的联合类型收不收 null。 */
+function shimNullable(field: string): boolean {
+	const line = new RegExp(`^\\t${field}: ([^;]+);`, "m").exec(shimBody());
+	assert.ok(line?.[1], `shim 里没有 ${field} 这一行`);
+	return /\bnull\b/.test(line[1]);
 }
 
 /** shim 里同一字段的联合字面量。 */
@@ -192,6 +224,14 @@ function shimEnum(field: string): string[] {
 }
 
 for (const field of ["colorTemp", "brightness", "saturation", "composition", "scene", "peopleCount", "mood"]) {
+	test(`枚举 ${field} 的可空性与本地 shim 一致（一侧改可空另一侧没跟就红）`, () => {
+		assert.equal(
+			shimNullable(field),
+			contractNullable(field),
+			`${field} 的可空性漂移:契约${contractNullable(field) ? "收" : "不收"} null,shim ${shimNullable(field) ? "收" : "不收"}`,
+		);
+	});
+
 	test(`枚举 ${field} 的取值与本地 shim 逐一对齐（加值/改值都会红）`, () => {
 		const contractValues = contractEnum(field);
 		assert.ok(contractValues.length > 0);

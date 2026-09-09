@@ -43,8 +43,16 @@ export const PhotoProfileSchema = z.object({
   dominantColors: z.array(z.string().regex(/^#[0-9a-fA-F]{6}$/)).max(3),
 
   // ── 语义组(豆包 vision,一次调用出全部)────────────────────
-  /** 回填 V3ChapterPhoto.composition —— 这个字段现在恒 None,导致槽位构图约束失效。 */
-  composition: z.enum(['closeup', 'focal', 'wide']),
+  /**
+   * 回填 V3ChapterPhoto.composition —— 这个字段在建档之前恒 None,导致槽位的构图
+   * 约束在生产里一直没生效(slot_matcher_v3 遇到 None 会「视作任意,不挡」)。
+   *
+   * ⚠️ **可空是刻意的**:视觉调用失败或返回枚举外的值时,语义组落 null 而不是编一个
+   * `focal` —— 编一个会让选版按错误的构图约束匹配,比没有更糟。这一侧若不放宽,
+   * engine 的那条降级会在 web 的逐条 safeParse 里被**整条拒绝**,连色彩/几何一起丢。
+   * 与 engine/src/contracts/photo_profile.py 的 `Literal[...] | None` 逐字对应。
+   */
+  composition: z.enum(['closeup', 'focal', 'wide']).nullable().default(null),
   scene: z.enum(['indoor', 'outdoor', 'nature', 'city', 'interior']),
   peopleCount: z.enum(['0', '1', '2-3', '4+']),
   mood: z.enum(['warm', 'cool', 'sentimental', 'energetic', 'quiet']),

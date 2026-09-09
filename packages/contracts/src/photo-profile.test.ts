@@ -57,3 +57,22 @@ test('faceBoxes 缺省是空数组', () => {
 test('description 超过 300 字被拒', () => {
   assert.throws(() => PhotoProfileSchema.parse({ ...valid, description: '很长'.repeat(200) }));
 });
+
+// ── composition 可空(2026-09-09 评审后)──────────────────────────────
+// 视觉调用失败/返回枚举外的值时,语义组落 null 而不是编一个 focal ——
+// slot_matcher_v3 遇到 null 会「视作任意,不挡」,那是正确的降级;编个 focal
+// 会让选版按错误的构图约束匹配。
+// 这一侧不放宽的话,engine 侧那条降级会在 web 的逐条 safeParse 里被**整条拒绝**,
+// 连色彩/几何一起丢 —— 降级等于白做。
+test('composition 可以是 null(语义组降级)', () => {
+  assert.equal(PhotoProfileSchema.parse({ ...valid, composition: null }).composition, null);
+});
+
+test('composition 仍然拒绝枚举外的字符串', () => {
+  assert.throws(() => PhotoProfileSchema.parse({ ...valid, composition: 'panorama' }));
+});
+
+test('composition 缺省即 null,不是报错', () => {
+  const { composition: _omitted, ...without } = valid;
+  assert.equal(PhotoProfileSchema.parse(without).composition, null);
+});
