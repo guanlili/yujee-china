@@ -1,4 +1,5 @@
 import { eq, sql } from 'drizzle-orm';
+import { PhotoProfileSchema, type PhotoProfile } from '@yujee/contracts';
 import { db, type DbOrTx } from '../client';
 import { albumPhotos, type AlbumPhoto } from '../schema';
 
@@ -77,5 +78,53 @@ export const albumPhotoRepo = {
 
   deleteByAlbum: async (tx: DbOrTx, albumId: string): Promise<void> => {
     await tx.delete(albumPhotos).where(eq(albumPhotos.albumId, albumId));
+  },
+
+  /**
+   * 批量写照片视觉档案。**只更新已存在的行,不 INSERT** —— 照片行的真相源是上传
+   * 流程,档案只是贴上去的附加信息;凭空造行会让 countByStatus 之类的统计错乱。
+   */
+  setProfiles: async (
+    albumId: string,
+    profiles: Record<string, PhotoProfile>,
+    tx: DbOrTx = db,
+  ): Promise<void> => {
+    const entries = Object.entries(profiles);
+    if (entries.length === 0) return;
+    // 单条 UPDATE ... FROM (VALUES ...) —— 一本书上百张照片,逐条 UPDATE 是上百个
+    // round trip。
+    const values = sql.join(
+      entries.map(([photoId, profile]) => sql`(${photoId}, ${JSON.stringify(profile)}::jsonb)`),
+      sql`, `,
+    );
+    await tx.execute(sql`
+      UPDATE ${albumPhotos} AS p
+         SET profile = v.profile, updated_at = now()
+        FROM (VALUES ${values}) AS v(photo_id, profile)
+       WHERE p.album_id = ${albumId} AND p.photo_id = v.photo_id
+    `);
+  },
+
+  /**
+   * 读全书档案。**坏档案跳过并 warn,不抛** —— 一张照片的坏数据不该让整本书打不开
+   * (契约演进后旧行形状对不上是必然会发生的)。没建档的行不出现在结果里。
+   */
+  findProfilesByAlbum: async (
+    albumId: string,
+    tx: DbOrTx = db,
+  ): Promise<Record<string, PhotoProfile>> => {
+    const rows = await tx
+      .select({ photoId: albumPhotos.photoId, profile: albumPhotos.profile })
+      .from(albumPhotos)
+      .where(eq(albumPhotos.albumId, albumId));
+
+    const out: Record<string, PhotoProfile> = {};
+    for (const row of rows) {
+      if (row.profile == null) continue;
+      const parsed = PhotoProfileSchema.safeParse(row.profile);
+      if (parsed.success) out[row.photoId] = parsed.data;
+      else console.warn('[album-photo-repo] 跳过形状不合法的档案', { albumId, photoId: row.photoId });
+    }
+    return out;
   },
 };
