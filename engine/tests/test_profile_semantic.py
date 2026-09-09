@@ -1,0 +1,144 @@
+"""语义组:一次视觉模型调用出五个字段。
+
+单测把模型响应打桩 —— 重点测解析和兜底,不测模型本身。
+模型真实质量的验收在 Task Z1。
+"""
+
+import json
+
+from PIL import Image
+
+from src.workflows.core.profile import semantic
+
+
+def _img():
+    return Image.new("RGB", (64, 64), (120, 90, 60))
+
+
+def _stub(monkeypatch, payload):
+    monkeypatch.setattr(semantic, "_call_vision", lambda image: payload)
+
+
+def test_parses_all_five_fields(monkeypatch):
+    _stub(monkeypatch, json.dumps({
+        "composition": "closeup",
+        "scene": "indoor",
+        "peopleCount": "1",
+        "mood": "quiet",
+        "description": "窗边的侧脸",
+    }))
+    out = semantic.semantic_features(_img())
+    assert out == {
+        "composition": "closeup",
+        "scene": "indoor",
+        "peopleCount": "1",
+        "mood": "quiet",
+        "description": "窗边的侧脸",
+    }
+
+
+def test_rejects_out_of_enum_value_and_falls_back(monkeypatch):
+    """模型吐了枚举外的值 —— 落到安全默认,不抛,不让一张坏照片打挂整本分析。"""
+    _stub(monkeypatch, json.dumps({
+        "composition": "panorama",
+        "scene": "space",
+        "peopleCount": "many",
+        "mood": "chaotic",
+        "description": "x",
+    }))
+    out = semantic.semantic_features(_img())
+    assert out["composition"] == "focal"
+    assert out["scene"] == "outdoor"
+    assert out["peopleCount"] == "0"
+    assert out["mood"] == "quiet"
+
+
+def test_handles_non_json_response(monkeypatch):
+    _stub(monkeypatch, "对不起，我无法分析这张图片。")
+    out = semantic.semantic_features(_img())
+    assert out["composition"] == "focal"
+    assert out["description"] == ""
+
+
+def test_handles_fenced_json(monkeypatch):
+    """模型爱套 ```json 围栏,得剥掉。"""
+    _stub(monkeypatch, '```json\n{"composition":"wide","scene":"nature",'
+                       '"peopleCount":"0","mood":"quiet","description":"山脊线"}\n```')
+    assert semantic.semantic_features(_img())["composition"] == "wide"
+
+
+def test_description_is_truncated_to_contract_limit(monkeypatch):
+    _stub(monkeypatch, json.dumps({
+        "composition": "focal", "scene": "city", "peopleCount": "2-3",
+        "mood": "energetic", "description": "很长" * 400,
+    }))
+    assert len(semantic.semantic_features(_img())["description"]) <= 300
+
+
+def test_prompt_forbids_location_info():
+    """隐私红线:提示词必须明确禁止写地名。这是红线的第一道闸。"""
+    assert "地名" in semantic.PROMPT or "location" in semantic.PROMPT.lower()
+
+
+def test_model_failure_falls_back_not_raises(monkeypatch):
+    """模型调用本身抛异常时降级 —— 一张照片的失败不该打挂整本分析。"""
+    def _boom(image):
+        raise RuntimeError("upstream down")
+
+    monkeypatch.setattr(semantic, "_call_vision", _boom)
+    out = semantic.semantic_features(_img())
+    assert out["composition"] == "focal"
+    assert out["description"] == ""
+
+
+def test_call_vision_wires_into_the_real_ai_client(monkeypatch):
+    """接线测试:_call_vision 必须真能拼出 ai_client.chat_completion 的调用。
+
+    其余用例都把 _call_vision 打桩了,等于这条真实路径一行没验过 —— 计划里
+    对 ai_client 的函数名/签名本来就是猜的。这里只桩掉最外层的 HTTP 调用,
+    slot 解析、消息拼装、asyncio.run、extract_text 全部真跑。
+    """
+    import inspect
+
+    from src import settings as settings_module
+    from src.providers.ai_client import chat_completion as real_chat_completion
+
+    # ⚠️ 真签名必须在打桩**之前**取:打桩后再 import 拿到的是 **kwargs 的桩,
+    # 那样这条断言会被桩喂饱,永远为真。
+    accepted = set(inspect.signature(real_chat_completion).parameters)
+
+    monkeypatch.setenv("ARK_API_KEY", "ark-test-key")
+    monkeypatch.setenv("VISION_PROVIDER", "ark")
+    settings_module.reset_settings_cache()
+
+    seen: dict = {}
+
+    async def _fake_chat_completion(**kwargs):
+        seen.update(kwargs)
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "content": '{"composition":"wide","scene":"nature",'
+                        '"peopleCount":"0","mood":"quiet","description":"山脊线"}'
+                    }
+                }
+            ]
+        }
+
+    monkeypatch.setattr("src.providers.ai_client.chat_completion", _fake_chat_completion)
+
+    out = semantic.semantic_features(_img())
+    assert out["composition"] == "wide"
+    assert out["description"] == "山脊线"
+
+    # 照片必须以 image_url data URL 进 content,提示词必须同行。
+    content = seen["messages"][0]["content"]
+    assert content[0]["type"] == "text" and "composition" in content[0]["text"]
+    assert content[1]["type"] == "image_url"
+    assert content[1]["image_url"]["url"].startswith("data:image/jpeg;base64,")
+    assert seen["api_key"] == "ark-test-key"
+
+    # 桩是 **kwargs,吃得下任何键 —— 拿真签名再核一遍,否则「传了个
+    # chat_completion 根本不认的参数」会被桩喂饱。
+    assert set(seen) <= accepted, f"chat_completion 不认这些参数:{set(seen) - accepted}"
