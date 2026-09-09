@@ -106,15 +106,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
           // pages 按数组序重编号 pageIndex(理由见 design-chat-done.ts 抬头):落库与
           // 回发浏览器必须是同一份重编号结果,否则挪页/删页后浏览器书状态的 pageIndex
           // 与数组序错位,画板一切按 pageIndex 寻址的操作从此打错页。
-          const { assistantReply, committed, pages } = buildDesignDonePayload(
+          const { assistantReply, committed, pages, photoFilterPatch } = buildDesignDonePayload(
             (event.response ?? {}) as DesignDoneResponse,
           );
-          await albumService.persistDesignChat(user.id, uuid, {
+          const appliedFilter = await albumService.persistDesignChat(user.id, uuid, {
             userMessage: body.userMessage,
             assistantReply,
             committed,
             pages,
             ops: writeOps,
+            // 滤镜独立于 committed:只调色不改版面的一轮 committed 是 false,
+            // 但 albums.photo_filter 照样要落(理由见 persistDesignChat 的注释)。
+            photoFilterPatch,
           });
           emit({
             type: 'done',
@@ -124,6 +127,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ uuid: string }
               committed,
               pageCount: pages.length,
               ...(committed ? { pages } : {}),
+              // 落库后的权威滤镜状态。滤镜引擎只在 Browser 跑,画板拿不到新值就
+              // 还是旧观感 —— 而滤镜不进 book.version,committed 为 false 的一轮
+              // 也可能改了它,所以这一项独立于上面的 pages。
+              ...(appliedFilter ? { photoFilter: appliedFilter.photoFilter, settingsRevision: appliedFilter.settingsRevision } : {}),
             },
           });
         };

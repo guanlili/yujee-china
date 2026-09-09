@@ -10,12 +10,26 @@ interface DesignAgentBookPayload {
   pages: unknown[];
   // 书级设计简报(主题/配色主题/封面氛围)—— chapter 概念不进 AI 上下文的替代语境。
   brief?: { theme?: string; palette?: { fonts?: Record<string, string>; colors?: Record<string, string> }; coverMood?: string };
+  // 全书滤镜/抠图现状(albums.photo_filter 那一列)。Agent 读它来判断当前调色,
+  // 改动经由 /api/chat 响应的 photoFilterPatch 带回,由 web 落库 —— agent 不写库。
+  photoFilter?: unknown;
+}
+
+// 相册级语境:不属于书本身,但决定 Agent 能做什么/该提醒什么。每轮装书都重传
+// (分享状态、可看图的照片集合在两轮之间都会变)。
+interface DesignAgentAlbumContext {
+  /** 这本书发布过分享链接吗 —— 为真时 Agent 改滤镜要提醒用户重新备份全书。 */
+  hasPublishedShare?: boolean;
+  /** 有 R2 原图可看的照片(look_at_photos 取得到的那批)。不传图本身:几十张 base64 太贵。 */
+  viewablePhotoIds?: string[];
 }
 
 export interface DesignAgentChatResult {
   assistantReply: string;
   committed: boolean;
   book: { pages: unknown[]; version: number };
+  /** 本轮累计的滤镜/抠图 patch;没动过是 null。落库口径见 design-chat-done.ts 的注释。 */
+  photoFilterPatch: Record<string, unknown> | null;
 }
 
 async function postDesign(path: string, payload: unknown, timeoutMs: number): Promise<Record<string, unknown>> {
@@ -82,8 +96,22 @@ export const designAgentClient = {
 
   // 装书：Web 的 draft（tree.chapters + pages）→ Agent 画布。每轮对话前调用，
   // 保证 Agent 看到的书永远是 Postgres 里的最新真相。
-  async loadBook(albumId: string, book: DesignAgentBookPayload): Promise<void> {
-    await postDesign('/api/book', { albumId, book }, 15_000);
+  async loadBook(
+    albumId: string,
+    book: DesignAgentBookPayload,
+    context: DesignAgentAlbumContext = {},
+  ): Promise<void> {
+    // 相册语境走顶层而不是塞进 book —— book 的形状是 Agent 的书契约,掺进
+    // 「这本书分享过没有」这类相册属性会污染它。
+    // ⚠️ postDesign 这一行**保持单行**:design-agent-client.test.ts 的顺序预算守卫
+    // 靠源码正则解析这里的超时值,拆行会让它解析不到、当场判定"测试本身已失效"。
+    const payload = {
+      albumId,
+      book,
+      hasPublishedShare: context.hasPublishedShare === true,
+      viewablePhotoIds: context.viewablePhotoIds ?? [],
+    };
+    await postDesign('/api/book', payload, 15_000);
   },
 
   async chat(
@@ -97,6 +125,7 @@ export const designAgentClient = {
     if (typeof assistant?.text !== 'string' || !Array.isArray(book?.pages)) {
       throw ERRORS.AGENT_INVALID_OUTPUT();
     }
+    const patch = raw.photoFilterPatch;
     return {
       assistantReply: assistant.text,
       committed: raw.committed === true,
@@ -104,6 +133,12 @@ export const designAgentClient = {
         pages: book.pages,
         version: typeof book.version === 'number' ? book.version : 0,
       },
+      // 滤镜不进 book.version,所以它与 committed 互相独立 —— 别拿 committed 判断
+      // 要不要落滤镜(只调色不改版面的一轮 committed 是 false)。
+      photoFilterPatch:
+        patch && typeof patch === 'object' && !Array.isArray(patch)
+          ? (patch as Record<string, unknown>)
+          : null,
     };
   },
 };

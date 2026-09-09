@@ -10,6 +10,8 @@ import { albumPageRepo } from '@/db/repos/album-page-repo';
 import type { Album } from '@/db/schema';
 import { draftPageRepo } from '@/db/repos/draft-page-repo';
 import { albumPhotoRepo } from '@/db/repos/album-photo-repo';
+import { albumShareRepo } from '@/db/repos/album-share-repo';
+import { applyAgentPhotoFilter } from './agent-photo-filter';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { jobService, mergeComposeIntoDraft, readComposeAppendMeta, type ComposeJobMeta } from '@/services/job/job-service';
 import { collaborationService, resolveRole } from '@/services/collaboration/collaboration-service';
@@ -861,6 +863,7 @@ export const albumService = {
       assistantReply: result.assistantReply,
       committed: result.committed,
       pages: result.book.pages,
+      photoFilterPatch: result.photoFilterPatch,
     });
     return {
       assistantReply: result.assistantReply,
@@ -893,15 +896,34 @@ export const albumService = {
           .join(' / ')
           .slice(0, 120)
       : '';
-    await designAgentClient.loadBook(albumId, {
-      chapters: normalized.tree.chapters,
-      pages: normalized.pages,
-      brief: {
-        theme: [album.title, album.prompt].filter(Boolean).join(' — ').slice(0, 200) || undefined,
-        ...(design ? { palette: { fonts: design.fonts, colors: design.colors } } : {}),
-        ...(coverMood ? { coverMood } : {}),
+    // 照片三件套的输入(2026-09-09):
+    //  · photoFilter —— 全书调色/抠图现状,Agent 读它判断当前调性;改动经由
+    //    /api/chat 响应的 photoFilterPatch 带回,由 persistDesignChat 落库。
+    //  · hasPublishedShare —— 为真时 Agent 改滤镜要提醒用户重新备份全书
+    //    (share-service 拿 effectiveRenderVersion 精确核对备份快照)。
+    //  · viewablePhotoIds —— look_at_photos 取得到字节的那批。只传 id 不传图:
+    //    一本书几十张,base64 全塞进装书请求太贵,而看图是兜底路径。
+    const [hasPublishedShare, photoRows] = await Promise.all([
+      albumShareRepo.existsByAlbum(albumId),
+      albumPhotoRepo.findByAlbum(albumId),
+    ]);
+    await designAgentClient.loadBook(
+      albumId,
+      {
+        chapters: normalized.tree.chapters,
+        pages: normalized.pages,
+        brief: {
+          theme: [album.title, album.prompt].filter(Boolean).join(' — ').slice(0, 200) || undefined,
+          ...(design ? { palette: { fonts: design.fonts, colors: design.colors } } : {}),
+          ...(coverMood ? { coverMood } : {}),
+        },
+        photoFilter: album.photoFilter ?? null,
       },
-    });
+      {
+        hasPublishedShare,
+        viewablePhotoIds: photoRows.filter((row) => row.status === 'uploaded').map((row) => row.photoId),
+      },
+    );
   },
 
   // 对话结果落库：committed 时 pages 逐页过 contracts Page strict 后事务写回
@@ -916,8 +938,13 @@ export const albumService = {
       committed: boolean;
       pages: unknown[];
       ops?: Array<{ toolName: string; input: unknown }>;
+      /** design-agent 本轮累计的滤镜/抠图 patch;没动过传 null/省略。 */
+      photoFilterPatch?: Record<string, unknown> | null;
     },
-  ): Promise<void> {
+    // 返回落库后的权威滤镜状态(归一化过、与并发写合并过),供路由回发浏览器
+    // 原地重绘 —— 滤镜引擎只在 Browser 跑,画板不知道新值就还是旧观感。
+    // 没写滤镜时返回 null。
+  ): Promise<{ photoFilter: PhotoFilterState | null; settingsRevision: number } | null> {
     if (input.committed) {
       // 数组序是唯一真相,pageIndex 按位置重编号(0..n-1)。design-agent 的写工具
       // (move_pages;delete_page 同理)只动数组顺序、不改页对象的 pageIndex 字段
@@ -966,6 +993,23 @@ export const albumService = {
       });
     }
 
+    // 滤镜/抠图**独立于 committed** 落库:它写的是 albums.photo_filter(走
+    // settingsRevision 那套 OCC),不进 draft_pages 的 version —— 一轮只调色不改
+    // 版面的对话 committed 是 false,拿 committed 当闸门会让调色永远存不下来。
+    // 复用 applyAgentPhotoFilter 而不是在这里自己写:那边的 lockAlbumForSettingsWrite
+    // 四步(行锁 / 锁内 resolveRole / 基线校验 / settingsRevision 比较)是协同 OCC 的
+    // 防线,绕开一步就是并发脏写。
+    //
+    // baseSettingsRevision 故意不传:design-agent 那一路没有基线可带(装书时它拿到
+    // 的是书内容,不是 settingsRevision),传一个自己现读的值等于假 OCC —— 读到写
+    // 之间照样有窗口,却让人以为有防线。缺省走 lockAlbumForSettingsWrite 的既有
+    // 口径(owner 盲写 / editor 拒绝)。
+    let applied: { photoFilter: PhotoFilterState | null; settingsRevision: number } | null = null;
+    if (input.photoFilterPatch) {
+      const result = await applyAgentPhotoFilter(userId, albumId, input.photoFilterPatch);
+      applied = { photoFilter: result.photoFilter, settingsRevision: result.settingsRevision };
+    }
+
     await db.transaction(async (tx) => {
       if (input.userMessage.trim()) {
         await albumMessageRepo.create(tx, {
@@ -984,6 +1028,8 @@ export const albumService = {
         layoutPatch: input.ops && input.ops.length > 0 ? { designOps: input.ops } : null,
       });
     });
+
+    return applied;
   },
 
   // 内容采集(分组后采访)— 把每章的 chapterContext 写进 draft_json.tree(§3 数据归属:Web 是
