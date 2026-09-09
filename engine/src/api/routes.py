@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import io
+import weakref
 from datetime import datetime, timezone
 from typing import Any
 
@@ -221,10 +222,33 @@ class _PhotoProfileRequest(BaseModel):
     persistMask: bool = False
 
 
-# 一批之内的并发上限。**不能不限**:视觉模型有速率限制,一次 gather 一百个会被
+# 视觉调用的并发上限。**不能不限**:视觉模型有速率限制,一次 gather 一百个会被
 # 打回来。跟 profile/remote.py 的 PROFILE_BATCH_SIZE 对齐 —— 调用方按 8 分批,
 # 这里就按 8 放行,多出来的排队。
 PROFILE_MAX_CONCURRENCY = 8
+
+# ⚠️ 信号量必须**跨请求共用**,不能每请求新建。唯一调用方每批正好发
+# PROFILE_BATCH_SIZE(=8)张,而上限也是 8 —— 每请求一把的话它从不 block,等于没有
+# 限流:实测 4 个并发请求跑出 32 路视觉调用,上游速率限制会整批打回来。
+#
+# 又不能直接写成一个模块级 `asyncio.Semaphore(...)`:asyncio 的锁在第一次真的等待时
+# 绑定当时的事件循环,换一个循环再用就 `RuntimeError: bound to a different event loop`
+# (实测)。线上一个 uvicorn 进程只有一个循环无所谓,但测试里每个 TestClient portal
+# 都是新循环,整套路由测试会从第二个用例起连环炸。所以按循环各存一把:同一个循环
+# 里所有请求共用(这才是限流要的),不同循环互不干扰。WeakKeyDictionary 让循环关掉
+# 之后自己回收,不攒垃圾。
+_PROFILE_SEMAPHORES: "weakref.WeakKeyDictionary[Any, asyncio.Semaphore]" = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def _profile_semaphore() -> asyncio.Semaphore:
+    loop = asyncio.get_running_loop()
+    semaphore = _PROFILE_SEMAPHORES.get(loop)
+    if semaphore is None:
+        semaphore = asyncio.Semaphore(PROFILE_MAX_CONCURRENCY)
+        _PROFILE_SEMAPHORES[loop] = semaphore
+    return semaphore
 
 
 @router.post("/internal/photo-profile", dependencies=[Depends(require_clip_bearer)])
@@ -260,7 +284,7 @@ async def photo_profile(payload: _PhotoProfileRequest) -> dict:
     # —— geometry.subject_mask 自己带 @locked(RLock),本地推理那段仍然全机串行,
     # 并发的只是网络 I/O。tests/test_internal_clip_route.py 两头都钉了:
     # 视觉调用必须有重叠、本地推理必须无重叠。
-    semaphore = asyncio.Semaphore(PROFILE_MAX_CONCURRENCY)
+    semaphore = _profile_semaphore()
 
     async def _build(photo_id: str, image: Image.Image) -> dict:
         async with semaphore:

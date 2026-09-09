@@ -514,3 +514,51 @@ def test_whole_batch_undecodable_still_400(monkeypatch):
         headers={"Authorization": "Bearer s3cret"},
     )
     assert resp.status_code == 400
+
+
+def test_concurrency_limit_is_shared_across_requests(monkeypatch):
+    """限流必须是**进程级**的,不是每请求一把。
+
+    唯一调用方 profile/remote.py 每批正好发 PROFILE_BATCH_SIZE 张,而上限也是同一个
+    数 —— 每请求新建的信号量因此从不 block,等于没有限流。并发几个请求就能跑出
+    请求数 × 8 路视觉调用,被上游速率限制整批打回。
+
+    ⚠️ 必须用 `with TestClient(app)`:不进上下文管理器时 TestClient 每个请求都新起
+    一个 portal(各自一个事件循环),那样连线上「一个 uvicorn 一个 loop」的情形都
+    模拟不出来,这条断言会被假绿喂饱。
+    """
+    _enable(monkeypatch)
+    inference, vision = _instrument_profile_pipeline(
+        monkeypatch, inference_delay=0.0, vision_delay=0.30
+    )
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    from fastapi.testclient import TestClient
+
+    from src.main import app
+
+    batch = _max_concurrency()
+    requests = 4
+    with TestClient(app) as client:
+
+        def _post():
+            return client.post(
+                "/internal/photo-profile",
+                json={
+                    "images": [
+                        {"photoId": f"p{i}", "dataUrl": _data_url()} for i in range(batch)
+                    ]
+                },
+                headers={"Authorization": "Bearer s3cret"},
+            )
+
+        with ThreadPoolExecutor(max_workers=requests) as pool:
+            results = [f.result() for f in [pool.submit(_post) for _ in range(requests)]]
+
+    assert all(r.status_code == 200 for r in results)
+    assert vision.calls == batch * requests
+    assert vision.max_inside <= batch, (
+        f"{requests} 个并发请求跑出了 {vision.max_inside} 路视觉调用,上限是 {batch}"
+        " —— 信号量是每请求新建的,限流形同虚设"
+    )
