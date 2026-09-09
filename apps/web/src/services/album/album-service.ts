@@ -440,7 +440,10 @@ function assertStoryExportUnlocked(album: Awaited<ReturnType<typeof albumRepo.fi
 // ①行锁 ②resolveRole(owner/editor 同为 Creator)③safe integer 校验
 // ④与 settingsRevision 精确比较,失配 409 SETTINGS_CONFLICT 零写入。返回锁内
 // album 行,供调用方落字段写并推进 settingsRevision+1。必须在 db.transaction 内调用。
-async function lockAlbumForSettingsWrite(
+// 导出给 design-agent 的滤镜写入 seam(agent-photo-filter.ts)复用 —— 那条路径
+// 必须走这道锁,不许自写行锁:①②③④ 这四步是协同 OCC 的防线,绕过任何一步都是
+// 并发脏写。
+export async function lockAlbumForSettingsWrite(
   tx: DbOrTx,
   userId: string,
   albumId: string,
