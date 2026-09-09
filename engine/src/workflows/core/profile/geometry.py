@@ -63,6 +63,8 @@ class _ModelSpec:
     size: int             # 模型输入边长(正方形)
     mean: tuple[float, float, float]
     std: tuple[float, float, float]
+    # alpha 分段拉伸的 (lo, hi);None = 不拉伸,保留原始软 mask。
+    alpha_stretch: tuple[int, int] | None = None
 
 
 SPECS: dict[str, _ModelSpec] = {
@@ -79,6 +81,9 @@ SPECS: dict[str, _ModelSpec] = {
         size=1024,
         mean=(0.5, 0.5, 0.5),
         std=(1.0, 1.0, 1.0),
+        # 见 _stretch_alpha 的抬头。建档档(profile)刻意**不**拉伸:实测拉不拉
+        # 对包围盒都没区别(<0.3 个百分点),不改没必要改的。
+        alpha_stretch=(40, 170),
     ),
 }
 
@@ -134,6 +139,26 @@ def _mask_from_output(output, size: tuple[int, int]) -> Image.Image:
     return mask.resize(size, Image.Resampling.BILINEAR)
 
 
+def _stretch_alpha(mask: Image.Image, lo: int, hi: int) -> Image.Image:
+    """alpha 分段拉伸:<lo 归 0,>hi 归 255,中间线性铺满。
+
+    为什么要这一步(2026-09-09 端到端验收,25 张真人像):isnet 输出的是**软 mask**,
+    灰度区 = 模型不确定的区域。棚拍纯背景那几张 mask 是纯白、抠得完美;但光线复杂、
+    背景有帘子的(IMG_9287 / IMG_9350 / IMG_9059),大片衣服区域 alpha 只有一百多 ——
+    抠出来叠到版式上就是**鬼影**,用户点了「抠图」拿到一个半透明的自己。
+
+    ⚠️ 别改成纯二值化(`v >= 128 ? 255 : 0`)。对照图逐张看过:二值化会在衣服上
+    炸出白色破洞(alpha<128 的整片区域被归零),边缘也变硬 —— **破洞比半透明更难看**。
+    分段拉伸的好处是主体变实、边缘仍然柔和。
+
+    只用在 quality="cutout";建档档不拉伸,理由见 SPECS。
+    """
+    span = max(hi - lo, 1)
+    return mask.point(
+        lambda v: 0 if v < lo else (255 if v > hi else round((v - lo) / span * 255))
+    )
+
+
 @locked
 def subject_mask(image: Image.Image, *, quality: Quality = "profile") -> Image.Image:
     """前景 mask(L 模式,与原图同尺寸)。
@@ -147,7 +172,10 @@ def subject_mask(image: Image.Image, *, quality: Quality = "profile") -> Image.I
     session = _session(spec)
     tensor = _preprocess(image, spec)
     output = session.run(None, {session.get_inputs()[0].name: tensor})[0]
-    return _mask_from_output(output, image.size)
+    mask = _mask_from_output(output, image.size)
+    if spec.alpha_stretch is not None:
+        mask = _stretch_alpha(mask, *spec.alpha_stretch)
+    return mask
 
 
 def detect_faces(image: Image.Image) -> list[dict]:

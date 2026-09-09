@@ -172,3 +172,106 @@ def test_detect_faces_returns_empty_until_a_detector_is_wired():
     签名和 0-100 口径先钉死,将来接上 YuNet 时不用动调用方。
     """
     assert geometry.detect_faces(Image.new("RGB", (64, 64))) == []
+
+
+# ── 抠图的 alpha 分段拉伸 ──────────────────────────────────────────────────────
+#
+# 2026-09-09 端到端验收(25 张真人像)发现的:isnet 输出的是**软 mask**,灰度区 =
+# 模型不确定的区域。棚拍纯背景那几张 mask 是纯白、抠得完美;但光线复杂、背景有
+# 帘子的(IMG_9287 / IMG_9350 / IMG_9059),大片衣服区域 alpha 只有一百多 ——
+# 抠出来叠到版式上就是**鬼影**,用户点了「抠图」拿到一个半透明的自己。
+#
+# ⚠️ 别改成纯二值化:对照图看过,二值化会在衣服上炸出白色破洞(alpha<128 的整片
+# 区域被归零),边缘也变硬 —— 破洞比半透明更难看。
+
+
+def test_cutout_spec_stretches_alpha_but_profile_does_not():
+    """只治抠图,不动构图。
+
+    实测四张:拉伸对包围盒的影响都 < 0.3 个百分点(box_from_mask 的阈值 128 落在
+    拉伸区间内,128 附近像素的归属不变)。既然对建档没区别,就不改没必要改的。
+    """
+    assert geometry.SPECS["cutout"].alpha_stretch == (40, 170)
+    assert geometry.SPECS["profile"].alpha_stretch is None
+
+
+def test_stretch_pushes_uncertain_midtones_toward_opaque():
+    """「模型不太确定」的大片区域要被推实 —— 这就是鬼影的解药。"""
+    mask = Image.new("L", (10, 10), 140)
+    out = geometry._stretch_alpha(mask, 40, 170)
+    assert out.getpixel((5, 5)) > 190, "中等 alpha 没有被推实,主体仍会是半透明"
+
+    # 上界以上一律全不透明
+    assert geometry._stretch_alpha(Image.new("L", (4, 4), 170), 40, 170).getpixel((1, 1)) == 255
+    assert geometry._stretch_alpha(Image.new("L", (4, 4), 200), 40, 170).getpixel((1, 1)) == 255
+
+
+def test_stretch_clamps_low_alpha_to_fully_transparent():
+    """下界以下是背景残留,必须干净归零,否则边上一圈脏雾。"""
+    assert geometry._stretch_alpha(Image.new("L", (4, 4), 39), 40, 170).getpixel((1, 1)) == 0
+    assert geometry._stretch_alpha(Image.new("L", (4, 4), 0), 40, 170).getpixel((1, 1)) == 0
+
+
+def test_stretch_keeps_edges_soft_not_binarized():
+    """边缘的渐变必须还在 —— 压成硬边就是二值化那条被否掉的路。
+
+    造一条 0..255 的横向渐变,拉伸后区间内仍应保留多级中间值。
+    """
+    width = 256
+    ramp = Image.new("L", (width, 4))
+    for x in range(width):
+        for y in range(4):
+            ramp.putpixel((x, y), x)
+
+    out = geometry._stretch_alpha(ramp, 40, 170)
+    values = set(out.tobytes())
+    middle = {v for v in values if 0 < v < 255}
+    assert len(middle) > 50, f"中间灰阶只剩 {len(middle)} 级,边缘被压成硬边了"
+
+
+def test_stretch_is_monotonic():
+    """越不透明的像素拉伸后不能反而更透明。"""
+    ramp = Image.new("L", (256, 1))
+    for x in range(256):
+        ramp.putpixel((x, 0), x)
+    out = list(geometry._stretch_alpha(ramp, 40, 170).tobytes())
+    assert out == sorted(out)
+
+
+def test_cutout_mask_comes_back_stretched(fake_sessions, monkeypatch):
+    """接线:走 subject_mask(quality='cutout') 时拉伸必须真的生效。"""
+    import numpy as np
+
+    class _PlateauSession:
+        """输出:背景 0、大片 2/3(min-max 归一化后正好 170)、一小块 1.0。"""
+
+        def get_inputs(self):
+            class _I:
+                name = "input"
+
+            return [_I()]
+
+        def run(self, _outputs, feed):
+            out = np.zeros((1, 1, 1024, 1024), dtype=np.float32)
+            out[0, 0, 200:800, 200:800] = 2.0 / 3.0
+            out[0, 0, 400:500, 400:500] = 1.0
+            return [out]
+
+    monkeypatch.setattr(geometry, "_session", lambda spec: _PlateauSession())
+
+    mask = geometry.subject_mask(Image.new("RGB", (1024, 1024)), quality="cutout")
+    # 那片 170 的区域(取一个不与 1.0 小块重叠的点)必须被推到 255
+    assert mask.getpixel((250, 250)) == 255, "cutout 的软 mask 没被拉伸,主体会是半透明"
+
+
+def test_stretch_does_not_move_the_bounding_box():
+    """隔离性:拉伸只治抠图,不该动构图。"""
+    raw = Image.new("L", (200, 200), 0)
+    for x in range(50, 150):
+        for y in range(60, 160):
+            raw.putpixel((x, y), 140)
+
+    before = box_from_mask(raw)
+    after = box_from_mask(geometry._stretch_alpha(raw, 40, 170))
+    for key in ("x", "y", "w", "h"):
+        assert abs(before[key] - after[key]) < 0.5, f"{key} 被拉伸挪动了"
