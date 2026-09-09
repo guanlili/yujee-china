@@ -47,6 +47,11 @@ Web 侧客户端:`apps/web/src/lib/agent/design-agent-client.ts`。
 - `applyPhotoFilter` seam 是**本地**的(`src/web/album-photo-seams.ts`):合进内存
   的书(同一轮 `read_page` 要立刻读得到)+ 累计 patch;书已分享时返回一条固定
   warning 进工具 `notes`。
+  ⚠️ **这条 warning 到不了模型**:所有写工具都 `terminate`(工具一返回,agent 循环
+  当场结束,`hasMoreToolCalls = !terminate`),模型这一轮没有第二次发言机会,用户看到
+  的是它**调工具之前**写的那句话。所以别在技能里教模型「把 notes 转告用户」——
+  那是一条它物理上执行不了的指令。用户那条路走 web:done 事件里直接展示 `warnings`。
+  技能里能教的是「动手之前就把话说完」。
 - `POST /api/chat` 响应带回 `photoFilter`(最终状态)和 `photoFilterPatch`(累计
   patch)。**web 落库要用的是后者**。
 
@@ -114,6 +119,17 @@ HTML 模板的 CSS 里),所以取「object-position = 主体中心」,保证主�
 这不是 bug。③ rotate 本批明确不动:schema 不收它,旋转过的槽直接拒绝(它的 html 是
 盒交换几何,按无旋转分支 patch 会毁掉旋转)。
 
+⚠️ **非法入参一律报错,不静默降级**(2026-09-09 评审修):`fit` 拼错、`x/y/scale` 非数字
+或缺项、`positions` 空对象、没建过档的照片走 `center-subject`/`avoid-face-crop`
+(`fill` 不需要几何,照常可用),都在 `prepareArguments`/`execute` 当场抛错,错误里带
+合法值清单让模型自己改对。原因有两层:① 写工具 `terminate`,模型读不到 `notes`,
+静默把构图折成 50/50/1 再报成功 = 用户听到「已按主体重新构图」、拿到的是被推平的构图;
+② `prepareArguments` **跑在** pi-ai 的 `validateToolArguments` **之前**,把非法值改写成
+合法形状,等于替模型把错误洗白过 schema 这道闸(实测:原始 `fit:"center"` 会被 typebox
+拒掉,改写成 `{x:50,y:50,scale:1}` 之后就放行了)。判非法必须发生在改写之前。
+空 `positions` 也不许 commit —— 整书 `replaceAll` + `draftRevision` 前进会在协同 OCC 下
+凭空给别的协作者制造冲突面。
+
 `set_photo_filter` / `set_photo_cutout`(2026-09-09 新增)整本定调与逐张抠图。
 滤镜真相源是 `apps/web/src/lib/photo/filter-state.ts`;design-agent 是 `packages/**`
 里的库,够不着 `apps/web`,所以 `photo-filter.ts` 是一份本地镜像,由
@@ -122,6 +138,9 @@ HTML 模板的 CSS 里),所以取「object-position = 主体中心」,保证主�
 允许 `false` 会让「没抠」有两种表示,renderVersion 和派生缓存 key 立刻产生歧义。
 `strength` 一律过 `quantizeStrength`(5 的倍数),与 web 同一归一化,否则两边算出的
 renderVersion 对不齐、分享快照直接失配。
+`set_photo_cutout` 的 `on` **只认布尔**:`"false"`(字符串)、`0`、缺省一律报错,不猜方向。
+猜错的后果是反向执行 —— 用户说「把这张的抠图关掉」,系统反而给他抠了背景,
+renderVersion 一变,已发布的分享快照当场失配。
 
 `move_pages` 挪动页面:批量 move(插入)/swap(对调)重排页序,只动内页
 (封面/目录/封尾钉死),单纯挪位置不改任何页内容(纯逻辑在 `page-move.ts`)。
@@ -217,5 +236,5 @@ print/RPC/interactive 三种模式。**通用 agent loop 在 `packages/agent`**,
 
 <!-- doc-scope
 paths: packages/design-agent/src/**, packages/design-agent/fly.toml, apps/web/src/lib/agent/design-agent-client.ts
-checked-at: 70d38c4e
+checked-at: 656117b2
 -->
