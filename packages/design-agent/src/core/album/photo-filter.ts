@@ -136,3 +136,94 @@ function parseFilterRef(raw: unknown): PhotoFilterRef | null {
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+// ── patch 合并 ───────────────────────────────────────────────────────────
+//
+// ⚠️ 与 web 侧 `apps/web/src/services/album/agent-photo-filter.ts` 的 `mergePatch`
+// **同语义**,改一边要同步另一边。这里合并只为让本轮内存里的书立刻反映改动
+// (read_page 要读得到新滤镜、新抠图状态);**落库的真相仍由 web 在 album 行锁内
+// 用同一份语义重算** —— agent 不直接写库(album-server 抬头的既有约定)。
+//
+// 三个维度语义各不相同,别写混:
+//   default   省略 = 不动;null = 整本回原片;ref = 整本换 LUT
+//   overrides 逐 photoId 合并;值 null = 「这张显式用原片」**不是删键**
+//             (删了键它会退回全书默认,语义完全相反)
+//   cutouts   true = 开;null = **删键**(契约铁律:只认 true,绝不写 false)
+
+/** patch 合并进现有状态。返回的状态里 cutouts 只会有 true,且全关时连壳一起删。 */
+export function mergePhotoFilterPatch(
+	current: PhotoFilterState | null | undefined,
+	patch: PhotoFilterPatch,
+): PhotoFilterState {
+	const base: PhotoFilterState = current ?? { default: null };
+
+	const nextOverrides: Record<string, PhotoFilterRef | null> = { ...(base.overrides ?? {}) };
+	for (const [photoId, ref] of Object.entries(patch.overrides ?? {})) {
+		nextOverrides[photoId] = normalizeRef(ref);
+	}
+
+	const nextCutouts: Record<string, true> = { ...(base.cutouts ?? {}) };
+	for (const [photoId, on] of Object.entries(patch.cutouts ?? {})) {
+		// 关掉 = delete。这一行是铁律的执行点,别改成 `nextCutouts[id] = false`。
+		if (on === true) nextCutouts[photoId] = true;
+		else delete nextCutouts[photoId];
+	}
+
+	return {
+		default: Object.hasOwn(patch, "default") ? normalizeRef(patch.default ?? null) : normalizeRef(base.default),
+		...(Object.keys(nextOverrides).length > 0 ? { overrides: nextOverrides } : {}),
+		...(Object.keys(nextCutouts).length > 0 ? { cutouts: nextCutouts } : {}),
+	};
+}
+
+/**
+ * 累计两份 patch(一轮对话里模型可能调好几次工具,落库只发一份)。
+ *
+ * ⚠️ 不能改成「拿最终 state 反推 patch」:最终 state 里的 cutouts 只有 true,
+ * 「这张关掉了」表现为键不存在,而 patch 里键不存在的语义是「没提到,别动」——
+ * 反推会让**关抠图永远落不了库**。所以必须逐次累计,让 null 活到最后。
+ */
+export function combinePhotoFilterPatches(
+	first: PhotoFilterPatch,
+	second: PhotoFilterPatch,
+): PhotoFilterPatch {
+	const out: PhotoFilterPatch = {};
+	if (Object.hasOwn(second, "default")) out.default = second.default ?? null;
+	else if (Object.hasOwn(first, "default")) out.default = first.default ?? null;
+
+	const overrides = { ...(first.overrides ?? {}), ...(second.overrides ?? {}) };
+	if (Object.keys(overrides).length > 0) out.overrides = overrides;
+
+	const cutouts = { ...(first.cutouts ?? {}), ...(second.cutouts ?? {}) };
+	if (Object.keys(cutouts).length > 0) out.cutouts = cutouts;
+
+	return out;
+}
+
+export function isEmptyPhotoFilterPatch(patch: PhotoFilterPatch | null | undefined): boolean {
+	if (!patch) return true;
+	return (
+		!Object.hasOwn(patch, "default") &&
+		Object.keys(patch.overrides ?? {}).length === 0 &&
+		Object.keys(patch.cutouts ?? {}).length === 0
+	);
+}
+
+/** 两个滤镜状态实质相同?(null 与「空状态」视作同一件事) 同值重写不该刷分享警报。 */
+export function photoFilterStatesEqual(
+	a: PhotoFilterState | null | undefined,
+	b: PhotoFilterState | null | undefined,
+): boolean {
+	return stableKey(a) === stableKey(b);
+}
+
+function stableKey(state: PhotoFilterState | null | undefined): string {
+	const value = state ?? { default: null };
+	const overrides = Object.entries(value.overrides ?? {}).sort(([left], [right]) => (left < right ? -1 : 1));
+	const cutouts = Object.keys(value.cutouts ?? {}).sort();
+	return JSON.stringify([normalizeRef(value.default), overrides, cutouts]);
+}
+
+function normalizeRef(ref: PhotoFilterRef | null | undefined): PhotoFilterRef | null {
+	return ref ? { lutId: ref.lutId, strength: quantizeStrength(ref.strength) } : null;
+}

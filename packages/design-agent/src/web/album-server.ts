@@ -15,6 +15,7 @@ import {
 	renderAlbumBookPreviewHtml,
 	validateAlbumBook,
 } from "../core/album/book-state.ts";
+import type { PhotoFilterPatch, PhotoFilterState } from "../core/album/photo-filter.ts";
 import { loadAlbumSkills } from "../core/album/skills-loader.ts";
 import { buildAlbumSystemPrompt } from "../core/album/system-prompt.ts";
 import { loadTemplateCatalog, type TemplateCatalog } from "../core/album/templates-catalog.ts";
@@ -22,7 +23,9 @@ import { catalogCategoryOf, catalogSpreadOf, createAlbumTools } from "../core/al
 import { compactDesignContext } from "../core/context-compression.ts";
 import { createDesignAgentSession, type DesignAgentSession } from "../core/design-agent-session.ts";
 import { createDesignAgentModelRuntime } from "../core/models.ts";
+import { createPhotoFilterSeam, type PhotoFilterSeam } from "./album-photo-seams.ts";
 import { extractAssistantText } from "./chat-response.ts";
+import { createWebPhotoFetcher, resolveWebBridgeConfig } from "./photo-fetch.ts";
 import { TraceStore } from "./traces.ts";
 
 /**
@@ -85,6 +88,13 @@ export const ALBUM_WRITE_TOOL_NAMES: ReadonlySet<string> = new Set<string>([
 	"set_page_background",
 	// apply_book_style 同样走 commitWrite → terminate(2026-08-29 加的写工具,别再漏)。
 	"apply_book_style",
+	// 照片三件套(2026-09-09):set_image_pos 走 commitWrite;set_photo_filter /
+	// set_photo_cutout 不走 commitWrite(滤镜是另一套存储),但同样返回 terminate:true。
+	// 判据是「这一步是不是终稿」,不是「走没走 commitWrite」—— 漏在集合外,终稿那步的
+	// 文本会被当成中间步再冒一次泡,用户看到同一句话说两遍。
+	"set_image_pos",
+	"set_photo_filter",
+	"set_photo_cutout",
 ]);
 
 /**
@@ -112,9 +122,27 @@ export interface AlbumChatResponse {
 	assistant: { text: string };
 	committed: boolean;
 	book: AlbumBookState;
+	/** 本轮结束时书上生效的滤镜/抠图状态(展示与下一轮装书对账用)。 */
+	photoFilter: PhotoFilterState | null;
+	/**
+	 * 本轮累计的滤镜 patch;没动过是 null。**web 要落库的是它,不是上面那个最终状态**
+	 * —— 最终状态里 cutouts 只有 true,「这张关掉了」表现为键不存在,而 patch 里键
+	 * 不存在的语义是「没提到,别动」,拿最终状态反推会让关抠图永远落不了库。
+	 */
+	photoFilterPatch: PhotoFilterPatch | null;
 	artifact: { kind: "html"; content: string };
 	traces: unknown[];
 }
+
+/** 相册级语境:不属于书本身,但决定 agent 能做什么/该提醒什么。每轮装书刷新。 */
+export interface AlbumRuntimeContext {
+	/** 这本书发布过分享链接吗?为真时改滤镜/抠图要提醒用户重新备份。 */
+	hasPublishedShare: boolean;
+	/** 有原图可看的照片(look_at_photos 取得到的那批)。空 = 一张都取不到。 */
+	viewablePhotoIds: string[];
+}
+
+const EMPTY_ALBUM_CONTEXT: AlbumRuntimeContext = { hasPublishedShare: false, viewablePhotoIds: [] };
 
 const moduleDir = dirname(fileURLToPath(import.meta.url));
 const staticDir = join(moduleDir, "static");
@@ -129,6 +157,11 @@ interface AlbumRuntime {
 	catalog: TemplateCatalog;
 	getBook(): AlbumBookState;
 	setBook(state: AlbumBookState): void;
+	/** 相册级语境(分享状态 / 可看图的照片)。装书时刷新。 */
+	getContext(): AlbumRuntimeContext;
+	setContext(context: AlbumRuntimeContext): void;
+	/** 滤镜/抠图 seam:本地合并 + 累计 patch,由 /api/chat 响应带回给 web 落库。 */
+	photoFilter: PhotoFilterSeam;
 	renderPreview(): string;
 	setActiveTrace(traceId: string | undefined): void;
 	setActiveStreamSink(sink: ((event: AlbumStreamEvent) => void) | undefined): void;
@@ -158,9 +191,29 @@ async function createAlbumRuntime(
 	deps: SharedRuntimeDeps,
 	albumId: string,
 	initialBook: AlbumBookState,
+	initialContext: AlbumRuntimeContext,
 ): Promise<AlbumRuntime> {
 	let bookState = cloneAlbumBookState(initialBook);
+	let albumContext = initialContext;
 	const skills = loadAlbumSkills({ env: deps.env });
+
+	// 滤镜/抠图不走 commitWrite(那是页面 draft 的 version 那条路),也不直接写库 ——
+	// 合进内存的书 + 累计 patch,由 /api/chat 响应带回,web 在 album 行锁内落
+	// albums.photo_filter(settingsRevision 那套 OCC)。
+	const photoFilterSeam = createPhotoFilterSeam({
+		getState: () => bookState.photoFilter,
+		setState: (next) => {
+			bookState = { ...bookState, photoFilter: next };
+		},
+		hasPublishedShare: () => albumContext.hasPublishedShare,
+	});
+
+	// 取图桥:配齐 WEB_BASE_URL + AGENT_SHARED_SECRET 才通。没配就不给 seam,
+	// look_at_photos 因此不注册 —— 宁可没这个能力,也不让模型调一个必然失败的工具。
+	const bridge = resolveWebBridgeConfig(deps.env);
+	const fetchPhotos = bridge
+		? createWebPhotoFetcher({ baseUrl: bridge.baseUrl, secret: bridge.secret, albumId })
+		: undefined;
 	const sessionRepo = new InMemorySessionRepo();
 	const harnessSession = await sessionRepo.create();
 	const traces = new TraceStore();
@@ -177,8 +230,12 @@ async function createAlbumRuntime(
 			skills,
 			getBookState: () => cloneAlbumBookState(bookState),
 			setBookState: (nextState) => {
+				// 写工具改的是页面;滤镜状态不归它们管,原样带过去(commitWrite 拿到的
+				// 是 getBookState 的克隆,本来就含 photoFilter,这里只是别让它掉队)。
 				bookState = cloneAlbumBookState(nextState);
 			},
+			applyPhotoFilter: (patch) => photoFilterSeam.apply(patch),
+			...(fetchPhotos ? { lookAtPhotos: fetchPhotos } : {}),
 		}),
 	});
 
@@ -304,6 +361,13 @@ async function createAlbumRuntime(
 		setBook(state: AlbumBookState): void {
 			bookState = cloneAlbumBookState(state);
 		},
+		getContext(): AlbumRuntimeContext {
+			return albumContext;
+		},
+		setContext(context: AlbumRuntimeContext): void {
+			albumContext = context;
+		},
+		photoFilter: photoFilterSeam,
 		renderPreview(): string {
 			return renderAlbumBookPreviewHtml(bookState, deps.catalog);
 		},
@@ -352,14 +416,18 @@ class AlbumRuntimeManager {
 		return out;
 	}
 
-	/** 装书：runtime 已存在则只换书（保留对话上下文），否则新建。 */
-	async loadBook(albumId: string, book: AlbumBookState): Promise<AlbumRuntime> {
+	/** 装书：runtime 已存在则只换书（保留对话上下文），否则新建。
+	 * 相册语境每轮都刷新(分享状态在两轮之间会变),累计 patch 每轮清账
+	 * (上一轮的改动已由 web 落过库,再带回去就是重复写)。 */
+	async loadBook(albumId: string, book: AlbumBookState, context: AlbumRuntimeContext): Promise<AlbumRuntime> {
 		const existing = this.runtimes.get(albumId);
 		if (existing) {
 			existing.setBook(book);
+			existing.setContext(context);
+			existing.photoFilter.reset();
 			return existing;
 		}
-		return this.create(albumId, book);
+		return this.create(albumId, book, context);
 	}
 
 	/** default 书在首次访问时懒加载 fixture。 */
@@ -367,19 +435,25 @@ class AlbumRuntimeManager {
 		const existing = this.runtimes.get(albumId);
 		if (existing) return existing;
 		if (albumId === DEFAULT_ALBUM_ID && this.defaultBook) {
-			return this.create(albumId, this.defaultBook);
+			return this.create(albumId, this.defaultBook, EMPTY_ALBUM_CONTEXT);
 		}
 		return undefined;
 	}
 
-	private async create(albumId: string, book: AlbumBookState): Promise<AlbumRuntime> {
+	private async create(
+		albumId: string,
+		book: AlbumBookState,
+		context: AlbumRuntimeContext,
+	): Promise<AlbumRuntime> {
 		const pending = this.creating.get(albumId);
 		if (pending) {
 			const runtime = await pending;
 			runtime.setBook(book);
+			runtime.setContext(context);
+			runtime.photoFilter.reset();
 			return runtime;
 		}
-		const creation = createAlbumRuntime(this.deps, albumId, book).then((runtime) => {
+		const creation = createAlbumRuntime(this.deps, albumId, book, context).then((runtime) => {
 			this.runtimes.set(albumId, runtime);
 			this.creating.delete(albumId);
 			return runtime;
@@ -502,6 +576,10 @@ async function runAlbumChat(
 			assistant: { text: assistantText.trim() || "（无文字回复）" },
 			committed,
 			book: bookAfter,
+			// 滤镜不进 book.version(它不是页面写入),所以 committed 不代表它 ——
+			// web 侧要按 photoFilterPatch 非空独立判断要不要落 albums.photo_filter。
+			photoFilter: bookAfter.photoFilter ?? null,
+			photoFilterPatch: runtime.photoFilter.pending(),
 			artifact: { kind: "html", content: runtime.renderPreview() },
 			traces: runtime.traces.list(),
 		};
@@ -636,6 +714,14 @@ async function handleLoadBook(
 		// 兼容两种形态：{albumId, book: {...}} 或直接就是书对象。
 		const bookInput = isRecord(parsed.book) ? parsed.book : parsed;
 		const { book, warnings } = parseAlbumBookInput(bookInput);
+		// 相册级语境:不属于书本身,所以走请求顶层而不是塞进 book(那会污染
+		// parseAlbumBookInput 的契约)。缺省一律取保守值。
+		const context: AlbumRuntimeContext = {
+			hasPublishedShare: parsed.hasPublishedShare === true,
+			viewablePhotoIds: Array.isArray(parsed.viewablePhotoIds)
+				? parsed.viewablePhotoIds.filter((entry): entry is string => typeof entry === "string")
+				: [],
+		};
 		// 装书对目录漂移必须宽容:Web/Postgres 是书的唯一真相,模板目录演进(删槽/改槽名/
 		// 退役模板)后,存量书带着旧键装书,整本 422 会把这些册子永久挡在设计对话外
 		// (2026-08-02 线上:mag-33 哑槽清除后老书 texts 的 body/label/title 触发硬拒)。
@@ -644,7 +730,7 @@ async function handleLoadBook(
 		// 使其可自我纠正)。字数也不校验(模板已不声明上限,版面靠渲染层 fit-text)。
 		// 结构性损坏(parseAlbumBookInput 抛错,如 pages 不是数组)仍走 catch 的 400 硬失败。
 		warnings.push(...validateAlbumBook(book, catalog));
-		await manager.loadBook(albumId, book);
+		await manager.loadBook(albumId, book, context);
 		sendJson(response, 200, {
 			ok: true,
 			albumId,
@@ -729,6 +815,8 @@ export async function createAlbumAgentWebServer(options: AlbumAgentWebServerOpti
 				sendJson(response, 200, {
 					albumId: runtime.albumId,
 					book: runtime.getBook(),
+					context: runtime.getContext(),
+					photoFilterPatch: runtime.photoFilter.pending(),
 					artifact: { kind: "html", content: runtime.renderPreview() },
 					traces: runtime.traces.list(),
 				});
