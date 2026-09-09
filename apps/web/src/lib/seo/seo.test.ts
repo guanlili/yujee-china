@@ -279,6 +279,20 @@ test('each example page owns its own format keyword — no two pages chase the s
   assert.doesNotMatch(landingText, /biography book/i, 'the landing is competing with /examples/life-story');
 });
 
+// Anchor text is a relevance signal for the DESTINATION page, so both footers
+// pointing at /examples/travel-journal should carry that page's term. There are
+// two of them and they live in different files — the landing renders
+// copy/en.tsx's footer, every other page renders the marketing one. The first
+// pass at this changed only the marketing half and shipped; the landing footer
+// stayed on the old wording until someone read the live HTML.
+test('both footers link to the travel example with its own keyword as anchor text', async () => {
+  const { en: copy } = await import('@/components/landing/copy/en');
+  assert.match(copy.footerExampleTravel, /ai travel photobook/i, 'the landing footer anchor dropped the term');
+
+  const marketing = JSON.stringify(getMarketingMessages('en'));
+  assert.match(marketing, /ai travel photobook example/i, 'the marketing footer anchor dropped the term');
+});
+
 test('every example page title and description stays inside the SERP budget', () => {
   for (const example of EXAMPLES) {
     const { metaTitle, metaDesc } = exampleContent(example, 'en');

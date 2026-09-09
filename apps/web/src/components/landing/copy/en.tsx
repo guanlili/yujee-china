@@ -67,7 +67,7 @@ export const en: Copy = {
   footerTagline: 'Turn your photos into a beautifully designed album.',
   footerProduct: 'Product',
   footerResources: 'Resources',
-  footerExampleTravel: 'Travel photo book example',
+  footerExampleTravel: 'AI travel photobook example',
   footerExampleLifeStory: 'Life story book example',
   footerExamplesAll: 'All memoir examples',
   footerCompany: 'About',
