@@ -1,0 +1,21 @@
+{
+  "name": "yujee-pet-space",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "node scripts/build.mjs",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "node --test tests/*.test.js modules/image-studio/tests/*.test.js"
+  },
+  "dependencies": {
+    "lucide": "^0.468.0",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "fake-indexeddb": "^6.2.5",
+    "vite": "^6.3.0"
+  }
+}

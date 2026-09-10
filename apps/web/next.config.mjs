@@ -14,6 +14,13 @@ const nextConfig = {
       bodySizeLimit: "25mb",
     },
   },
+  // Isolated static chapters; existing account, album and API routes are unchanged.
+  async rewrites() {
+    return {beforeFiles: [
+      {source: '/:locale(en|zh|es|ja|fr)/:chapter(pet|travel|palace)', destination: '/chapters/:locale/:chapter/index.html'},
+      {source: '/:chapter(pet|travel|palace)/:asset*', destination: '/chapters/:chapter/:asset*'},
+    ], afterFiles: [], fallback: []};
+  },
   async redirects() {
     return [
       // www and the apex both served byte-identical 200s with no canonical, so
