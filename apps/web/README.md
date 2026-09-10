@@ -219,14 +219,24 @@ full payloads under `public/luts/`; source `.cube` files are intentionally not t
 
 alpha 从哪来有**两条路,优先服务端**(2026-09-09):
 
-1. **服务端分割 mask**(`isnet-general-use`,1024²)。开抠图时 `persistDesignChat` 调
-   `services/album/photo-mask-service.ts` 的 `ensureCutoutMasks`:取 R2 规范原图 → CLIP
-   worker 的 `/internal/photo-profile`(`persistMask=true`)→ mask 写
-   `photo-masks/{albumId}/{photoId}.png` → 回填 `album_photos.profile.maskKey`;渲染侧
-   经 `/api/v1/albums/{uuid}/photo-masks/urls` 换 300s 签名 GET 取回。尽力而为:R2 写成功
-   才回填 maskKey(指向不存在对象的 maskKey 比没有更糟),单轮上限 8 张,没跑完下一轮
-   自己补(判据是「开着抠图但还没 maskKey」)。没配 `AGENT_CLIP_BASE_URL` = 这条能力不
-   存在,安静降级。
+1. **服务端分割 mask**(`isnet-general-use`,1024²)。`services/album/photo-mask-service.ts`
+   的 `ensureCutoutMasks`:取 R2 规范原图 → CLIP worker 的 `/internal/photo-profile`
+   (`persistMask=true`)→ mask 写 `photo-masks/{albumId}/{photoId}.png` → 回填
+   `album_photos.profile.maskKey`;渲染侧经 `/api/v1/albums/{uuid}/photo-masks/urls`
+   换 300s 签名 GET 取回。尽力而为:R2 写成功才回填 maskKey(指向不存在对象的 maskKey
+   比没有更糟),单轮上限 8 张,没跑完下一轮自己补。
+
+   判据只有一条 —— **「现在开着抠图但还没 maskKey」**,所以两条路都覆盖,同一个按钮的
+   质量不取决于是谁点的:
+   - **Agent 开的**:`persistDesignChat` 落完滤镜后同步调一次(那一轮本来就在等)。
+   - **人手点的**:滤镜 PATCH **不生成 mask**(isnet 单张 ~4s,挂上去用户点一下要等
+     几十秒;而 Vercel 上「响应之后再跑」的浮空 Promise 不保证执行,也不能在 PATCH 里
+     fire-and-forget)。改由浏览器在滤镜存好之后**不等结果**地打
+     `POST /api/v1/albums/{uuid}/photo-masks` —— 请求体是空的,photoIds 由服务端自己从
+     `albums.photo_filter.cutouts` 读。触发时机是 `cutoutSignature` 变化(挂载时本来就
+     开着的那批也算),所以存量书、上一轮超上限没跑完的、推理挂了的,下次进编辑器都会
+     自己补上。mask 到货后 `photoStore.forgetPhotoMasks` + 重解一遍图 URL —— 不清记忆的话
+     这一整个会话都停在兜底那版,用户得刷新。
 2. **浏览器端漫水填充**(`src/lib/photo/cutout/cutout-math.ts`)—— 只是**兜底**。它没有
    语义:主体与背景同色、背景杂乱时基本吃不动(2026-08-29 实测棚拍人像 5 张 0 张能用,
    自动抠图当时正是因此被否决)。拿不到服务端 mask 才走它。
@@ -236,6 +246,14 @@ alpha 从哪来有**两条路,优先服务端**(2026-09-09):
 mask 到货后不会被先前那份兜底产物喂回来。两条路都遵守「抠不动原样退回入参」。
 ⚠️ 已知欠账:`effectiveRenderVersion` **不含** mask 维度(升它会让所有存量分享快照一次性
 失配)。所以「先用兜底备份过、mask 之后才到货」这个组合,分享快照里仍是那份兜底像素。
+
+**降级必须有声音**(这批一路在打的病就是「东西造好了、某一环没接、没人知道」):
+没配 `AGENT_CLIP_BASE_URL` 时整条链路会退回漫水填充,功能看着"上线了"、用户拿到的还是
+被啃残的抠图。所以 —— 运行期 `ensureCutoutMasks` 用 warn 级 + 固定前缀
+`'cutout mask degraded: …'` 报,并把 `reason` 分成 `clip-not-configured`(改配置)与
+`clip-call-failed`(查 worker)两种,返回值里也带 `degraded`;启动期 `productionWarnings`
+在真生产缺配置时再喊一次。**都不硬失败** —— 断网 / worker 挂了的时候,退回兜底仍然比整个
+抠不了强。只有「配了 `AGENT_CLIP_SECRET` 却没配 base URL」这种半配才当场抛。
 
 Changing the filter row-locks the album, persists only normalized filter state,
 invalidates stored PDF and cover-thumbnail metadata, and moves a `COMPLETED` album
@@ -376,6 +394,14 @@ Defaults live in `src/lib/env.ts`. Common fields:
 `AGENT_SHARED_SECRET` · `DESIGN_AGENT_BASE_URL` · `DESIGN_AGENT_SHARED_SECRET`。
 这是刻意的:漏配一个 Vercel 变量应该当场崩,而不是带着 `dev_secret_replace_me` 静默上线。
 
+**部署清单里另有一对不硬失败、但漏了就静默降级的变量**:`AGENT_CLIP_BASE_URL`
+(2GB CLIP worker 的地址,**不是** `AGENT_BASE_URL` 那台)与可选的 `AGENT_CLIP_SECRET`
+(不设则回落 `AGENT_SHARED_SECRET`)。漏配的后果不是报错,是**所有抠图退回浏览器端的
+漫水填充** —— 用户拿到被啃残的主体、界面上零提示。真生产缺它时启动会打一条
+`[config] AGENT_CLIP_BASE_URL 未配置…` 的告警(`productionWarnings`),运行期每次降级
+再打一条 `cutout mask degraded: …`;两处都不抛,因为断网/worker 挂了时退回兜底仍然强过
+整个抠不了。只配 `AGENT_CLIP_SECRET` 不配 base URL 属于半配,**当场抛**。
+
 「真生产」的判定是 `VERCEL_ENV === 'production'`,**不是 `NODE_ENV`** —— Vercel 的
 preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV 会让每个 PR
 预览构建都炸(Preview 环境本就缺 `DATABASE_URL`)。没有 `VERCEL_ENV` 时(Fly/Docker
@@ -412,5 +438,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: ce04db52
+checked-at: 07c5158f
 -->
