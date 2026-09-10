@@ -25,7 +25,7 @@ Postgres + Cloudflare R2
 |---|---|
 | Browser | 持有原图, 压缩/缓存照片, 读取 EXIF, 用浏览器 WebGL 引擎应用照片滤镜, 为 `/v3/select-layout` 和 `/v3/compose` 随请求带上 200px 缩略图 refs, 渲染编辑器, 本地生成 PDF 后直传 R2 |
 | Web | 登录、支付、积分、相册状态、`draft_json`、`photo_filter`、V3 API 编排、Agent callback 合并、R2 presign、协同编辑(邀请链接/成员/增量同步,owner 与 editor 同为 Creator) |
-| Agent | 确定性分章(零 AI)、确定性排版(一次出 pages)、一次性成稿 `/v3/compose`(生成链路唯一的 AI 调用;编辑器的 AI 生图是另一处,不走 Agent) |
+| Agent | 确定性分章(默认零 AI;`AGENT_ENABLE_PHOTO_PROFILE` 开了则每张一次视觉调用建档)、确定性排版(一次出 pages)、一次性成稿 `/v3/compose`(生成链路唯一的 AI 调用;编辑器的 AI 生图是另一处,不走 Agent) |
 | Design Agent | 生成**之后**的对话式改书(十个写工具改文字/HTML/换版/换图/配色/底色/整本风格/字体/页序)。独立 base URL 与鉴权,**必须单机**(session 在进程内存) |
 | contracts | Web 和 Agent 共用的 Zod 契约、模板 JSON、生成类型和 fixtures |
 
@@ -58,7 +58,11 @@ memoir-agent-rebuild/
    规则过期回收,应用层不删。
 3. Agent **纯确定性分组**(CLIP embedding / 拍摄时间 / GPS / 像素特征)+ 确定性归散图 +
    提取章节主色,回调 tree-only `V3LayoutTree`。章标题由拍摄时间跨度确定性派生,落在
-   `V3Chapter.title`。**这一步零 AI 调用,也不识图。**
+   `V3Chapter.title`。**默认零 AI 调用,也不识图。**
+   ⚠️ 例外:`AGENT_ENABLE_PHOTO_PROFILE=true` 时这一步会给每张照片建**视觉档案**
+   (几何/色彩/语义三组,存 `album_photos.profile`,供 Design Agent 调色/构图/抠图),
+   其中语义组是每张一次视觉模型调用 —— 开关一开,「零 AI」这条就不再成立。
+   **默认关**,翻这一页要先算过成本与耗时。
 4. Web 进入 story 环节,用户逐章讲故事,答案写进 `chapterContext`。
 5. 采访结束触发 `POST /v3/select-layout`:Agent 确定性选版(每 unit 一个播种候选),一次
    `completed` 回调直接回 `Page[]`,文案先填模板 JSON 自带的 `sample` 示例文案 ——
@@ -71,7 +75,8 @@ memoir-agent-rebuild/
    与生成链路完全分开,见 `docs/specs/2026-08-18-ai-image-generation-design.md`。)
 
 生成 Agent 对外只有四个端点:`GET /health`、`POST /v3/analyze`、`POST /v3/select-layout`、
-`POST /v3/compose`。**生成之后的编辑走另一条链路** —— 用户在编辑器里对话改书,由 Web 的
+`POST /v3/compose`。另有两个 internal 口只在专用的 2GB CLIP worker 上开(普通 1GB Agent
+开关关着 => 404):`/internal/open-clip/embeddings`、`/internal/photo-profile`。**生成之后的编辑走另一条链路** —— 用户在编辑器里对话改书,由 Web 的
 `/api/v3/albums/[uuid]/design-chat` 转给 Design Agent(`POST /api/book` + `POST /api/chat`),
 与上面七步无关。别把它和生成链路混为一谈。
 
@@ -197,5 +202,5 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 1adaef05
+checked-at: 6eea1ca0
 -->
