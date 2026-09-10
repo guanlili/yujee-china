@@ -1,0 +1,84 @@
+{
+ "$comment": [
+  "PhotoProfile 的跨语言黄金样本 —— engine(pydantic) 与 web/design-agent(zod) 共用同一份。",
+  "",
+  "为什么需要它:两侧原本各自对着【自己想象的形状】测 —— engine 测「我发的 body 对」(对着自己的桩),",
+  "web 测「我收的 body 对」(对着自己造的 body)。形状一旦对不上,两边都绿、线上断。",
+  "2026-09-09 真栽过:Python 侧 composition 改可空、TS 侧没跟,语义降级的照片在 web 的逐条",
+  "safeParse 里被整条拒绝,连色彩/几何一起丢,而两侧的守卫(只比字段名)全绿。",
+  "",
+  "这份样本由 engine 的 pydantic 真实 model_dump_json 产出,不是手写的。",
+  "三种情形都要在:正常档案、语义组降级(composition=null)、带 mask。",
+  "改契约时两侧的测试会同时红 —— 那是它存在的意义,别绕过去,重新生成。"
+ ],
+ "samples": {
+  "normal": {
+   "v": 1,
+   "subjectBox": {
+    "x": 10.0,
+    "y": 20.0,
+    "w": 50.0,
+    "h": 60.0
+   },
+   "faceBoxes": [],
+   "maskKey": null,
+   "colorTemp": "warm",
+   "brightness": "mid",
+   "saturation": "normal",
+   "dominantColors": [
+    "#C8A05A"
+   ],
+   "composition": "focal",
+   "scene": "outdoor",
+   "peopleCount": "1",
+   "mood": "warm",
+   "description": "海边"
+  },
+  "semantic_degraded": {
+   "v": 1,
+   "subjectBox": null,
+   "faceBoxes": [],
+   "maskKey": null,
+   "colorTemp": "cool",
+   "brightness": "dark",
+   "saturation": "muted",
+   "dominantColors": [],
+   "composition": null,
+   "scene": "outdoor",
+   "peopleCount": "0",
+   "mood": "quiet",
+   "description": ""
+  },
+  "with_mask": {
+   "v": 1,
+   "subjectBox": {
+    "x": 0.0,
+    "y": 0.0,
+    "w": 100.0,
+    "h": 100.0
+   },
+   "faceBoxes": [
+    {
+     "x": 30.0,
+     "y": 15.0,
+     "w": 20.0,
+     "h": 25.0
+    }
+   ],
+   "maskKey": "photo-masks/alb1/p1.png",
+   "colorTemp": "neutral",
+   "brightness": "bright",
+   "saturation": "vivid",
+   "dominantColors": [
+    "#112233",
+    "#445566",
+    "#778899"
+   ],
+   "composition": "wide",
+   "scene": "nature",
+   "peopleCount": "4+",
+   "mood": "energetic",
+   "description": "山脊线"
+  }
+ }
+}

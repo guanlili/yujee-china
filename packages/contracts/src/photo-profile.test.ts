@@ -76,3 +76,28 @@ test('composition 缺省即 null,不是报错', () => {
   const { composition: _omitted, ...without } = valid;
   assert.equal(PhotoProfileSchema.parse(without).composition, null);
 });
+
+// ── 跨语言黄金样本(2026-09-09)──────────────────────────────────────
+// engine 的 pydantic 真实 dump 出来的档案,TS 侧必须全收。
+// 为什么需要:两侧原本各自对着自己想象的形状测 —— engine 对着自己的桩、web 对着
+// 自己造的 body,形状对不上时两边都绿、线上断。composition 可空性漂移就是这么溜过去的。
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const samples = JSON.parse(
+  readFileSync(fileURLToPath(new URL('../fixtures/photo-profile-samples.json', import.meta.url)), 'utf8'),
+).samples as Record<string, unknown>;
+
+test('engine 真实产出的每一种档案,TS 契约都收', () => {
+  const names = Object.keys(samples);
+  assert.ok(names.length >= 3, 'fixture 至少要覆盖 正常/语义降级/带 mask 三种');
+  for (const [name, profile] of Object.entries(samples)) {
+    const result = PhotoProfileSchema.safeParse(profile);
+    assert.ok(result.success, `${name} 被 TS 契约拒绝:${JSON.stringify(result.success ? '' : result.error.issues)}`);
+  }
+});
+
+test('语义降级那份样本确实带着 composition: null', () => {
+  // 钉住 fixture 本身没被人「顺手修好」—— 它存在的意义就是覆盖降级路径。
+  assert.equal((samples.semantic_degraded as { composition: unknown }).composition, null);
+});

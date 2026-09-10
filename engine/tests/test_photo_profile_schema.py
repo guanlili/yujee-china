@@ -4,6 +4,7 @@
 这个仓库栽过契约漂移的跟头。
 """
 
+import json
 import pathlib
 import re
 
@@ -89,3 +90,36 @@ def test_ts_and_python_fields_match():
     assert ts_fields == py_fields, (
         f"契约漂移:TS 独有={ts_fields - py_fields} Python 独有={py_fields - ts_fields}"
     )
+
+
+# ── 跨语言黄金样本(2026-09-09)────────────────────────────────────────
+# 与 packages/contracts 共用同一份 fixture。两侧原本各自对着【自己想象的形状】测:
+# engine 测「我发的 body 对」(对着自己的桩)、web 测「我收的 body 对」(对着自己造的
+# body)。形状一旦对不上,两边都绿、线上断 —— composition 可空性漂移就是这么溜过去的。
+
+
+def _samples() -> dict:
+    fixture = (
+        pathlib.Path(__file__).resolve().parents[2]
+        / "packages/contracts/fixtures/photo-profile-samples.json"
+    )
+    return json.loads(fixture.read_text(encoding="utf-8"))["samples"]
+
+
+def test_golden_samples_all_parse():
+    samples = _samples()
+    assert len(samples) >= 3, "fixture 至少要覆盖 正常/语义降级/带 mask 三种"
+    for name, payload in samples.items():
+        PhotoProfile.model_validate(payload)  # 抛就是漂移
+
+
+def test_golden_samples_round_trip_byte_identical():
+    """parse 再 dump 必须逐字回到原样 —— 默认值/别名/序列化口径的漂移都会在这里现形。"""
+    for name, payload in _samples().items():
+        again = json.loads(PhotoProfile.model_validate(payload).model_dump_json())
+        assert again == payload, f"{name} 往返不一致:{again} != {payload}"
+
+
+def test_golden_sample_covers_semantic_degradation():
+    """钉住 fixture 没被人「顺手修好」—— 它存在的意义就是覆盖 composition=None 那条降级路径。"""
+    assert _samples()["semantic_degraded"]["composition"] is None
