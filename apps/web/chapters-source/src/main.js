@@ -6,7 +6,7 @@ import {createIcons,Archive,Plus,UserRound,PawPrint,Expand,ArrowLeft,ArrowRight,
 import {emptyPetState as initialState,withoutUntouchedPetSeeds} from '../public/shared/seed-policy.js';
 import {assetUrl} from '../public/shared/routes.js';
 import {registerMemoryTools} from './web-tools.js';
-import {openStore,validateState,upsertPet,upsertMemory,upsertRelationship,deleteMemory,deletePet,createBackup,parseBackup} from './store.js';
+import {openStore,validateState,upsertPet,upsertMemory,upsertRelationship,deleteMemory,deletePet,createBackup,parseBackup,matchesMemoryFilter} from './store.js';
 
 const $ = selector => document.querySelector(selector);
 const icons = {Archive,Plus,UserRound,PawPrint,Expand,ArrowLeft,ArrowRight,ArrowUpRight,Heart,Search,X,ImagePlus,Feather,Check,Camera,Pencil,Printer,Trash2,Download,Upload,MapPin,BookOpen};
@@ -78,7 +78,7 @@ function renderFeature(){
 }
 function renderMemories(){
   const query=$('#search').value.trim().toLowerCase();
-  let memories=petMemories().filter(m=>filter!=='together'||m.petIds.length>1);
+  let memories=petMemories().filter(m=>matchesMemoryFilter(m,filter));
   if(query)memories=memories.filter(m=>[m.title,m.date,m.location,m.human,m.pet,...m.petIds.map(id=>petById(id)?.name||'')].join(' ').toLowerCase().includes(query));
   if($('#sort').value==='asc')memories.reverse();
   document.querySelectorAll('[data-filter]').forEach(b=>{const active=b.dataset.filter===filter;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
@@ -165,7 +165,7 @@ $('#save-album').onclick=async()=>{const button=$('#save-album');button.disabled
  const next=await projectStore.save({id:editingAlbum?.id||crypto.randomUUID(),title:$('#album-title').value,source:'pet',sample:false,photos:memories.map(m=>({id:m.id,image:m.image||fallbackPhoto,title:m.title,date:m.date,story:m.human,petStory:m.pet,narratorName:narratorFor(m).name,sample:m.sample})),editor:{memoryIds:memories.map(m=>m.id),memoryRefs:Object.fromEntries(memories.map(m=>[m.id,m.petIds]))}},editingAlbum?.revision||0);
  editingAlbum=next;history.replaceState(null,'',`?project=${encodeURIComponent(next.id)}#memories`);button.textContent='更新这本相册';$('#album-status').replaceChildren(document.createTextNode(`「${next.title}」已保存 · ${next.photos.length} 张照片 · `));const a=document.createElement('a');a.href=roomUrl(next.id);a.textContent='在宫殿打开这本相册 →';$('#album-status').append(a);
  }catch(e){$('#album-status').textContent=e.message;}finally{button.disabled=false;}};
-async function initAlbums(){try{projectStore=await openProjects();await migrateLegacy(projectStore);const id=new URLSearchParams(location.search).get('project');if(!id)return;const album=await projectStore.get(id);if(!album||album.source!=='pet')throw new Error('未找到这本宠物相册，请从我的项目重新打开。');editingAlbum=album;
+async function initAlbums(){try{projectStore=await openProjects();const {failed}=await migrateLegacy(projectStore);if(failed.length)$('#album-status').textContent=failed[0].notice;const id=new URLSearchParams(location.search).get('project');if(!id)return;const album=await projectStore.get(id);if(!album||album.source!=='pet')throw new Error('未找到这本宠物相册，请从我的项目重新打开。');editingAlbum=album;
  await persist(s=>{let next=s;for(const ph of album.photos){const old=s.memories.find(m=>m.id===ph.id);if(old)continue;const refs=(album.editor.memoryRefs?.[ph.id]||old?.petIds||[s.activePetId]).filter(id=>s.pets.some(p=>p.id===id));next=upsertMemory(next,{id:ph.id,petIds:refs.length?refs:[s.activePetId],narratorId:old?.narratorId||null,narratorName:ph.narratorName||'小伙伴',title:ph.title||album.title,date:/^\d{4}-\d{2}-\d{2}$/.test(ph.date)?ph.date:today(),human:ph.story,pet:ph.petStory,image:ph.image,sample:ph.sample,location:old?.location||'',createdAt:old?.createdAt||album.createdAt});}return next;});
  album.photos.forEach(p=>selectedPhotos.add(p.id));$('#album-title').value=album.title;$('#save-album').textContent='更新这本相册';$('#album-status').textContent=`已打开「${album.title}」 · ${album.photos.length} 张照片；保存会更新同一本相册。`;render();
  }catch(e){$('#album-status').textContent=e.message;}}

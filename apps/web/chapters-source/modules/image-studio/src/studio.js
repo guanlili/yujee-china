@@ -3,6 +3,7 @@ import {openProjects,migrateLegacy,roomUrl} from '../public/shared/projects.js';
 mountBrand('travel');
 import './studio.css';
 import {palettes,processPixels,clamp} from './pixels.js';
+import {validSaved,canRestoreDraft} from './draft.js';
 const $=s=>document.querySelector(s);
 import {legacyTravelDefaults,isPristineTravelDraft} from '../public/shared/seed-policy.js';
 import {assetUrl} from '../public/shared/routes.js';
@@ -87,7 +88,6 @@ $('#save').onclick=()=>saveProject();
 $('#save-project').onclick=()=>saveProject();
 $('#new-project').onclick=()=>{editingProject=null;state=defaults();$('#project-name').value='';history.replaceState(null,'',location.pathname);$('#project-status').textContent='新相册 · 原相册仍保存在宫殿中';photoList();changed();};
 $('#reset').onclick=()=>{if(!window.confirm('重置后会替换当前浏览器中的手帐。已导出的文件不会受影响。继续吗？'))return;editingProject=null;state=defaults();$('#project-name').value='';history.replaceState(null,'',location.pathname);compare=false;$('#compare').textContent='查看原图';$('#compare').setAttribute('aria-pressed','false');photoList();changed();toast('已新建空白手帐。')};
-function validSaved(v){return v?.version===1&&Array.isArray(v.photos)&&v.photos.length<=12&&v.photos.every(p=>typeof p.src==='string'&&(p.src.startsWith('data:image/')||p.src.startsWith('./photos/')||p.src.startsWith('/image-studio/photos/')))&&palettes.some(p=>p.id===v.palette)&&['collage','cover','full'].includes(v.layout)}
 
 async function saveProject(){const buttons=[$('#save'),$('#save-project')];buttons.forEach(b=>b.disabled=true);try{
  if(!projectStore)throw new Error('相册保存不可用，请刷新后重试。');
@@ -96,10 +96,20 @@ async function saveProject(){const buttons=[$('#save'),$('#save-project')];butto
  const project=await projectStore.save({id:editingProject?.id||crypto.randomUUID(),title,source:'travel',sample:false,photos,editor:{...snapshot,photos:snapshot.photos.map((p,i)=>({...p,src:photos[i].image}))}},editingProject?.revision||0);
  editingProject=project;state.projectId=project.id;state.projectRevision=project.revision;$('#project-name').value=project.title;history.replaceState(null,'',`?project=${encodeURIComponent(project.id)}`);await persist();$('#project-status').replaceChildren(document.createTextNode(`「${project.title}」已保存 · ${photos.length} 张照片 · `));const a=document.createElement('a');a.href=roomUrl(project.id);a.textContent='在宫殿打开这本相册 →';$('#project-status').append(a);toast('相册已保存，再次保存会更新同一本。');
  }catch(e){$('#project-status').textContent=e.message;}finally{buttons.forEach(b=>b.disabled=false);}}
-async function init(){try{projectStore=await openProjects();await migrateLegacy(projectStore);db=await openDB();const saved=await readSaved();const query=new URLSearchParams(location.search).get('project');if(saved&&isPristineTravelDraft(saved))await projectStore.migrate('travel-seed-archive-v1',saved,[]);
+async function init(){
+ // 先读只属于本页的草稿。相册库是跨页面共享的（另一个标签页占着就会 onblocked），
+ // 它出问题时不该连累用户自己的草稿——宠物页的 init() 就是这个顺序，这里原先写反了。
+ let saved;
+ try{db=await openDB();saved=await readSaved();}catch(e){$('#save-state').textContent='请导出备份或成品后再重试本地保存';}
+ const query=new URLSearchParams(location.search).get('project');
+ const restorable=canRestoreDraft(saved,query,isPristineTravelDraft);
+ // 草稿只依赖上面那一步，先落进 state；关联相册查不到也不影响它显示出来。
+ if(restorable){state={...defaults(),...saved};$('#project-name').value=state.title;$('#save-state').textContent='已恢复本地草稿';}
+ try{projectStore=await openProjects();const {failed}=await migrateLegacy(projectStore);if(failed.length)$('#project-status').textContent=failed[0].notice;
+ if(saved&&isPristineTravelDraft(saved))await projectStore.migrate('travel-seed-archive-v1',saved,[]);
  if(query){const p=await projectStore.get(query);if(!p||p.source!=='travel')throw new Error('没有找到这本旅行相册，请从我的项目重新打开。');editingProject=p;state={...defaults(),...p.editor,photos:p.photos.map(ph=>({id:ph.id,src:ph.image,name:ph.title,sample:ph.sample}))};$('#project-name').value=p.title;$('#project-status').textContent=`正在编辑「${p.title}」 · 保存会更新同一本相册`;}
- else if(validSaved(saved)&&!isPristineTravelDraft(saved)){state={...defaults(),...saved};if(state.projectId){const p=await projectStore.get(state.projectId);if(p)editingProject={...p,revision:state.projectRevision||p.revision};}else editingProject=await projectStore.get('legacy-travel-album');$('#project-name').value=editingProject?.title||state.title;$('#save-state').textContent='已恢复本地草稿';}
+ else if(restorable){if(state.projectId){const p=await projectStore.get(state.projectId);if(p)editingProject={...p,revision:state.projectRevision||p.revision};}else editingProject=await projectStore.get('legacy-travel-album');if(editingProject?.title)$('#project-name').value=editingProject.title;}
+ }catch(e){$('#project-status').textContent=e.message;}
  state.selected=clamp(state.selected,0,Math.max(0,state.photos.length-1));
- }catch(e){$('#project-status').textContent=e.message;$('#save-state').textContent='请导出备份或成品后再重试本地保存';}
  try{await document.fonts.ready;}catch{}photoList();ready=true;await render();}
 init();

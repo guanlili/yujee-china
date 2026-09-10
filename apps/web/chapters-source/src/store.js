@@ -109,6 +109,15 @@ function upsert(state, key, value) {
 export const upsertPet = (state, pet) => upsert(state, 'pets', pet);
 export const upsertMemory = (state, memory) => upsert(state, 'memories', memory);
 export const upsertRelationship = (state, relationship) => upsert(state, 'relationships', relationship);
+/**
+ * 回忆列表的三个筛选页签共用这一条谓词。
+ * 'mine' 的判据是「不是随包附带的示例」，与 'together' 各管各的维度——
+ * 早先把两者写在同一个 || 链里，导致 'mine' 恒真、和「全部回忆」没有区别。
+ */
+export const matchesMemoryFilter = (memory, filter) =>
+  (filter !== 'together' || memory.petIds.length > 1) &&
+  (filter !== 'mine' || !memory.sample);
+
 export function deleteMemory(state, memoryId) {
   const current = validateState(state);
   current.memories = current.memories.filter(memory => memory.id !== memoryId);

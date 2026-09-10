@@ -90,11 +90,40 @@ export function legacyProjects(kind, raw) {
   if(kind==='travel') return [{id:'legacy-travel-album',source:'travel',title:raw.title||'我的旅行手帐',sample:raw.photos.every(p=>p.sample),photos:raw.photos.map(p=>({id:p.id,image:absolutePhoto(p.src,'image-studio'),title:p.name,date:raw.date,story:raw.caption,sample:p.sample})),editor:{...raw,photos:raw.photos.map(p=>({...p,src:absolutePhoto(p.src,'image-studio')}))}}];
   return raw.length?[{id:'legacy-palace-album',source:'palace',title:'我的收藏',sample:false,photos:raw.map((p,i)=>({id:`legacy-photo-${i}`,image:p.image,title:p.title,date:p.date,story:p.story,sample:false}))}]:[];
 }
+// 迁移失败时给用户看的话。技术细节留在 failed[].error 里，不往界面上摆。
+const MIGRATION_NOTICE={
+  pet:'旧的宠物数据这次没能读进来，原数据已保留，下次打开会再试一次。',
+  travel:'旧的旅行手帐这次没能读进来，原数据已保留，下次打开会再试一次。',
+  palace:'旧的收藏这次没能读进来，原数据已保留，下次打开会再试一次。',
+};
+/**
+ * 三个数据源各读各的：任何一个读坏了都不该连累其余两个，更不该让整个页面挂掉
+ * （宠物页只会少一行状态文字，旅行页会连用户自己的草稿一起读不出来，宫殿页直接白屏）。
+ * 原始数据一律不动，失败的源下次进页面会自动重试。
+ * 返回 {failed}：三个调用方都会把 failed[0].notice 显示出来——迁移失败必须让用户看见，
+ * 否则他会以为旧数据被弄丢了。
+ */
 export async function migrateLegacy(store, factory=globalThis.indexedDB, local=globalThis.localStorage) {
-  const pet=await readLegacy(factory,'yujee-pet-space-v1','data','state');
-  if(pet){const clean=withoutUntouchedPetSeeds(pet,await store.list());await store.migrate('pet-v1',pet,clean.memories.length?legacyProjects('pet',clean):[]);}
-  const travel=await readLegacy(factory,'yujee-travel-zine-v1','studio','current');
-  if(travel){const linked=travel.projectId?await store.get(travel.projectId):null;await store.migrate('travel-v1',travel,linked||isPristineTravelDraft(travel)||!travel.photos.length?[]:legacyProjects('travel',travel));}
-  const raw=local?.getItem('yujee-memories');
-  if(raw){const memories=JSON.parse(raw);if(!Array.isArray(memories))throw new Error('旧收藏数据格式异常，原数据已保留。');await store.migrate('palace-v1',raw,legacyProjects('palace',memories));}
+  const failed=[];
+  const step=async(source,run)=>{try{await run();}catch(error){failed.push({source,error,notice:MIGRATION_NOTICE[source]});}};
+  await step('pet',async()=>{
+    const pet=await readLegacy(factory,'yujee-pet-space-v1','data','state');
+    if(!pet)return;
+    const clean=withoutUntouchedPetSeeds(pet,await store.list());
+    await store.migrate('pet-v1',pet,clean.memories.length?legacyProjects('pet',clean):[]);
+  });
+  await step('travel',async()=>{
+    const travel=await readLegacy(factory,'yujee-travel-zine-v1','studio','current');
+    if(!travel)return;
+    const linked=travel.projectId?await store.get(travel.projectId):null;
+    await store.migrate('travel-v1',travel,linked||isPristineTravelDraft(travel)||!travel.photos.length?[]:legacyProjects('travel',travel));
+  });
+  await step('palace',async()=>{
+    const raw=local?.getItem('yujee-memories');
+    if(!raw)return;
+    const memories=JSON.parse(raw);
+    if(!Array.isArray(memories))throw new Error('旧收藏数据格式异常，原数据已保留。');
+    await store.migrate('palace-v1',raw,legacyProjects('palace',memories));
+  });
+  return {failed};
 }
