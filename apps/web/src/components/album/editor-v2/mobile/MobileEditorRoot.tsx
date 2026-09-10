@@ -189,6 +189,9 @@ export function MobileEditorRoot({
     controlledPhotoFilter === undefined ? localPhotoFilter : controlledPhotoFilter;
   const setPhotoFilter = controlledSetPhotoFilter ?? setLocalPhotoFilter;
   const [filterPersistError, setFilterPersistError] = useState<string | null>(null);
+  /** 服务端抠图 mask 到货的世代号:bump 一次 → 重解一遍图 URL(见 usePhotoMaskSource)。 */
+  const [maskEpoch, setMaskEpoch] = useState(0);
+  const onMasksReady = useCallback(() => setMaskEpoch((n) => n + 1), []);
   /** 点了「重试」但结果还没回来 —— 理由同桌面那枚:防抖 + 网络往返期间不能看着像没反应。 */
   const [filterRetrying, setFilterRetrying] = useState(false);
   const lastPersistedFilter = useRef(
@@ -317,7 +320,7 @@ export function MobileEditorRoot({
       display.dispose();
       thumb.dispose();
     };
-  }, [photoIds, photoFilter]);
+  }, [photoIds, photoFilter, maskEpoch]);
 
   // 全局创作设置 OCC 基线(Phase 2B):滤镜保存器与画板背景写入共用。与
   // structureRevisionRef 同口径 —— draftChapters/detail 更新时归位。
@@ -899,8 +902,10 @@ export function MobileEditorRoot({
     // 游客零 R2 写入:确认是真实账号才开自动对账补传(服务端对游客也是 403)。
     enabled: Boolean(viewerSession.user && !viewerSession.user.isAnonymous),
   });
-  // 抠图 mask 的取数口(同桌面):不接的话手机端只有漫水填充那套。
-  usePhotoMaskSource(detail.album.id);
+  // 抠图 mask(同桌面):渲染优先服务端 isnet 的分割结果;「开着抠图的那批」变化时
+  // 请服务端补 mask(不等结果),到货后 bump maskEpoch 让下面那个取图 effect 重来一次
+  // —— 不重来的话这一整个会话都停在兜底那版,用户得刷新。
+  usePhotoMaskSource(detail.album.id, photoFilter, onMasksReady);
   const share = useShareLink(detail.album.id, locale, aT);
 
   // 导出闸门:ChatPanel 挂载即拉 story-progress 并经 setExportGateUi 推锁态过来

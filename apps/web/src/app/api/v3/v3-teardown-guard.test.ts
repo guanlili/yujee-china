@@ -89,6 +89,7 @@ test('web keeps the v1 infrastructure route whitelist used by V3', () => {
     'apps/web/src/app/api/v1/albums/[uuid]/pages/reorder/route.ts',
     // 抠图 mask 的签名 GET(2026-09-09 照片视觉档案那批):渲染优先用服务端 isnet
     // 的分割结果,与 photo-originals 同族(同一套 photoId / R2 / album_photos 台账)。
+    'apps/web/src/app/api/v1/albums/[uuid]/photo-masks/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/photo-masks/urls/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/photo-originals/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/photo-originals/upload-url/route.ts',

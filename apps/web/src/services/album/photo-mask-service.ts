@@ -47,29 +47,45 @@ export type EnsureCutoutMasksDeps = {
   ) => Promise<{ profiles: Record<string, unknown>; masks: Record<string, string> }>;
 };
 
+/**
+ * 降级的**原因**。两者的处理方式完全不同 —— 一个是改 Vercel 配置,一个是查 worker
+ * —— 所以绝不能糊成一句「没成功」。null = 没降级(含「本来就没事可做」)。
+ */
+export type CutoutMaskDegradation = 'clip-not-configured' | 'clip-call-failed';
+
 export type EnsureCutoutMasksResult = {
   /** 这一轮真的写成了 mask 的照片。 */
   created: string[];
   /** 因为超过单轮上限而留给下一轮的张数。 */
   deferred: number;
+  /** 这一轮有没有静默降级到浏览器端抠图,以及为什么。 */
+  degraded: CutoutMaskDegradation | null;
 };
 
-const EMPTY: EnsureCutoutMasksResult = { created: [], deferred: 0 };
+const EMPTY: EnsureCutoutMasksResult = { created: [], deferred: 0, degraded: null };
 
 export async function ensureCutoutMasks(
   albumId: string,
   photoIds: string[],
   deps: EnsureCutoutMasksDeps = {},
 ): Promise<EnsureCutoutMasksResult> {
+  const wanted = [...new Set(photoIds)];
+  if (wanted.length === 0) return EMPTY;
+
   const requestMasks = deps.requestMasks
     ?? (clipWorkerClient.isConfigured()
       ? (images: { photoId: string; dataUrl: string }[]) => clipWorkerClient.buildProfilesWithMasks(images)
       : null);
-  // 没配 CLIP worker = 这条能力不存在,安静降级(渲染退回浏览器端抠图)。
-  if (!requestMasks) return EMPTY;
-
-  const wanted = [...new Set(photoIds)];
-  if (wanted.length === 0) return EMPTY;
+  // 没配 CLIP worker = 这条能力不存在,降级到浏览器端漫水填充。**降级要有声音**:
+  // 静默的话就是「功能上线了、用户拿到的还是被啃残的抠图、没人知道」。
+  // warn 级 + 固定的可检索前缀,不是 debug 一行。
+  if (!requestMasks) {
+    logger.warn(
+      { albumId, photoIds: wanted.length, reason: 'clip-not-configured' },
+      'cutout mask degraded: AGENT_CLIP_BASE_URL 未配置,抠图退回浏览器端漫水填充',
+    );
+    return { created: [], deferred: 0, degraded: 'clip-not-configured' };
+  }
 
   try {
     const readOriginal = deps.readOriginal ?? ((key: string) => r2.getObject(key));
@@ -96,7 +112,7 @@ export async function ensureCutoutMasks(
         dataUrl: `data:${PHOTO_ORIGINAL_CONTENT_TYPE};base64,${Buffer.from(bytes).toString('base64')}`,
       });
     }
-    if (images.length === 0) return { created: [], deferred };
+    if (images.length === 0) return { created: [], deferred, degraded: null };
 
     const { profiles: freshProfiles, masks } = await requestMasks(images);
 
@@ -126,12 +142,37 @@ export async function ensureCutoutMasks(
 
     if (created.length > 0) await albumPhotoRepo.setProfiles(albumId, updates, db);
     logger.info({ albumId, requested: wanted.length, created: created.length, deferred }, 'cutout masks');
-    return { created, deferred };
+    return { created, deferred, degraded: null };
   } catch (error) {
     // 尽力而为:推理挂了/网络断了只影响抠图质量,渲染会退回浏览器端那套。
-    logger.warn({ albumId, err: String(error) }, 'ensureCutoutMasks failed; falling back to browser cutout');
-    return EMPTY;
+    // 与「没配置」分开报:那个要改配置,这个要查 worker。
+    logger.warn(
+      { albumId, photoIds: wanted.length, reason: 'clip-call-failed', err: String(error) },
+      'cutout mask degraded: CLIP worker 调用失败,抠图退回浏览器端漫水填充',
+    );
+    return { created: [], deferred: 0, degraded: 'clip-call-failed' };
   }
+}
+
+/**
+ * 手工抠图那条路的入口(settings PATCH 落库之后,浏览器另起一次调用触发)。
+ *
+ * **photoIds 由服务端自己从 `albums.photo_filter.cutouts` 读**,不收调用方的清单:
+ * 这既是归属边界(不给一个「替任意 photoId 烧推理」的口),也天然与
+ * `ensureCutoutMasks` 的判据对齐 —— 「现在开着抠图但还没 maskKey」的那批,不管是
+ * 人点的还是 Agent 干的。同一个按钮同一本书,质量不能取决于谁点的。
+ *
+ * 幂等且廉价:全都有 mask 时只多两次库读就早退。
+ */
+export async function ensureCutoutMasksForAlbum(
+  userId: string,
+  albumId: string,
+  deps: EnsureCutoutMasksDeps = {},
+): Promise<EnsureCutoutMasksResult> {
+  const { album } = await collaborationService.requireAccess(userId, albumId);
+  const cutouts = Object.keys(album.photoFilter?.cutouts ?? {});
+  if (cutouts.length === 0) return EMPTY;
+  return ensureCutoutMasks(albumId, cutouts, deps);
 }
 
 /** 一次最多问几张 mask 的 URL。与画板一屏能显示的图槽数量同量级,足够用。 */
@@ -182,5 +223,6 @@ export async function getCutoutMaskUrls(
  */
 export const photoMaskService = {
   ensureCutoutMasks,
+  ensureCutoutMasksForAlbum,
   getCutoutMaskUrls,
 };

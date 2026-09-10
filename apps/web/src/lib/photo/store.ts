@@ -741,6 +741,14 @@ export const photoStore = {
     maskCache.clear();
   },
 
+  // 忘掉这几张的 mask 记忆。**服务端刚把 mask 生成出来时必须调**:此前的渲染已经
+  // 记住「这张没有 mask」并退回了浏览器端抠图,不清的话这一整个会话都拿不到新 mask,
+  // 用户要刷新页面才看得到好的那版。不传参数 = 全清。
+  forgetPhotoMasks(photoIds?: string[]): void {
+    if (!photoIds) maskCache.clear();
+    else for (const photoId of photoIds) maskCache.delete(photoId);
+  },
+
   // 规范上传档:手动备份/对账补传要传的就是这一份 —— 无滤镜、无用户偏好,只是把
   // 本地原图(HEIC 先转)按 backup 档位(3400/0.82)降采样成 JPEG。绝不读远端:
   // 本地原本就没有原图时上传等于把刚从 R2 下载的字节又传回 R2,纯粹浪费带宽,

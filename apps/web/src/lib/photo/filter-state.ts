@@ -151,3 +151,15 @@ export function photoFilterStatesEqual(
 ): boolean {
   return stableStringify(normalizePhotoFilterState(a)) === stableStringify(normalizePhotoFilterState(b));
 }
+
+/**
+ * 「现在开着抠图的是哪几张」的稳定签名(排序后拼串)。
+ *
+ * 服务端 mask 生成的触发判据就是它变没变。**必须与键序无关** —— cutouts 的键序由
+ * 合并顺序决定,拿原始对象比较会让同一批照片被反复判成「变了」,每次滤镜保存都白烧
+ * 一次 4 秒/张的推理。没开抠图返回空串,调用方据此完全不发请求。
+ */
+export function cutoutSignature(state: PhotoFilterState | null | undefined): string {
+  const ids = Object.keys(state?.cutouts ?? {}).sort();
+  return ids.join(',');
+}

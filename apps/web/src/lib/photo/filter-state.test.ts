@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   LUT_DEFINITIONS,
   PhotoFilterStateSchema,
+  cutoutSignature,
   effectiveRenderVersion,
   isCutout,
   normalizePhotoFilterState,
@@ -106,4 +107,27 @@ test('toggleCutout: 全关之后不留空的 cutouts 壳 —— 空对象会让�
   const on = toggleCutout({ default: null }, 'p1');
   const off = toggleCutout(on, 'p1');
   assert.equal(off.cutouts, undefined);
+});
+
+// ── 抠图集合的签名 ────────────────────────────────────────────────────────
+// 「现在开着抠图的是哪几张」是触发服务端 mask 生成的唯一判据。它必须与键序无关
+// (合并顺序会变),否则同一批照片会被反复当成「变了」,每次滤镜保存都白烧一次推理。
+test('cutoutSignature: 与键序无关,只认集合', () => {
+  assert.equal(
+    cutoutSignature({ default: null, cutouts: { b: true, a: true } }),
+    cutoutSignature({ default: null, cutouts: { a: true, b: true } }),
+  );
+});
+
+test('cutoutSignature: 没开抠图 / 没有滤镜 → 空串(调用方据此完全不发请求)', () => {
+  assert.equal(cutoutSignature(null), '');
+  assert.equal(cutoutSignature({ default: null }), '');
+  assert.equal(cutoutSignature({ default: { lutId: 'night-film', strength: 50 } }), '');
+});
+
+test('cutoutSignature: 增删一张就变(否则新开的那张永远不去生成 mask)', () => {
+  const one = cutoutSignature({ default: null, cutouts: { a: true } });
+  assert.notEqual(one, cutoutSignature({ default: null, cutouts: { a: true, b: true } }));
+  assert.notEqual(one, cutoutSignature({ default: null, cutouts: { b: true } }));
+  assert.notEqual(one, '');
 });

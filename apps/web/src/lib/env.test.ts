@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { assertProductionEnv, isRealProduction } from './env';
+import { assertProductionEnv, isRealProduction, productionWarnings } from './env';
 
 const FULL_PROD = {
   DATABASE_URL: 'postgresql://u:p@db.example.com:5432/yujee',
@@ -148,4 +148,58 @@ test('assertProductionEnv: 真生产配了 WAFFO_MERCHANT_ID 且 WAFFO_ENV=prod 
     /WAFFO_STORE_ID/,
     '漏配 WAFFO_STORE_ID 应当 fail-fast——webhook store 门 fail-closed 会拒收所有事件、不发积分',
   );
+});
+
+// ── 抠图 mask 的降级必须有声音 ─────────────────────────────────────────────
+// 没配 AGENT_CLIP_BASE_URL 时,整条服务端 mask 链路会**静默**退回浏览器端漫水填充
+// (那正是 2026-08-29 验证否决的那套)。功能"上线了",用户拿到的还是被啃残的抠图,
+// 而且没有任何信号。这正是这批一路在打的病:东西造好了、某一环没接、没人知道。
+//
+// 处置口径:**不硬失败**(断网/worker 挂了时退回兜底仍然强过整个抠不了),
+// 但真生产缺配置要在启动期喊一声。
+
+test('productionWarnings: 真生产没配 AGENT_CLIP_BASE_URL → 出一条启动告警(不抛)', () => {
+  const raw = { ...FULL_PROD, NODE_ENV: 'production', VERCEL_ENV: 'production' };
+  assert.doesNotThrow(() => assertProductionEnv(raw));
+  const warnings = productionWarnings(raw);
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0]!, /AGENT_CLIP_BASE_URL/);
+  // 说清后果,不是一句「未配置」。
+  assert.match(warnings[0]!, /抠图|cutout/i);
+});
+
+test('productionWarnings: 配了 AGENT_CLIP_BASE_URL 就不再唠叨', () => {
+  const warnings = productionWarnings({
+    ...FULL_PROD,
+    NODE_ENV: 'production',
+    VERCEL_ENV: 'production',
+    AGENT_CLIP_BASE_URL: 'https://yujee-agent-clip.fly.dev',
+  });
+  assert.deepEqual(warnings, []);
+});
+
+test('productionWarnings: 非生产环境不唠叨(本地零配置仍然安静)', () => {
+  assert.deepEqual(productionWarnings({ ...FULL_PROD, NODE_ENV: 'development' }), []);
+});
+
+test('assertProductionEnv: 只配了 AGENT_CLIP_SECRET 却没配 base URL → 当场抛(半配等于没配)', () => {
+  assert.throws(
+    () => assertProductionEnv({
+      ...FULL_PROD,
+      NODE_ENV: 'production',
+      VERCEL_ENV: 'production',
+      AGENT_CLIP_SECRET: 'a-real-clip-secret',
+    }),
+    /AGENT_CLIP_BASE_URL/,
+  );
+});
+
+test('assertProductionEnv: 两个都配齐 → 放行', () => {
+  assert.doesNotThrow(() => assertProductionEnv({
+    ...FULL_PROD,
+    NODE_ENV: 'production',
+    VERCEL_ENV: 'production',
+    AGENT_CLIP_BASE_URL: 'https://yujee-agent-clip.fly.dev',
+    AGENT_CLIP_SECRET: 'a-real-clip-secret',
+  }));
 });

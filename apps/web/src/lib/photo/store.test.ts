@@ -1356,3 +1356,35 @@ test('URL 缓存也按「抠没抠、用的哪种抠法」分键 —— 否则�
     urlCtor.revokeObjectURL = had.revoke;
   }
 });
+
+test('forgetPhotoMasks 清掉记忆,mask 到货后能被重新问一次', async () => {
+  const photoId = 'mask-forget';
+  fakeDb.derived.set(`${photoId}@display`, new Blob(['base'], { type: 'image/jpeg' }));
+  fakeDb.derived.set(`${photoId}@thumb`, new Blob(['base'], { type: 'image/jpeg' }));
+  let asked = 0;
+  let mask: Blob | undefined;
+  photoStore.setPhotoMaskFetcher(async () => { asked += 1; return mask; });
+  try {
+    await withFakeCutout({
+      applyToBlob: async () => new Blob(['cut-local'], { type: 'image/webp' }),
+      applyMaskToBlob: async () => new Blob(['cut-mask'], { type: 'image/webp' }),
+    }, async () => {
+      // 第一次:mask 还没生成好 → 退回浏览器端,并记住「这张没有 mask」。
+      assert.equal(await (await photoStore.getTierBlob(photoId, 'display', cutoutState(photoId)))!.text(), 'cut-local');
+      // 换一档再取:记忆是按 photoId 记的,四个档位/导出不该各下载一次 mask。
+      await photoStore.getTierBlob(photoId, 'thumb', cutoutState(photoId));
+      assert.equal(asked, 1, '同一张在一次会话里只问一次');
+
+      // 服务端把 mask 生成好了。不清记忆的话这一整个会话都拿不到它。
+      mask = new Blob(['mask-bytes'], { type: 'image/png' });
+      photoStore.forgetPhotoMasks([photoId]);
+      assert.equal(
+        await (await photoStore.getTierBlob(photoId, 'display', cutoutState(photoId)))!.text(),
+        'cut-mask',
+      );
+      assert.equal(asked, 2);
+    });
+  } finally {
+    photoStore.setPhotoMaskFetcher(null);
+  }
+});

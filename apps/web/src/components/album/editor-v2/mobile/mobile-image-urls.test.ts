@@ -93,7 +93,13 @@ test('移动端不再把图片 URL 的提交器挂在 useMemo 外面', () => {
   // 两档仍然都要取,依赖仍然是 photoIds + photoFilter。
   assert.match(root, /getTierUrls\(photoIds,\s*'display',\s*photoFilter\)/);
   assert.match(root, /getTierUrls\(photoIds,\s*'thumb',\s*photoFilter\)/);
-  assert.match(root, /\[photoIds,\s*photoFilter\]/);
+  // 依赖里必须有 photoIds 与 photoFilter(这条守的是「换书/换滤镜要重解」)。
+  // 不写死成恰好两项 —— 2026-09-10 加了 maskEpoch:服务端抠图 mask 到货后要重解一遍,
+  // 否则整个会话都停在漫水填充那版。多一个合理依赖不该判失败,少了这两个才是 bug。
+  const deps = /\}, \[(photoIds[^\]]*)\]\);/.exec(root)?.[1] ?? '';
+  assert.ok(deps.length > 0, '取图 effect 应有依赖数组');
+  assert.match(deps, /\bphotoIds\b/);
+  assert.match(deps, /\bphotoFilter\b/);
 });
 
 test('桌面那条路不受影响 —— 它本来就不靠这个提交器出首帧', () => {

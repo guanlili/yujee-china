@@ -704,6 +704,17 @@ function EditorShell({
     void coordinator.current?.reloadPhotoFilter(photoFilter);
   }, [photoFilter, canvasEpoch, initialPages.length, coordinator]);
 
+  /* 抠图 mask(2026-09-09 那批,手工路径 2026-09-10 补齐):渲染优先用服务端 isnet 的
+     分割结果,拿不到才退回浏览器端的漫水填充;并在「开着抠图的那批」变化时请服务端把
+     缺的 mask 补上(不等结果)。挂在 EditorShell 而不是 EditorBook —— 这里才有 live 的
+     photoFilter(EditorBook 拿到的是挂载那一刻的 initialPhotoFilter),而且它不随画布重挂。 */
+  const onMasksReady = useCallback(() => {
+    // 新 mask 到货 → 之前那次渲染记住的是「这张没有 mask」(已退回兜底),
+    // 重来一次画板才会拿到好的那版,否则用户要刷新页面。
+    void coordinator.current?.reloadPhotoFilter(photoFilter);
+  }, [coordinator, photoFilter]);
+  usePhotoMaskSource(detail.album.id, photoFilter, onMasksReady);
+
   // Persist only the filter field after 180 ms idle. The production controller
   // coalesces drafts, aborts in-flight saves, and suppresses stale/unmounted results.
   useEffect(() => {
@@ -1627,9 +1638,6 @@ function EditorBook({
     ),
     enabled: Boolean(viewerSession.user && !viewerSession.user.isAnonymous),
   });
-  // 抠图 mask 的取数口(2026-09-09 照片视觉档案那批):渲染优先用服务端 isnet 的分割
-  // 结果,拿不到才退回浏览器端的漫水填充。与身份无关 —— 服务端按 requireAccess 兜底。
-  usePhotoMaskSource(detail.album.id);
   useEffect(() => {
     // The canvas effect scopes to the SHARED outer root (created by the stable shell)
     // so it can reach the topbar + modals it wires (setLang walks the whole tree). Its

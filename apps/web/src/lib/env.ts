@@ -163,9 +163,45 @@ export function assertProductionEnv(raw: RawEnv): void {
         '必须显式设置 WAFFO_STORE_ID。',
     );
   }
+
+  // 只配了 CLIP worker 的密钥、却没配它的 base URL:半配等于没配 —— 客户端认的是
+  // base URL,secret 单独存在毫无作用,而配置的人显然以为已经开了这条能力。
+  // 反过来(只配 base URL)是**合法**的:secret 会回落 AGENT_SHARED_SECRET,
+  // 与 engine 的 `grouping_clip_secret or agent_shared_secret` 同一条规则。
+  if (raw.AGENT_CLIP_SECRET?.trim() && !raw.AGENT_CLIP_BASE_URL?.trim()) {
+    throw new Error(
+      '生产环境配了 AGENT_CLIP_SECRET 却没配 AGENT_CLIP_BASE_URL。' +
+        '客户端只认 base URL,只配密钥这条抠图 mask 链路根本不会被启用 —— ' +
+        '要么两个都配,要么两个都别配。',
+    );
+  }
+}
+
+/**
+ * 真生产下的**启动期告警**(不抛,只喊)。
+ *
+ * 与上面那些 throw 的区别:这些是「能跑,但有一块能力静默降级了」。硬失败不合适 ——
+ * 断网/worker 挂了的时候退回兜底仍然强过整个功能不可用;但没有信号就是这批一路在打
+ * 的那种病:东西造好了、某一环没接、没人知道。
+ */
+export function productionWarnings(raw: RawEnv): string[] {
+  if (!isRealProduction(raw)) return [];
+  const warnings: string[] = [];
+  if (!raw.AGENT_CLIP_BASE_URL?.trim()) {
+    warnings.push(
+      '[config] AGENT_CLIP_BASE_URL 未配置:抠图(cutout)的服务端分割 mask 链路整条不会启用,'
+        + '所有抠图会静默退回浏览器端的漫水填充 —— 那是 2026-08-29 实测「棚拍人像 5 张 0 张能用」'
+        + '而被否决的算法。用户看到的是被啃残的主体,且没有任何报错。'
+        + '要启用请配 AGENT_CLIP_BASE_URL(2GB CLIP worker,不是 AGENT_BASE_URL 那台)。',
+    );
+  }
+  return warnings;
 }
 
 assertProductionEnv(process.env);
+// 启动期喊一次。console 而不是 pino logger:env 是 logger 的上游依赖,反过来 import
+// 会成环;而且这条必须在任何日志配置生效之前就能被看见。
+for (const warning of productionWarnings(process.env)) console.warn(warning);
 
 export const env = EnvSchema.parse(process.env);
 export type Env = z.infer<typeof EnvSchema>;

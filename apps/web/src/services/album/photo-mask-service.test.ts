@@ -3,9 +3,16 @@ import assert from 'node:assert/strict';
 import type { PhotoProfile } from '@yujee/contracts';
 import { db } from '@/db/client';
 import { albumPhotoRepo } from '@/db/repos/album-photo-repo';
+import { albumRepo } from '@/db/repos/album-repo';
 import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '@/db/repos/__test__/setup';
+import { albumService } from './album-service';
 import { getPhotoProfiles } from './photo-profile-service';
-import { PHOTO_MASK_MAX_PER_RUN, ensureCutoutMasks, getCutoutMaskUrls } from './photo-mask-service';
+import {
+  PHOTO_MASK_MAX_PER_RUN,
+  ensureCutoutMasks,
+  ensureCutoutMasksForAlbum,
+  getCutoutMaskUrls,
+} from './photo-mask-service';
 
 /**
  * 抠图渲染必须用**服务端分割 mask**,不能用浏览器端的漫水填充 —— 后者没有语义,
@@ -261,6 +268,163 @@ test('getCutoutMaskUrls: 别的相册的 photoId 问不出 URL', async (t) => {
     assert.deepEqual(out, {});
   } finally {
     await cleanupUser(other.userId);
+    await cleanupUser(userId);
+  }
+});
+
+// ── 降级必须有声音 ────────────────────────────────────────────────────────
+// 没配 AGENT_CLIP_BASE_URL 时整条链路静默退回漫水填充:功能"上线了",用户拿到的
+// 还是被啃残的抠图,零信号。两种降级的处理方式完全不同(改配置 vs 查 worker),
+// 所以必须**能区分**,不能糊成一句「没成功」。
+test('ensureCutoutMasks: 没配 CLIP worker → degraded 说明是配置问题', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seed('mask-degraded-config', [P1]);
+  try {
+    await albumPhotoRepo.setProfiles(albumId, { [P1]: baseProfile });
+    // 不注入 requestMasks:测试环境没有 AGENT_CLIP_BASE_URL,走的正是生产漏配那条路。
+    const result = await ensureCutoutMasks(albumId, [P1], {});
+    assert.deepEqual(result.created, []);
+    assert.equal(result.degraded, 'clip-not-configured');
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('ensureCutoutMasks: 调用失败 → degraded 说明是 worker 问题,不是配置问题', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seed('mask-degraded-call', [P1]);
+  const d = deps({ requestMasks: async () => { throw new Error('clip worker down'); } });
+  try {
+    await albumPhotoRepo.setProfiles(albumId, { [P1]: baseProfile });
+    const result = await ensureCutoutMasks(albumId, [P1], d.value);
+    assert.equal(result.degraded, 'clip-call-failed');
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('ensureCutoutMasks: 本来就没事可做时不报降级(别刷假警报)', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seed('mask-degraded-quiet', [P1]);
+  try {
+    // 空清单:连「有没有配」都不该问。
+    assert.equal((await ensureCutoutMasks(albumId, [], {})).degraded, null);
+    // 已经有 mask 的照片同理。
+    await albumPhotoRepo.setProfiles(albumId, {
+      [P1]: { ...baseProfile, maskKey: `photo-masks/${albumId}/${P1}.png` },
+    });
+    const d = deps();
+    assert.equal((await ensureCutoutMasks(albumId, [P1], d.value)).degraded, null);
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('ensureCutoutMasks: 成功时 degraded 是 null', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seed('mask-degraded-none', [P1]);
+  const d = deps();
+  try {
+    await albumPhotoRepo.setProfiles(albumId, { [P1]: baseProfile });
+    assert.equal((await ensureCutoutMasks(albumId, [P1], d.value)).degraded, null);
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+// ── 手动抠图也要接服务端 mask ─────────────────────────────────────────────
+// 同一个按钮、同一本书,质量不能取决于是人点的还是 AI 干的。
+test('ensureCutoutMasksForAlbum: 从 albums.photo_filter 自己读「现在开着抠图的那批」', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seed('mask-manual', [P1, P2]);
+  const d = deps();
+  try {
+    await albumPhotoRepo.setProfiles(albumId, { [P1]: baseProfile, [P2]: baseProfile });
+    // 手工只开了 P1(走 settings PATCH 落的 albums.photo_filter)。
+    await albumRepo.update(db, albumId, {
+      photoFilter: { default: null, cutouts: { [P1]: true } },
+    });
+
+    const result = await ensureCutoutMasksForAlbum(userId, albumId, d.value);
+
+    assert.deepEqual(result.created, [P1]);
+    assert.deepEqual(d.state.asked, [[P1]], '没开抠图的那张不该被烧一次推理');
+    assert.equal(
+      (await getPhotoProfiles(albumId))[P1]?.maskKey,
+      `photo-masks/${albumId}/${P1}.png`,
+      '手工开抠图之后 maskKey 必须被填上',
+    );
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('ensureCutoutMasksForAlbum: 一张都没开抠图时零成本空转', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seed('mask-manual-none', [P1]);
+  const d = deps();
+  try {
+    await albumRepo.update(db, albumId, { photoFilter: { default: { lutId: 'night-film', strength: 50 } } });
+    assert.deepEqual((await ensureCutoutMasksForAlbum(userId, albumId, d.value)).created, []);
+    assert.equal(d.state.asked.length, 0);
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('ensureCutoutMasksForAlbum: 非成员一律拒 —— 归属走 requireAccess', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seed('mask-manual-denied', [P1]);
+  const stranger = await makeUser('mask-manual-stranger');
+  const d = deps();
+  try {
+    await assert.rejects(
+      () => ensureCutoutMasksForAlbum(stranger.id, albumId, d.value),
+      (err: unknown) => (err as { code?: string }).code === 'ALBUM_ACCESS_DENIED',
+    );
+    assert.equal(d.state.asked.length, 0);
+  } finally {
+    await cleanupUser(stranger.id);
+    await cleanupUser(userId);
+  }
+});
+
+test('手工开抠图(走真的 updatePhotoFilter)之后,maskKey 会被填上', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seed('mask-manual-e2e', [P1]);
+  const d = deps();
+  try {
+    await albumPhotoRepo.setProfiles(albumId, { [P1]: baseProfile });
+    const before = (await albumRepo.findById(albumId))!.settingsRevision;
+
+    // 这就是 FilterBar 里点一下抠图开关走的那条路(settings PATCH → updatePhotoFilter)。
+    await albumService.updatePhotoFilter(userId, albumId, { default: null, cutouts: { [P1]: true } }, before);
+    // PATCH 本身**不生成 mask**(isnet 单张 ~4s,挂上去用户点一下要等几十秒),
+    // 由浏览器随后另打一枪 —— 也就是下面这个口。
+    const result = await ensureCutoutMasksForAlbum(userId, albumId, d.value);
+
+    assert.deepEqual(result.created, [P1]);
+    assert.equal(
+      (await getPhotoProfiles(albumId))[P1]?.maskKey,
+      `photo-masks/${albumId}/${P1}.png`,
+      '手工开抠图之后 maskKey 必须被填上 —— 否则同一个按钮的质量取决于是谁点的',
+    );
+  } finally {
+    await cleanupUser(userId);
+  }
+});
+
+test('手工路径幂等:mask 已经在了,再打一枪不重烧推理', async (t) => {
+  if (!(await isDbReachable())) return t.skip('db unreachable');
+  const { userId, albumId } = await seed('mask-manual-idem', [P1]);
+  const d = deps();
+  try {
+    await albumPhotoRepo.setProfiles(albumId, { [P1]: baseProfile });
+    await albumRepo.update(db, albumId, { photoFilter: { default: null, cutouts: { [P1]: true } } });
+    await ensureCutoutMasksForAlbum(userId, albumId, d.value);
+    await ensureCutoutMasksForAlbum(userId, albumId, d.value);
+    assert.equal(d.state.asked.length, 1, '第二次应当早退,不再烧一次 4 秒的推理');
+  } finally {
     await cleanupUser(userId);
   }
 });

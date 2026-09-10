@@ -299,3 +299,61 @@ test('编辑器两个壳都注入 mask fetcher —— 少一个那一端就只�
     assert.match(code(shell), /usePhotoMaskSource\(/, `${shell} 应注入 mask fetcher`);
   }
 });
+
+// ── 手动抠图也走服务端 mask ───────────────────────────────────────────────
+// 同一个按钮、同一本书,抠图质量不能取决于是人点的还是 Agent 干的(2026-09-10 拍板)。
+// 手工那条走 settings PATCH,不能在 PATCH 里同步生成(isnet 单张 ~4s,用户点一下
+// 等几十秒),所以是浏览器在滤镜存好之后**不等结果**地另打一枪。
+
+test('手工路径有独立的触发口,photoIds 由服务端自己读,不收调用方清单', () => {
+  const route = code('../../app/api/v1/albums/[uuid]/photo-masks/route.ts');
+  assert.match(route, /ensureCutoutMasksForAlbum\(/);
+  // 不解析请求体 —— 收清单等于给一个「替任意 photoId 烧推理」的口。
+  assert.doesNotMatch(route, /parseBody|photoIds/);
+  const service = code('../../services/album/photo-mask-service.ts');
+  // 判据来自 albums.photo_filter.cutouts,与 Agent 那条路同一个 ensureCutoutMasks。
+  assert.match(service, /ensureCutoutMasksForAlbum[\s\S]{0,600}?photoFilter\?\.cutouts/);
+  assert.match(service, /ensureCutoutMasksForAlbum[\s\S]{0,700}?ensureCutoutMasks\(albumId/);
+});
+
+test('滤镜 PATCH 不生成 mask —— 它必须立刻返回', () => {
+  const service = code('../../services/album/album-service.ts');
+  const body = /async updatePhotoFilter\([\s\S]{0,1800}?\n  \},/.exec(service)?.[0] ?? '';
+  assert.ok(body.length > 0, 'updatePhotoFilter 应存在');
+  assert.doesNotMatch(body, /ensureCutoutMasks/, 'PATCH 里同步生成会让用户点一下等几十秒');
+});
+
+test('浏览器按「开着抠图的那批变了没有」触发,并且不等结果', () => {
+  const hook = code('../../lib/hooks/use-photo-mask-source.ts');
+  assert.match(hook, /cutoutSignature\(/);
+  assert.match(hook, /requestCutoutMasks\(/);
+  // fire-and-forget:不 await 阻塞渲染。
+  assert.match(hook, /void \(async \(\)|\.then\(|void requestCutoutMasks/);
+  // mask 到货后必须清掉「这张没有 mask」的记忆并让画面重来一次,否则整个会话都
+  // 看不到好的那版(用户得刷新)。
+  assert.match(hook, /forgetPhotoMasks\(/);
+  assert.match(hook, /onMasksReady/);
+});
+
+test('两个壳都把当前滤镜和「重来一次」的回调交给 hook', () => {
+  for (const shell of [
+    '../../components/album/editor-v2/EditorPort.tsx',
+    '../../components/album/editor-v2/mobile/MobileEditorRoot.tsx',
+  ]) {
+    const src = code(shell);
+    assert.match(src, /usePhotoMaskSource\([\s\S]{0,200}?photoFilter/, `${shell} 应把当前滤镜传给 hook`);
+    assert.match(src, /usePhotoMaskSource\([\s\S]{0,200}?onMasksReady/, `${shell} 应给 hook 一个重绘回调`);
+  }
+});
+
+test('降级有声音:两种原因分开报', () => {
+  const service = code('../../services/album/photo-mask-service.ts');
+  assert.match(service, /clip-not-configured/);
+  assert.match(service, /clip-call-failed/);
+  // warn 级,不是 debug 一行;且带固定可检索前缀。
+  assert.match(service, /logger\.warn\([\s\S]{0,240}?'cutout mask degraded/);
+  const env = code('../../lib/env.ts');
+  // 启动期也喊一次(不抛 —— 断网/worker 挂了时退回兜底仍强过整个抠不了)。
+  assert.match(env, /productionWarnings/);
+  assert.match(env, /AGENT_CLIP_BASE_URL/);
+});

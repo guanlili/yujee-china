@@ -248,7 +248,7 @@ function captureMasks(impl?: (albumId: string, photoIds: string[]) => Promise<vo
   photoMaskService.ensureCutoutMasks = async (albumId, photoIds) => {
     calls.push({ albumId, photoIds: [...photoIds] });
     if (impl) await impl(albumId, photoIds);
-    return { created: [...photoIds], deferred: 0 };
+    return { created: [...photoIds], deferred: 0, degraded: null };
   };
   return {
     calls,
