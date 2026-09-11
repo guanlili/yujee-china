@@ -45,21 +45,25 @@ const EXAMPLES = ['apps/web/src/lib/examples/examples.ts', 'apps/web/src/lib/exa
 /** Guide prose only. guides.ts is excluded on purpose — see FRESHNESS_DECLARATIONS. */
 const GUIDES_CONTENT = 'apps/web/src/lib/guides/content';
 /** The hub has no article of its own to carry a reviewedAt, so it lives here. */
-const GUIDES_HUB_REVIEWED_AT = '83b929f6';
+const GUIDES_HUB_REVIEWED_AT = 'c4148143';
 
 /** Every example detail page is one row of the same array, so they share sources. */
 const exampleDetailFreshness: Record<string, RouteFreshness> = Object.fromEntries(
   EXAMPLE_SLUGS.map((slug) => [
     `/examples/${slug}`,
-    { sources: [...EXAMPLES], updatedAt: '2026-08-08', reviewedAt: '0a7e4291' },
+    { sources: [...EXAMPLES], updatedAt: '2026-08-08', reviewedAt: 'c4148143' },
   ]),
 );
 
 export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
+  // d2bca297 加了首页三处 /guides 入口(桌面导航/移动菜单/页脚),c4148143 把
+  // 页脚的 Pricing 从 #pricing 改指 /pricing。前者读者是真能看见的:导航栏
+  // 多出一项。所以这条 updatedAt 要动 —— 而且动它是有用的,首页正是我们希望
+  // Google 重新抓、从而发现 /guides 和 /pricing 两条新链接的页面。
   '/': {
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
-    updatedAt: '2026-08-08',
-    reviewedAt: '83b929f6',
+    updatedAt: '2026-09-11',
+    reviewedAt: 'c4148143',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback
@@ -67,7 +71,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/about/story': {
     sources: [MARKETING, 'apps/web/src/app/[locale]/about/story/page.tsx'],
     updatedAt: '2026-08-10',
-    reviewedAt: '83b929f6',
+    reviewedAt: 'c4148143',
   },
   // Privacy prose last moved in the pre-launch pass that aligned it with what the
   // product actually does (b69eb438). marketing.ts has moved several times since —
@@ -81,12 +85,16 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/pricing': {
     sources: [MARKETING, 'apps/web/src/config/pricing.ts', 'apps/web/src/app/[locale]/pricing/page.tsx'],
     updatedAt: '2026-09-11',
-    reviewedAt: 'd2bca297',
+    reviewedAt: 'c4148143',
   },
-  '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: '83b929f6' },
+  // d2bca297 / c4148143 都动了 messages/marketing,但对这几页只改了 chrome:
+  // 共用导航多一项 Guides,页脚 Pricing 改指 /pricing。标签一个字没变,正文
+  // 一个字没动。本文件上面 19093baf 那条先例说的就是这种情况(往页脚加一条
+  // 链接 → 只推 reviewedAt)。刷 updatedAt 等于告诉 Google 隐私政策也改了。
+  '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: 'c4148143' },
   // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
   // refund rule) in both locales — a genuine content change, so this one moves.
-  '/terms': { sources: [MARKETING], updatedAt: '2026-08-08', reviewedAt: '83b929f6' },
+  '/terms': { sources: [MARKETING], updatedAt: '2026-08-08', reviewedAt: 'c4148143' },
   // 这五个路由被闸门捞出来,是因为 messages/marketing 被动过两次:19093baf 往
   // footer 的 Photo Books 组加了一条 /guides 链接,9c34faea 加了 guides.faqHead。
   // 前者是导航;后者更轻 —— faqHead 只在 guides/[slug]/page.tsx 渲染,这几个营销页
@@ -97,7 +105,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   // 审计记录指着一个没干这件事的提交。写错的审计记录比没有更糟。
   // The hub renders each example's `title`, not its meta — the keyword pass
   // rewrote titles/descriptions on the detail pages only, so the hub is unchanged.
-  '/examples': { sources: [...EXAMPLES, MARKETING], updatedAt: '2026-08-04', reviewedAt: '83b929f6' },
+  '/examples': { sources: [...EXAMPLES, MARKETING], updatedAt: '2026-08-04', reviewedAt: 'c4148143' },
   ...exampleDetailFreshness,
 };
 
