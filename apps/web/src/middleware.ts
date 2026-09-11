@@ -74,7 +74,18 @@ function withSecurityHeaders(response: NextResponse): NextResponse {
 }
 
 export default function middleware(request: NextRequest) {
-  const rootTarget = getRootRedirect(request.nextUrl.pathname);
+  const pathname = request.nextUrl.pathname;
+  const chapterPath = stripLocale(pathname);
+  if (/^\/(pet|travel|palace)(?:\/|$)/.test(chapterPath)) {
+    if (/^\/(pet|travel|palace)\/?$/.test(pathname)) {
+      const url = request.nextUrl.clone();
+      url.pathname = localizePath(pathname.replace(/\/$/, ''), routing.defaultLocale);
+      return withSecurityHeaders(NextResponse.redirect(url, 307));
+    }
+    return withSecurityHeaders(NextResponse.next());
+  }
+  if (pathname.startsWith('/chapters/')) return withSecurityHeaders(NextResponse.next());
+  const rootTarget = getRootRedirect(pathname);
   if (rootTarget) {
     const url = request.nextUrl.clone();
     url.pathname = rootTarget;
