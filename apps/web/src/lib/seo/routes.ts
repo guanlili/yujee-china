@@ -45,6 +45,10 @@ export function localesForRoute(route: string): readonly Locale[] {
 export const INDEXABLE_ROUTES: readonly string[] = [
   '/',
   '/about/story',
+  // Back in the sitemap after living as a 308 onto the home anchor. The Terms
+  // point at "the pricing page" by name, and the buying questions it answers
+  // have no home on the landing page.
+  '/pricing',
   '/privacy',
   '/terms',
   ...EXAMPLE_ROUTES,
@@ -70,6 +74,8 @@ export const CHANGE_FREQUENCY: Record<string, 'weekly' | 'monthly' | 'yearly'> =
   // A founder story is written once. Claiming it changes weekly teaches Google
   // to ignore the signal on the pages where it is true.
   '/about/story': 'yearly',
+  // Prices move, but on the order of a repricing, not a news cycle.
+  '/pricing': 'monthly',
   '/privacy': 'yearly',
   '/terms': 'yearly',
   ...Object.fromEntries(EXAMPLE_ROUTES.map((route) => [route, 'monthly' as const])),
@@ -80,6 +86,8 @@ export const ROUTE_PRIORITY: Record<string, number> = {
   // Below the landing page, well above the legal pages: it is the only page
   // carrying original first-person content, which is what earns rankings.
   '/about/story': 0.7,
+  // The money page. Second only to the landing page.
+  '/pricing': 0.8,
   '/privacy': 0.3,
   '/terms': 0.3,
   '/examples': 0.7,

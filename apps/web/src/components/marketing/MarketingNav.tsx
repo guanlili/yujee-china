@@ -35,6 +35,7 @@ export function MarketingNav({ locale, m }: Props) {
   const homePath = `/${locale}`;
   const examplesPath = `/${locale}/examples`;
   const guidesPath = `/${locale}/guides`;
+  const pricingPath = `/${locale}/pricing`;
   const isHome = pathname === homePath || pathname === `${homePath}/`;
   const homeSectionHref = (id: string) => (isHome ? `#${id}` : `${homePath}#${id}`);
   const navItems = [
@@ -58,7 +59,15 @@ export function MarketingNav({ locale, m }: Props) {
       href: guidesPath,
       active: pathname === guidesPath || pathname.startsWith(`${guidesPath}/`),
     },
-    { key: 'pricing', label: m.nav.pricing, href: homeSectionHref('pricing'), active: false },
+    // A page, not the home anchor. One label must not have two destinations:
+    // the footer already points here, and on /pricing itself the anchor version
+    // bounced the reader off the page they were reading.
+    {
+      key: 'pricing',
+      label: m.nav.pricing,
+      href: pricingPath,
+      active: pathname === pricingPath,
+    },
   ];
 
   return (

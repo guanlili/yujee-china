@@ -307,6 +307,82 @@ export const fr: MarketingMessages = {
       'Importez vos photos, racontez ce qui se passait, et récupérez un PDF prêt à imprimer avec les pages composées et les légendes déjà rédigées, à corriger si besoin.',
     ctaButton: 'Commencer gratuitement',
   },
+  pricingPage: {
+    metaTitle: 'Tarifs — Ce que coûte un livre photo en IA | Yujee',
+    metaDesc:
+      'Un crédit, une photo. Achat unique, sans abonnement ni expiration. Ce que coûte un vrai livre, ce qui se passe si la génération échoue, et ce que l’impression ajoute.',
+    title: 'Ce que coûte vraiment un livre photo',
+    lede:
+      'Un crédit, c’est {photos} photo. Pas d’abonnement, rien qui se renouvelle : vous achetez un pack de crédits une fois et vous les dépensez quand vous faites un livre.',
+    freeLine: 'Vous recevez {credits} crédits gratuits à l’inscription. De quoi faire un premier livre entier.',
+    packsHead: 'Packs de crédits',
+    packsCreditsLabel: 'crédits',
+    packsPerPhoto: 'par photo',
+    workedHead: 'Ce que cela donne sur un vrai livre',
+    worked: [
+      {
+        h: 'Un week-end en voyage',
+        body: 'Environ 24 photos. Les crédits offerts en couvrent l’essentiel, et le pack à {packSmall} termine le livre avec de la marge.',
+      },
+      {
+        h: 'Une année en un livre',
+        body: 'Environ 60 photos pour toute l’année. Le pack à {packMid} suffit et laisse de quoi faire un second livre court.',
+      },
+      {
+        h: 'La vie d’un parent',
+        body: 'Environ 90 photos étalées sur des décennies, proche de la limite par livre. Le pack à {packLarge} en vient à bout et laisse plus de la moitié des crédits inutilisés.',
+      },
+    ],
+    capLine:
+      'Un livre accepte jusqu’à {max} photos. Au-delà, faites-en deux tomes : cela se lit mieux et rien n’est perdu.',
+    includedHead: 'Ce que les crédits achètent',
+    included: [
+      'Un PDF prêt pour l’impression en 300 DPI, sans filigrane, qui vous appartient',
+      'Une mise en page parmi plus de 40 gabarits de magazine — vous ne glissez jamais une photo dans un cadre',
+      'Des légendes et des textes de chapitre rédigés à partir de vos photos et de vos notes, puis retouchés en conversant',
+      'Vos photos d’origine ne quittent pas votre navigateur ; seules des prévisualisations compressées vont à l’IA',
+    ],
+    notIncludedHead: 'Ce qu’ils n’achètent pas : l’impression',
+    notIncludedBody:
+      'Vous recevez un fichier, pas un colis. L’impression est séparée et vous la confiez à qui vous voulez : un format relié classique revient à environ 20 à 70 dollars selon le nombre de pages, le papier et la reliure. Nous avons détaillé le calcul ici :',
+    notIncludedLink: 'Combien coûte l’impression d’un livre photo ?',
+    failureHead: 'Si la génération échoue, rien ne vous est facturé',
+    failureBody:
+      'Les crédits sont réservés au lancement de la mise en page et débités seulement si elle aboutit. En cas d’échec, la réservation est levée et les crédits reviennent sur votre solde.',
+    refundHead: 'Remboursements',
+    refundBody:
+      'Les packs de crédits sont un achat unique de produit numérique et ne sont pas remboursables, sauf lorsque la loi l’exige. Les crédits déjà dépensés sur un livre qui a abouti restent dépensés, y compris si le résultat ne vous plaît pas. Si vous avez payé via un prestataire de paiement, ses propres règles de remboursement s’appliquent également.',
+    noExpiryHead: 'Sans abonnement, sans expiration',
+    noExpiryBody:
+      'Rien ne se renouvelle et rien n’est prélevé à nouveau. Les crédits restent sur votre compte jusqu’à ce que vous les utilisiez : ils n’ont pour l’instant pas de date d’expiration.',
+    faqHead: 'Questions fréquentes',
+    faq: [
+      {
+        q: 'Existe-t-il une version gratuite ?',
+        a: 'Oui. L’inscription vous donne assez de crédits pour un premier livre complet, et vous pouvez en exporter le PDF prêt à imprimer. Pas de compte à rebours d’essai, pas de carte bancaire.',
+      },
+      {
+        q: 'Combien de crédits coûte un livre ?',
+        a: 'Exactement autant que de photos : un crédit couvre {photos} photo. Un livre de 30 photos coûte 30 crédits. La pagination découle de la mise en page ; avec peu de photos, on tourne souvent autour de {pages} pages.',
+      },
+      {
+        q: 'Faut-il repayer pour rééditer ou réexporter ?',
+        a: 'Non. Les crédits sont débités une seule fois, quand la mise en page réussit. Retoucher le livre en conversant, réexporter le PDF et le retélécharger ne coûtent rien.',
+      },
+      {
+        q: 'Puis-je faire imprimer le PDF n’importe où ?',
+        a: 'Oui. C’est un PDF standard en 300 DPI, sans filigrane ni verrou : apportez-le à n’importe quel imprimeur ou service en ligne, ou gardez-le en numérique.',
+      },
+      {
+        q: 'Que deviennent mes crédits si j’arrête d’utiliser Yujee ?',
+        a: 'Ils restent sur votre compte. Ils n’expirent pas pour l’instant et il n’y a aucun abonnement à résilier.',
+      },
+    ],
+    ctaHead: 'Commencez avec les crédits offerts',
+    ctaBody: 'Déposez un dossier de photos et regardez le livre déjà mis en page avant de décider d’acheter quoi que ce soit.',
+    ctaButton: 'Créer un livre',
+    buyLink: 'Acheter des crédits',
+  },
   footer: {
     tagline: 'Vos photos éparpillées deviennent un magazine à garder.',
     groups: [
@@ -316,7 +392,7 @@ export const fr: MarketingMessages = {
           { label: 'Créer un livre photo', href: '#homepage-composer' },
           { label: 'Comment ça marche', href: '#features' },
           { label: 'Ce que vous obtenez', href: '#outputs' },
-          { label: 'Tarifs', href: '#pricing' },
+          { label: 'Tarifs', href: '/pricing' },
         ],
       },
       {

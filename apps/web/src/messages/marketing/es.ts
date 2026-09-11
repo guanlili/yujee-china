@@ -307,6 +307,82 @@ export const es: MarketingMessages = {
       'Sube tus fotos, cuenta qué estaba pasando y recibe un PDF listo para imprenta con las páginas maquetadas y los pies redactados para que los corrijas.',
     ctaButton: 'Empezar gratis',
   },
+  pricingPage: {
+    metaTitle: 'Precios — Cuánto cuesta un fotolibro con IA | Yujee',
+    metaDesc:
+      'Un crédito es una foto. Se compran una vez, sin suscripción y sin caducidad. Cuánto cuesta un libro real, qué pasa si falla la generación y qué añade la impresión.',
+    title: 'Lo que cuesta de verdad un fotolibro',
+    lede:
+      'Un crédito es {photos} foto. No hay suscripción ni nada que se renueve: compras un paquete de créditos una vez y los gastas cuando haces un libro.',
+    freeLine: 'Al registrarte recibes {credits} créditos gratis. Da para un primer libro entero.',
+    packsHead: 'Paquetes de créditos',
+    packsCreditsLabel: 'créditos',
+    packsPerPhoto: 'por foto',
+    workedHead: 'Qué significa eso en un libro real',
+    worked: [
+      {
+        h: 'Un viaje de fin de semana',
+        body: 'Unas 24 fotos. Los créditos gratis cubren la mayor parte y el paquete de {packSmall} lo termina con margen de sobra.',
+      },
+      {
+        h: 'Un año en un libro',
+        body: 'Unas 60 fotos para el año entero. El paquete de {packMid} lo cubre y deja suficiente para un segundo libro corto.',
+      },
+      {
+        h: 'La vida de un padre o una madre',
+        body: 'Unas 90 fotos repartidas por décadas, cerca del límite por libro. El paquete de {packLarge} lo cubre y deja más de la mitad de los créditos sin gastar.',
+      },
+    ],
+    capLine:
+      'Un libro admite hasta {max} fotos. A partir de ahí, hazlo en dos volúmenes: se lee mejor y no se pierde nada.',
+    includedHead: 'Qué compran los créditos',
+    included: [
+      'Un PDF listo para imprenta a 300 DPI, sin marca de agua y tuyo para siempre',
+      'Maquetación con más de 40 plantillas de revista: nunca arrastras una foto a un hueco',
+      'Pies de foto y texto de capítulo redactados a partir de tus fotos y notas, y luego editados conversando',
+      'Tus fotos originales no salen del navegador; a la IA solo van vistas previas comprimidas',
+    ],
+    notIncludedHead: 'Qué no compran: la impresión',
+    notIncludedBody:
+      'Recibes un archivo, no un paquete. La impresión va aparte y la contratas donde quieras: una tapa dura estándar ronda los 20 a 70 dólares según páginas, papel y encuadernación. Lo desglosamos entero aquí:',
+    notIncludedLink: '¿Cuánto cuesta imprimir un fotolibro?',
+    failureHead: 'Si la generación falla, no se te cobra',
+    failureBody:
+      'Los créditos se retienen al empezar la maquetación y solo se descuentan si termina bien. Si falla, la retención se libera y los créditos vuelven a tu saldo.',
+    refundHead: 'Reembolsos',
+    refundBody:
+      'Los paquetes de créditos son una compra única de un producto digital y no son reembolsables, salvo donde la ley obligue a lo contrario. Los créditos ya gastados en un libro que salió bien no se devuelven, ni siquiera si el resultado no te convence. Si pagaste a través de una pasarela de pago, también se aplican sus propias normas de reembolso.',
+    noExpiryHead: 'Sin suscripción, sin caducidad',
+    noExpiryBody:
+      'No se renueva nada ni se vuelve a cobrar. Los créditos se quedan en tu cuenta hasta que los uses: por ahora no tienen fecha de caducidad.',
+    faqHead: 'Preguntas frecuentes',
+    faq: [
+      {
+        q: '¿Hay una versión gratuita?',
+        a: 'Sí. Al registrarte recibes créditos suficientes para un primer libro completo y puedes exportar el PDF listo para imprenta. No hay reloj de prueba ni hace falta tarjeta.',
+      },
+      {
+        q: '¿Cuántos créditos cuesta un libro?',
+        a: 'Exactamente tantos como fotos tenga: un crédito cubre {photos} foto. Un libro de 30 fotos cuesta 30 créditos. El número de páginas lo decide la maquetación; con pocas fotos suele quedar en torno a {pages} páginas.',
+      },
+      {
+        q: '¿Pago otra vez por reexportar o editar?',
+        a: 'No. Los créditos se cobran una sola vez, cuando la maquetación termina bien. Editar el libro conversando, reexportar el PDF y volver a descargarlo no cuesta nada.',
+      },
+      {
+        q: '¿Puedo imprimir el PDF donde quiera?',
+        a: 'Sí. Es un PDF estándar a 300 DPI, sin marca de agua y sin ataduras: llévalo a cualquier imprenta o servicio online, o quédatelo en digital.',
+      },
+      {
+        q: '¿Qué pasa con mis créditos si dejo de usar Yujee?',
+        a: 'Se quedan en tu cuenta. Por ahora no caducan y no hay ninguna suscripción que cancelar.',
+      },
+    ],
+    ctaHead: 'Empieza con los créditos gratis',
+    ctaBody: 'Sube una carpeta de fotos y mira el libro ya maquetado antes de decidir si compras algo.',
+    ctaButton: 'Hacer un libro',
+    buyLink: 'Comprar créditos',
+  },
   footer: {
     tagline: 'Convierte las fotos dispersas en una revista que merece guardarse.',
     groups: [
@@ -316,7 +392,7 @@ export const es: MarketingMessages = {
           { label: 'Crear un fotolibro', href: '#homepage-composer' },
           { label: 'Cómo funciona', href: '#features' },
           { label: 'Qué te llevas', href: '#outputs' },
-          { label: 'Precios', href: '#pricing' },
+          { label: 'Precios', href: '/pricing' },
         ],
       },
       {

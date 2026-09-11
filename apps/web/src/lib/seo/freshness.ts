@@ -74,6 +74,15 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   // including b3d095bc, which rewrote the TERMS sections next door and left this
   // page untouched. That is exactly the case the reviewedAt/updatedAt split exists
   // for: reviewed again, still 2026-07-12.
+  // config/pricing.ts is a source because a repricing IS a content change here:
+  // every figure on the page is interpolated from ADDON_PACKS and the credit
+  // constants, so editing them changes what the reader sees without touching a
+  // single string of copy.
+  '/pricing': {
+    sources: [MARKETING, 'apps/web/src/config/pricing.ts', 'apps/web/src/app/[locale]/pricing/page.tsx'],
+    updatedAt: '2026-09-11',
+    reviewedAt: 'd2bca297',
+  },
   '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: '83b929f6' },
   // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
   // refund rule) in both locales — a genuine content change, so this one moves.

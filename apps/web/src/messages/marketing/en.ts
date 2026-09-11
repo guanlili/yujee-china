@@ -318,6 +318,83 @@ export const en: MarketingMessages = {
       'Upload your photos, describe what was going on, and get a print-ready PDF with the pages designed and the captions drafted for you to correct.',
     ctaButton: 'Start for free',
   },
+  pricingPage: {
+    metaTitle: 'Pricing — What an AI Photo Book Costs | Yujee',
+    metaDesc:
+      'One credit is one photo. Buy credits once, no subscription, no expiry. See what a real book costs, what happens if a generation fails, and what printing adds.',
+    title: 'What a photo book actually costs',
+    lede:
+      'One credit is {photos} photo. There is no subscription and nothing renews — you buy a pack of credits once and spend them when you make a book.',
+    freeLine: 'You get {credits} credits free when you sign up. That is a whole first book.',
+    packsHead: 'Credit packs',
+    packsCreditsLabel: 'credits',
+    packsPerPhoto: 'per photo',
+    workedHead: 'What that means for a real book',
+    worked: [
+      {
+        h: 'A weekend trip',
+        body: 'Around 24 photos. Your free credits cover most of it, and the {packSmall} pack finishes it with credits to spare.',
+      },
+      {
+        h: 'A year in review',
+        body: 'Around 60 photos, one book for the whole year. The {packMid} pack covers it and leaves you enough for a second short book.',
+      },
+      {
+        h: "A parent's life story",
+        body: 'Around 90 photos spanning decades — close to the per-book limit. The {packLarge} pack covers it and still leaves more than half the credits unspent.',
+      },
+    ],
+    capLine:
+      'One book takes up to {max} photos. Past that, make it two volumes — it reads better anyway, and nothing is lost.',
+    includedHead: 'What the credits buy',
+    included: [
+      'A 300 DPI print-ready PDF, no watermark, yours to keep',
+      'Layout across 40+ magazine templates — you never drag a photo into a slot',
+      'Captions and chapter text drafted from your photos and notes, then edited by chatting',
+      'Your original photos never leave your browser; only compressed previews go to the AI',
+    ],
+    notIncludedHead: 'What they do not buy: printing',
+    notIncludedBody:
+      'You get a file, not a shipment. Printing is separate and you arrange it wherever you like — a standard hardcover runs roughly 20 to 70 US dollars depending on page count, paper and binding. We broke the whole thing down:',
+    notIncludedLink: 'How much does a photo book cost to print?',
+    failureHead: 'If a generation fails, you are not charged',
+    failureBody:
+      'Credits are held when a layout starts and debited only when it succeeds. If the generation fails, the hold is released and the credits go back to your balance.',
+    refundHead: 'Refunds',
+    refundBody:
+      'Credit packs are a one-time purchase of a digital product and are non-refundable except where the law requires otherwise. Once credits have been spent on a book that came out, they are spent — including if you are unhappy with the result. If you paid through a payment provider, their own refund rules apply as well.',
+    noExpiryHead: 'No subscription, no expiry',
+    noExpiryBody:
+      'Nothing renews and nothing is charged again. Credits sit in your account until you use them — they currently have no expiry date.',
+    faqHead: 'Common questions',
+    faq: [
+      {
+        q: 'Is there a free version?',
+        a: 'Yes. Signing up gives you enough credits for a full first book, and you can export the print-ready PDF from it. There is no trial clock and no card required.',
+      },
+      {
+        q: 'How many credits does one book take?',
+        a: 'Exactly as many as it has photos: one credit covers {photos} photo. A 30-photo book costs 30 credits. The page count follows from the layout, so a small set usually lands somewhere around {pages} pages.',
+      },
+      {
+        q: 'Do I pay again to re-export or edit?',
+        a: 'No. Credits are charged once, when the layout succeeds. Editing the book by chat, re-exporting the PDF and re-downloading it cost nothing.',
+      },
+      {
+        q: 'Can I print the PDF anywhere?',
+        a: 'Yes. It is a standard 300 DPI print-ready PDF with no watermark and no lock-in — take it to any print shop or online printer, or keep it digital.',
+      },
+      {
+        q: 'What happens to my credits if I stop using Yujee?',
+        a: 'They stay on your account. Credits currently have no expiry date, and there is no subscription to cancel.',
+      },
+    ],
+    ctaHead: 'Start with the free credits',
+    ctaBody:
+      'Upload a folder of photos and see a laid-out book before you decide whether to buy anything.',
+    ctaButton: 'Make a book',
+    buyLink: 'Buy credits',
+  },
   footer: {
     tagline: 'Turn scattered photos into a magazine worth keeping.',
     groups: [
@@ -327,7 +404,7 @@ export const en: MarketingMessages = {
           { label: 'Create a photo book', href: '#homepage-composer' },
           { label: 'How it works', href: '#features' },
           { label: 'What you get', href: '#outputs' },
-          { label: 'Pricing', href: '#pricing' },
+          { label: 'Pricing', href: '/pricing' },
         ],
       },
       {

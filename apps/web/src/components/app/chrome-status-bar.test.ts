@@ -24,7 +24,11 @@ test('marketing nav delegates the right status cluster to ChromeStatusBar', () =
   );
   assert.doesNotMatch(marketingNav, /showPricing/, 'MarketingNav should not duplicate pricing in the right status cluster');
   assert.match(marketingNav, /m\.nav\.pricing/, 'MarketingNav owns the Home 1 centered pricing link');
-  assert.match(marketingNav, /homeSectionHref\('pricing'\)/, 'MarketingNav pricing should target the landing pricing section');
+  // Was `homeSectionHref('pricing')`. /pricing is a real page again, so the
+  // centered nav item points at the page; ChromeStatusBar keeps its own
+  // same-page #pricing anchor (asserted above) because that one sits on the
+  // landing page itself, where scrolling to the buy block is the right move.
+  assert.match(marketingNav, /href: pricingPath,/, 'MarketingNav pricing should target the /pricing page');
 });
 
 test('pricing uses the shared chrome pill style', () => {

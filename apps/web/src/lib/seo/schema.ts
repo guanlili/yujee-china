@@ -171,6 +171,64 @@ export function faqPageSchema(locale: Locale): FaqPageSchema {
   };
 }
 
+/**
+ * The /pricing page's SoftwareApplication, offers attached.
+ *
+ * An Offer is a PROPERTY of an item, not an item. The first version of this
+ * emitted a bare top-level AggregateOffer with nothing to own it, which is
+ * ignored for rich results and gives an LLM a price with no product attached.
+ * So this reuses the landing page's SoftwareApplication and changes the two
+ * things that should differ on this page:
+ *
+ *   - every Offer url points at /pricing, not the home anchor, so a cited
+ *     price links to the page that answers the follow-up questions;
+ *   - the offer name uses the reader's own word for "credits" — the landing
+ *     version hardcodes English, which is wrong in four of five locales.
+ */
+export function pricingAppJsonLd(
+  locale: Locale,
+  creditsLabel: string,
+): SoftwareApplicationSchema {
+  const base = softwareApplicationSchema(locale);
+  const url = absoluteUrl(localizePath('/pricing', locale));
+
+  return {
+    ...base,
+    url,
+    offers: {
+      ...base.offers,
+      offers: ADDON_PACKS.map((pack) => ({
+        '@type': 'Offer' as const,
+        price: String(pack.priceUsd),
+        priceCurrency: 'USD' as const,
+        name: `${pack.books} ${creditsLabel}`,
+        url,
+      })),
+    },
+  };
+}
+
+export function pricingBreadcrumb(locale: Locale, homeLabel: string, pageLabel: string) {
+  return {
+    '@context': 'https://schema.org' as const,
+    '@type': 'BreadcrumbList' as const,
+    itemListElement: [
+      {
+        '@type': 'ListItem' as const,
+        position: 1,
+        name: homeLabel,
+        item: absoluteUrl(localizePath('/', locale)),
+      },
+      {
+        '@type': 'ListItem' as const,
+        position: 2,
+        name: pageLabel,
+        item: absoluteUrl(localizePath('/pricing', locale)),
+      },
+    ],
+  };
+}
+
 /** Everything the landing page should emit, in one array. */
 export function landingJsonLd(locale: Locale) {
   return [organizationSchema(), softwareApplicationSchema(locale), faqPageSchema(locale)];

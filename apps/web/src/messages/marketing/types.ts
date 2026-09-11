@@ -117,6 +117,46 @@ export interface MarketingMessages {
     ctaBody: string;
     ctaButton: string;
   };
+  /**
+   * The standalone /pricing page.
+   *
+   * Deliberately NOT the home #pricing block's copy: that one sells three
+   * cards, this one answers the questions a buyer asks before paying — how
+   * many credits is MY book, what if the generation fails, is printing
+   * included, can I have my money back. Every number is a {token} so the page
+   * can only ever render what config/pricing.ts says.
+   */
+  pricingPage: {
+    metaTitle: string;
+    metaDesc: string;
+    title: string;
+    lede: string;
+    freeLine: string;
+    packsHead: string;
+    packsCreditsLabel: string;
+    packsPerPhoto: string;
+    workedHead: string;
+    worked: { h: string; body: string }[];
+    capLine: string;
+    includedHead: string;
+    included: string[];
+    notIncludedHead: string;
+    notIncludedBody: string;
+    notIncludedLink: string;
+    failureHead: string;
+    failureBody: string;
+    refundHead: string;
+    refundBody: string;
+    noExpiryHead: string;
+    noExpiryBody: string;
+    faqHead: string;
+    faq: { q: string; a: string }[];
+    ctaHead: string;
+    ctaBody: string;
+    ctaButton: string;
+    /** Secondary link to the home #pricing block, the only checkout surface. */
+    buyLink: string;
+  };
   footer: {
     tagline: string;
     groups: { head: string; items: { label: string; href: string }[] }[];

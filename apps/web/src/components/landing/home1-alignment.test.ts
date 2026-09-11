@@ -48,10 +48,15 @@ test('marketing nav restores the Home 1 centered desktop menu and mobile menu', 
     /\{ key: 'how', label: m\.nav\.howItWorks, href: homeSectionHref\('features'\), active: false \}/,
     'How it works should point at the section id the landing actually renders',
   );
+  // Pricing DELIBERATELY no longer routes through homeSectionHref. This test
+  // pinned the anchor from when /pricing was a 308 back onto the home page;
+  // the page is real again, so one nav label pointing at two destinations is
+  // the regression now, not the fix. The shape below is still pinned so the
+  // item cannot quietly revert to an anchor.
   assert.match(
     marketingNav,
-    /\{ key: 'pricing', label: m\.nav\.pricing, href: homeSectionHref\('pricing'\), active: false \}/,
-    'Pricing should route through the section href helper',
+    /key: 'pricing',\s*\n\s*label: m\.nav\.pricing,\s*\n\s*href: pricingPath,/,
+    'Pricing should link to the /pricing page, not a home-page anchor',
   );
   // About belongs in the footer, not the menu bar. The top nav is for the few
   // things a visitor came to do; a founder story is not one of them.
