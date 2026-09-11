@@ -8,6 +8,7 @@ export const en: MarketingMessages = {
     myProjects: 'My Projects',
     howItWorks: 'How it works',
     examples: 'Examples',
+    guides: 'Guides',
     pricing: 'Pricing',
     about: 'About',
     menuToggle: 'Toggle navigation menu',
@@ -311,6 +312,7 @@ export const en: MarketingMessages = {
     updatedLabel: 'Updated',
     englishOnlyNote: 'This guide is only available in English for now.',
     faqHead: 'Common questions',
+    relatedHead: 'Read next',
     ctaHead: 'Let Yujee do the layout',
     ctaBody:
       'Upload your photos, describe what was going on, and get a print-ready PDF with the pages designed and the captions drafted for you to correct.',

@@ -8,6 +8,7 @@ export const fr: MarketingMessages = {
     myProjects: 'Mes projets',
     howItWorks: 'Comment ça marche',
     examples: 'Exemples',
+    guides: 'Guides',
     pricing: 'Tarifs',
     about: 'À propos',
     menuToggle: 'Ouvrir ou fermer le menu de navigation',
@@ -300,6 +301,7 @@ export const fr: MarketingMessages = {
     updatedLabel: 'Mis à jour le',
     englishOnlyNote: 'Ce guide n’est disponible qu’en anglais pour le moment.',
     faqHead: 'Questions fréquentes',
+    relatedHead: 'À lire ensuite',
     ctaHead: 'Laissez Yujee faire la mise en page',
     ctaBody:
       'Importez vos photos, racontez ce qui se passait, et récupérez un PDF prêt à imprimer avec les pages composées et les légendes déjà rédigées, à corriger si besoin.',

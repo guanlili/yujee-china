@@ -534,6 +534,11 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
           <div className="hidden items-center gap-0.5 lg:flex">
             <Link href="#outputs" className="nav-link">{c.navExamples}</Link>
             <Link href="#pricing" className="nav-link">{c.navPricing}</Link>
+            {/* The only item here that leaves the page, and it earns the slot:
+                a reader who is not ready to upload needs somewhere to go that
+                is not the back button, and /guides is the only inbound path
+                the library has from the strongest page on the site. */}
+            <Link href={`/${locale}/guides`} className="nav-link">{c.navGuides}</Link>
             <Link href="#faq" className="nav-link">{c.navFaq}</Link>
           </div>
           <div className="flex items-center gap-1.5 md:gap-2">
@@ -575,6 +580,7 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
         <div className={`m-sheet lg:hidden${mobileOpen ? ' open' : ''}`}>
           <Link href="#outputs">{c.navExamples}</Link>
           <Link href="#pricing">{c.navPricing}</Link>
+          <Link href={`/${locale}/guides`}>{c.navGuides}</Link>
           <Link href="#faq">{c.navFaq}</Link>
           {chromeSession.user ? (
             <>
@@ -778,6 +784,13 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
                 [c.footerExampleTravel, `/${locale}/examples/travel-journal`],
                 [c.footerExampleLifeStory, `/${locale}/examples/life-story`],
                 [c.footerExamplesAll, `/${locale}/examples`],
+                // "使用指南" is back, and this time the pages are real: seven
+                // articles under /guides. This is the landing's ONLY link into
+                // them — the shared MarketingFooter has carried the entry all
+                // along, but the redesigned home renders this footer instead, so
+                // the library sat with zero inbound links from the strongest
+                // page on the site.
+                [c.footerGuides, `/${locale}/guides`],
                 [c.navFaq, '#faq'],
               ]} />
               {/* "关于" is back, and this time it goes somewhere: the founder story

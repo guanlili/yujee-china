@@ -70,6 +70,8 @@ export const ja: Copy = {
   footerExampleTravel: '旅のフォトブックの作例',
   footerExampleLifeStory: '人生の物語の作例',
   footerExamplesAll: 'すべての作例',
+  footerGuides: 'フォトブックの作り方ガイド',
+  navGuides: 'ガイド',
   footerCompany: 'Yujee について',
   footerAccount: 'アカウント',
   footerPrivacy: 'プライバシー',

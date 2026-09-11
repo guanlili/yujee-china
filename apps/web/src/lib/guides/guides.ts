@@ -51,6 +51,16 @@ export interface Guide {
    * existence check and still renders as a blank card on any dark background.
    */
   heroImage: string;
+  /**
+   * Sibling articles, by slug, rendered at the foot of this one.
+   *
+   * Editorial, not computed: the pairing is "what the same reader opens next",
+   * which no similarity score gets right. Two entries is the floor — one link
+   * is a dead end rather than a path — and related.test.ts also refuses to let
+   * any article go without an INBOUND link, so the seven stay one graph instead
+   * of a chain with a tail nobody reaches.
+   */
+  related: readonly string[];
 }
 
 /**
@@ -70,6 +80,11 @@ export const GUIDES: readonly Guide[] = [
     updatedAt: '2026-08-16',
     reviewedAt: '83b929f6',
     heroImage: '/examples/life-story/spread-01.jpg',
+    related: [
+      'write-a-memoir-about-a-parent',
+      'what-to-write-in-a-photo-book',
+      'photo-book-vs-photo-album-vs-scrapbook',
+    ],
   },
   {
     slug: 'make-a-photo-book-from-iphone-photos',
@@ -78,6 +93,11 @@ export const GUIDES: readonly Guide[] = [
     updatedAt: '2026-08-17',
     reviewedAt: '83b929f6',
     heroImage: '/examples/travel-journal/spread-03.jpg',
+    related: [
+      'what-to-write-in-a-photo-book',
+      'how-much-does-a-photo-book-cost',
+      'how-to-choose-an-ai-photo-book-maker',
+    ],
   },
   {
     slug: 'what-to-write-in-a-photo-book',
@@ -86,6 +106,11 @@ export const GUIDES: readonly Guide[] = [
     updatedAt: '2026-08-17',
     reviewedAt: '83b929f6',
     heroImage: '/examples/life-story/spread-02.jpg',
+    related: [
+      'write-a-memoir-about-a-parent',
+      'turn-old-family-photos-into-a-book',
+      'make-a-photo-book-from-iphone-photos',
+    ],
   },
   {
     slug: 'write-a-memoir-about-a-parent',
@@ -94,6 +119,10 @@ export const GUIDES: readonly Guide[] = [
     updatedAt: '2026-08-17',
     reviewedAt: '83b929f6',
     heroImage: '/examples/life-story/spread-03.jpg',
+    related: [
+      'turn-old-family-photos-into-a-book',
+      'what-to-write-in-a-photo-book',
+    ],
   },
   {
     slug: 'photo-book-vs-photo-album-vs-scrapbook',
@@ -102,6 +131,11 @@ export const GUIDES: readonly Guide[] = [
     updatedAt: '2026-08-16',
     reviewedAt: '83b929f6',
     heroImage: '/examples/travel-journal/spread-01.jpg',
+    related: [
+      'how-much-does-a-photo-book-cost',
+      'turn-old-family-photos-into-a-book',
+      'how-to-choose-an-ai-photo-book-maker',
+    ],
   },
   {
     slug: 'how-much-does-a-photo-book-cost',
@@ -110,6 +144,10 @@ export const GUIDES: readonly Guide[] = [
     updatedAt: '2026-08-17',
     reviewedAt: '83b929f6',
     heroImage: '/examples/travel-journal/spread-02.jpg',
+    related: [
+      'photo-book-vs-photo-album-vs-scrapbook',
+      'how-to-choose-an-ai-photo-book-maker',
+    ],
   },
   {
     slug: 'how-to-choose-an-ai-photo-book-maker',
@@ -118,6 +156,11 @@ export const GUIDES: readonly Guide[] = [
     updatedAt: '2026-08-17',
     reviewedAt: '83b929f6',
     heroImage: '/examples/life-story/spread-04.jpg',
+    related: [
+      'how-much-does-a-photo-book-cost',
+      'make-a-photo-book-from-iphone-photos',
+      'photo-book-vs-photo-album-vs-scrapbook',
+    ],
   },
 ];
 
@@ -125,6 +168,21 @@ export const GUIDE_SLUGS: readonly string[] = GUIDES.map((g) => g.slug);
 
 export function getGuide(slug: string): Guide | undefined {
   return GUIDES.find((g) => g.slug === slug);
+}
+
+/**
+ * The sibling articles to render at the foot of `guide`, in editorial order.
+ *
+ * A slug with no article behind it is DROPPED rather than thrown on: this runs
+ * inside a page render, and a mistyped slug should cost one link, not the whole
+ * article. related.test.ts is what catches the typo, at build time, where it is
+ * still cheap.
+ */
+export function relatedGuides(guide: Guide): readonly Guide[] {
+  return guide.related
+    .filter((slug) => slug !== guide.slug)
+    .map((slug) => getGuide(slug))
+    .filter((g): g is Guide => g !== undefined);
 }
 
 /** Throws if the locale is not in the guide's `availableLocales` — check first. */

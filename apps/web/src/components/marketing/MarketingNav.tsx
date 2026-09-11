@@ -34,6 +34,7 @@ export function MarketingNav({ locale, m }: Props) {
 
   const homePath = `/${locale}`;
   const examplesPath = `/${locale}/examples`;
+  const guidesPath = `/${locale}/guides`;
   const isHome = pathname === homePath || pathname === `${homePath}/`;
   const homeSectionHref = (id: string) => (isHome ? `#${id}` : `${homePath}#${id}`);
   const navItems = [
@@ -50,6 +51,12 @@ export function MarketingNav({ locale, m }: Props) {
       label: m.nav.examples,
       href: examplesPath,
       active: pathname === examplesPath || pathname.startsWith(`${examplesPath}/`),
+    },
+    {
+      key: 'guides',
+      label: m.nav.guides,
+      href: guidesPath,
+      active: pathname === guidesPath || pathname.startsWith(`${guidesPath}/`),
     },
     { key: 'pricing', label: m.nav.pricing, href: homeSectionHref('pricing'), active: false },
   ];

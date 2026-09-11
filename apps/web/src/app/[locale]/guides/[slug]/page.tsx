@@ -10,6 +10,8 @@ import {
   guideBreadcrumb,
   guideContent,
   guideFaqSchema,
+  relatedGuides,
+  resolveGuideLocale,
 } from '@/lib/guides/guides';
 import { isLocale, type Locale } from '@/lib/i18n/routing';
 import { publicPageMetadata } from '@/lib/seo/metadata';
@@ -65,6 +67,7 @@ export default async function GuideDetailPage({ params }: Props) {
   const loc = locale as Locale;
   const m = getMarketingMessages(loc).guides;
   const c = guideContent(guide, loc);
+  const siblings = relatedGuides(guide);
 
   return (
     <MarketingChrome locale={loc} pathname={`/guides/${slug}`}>
@@ -126,6 +129,48 @@ export default async function GuideDetailPage({ params }: Props) {
               ))}
             </dl>
           </section>
+        ) : null}
+
+        {/*
+          Sibling links, ABOVE the CTA rather than below it. A reader who is not
+          ready to upload is the one who needs somewhere else to go, and a block
+          under the sign-up card is a block they have already scrolled past.
+
+          Each sibling is linked at the locale it actually has prose in, exactly
+          as the hub does it: a cross-language <a> is not an hreflang claim, so
+          it costs nothing, while a link to an untranslated URL would just bounce
+          the reader through the 307.
+        */}
+        {siblings.length ? (
+          <nav aria-labelledby="related-head" className="mt-16 border-t border-[var(--line)] pt-10">
+            <h2 id="related-head" className="mb-6 text-2xl font-semibold text-[var(--fg)]">
+              {m.relatedHead}
+            </h2>
+            <ul className="grid gap-4 sm:grid-cols-2">
+              {siblings.map((sibling) => {
+                const served = resolveGuideLocale(sibling, loc);
+                const sc = guideContent(sibling, served);
+
+                return (
+                  <li key={sibling.slug}>
+                    <Link
+                      href={`/${served}/guides/${sibling.slug}`}
+                      className="flex h-full flex-col rounded-2xl border border-[var(--line)] p-5 transition hover:border-[var(--fg-2)]"
+                    >
+                      <h3 className="font-semibold leading-snug text-[var(--fg)]">{sc.title}</h3>
+                      <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{sc.excerpt}</p>
+                      {/* Same warning the hub gives, for the same reason: the card
+                          is in the reader's language and the article behind it is
+                          not. Silent is worse than a click they did not want. */}
+                      {served !== loc && (
+                        <p className="mt-3 text-xs text-[var(--meta)]">{m.englishOnlyNote}</p>
+                      )}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
         ) : null}
 
         <aside className="mt-16 rounded-2xl border border-[var(--line)] p-8">

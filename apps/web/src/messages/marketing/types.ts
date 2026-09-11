@@ -5,6 +5,7 @@ export interface MarketingMessages {
     myProjects: string;
     howItWorks: string;
     examples: string;
+    guides: string;
     pricing: string;
     about: string;
     menuToggle: string;
@@ -110,6 +111,8 @@ export interface MarketingMessages {
     /** Shown when the reader's locale has no translation of an article yet. */
     englishOnlyNote: string;
     faqHead: string;
+    /** Heading over the sibling-article links at the foot of an article. */
+    relatedHead: string;
     ctaHead: string;
     ctaBody: string;
     ctaButton: string;

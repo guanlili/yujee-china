@@ -8,6 +8,7 @@ export const es: MarketingMessages = {
     myProjects: 'Mis proyectos',
     howItWorks: 'Cómo funciona',
     examples: 'Ejemplos',
+    guides: 'Guías',
     pricing: 'Precios',
     about: 'Sobre nosotros',
     menuToggle: 'Abrir el menú de navegación',
@@ -300,6 +301,7 @@ export const es: MarketingMessages = {
     updatedLabel: 'Actualizado',
     englishOnlyNote: 'Esta guía solo está disponible en inglés por ahora.',
     faqHead: 'Preguntas frecuentes',
+    relatedHead: 'Sigue leyendo',
     ctaHead: 'Deja la maquetación a Yujee',
     ctaBody:
       'Sube tus fotos, cuenta qué estaba pasando y recibe un PDF listo para imprenta con las páginas maquetadas y los pies redactados para que los corrijas.',

@@ -8,6 +8,7 @@ export const ja: MarketingMessages = {
     myProjects: 'マイプロジェクト',
     howItWorks: '使い方',
     examples: '作例',
+    guides: 'ガイド',
     pricing: '料金',
     about: 'Yujee について',
     menuToggle: 'ナビゲーションメニューを開閉',
@@ -299,6 +300,7 @@ export const ja: MarketingMessages = {
     updatedLabel: '更新日',
     englishOnlyNote: 'このガイドは現在、英語版のみです。',
     faqHead: 'よくある質問',
+    relatedHead: '次に読む',
     ctaHead: 'レイアウトは Yujee にまかせる',
     ctaBody:
       '写真をアップロードして、そのときの出来事を書くだけ。ページが組まれ、キャプションの下書きまで入った印刷用 PDF ができあがります。',

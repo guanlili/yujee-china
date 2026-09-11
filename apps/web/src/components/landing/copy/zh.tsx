@@ -67,6 +67,8 @@ export const zh: Copy = {
   footerExampleTravel: '旅行照片书示例',
   footerExampleLifeStory: '人生故事纪念册示例',
   footerExamplesAll: '全部作品示例',
+  footerGuides: '照片书制作指南',
+  navGuides: '使用指南',
   footerCompany: '关于',
   footerAccount: '账户',
   footerPrivacy: '隐私政策',

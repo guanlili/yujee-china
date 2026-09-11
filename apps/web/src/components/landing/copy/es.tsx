@@ -70,6 +70,8 @@ export const es: Copy = {
   footerExampleTravel: 'Ejemplo de fotolibro de viaje',
   footerExampleLifeStory: 'Ejemplo de libro de historia de vida',
   footerExamplesAll: 'Todos los ejemplos de memorias',
+  footerGuides: 'Guías de fotolibros',
+  navGuides: 'Guías',
   footerCompany: 'Sobre nosotros',
   footerAccount: 'Cuenta',
   footerPrivacy: 'Privacidad',

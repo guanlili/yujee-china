@@ -19,6 +19,7 @@ export type Copy = {
   sideHome: string;
   sideProjects: string;
   navExamples: string;
+  navGuides: string;
   navPricing: string;
   navFaq: string;
   footerStory: string;
@@ -53,6 +54,7 @@ export type Copy = {
   footerExampleTravel: string;
   footerExampleLifeStory: string;
   footerExamplesAll: string;
+  footerGuides: string;
   footerCompany: string;
   footerAccount: string;
   footerPrivacy: string;
