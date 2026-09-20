@@ -751,7 +751,9 @@
 .editor-port .op-card-change{ align-items:flex-start; }
 .editor-port .op-tags{ display:flex; flex-wrap:wrap; gap:6px; margin-top:3px; }
 .editor-port .op-tag{
-  font-size:11px; font-weight:600; color:var(--grad-purple);
+  /* 全息紫 #8C5EF4 在白底只有 4.18:1，11px 小字不达标；同色相压暗到 #572E9D（≈9:1）并提到 12px。
+     渐变 tint 底保留 —— 它是「AI 动过手」的签名。（小程序 v3 稿落地清单，2026-09-09） */
+  font-size:12px; font-weight:600; color:#572E9D;
   background:linear-gradient(115deg, rgba(19,184,166,0.18) 0%, rgba(140,94,244,0.15) 50%, rgba(218,244,94,0.18) 100%);
   padding:2px 9px; border-radius:9999px;
 }
