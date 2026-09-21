@@ -1,0 +1,19 @@
+import {translateUI} from './i18n.js';
+import {detectLocale,spacePath,locales,LOCALE_LABELS} from './routes.js';
+const labels={zh:['宠物小窝','旅行小岛','记忆宫殿','登录','菜单','关闭菜单','主页','我的相册'],en:['Pet Haven','Travel Island','Memory Palace','Log in','Menu','Close menu','Home','My albums'],es:['Refugio de mascotas','Isla de viajes','Palacio de recuerdos','Iniciar sesión','Menú','Cerrar menú','Inicio','Mis álbumes'],ja:['ペットのおうち','旅の島','思い出の宮殿','ログイン','メニュー','閉じる','ホーム','マイアルバム'],fr:['Cocon des animaux','Île des voyages','Palais des souvenirs','Connexion','Menu','Fermer le menu','Accueil','Mes albums']};
+export function mountBrand(active){
+ queueMicrotask(translateUI);const locale=detectLocale(),names=labels[locale];document.documentElement.lang=locale;
+ const links=['pet','travel','palace'].map((id,i)=>`<a href="${spacePath(id,locale)}" ${id===active?'aria-current="page"':''}>${names[i]}</a>`).join('');
+ const languageLinks=locales.map(l=>`<a href="${spacePath(active,l)}${location.search}${location.hash}" lang="${l}" hreflang="${l}" ${l===locale?'aria-current="true"':''}>${LOCALE_LABELS[l]}</a>`).join('');
+ const login=`<a class="y-login" href="https://yujeeai.com/${locale}/login">${names[3]}</a>`;
+ const header=document.createElement('header');header.className='y-nav';header.innerHTML=`<div class="y-nav-inner"><a class="y-logo" href="https://yujeeai.com/${locale}" aria-label="Yujee"><img src="/pet/shared/logo-yujee.svg" alt="yujee" width="67" height="28"></a><nav class="y-desktop" aria-label="${names[4]}">${links}</nav><div class="y-nav-actions"><details class="y-language"><summary>${LOCALE_LABELS[locale]}</summary><div class="y-language-list">${languageLinks}</div></details>${login}</div><div class="y-menu"><button class="y-menu-toggle" aria-label="${names[4]}" aria-expanded="false" aria-controls="y-mobile-nav"><svg class="menu-open" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg><svg class="menu-close" viewBox="0 0 24 24" hidden><path d="m6 6 12 12M18 6 6 18"/></svg></button><nav id="y-mobile-nav" aria-label="${names[4]}" hidden>${links}${login}<div class="y-languages">${languageLinks}</div></nav></div></div>`;document.body.prepend(header);
+ const dock=document.createElement('nav');dock.className='y-project-dock';dock.setAttribute('aria-label',names[7]);dock.innerHTML=`<a href="${spacePath('pet',locale)}" aria-label="${names[6]}" ${active==='pet'?'aria-current="page"':''}><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1Z"/></svg></a><a href="${spacePath('palace',locale)}#projects" aria-label="${names[7]}" ${active==='palace'?'aria-current="page"':''}><svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></a>`;document.body.append(dock);
+ const toggle=header.querySelector('.y-menu-toggle'),nav=header.querySelector('#y-mobile-nav');
+ header.append(nav);
+ const setMenu=open=>{toggle.setAttribute('aria-expanded',String(open));toggle.setAttribute('aria-label',open?names[5]:names[4]);nav.hidden=!open;toggle.querySelector('.menu-open').hidden=open;toggle.querySelector('.menu-close').hidden=!open;};
+ toggle.addEventListener('click',()=>setMenu(toggle.getAttribute('aria-expanded')!=='true'));
+ header.querySelectorAll('a').forEach(a=>a.addEventListener('click',()=>{setMenu(false);if(a.hreflang)document.cookie=`YUJEE_LOCALE=${a.hreflang}; Path=/; Max-Age=31536000; SameSite=Lax`;}));
+ addEventListener('keydown',e=>{if(e.key==='Escape'){if(toggle.getAttribute('aria-expanded')==='true'){setMenu(false);toggle.focus();}header.querySelector('details').open=false;}});
+ document.addEventListener('click',e=>{if(!header.contains(e.target)){setMenu(false);header.querySelector('details').open=false;}});
+ const onScroll=()=>header.classList.toggle('scrolled',scrollY>10);addEventListener('scroll',onScroll,{passive:true});onScroll();
+}

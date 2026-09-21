@@ -1,0 +1,2 @@
+# build.mjs 会把 public/shared 拷进每个 module 供 vite 打包，跑完构建工作区就是脏的
+modules/*/public/shared/
