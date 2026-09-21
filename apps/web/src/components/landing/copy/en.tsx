@@ -26,6 +26,8 @@ export const en: Copy = {
   heroSub: 'YUJEE AI turns your photos, stories, memories and ideas into a beautiful memory book made just for you.',
   heroCta: 'Start creating',
   heroExamples: 'See examples',
+  heroSamplesTitle: 'What comes out the other end — six demo books',
+  heroSamplesMore: 'All examples',
   trust: ['No design skills needed', 'Fully editable layout', 'Print-ready PDF export'],
   workflowTitle: 'How it works',
   workflow: ['Automatic photo grouping', 'AI-assisted story writing', 'Automatic magazine-style layout'],
@@ -80,6 +82,7 @@ export const en: Copy = {
   copyright: '© 2026 Yujee · Memories, beautifully laid out',
   samples: [
     {
+      slug: 'year-in-review',
       title: 'Year in a book',
       brief: 'One photo book a year, bound each December',
       body:
@@ -89,6 +92,7 @@ export const en: Copy = {
       video: '/landing-redesign/cards/03-year-record.mp4',
     },
     {
+      slug: 'life-story',
       title: 'Life story',
       brief: 'Your milestones, into a life story book',
       body:
@@ -98,6 +102,7 @@ export const en: Copy = {
       video: '/landing-redesign/cards/02-life-story.mp4',
     },
     {
+      slug: 'travel-journal',
       title: 'Travel',
       brief: 'A trip, auto-bound into a travel photo book',
       body:
@@ -107,6 +112,7 @@ export const en: Copy = {
       video: '/landing-redesign/cards/01-travel.mp4',
     },
     {
+      slug: 'portfolio-book',
       title: 'Portfolio',
       brief: 'Your work, lined up quietly',
       body:
@@ -116,6 +122,7 @@ export const en: Copy = {
       video: '/landing-redesign/cards/06-portfolio.mp4',
     },
     {
+      slug: 'photo-magazine',
       title: 'Magazine',
       brief: 'Lay content out like a real magazine',
       body:
@@ -125,6 +132,7 @@ export const en: Copy = {
       video: '/landing-redesign/cards/05-magazine.mp4',
     },
     {
+      slug: 'growth-story',
       title: 'Growth story',
       brief: 'A page a month, every change',
       body:

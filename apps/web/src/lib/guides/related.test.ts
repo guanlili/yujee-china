@@ -1,16 +1,11 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { readCode as src } from '@/lib/testing/source';
 import { GUIDES, GUIDE_SLUGS, relatedGuides } from './guides';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const webSrc = join(here, '..', '..');
-
-function src(path: string): string {
-  return readFileSync(join(webSrc, path), 'utf8');
-}
+// `src` reads the file with comments STRIPPED. The counts below only mean
+// something if a commented-out call site cannot satisfy them — see
+// lib/testing/source.ts.
 
 function count(haystack: string, needle: RegExp): number {
   return haystack.match(needle)?.length ?? 0;

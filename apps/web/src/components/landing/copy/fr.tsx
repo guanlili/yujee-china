@@ -26,6 +26,8 @@ export const fr: Copy = {
   heroSub: 'YUJEE AI transforme vos photos, vos histoires, vos souvenirs et vos idées en un beau livre souvenir fait pour vous seul.',
   heroCta: 'Commencer à créer',
   heroExamples: 'Voir les exemples',
+  heroSamplesTitle: 'Voici ce que ça donne : six livres de démonstration',
+  heroSamplesMore: 'Tous les exemples',
   trust: ['Aucune compétence en design', 'Mise en page modifiable', 'Export PDF prêt à imprimer'],
   workflowTitle: 'Comment ça marche',
   workflow: ['Regroupement automatique des photos', 'Écriture assistée par l’IA', 'Mise en page automatique façon magazine'],
@@ -80,6 +82,7 @@ export const fr: Copy = {
   copyright: '© 2026 Yujee · Vos souvenirs, joliment mis en page',
   samples: [
     {
+      slug: 'year-in-review',
       title: 'Une année en un livre',
       brief: 'Un livre photo par an, relié chaque décembre',
       body:
@@ -89,6 +92,7 @@ export const fr: Copy = {
       video: '/landing-redesign/cards/03-year-record.mp4',
     },
     {
+      slug: 'life-story',
       title: 'Récit de vie',
       brief: 'Vos grandes étapes, réunies en un livre de vie',
       body:
@@ -98,6 +102,7 @@ export const fr: Copy = {
       video: '/landing-redesign/cards/02-life-story.mp4',
     },
     {
+      slug: 'travel-journal',
       title: 'Voyage',
       brief: 'Un voyage, relié tout seul en carnet de voyage',
       body:
@@ -107,6 +112,7 @@ export const fr: Copy = {
       video: '/landing-redesign/cards/01-travel.mp4',
     },
     {
+      slug: 'portfolio-book',
       title: 'Portfolio',
       brief: 'Vos travaux, alignés en toute sobriété',
       body:
@@ -116,6 +122,7 @@ export const fr: Copy = {
       video: '/landing-redesign/cards/06-portfolio.mp4',
     },
     {
+      slug: 'photo-magazine',
       title: 'Magazine',
       brief: 'Une mise en page de vrai magazine',
       body:
@@ -125,6 +132,7 @@ export const fr: Copy = {
       video: '/landing-redesign/cards/05-magazine.mp4',
     },
     {
+      slug: 'growth-story',
       title: 'Album de croissance',
       brief: 'Une page par mois, chaque changement',
       body:

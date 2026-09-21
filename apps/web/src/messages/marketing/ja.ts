@@ -277,7 +277,7 @@ export const ja: MarketingMessages = {
     hubTitle: '作例',
     hubIntro:
       'Yujee でつくれる実際の形です。どれも、一山の写真と数行の言葉から始まりました。AI が写真をまとめ、文章の下書きを書き、すべての見開きを組み上げています。一冊開いて流れを見てから、あなたの一冊をつくってみてください。',
-    moreComing: '赤ちゃんの成長、ペット、恋の物語など、ほかの形も準備中です。',
+    moreComing: 'ペット、結婚式、恋の物語など、ほかの形も準備中です。',
     insideHead: '中身',
     madeWithHead: '使った機能',
     galleryHead: '本の中を見る',

@@ -21,9 +21,18 @@ const withPhotoRule = (copy: string) =>
     .replaceAll('{photos}', String(PHOTOS_PER_CREDIT))
     .replaceAll('{pages}', PAGES_PER_CREDIT_LABEL);
 
+export type HeroSample = {
+  slug: string;
+  href: string;
+  poster: string;
+  title: string;
+};
+
 type Props = {
   locale: Locale;
   composer: ReactNode;
+  /** One entry per /examples page, in hub order. Rendered as the strip under the composer. */
+  heroSamples: HeroSample[];
 };
 
 function Icon({ name }: { name: 'home' | 'folder' | 'layout' | 'spark' | 'book' | 'menu' | 'x' }) {
@@ -108,11 +117,14 @@ function SampleCard({
   sampleCta,
   makeSame,
   composerHref,
+  exampleHref,
 }: {
   sample: Sample;
   sampleCta: string;
   makeSame: string;
   composerHref: string;
+  /** The /examples/<slug> page for this format — where the card sends a reader who wants proof. */
+  exampleHref: string;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -149,10 +161,10 @@ function SampleCard({
           <div className="case-title">{sample.title}</div>
           <p className="sample-brief">{sample.brief}</p>
         </div>
-        <span className="case-cta">
+        <Link href={exampleHref} className="case-cta">
           {sampleCta}
           <ArrowIcon className="h-3.5 w-3.5" />
-        </span>
+        </Link>
       </div>
       <div className="sample-detail">
         <video
@@ -175,9 +187,15 @@ function SampleCard({
             </li>
           ))}
         </ul>
-        <Link href={composerHref} className="sample-btn">
-          {makeSame}
+        {/* Proof first, ask second: the primary action opens the finished sample,
+            the composer stays one line below. Every card used to send readers to
+            the upload box — the one place a skeptic had not yet decided to go. */}
+        <Link href={exampleHref} className="sample-btn">
+          {sampleCta}
           <ArrowIcon className="h-[15px] w-[15px]" />
+        </Link>
+        <Link href={composerHref} className="sample-btn-alt">
+          {makeSame}
         </Link>
       </div>
     </article>
@@ -288,7 +306,7 @@ function LandingPricing({ locale }: { locale: Locale }) {
   );
 }
 
-export function YujeeLandingHomeClient({ locale, composer }: Props) {
+export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props) {
   const c = LANDING_COPIES[locale];
   const dashboard = getMessages(locale).dashboard;
   const chrome = dashboard.chrome;
@@ -474,6 +492,14 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
         .case-cta { font-size: 13px; font-weight: 600; color: #111; display: inline-flex; align-items: center; gap: 5px; }
         .sample-detail p, .sample-detail li { font-size: 13px; line-height: 1.5; color: #333; }
         .sample-btn { margin-top: auto; display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 9px 14px; border-radius: 9999px; background: #111; color: #fff; font-size: 13px; font-weight: 600; }
+        .sample-btn-alt { display: flex; justify-content: center; padding: 2px 14px 0; font-size: 13px; font-weight: 600; color: #111; text-decoration: underline; text-underline-offset: 4px; text-decoration-color: rgba(0,0,0,.25); }
+        /* The posters are 16:9 video frames with a small book centred on grey; at
+           six-up that book is a thumbnail of a thumbnail. Crop to 3:2 and zoom
+           1.3× so the book fills the tile — an open spread (the widest poster)
+           loses ~2% at each edge, a closed cover sits at ~a third of the width. */
+        .hero-samples-grid .hero-sample-tile { display: block; overflow: hidden; aspect-ratio: 3 / 2; border-radius: 12px; border: 1px solid rgba(0,0,0,.06); background: #eef1f2; transition: transform .3s ease, box-shadow .3s ease; }
+        .hero-samples-grid .hero-sample-tile img { display: block; width: 100%; height: 100%; object-fit: cover; transform: scale(1.3); transform-origin: center; }
+        .hero-samples-grid a:hover .hero-sample-tile { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.10); }
         .hero-eyebrow, .sec-label, .marquee { font-family: var(--font-mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #aaa; }
         .best-value-badge { display: inline-flex; align-items: center; justify-content: center; min-height: 22px; border-radius: 9999px; padding: 2px 9px; border: 1px solid rgba(140,94,244,.24); background: linear-gradient(135deg, rgba(140,94,244,.16), rgba(19,184,166,.12) 58%, rgba(218,244,94,.18)); color: #6b35d8; font-size: 11px; font-weight: 800; line-height: 1; box-shadow: inset 0 1px 0 rgba(255,255,255,.75); white-space: nowrap; }
         .create-title { font-family: var(--landing-display-font); }
@@ -613,6 +639,33 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
           <div className="composer-shell relative mx-auto mt-9 max-w-2xl px-5 md:mt-11 md:px-8">
             {composer}
           </div>
+          {/* Finished-output proof in the first screen. The July SXO pass scored
+              every persona lowest on Trust for one reason: the page asked for
+              photos before showing a single finished book. Six posters, each a
+              link to its /examples page, sit right under the ask. */}
+          {heroSamples.length > 0 && (
+            <div className="hero-samples relative mx-auto mt-12 max-w-5xl px-5 md:mt-16 md:px-8">
+              <div className="mb-3 flex items-baseline justify-between gap-4">
+                <p className="text-sm font-semibold text-[var(--fg-2)]">{c.heroSamplesTitle}</p>
+                <Link href={`/${locale}/examples`} className="shrink-0 text-sm text-[var(--muted)] transition hover:text-[var(--fg)]">
+                  {c.heroSamplesMore} →
+                </Link>
+              </div>
+              <ul className="hero-samples-grid grid grid-cols-3 gap-3 md:grid-cols-6 md:gap-4">
+                {heroSamples.map((sample) => (
+                  <li key={sample.slug}>
+                    <Link href={sample.href} className="block">
+                      <span className="hero-sample-tile">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- landing renders plain <img>, not next/image */}
+                        <img src={sample.poster} alt={sample.title} width={1280} height={720} loading="lazy" decoding="async" />
+                      </span>
+                      <span className="mt-2 block text-xs font-medium text-[var(--fg-2)]">{sample.title}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
 
         <section id="outputs" className="py-14 md:py-20">
@@ -625,6 +678,7 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
                   sampleCta={c.sampleCta}
                   makeSame={c.makeSame}
                   composerHref={composerHref}
+                  exampleHref={`/${locale}/examples/${sample.slug}`}
                 />
               ))}
             </div>
@@ -632,6 +686,11 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
                 (Creem 审核 2026-07-15 据此判定 social proof:账上零客户,页面却在展示
                 六本"成书")。标注后它是产品演示,不再是社交证明。放网格下方,小字。 */}
             <p className="mt-4 text-center text-xs text-[var(--meta)]">{c.samplesNote}</p>
+            <p className="mt-3 text-center">
+              <Link href={`/${locale}/examples`} className="text-sm font-semibold text-[var(--fg)] underline-offset-4 hover:underline">
+                {c.heroSamplesMore} →
+              </Link>
+            </p>
           </div>
         </section>
 
@@ -772,7 +831,12 @@ export function YujeeLandingHomeClient({ locale, composer }: Props) {
                 [c.featuresLabel, '#features'],
                 [c.navExamples, `/${locale}/examples`],
                 [c.heroCta, composerHref],
-                [c.navPricing, '#pricing'],
+                // The real page, not the on-page anchor. The nav keeps #pricing
+                // (the buy block is right here), but the footer is the landing's
+                // ONLY link into /pricing — the shared MarketingFooter got one in
+                // c4148143 and the redesigned home never renders that footer, so
+                // the money page had zero inbound links from the strongest page.
+                [c.navPricing, `/${locale}/pricing`],
               ]} />
               {/* Only link to surfaces that exist. "使用指南" / "模板库" used to sit here
                   pointing at #features / #outputs — the pages were never built, so clicking

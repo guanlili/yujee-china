@@ -278,7 +278,7 @@ export const es: MarketingMessages = {
     hubTitle: 'Ejemplos',
     hubIntro:
       'Formatos reales que puedes hacer con Yujee. Cada uno empezó como un montón de fotos y unas pocas palabras: la IA los agrupó, redactó los pies de foto y maquetó todas las páginas dobles. Abre uno para ver cómo va y luego haz el tuyo.',
-    moreComing: 'Ya vienen más formatos: crecimiento del bebé, mascotas e historias de amor.',
+    moreComing: 'Ya vienen más formatos: mascotas, bodas e historias de amor.',
     insideHead: 'Qué hay dentro',
     madeWithHead: 'Hecho con',
     galleryHead: 'Por dentro',

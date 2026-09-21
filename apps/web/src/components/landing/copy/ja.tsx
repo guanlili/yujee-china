@@ -26,6 +26,8 @@ export const ja: Copy = {
   heroSub: '写真も物語も思い出もアイデアも、YUJEE AI があなただけの美しい一冊に仕上げます。',
   heroCta: 'つくりはじめる',
   heroExamples: '作例を見る',
+  heroSamplesTitle: '仕上がりはこんな感じ — サンプル6冊',
+  heroSamplesMore: 'すべての作例',
   trust: ['デザインの知識は不要', 'どのページも編集できる', '印刷用 PDF を書き出せる'],
   workflowTitle: '制作の流れ',
   workflow: ['写真を自動でグループ分け', 'AI が文章づくりをお手伝い', '雑誌のようなレイアウトを自動生成'],
@@ -80,6 +82,7 @@ export const ja: Copy = {
   copyright: '© 2026 Yujee · 思い出を、美しいレイアウトで',
   samples: [
     {
+      slug: 'year-in-review',
       title: '一年の記録',
       brief: '一年に一冊、12 月に製本',
       body:
@@ -89,6 +92,7 @@ export const ja: Copy = {
       video: '/landing-redesign/cards/03-year-record.mp4',
     },
     {
+      slug: 'life-story',
       title: '人生の物語',
       brief: '節目をつないで、一冊の人生の本に',
       body:
@@ -98,6 +102,7 @@ export const ja: Copy = {
       video: '/landing-redesign/cards/02-life-story.mp4',
     },
     {
+      slug: 'travel-journal',
       title: '旅',
       brief: '一度の旅が、そのまま旅のフォトブックに',
       body:
@@ -107,6 +112,7 @@ export const ja: Copy = {
       video: '/landing-redesign/cards/01-travel.mp4',
     },
     {
+      slug: 'portfolio-book',
       title: 'ポートフォリオ',
       brief: '作品を、静かに並べる',
       body:
@@ -116,6 +122,7 @@ export const ja: Copy = {
       video: '/landing-redesign/cards/06-portfolio.mp4',
     },
     {
+      slug: 'photo-magazine',
       title: '雑誌',
       brief: '本物の雑誌のように誌面を組む',
       body:
@@ -125,6 +132,7 @@ export const ja: Copy = {
       video: '/landing-redesign/cards/05-magazine.mp4',
     },
     {
+      slug: 'growth-story',
       title: '成長の物語',
       brief: 'ひと月ひとページ、変わっていく姿を',
       body:

@@ -278,7 +278,7 @@ export const fr: MarketingMessages = {
     hubTitle: 'Exemples',
     hubIntro:
       'Des formats bien réels que vous pouvez créer avec Yujee. Chacun est parti d’un tas de photos et de quelques mots — l’IA les a regroupées, a rédigé les légendes et mis en page chaque double page. Ouvrez-en un pour voir le déroulé, puis créez le vôtre.',
-    moreComing: 'D’autres formats — croissance de bébé, animaux, histoires d’amour — arrivent bientôt.',
+    moreComing: 'D’autres formats — animaux, mariages, histoires d’amour — arrivent bientôt.',
     insideHead: 'Ce qu’il y a dedans',
     madeWithHead: 'Créé avec',
     galleryHead: 'À l’intérieur du livre',

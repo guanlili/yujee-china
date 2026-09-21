@@ -34,6 +34,13 @@ export interface Example {
   poster: string;
   /** Real, settled spreads pulled from the video. */
   gallery: string[];
+  /**
+   * YYYY-MM-DD. The day this page's visible content last changed — it becomes
+   * the sitemap `<lastmod>` for /examples/<slug> (see lib/seo/freshness.ts).
+   * Bump it only when a reader would see something different; adding a format
+   * sets it to the day the page went live.
+   */
+  updatedAt: string;
 }
 
 export const EXAMPLES: readonly Example[] = [
@@ -48,6 +55,12 @@ export const EXAMPLES: readonly Example[] = [
       '/examples/travel-journal/spread-03.jpg',
       '/examples/travel-journal/spread-04.jpg',
     ],
+    // 74c590db (2026-09-09) rewrote this page's tagline to carry "AI travel
+    // photobook", and the detail page renders the tagline under the H1 — a
+    // reader sees different words, so the date moves. The earlier freshness
+    // review advanced reviewedAt past that commit without opening it and left
+    // this at 08-08; that is the mistake this per-example field exists to stop.
+    updatedAt: '2026-09-09',
   },
   {
     slug: 'life-story',
@@ -60,6 +73,66 @@ export const EXAMPLES: readonly Example[] = [
       '/examples/life-story/spread-03.jpg',
       '/examples/life-story/spread-04.jpg',
     ],
+    updatedAt: '2026-08-08',
+  },
+  // The four formats below reuse the homepage card videos the landing already
+  // ships. Their spreads are settled frames from those videos (cover, opening
+  // spread, two inner spreads) — the same recipe as the two above. NOTE:
+  // 05-magazine.mp4 and 06-portfolio.mp4 were rendered from the SAME photo set,
+  // so photo-magazine and portfolio-book currently show identical imagery with
+  // different chrome. They are placeholders until real finished books replace
+  // them; do not treat them as evidence that the formats look alike.
+  {
+    slug: 'year-in-review',
+    cardImage: '/landing-redesign/cards/03-year-record.png',
+    video: '/landing-redesign/cards/03-year-record.mp4',
+    poster: '/examples/year-in-review/spread-01.jpg',
+    gallery: [
+      '/examples/year-in-review/spread-01.jpg',
+      '/examples/year-in-review/spread-02.jpg',
+      '/examples/year-in-review/spread-03.jpg',
+      '/examples/year-in-review/spread-04.jpg',
+    ],
+    updatedAt: '2026-09-21',
+  },
+  {
+    slug: 'growth-story',
+    cardImage: '/landing-redesign/cards/04-growth-story.png',
+    video: '/landing-redesign/cards/04-growth-story.mp4',
+    poster: '/examples/growth-story/spread-01.jpg',
+    gallery: [
+      '/examples/growth-story/spread-01.jpg',
+      '/examples/growth-story/spread-02.jpg',
+      '/examples/growth-story/spread-03.jpg',
+      '/examples/growth-story/spread-04.jpg',
+    ],
+    updatedAt: '2026-09-21',
+  },
+  {
+    slug: 'photo-magazine',
+    cardImage: '/landing-redesign/cards/05-magazine.png',
+    video: '/landing-redesign/cards/05-magazine.mp4',
+    poster: '/examples/photo-magazine/spread-01.jpg',
+    gallery: [
+      '/examples/photo-magazine/spread-01.jpg',
+      '/examples/photo-magazine/spread-02.jpg',
+      '/examples/photo-magazine/spread-03.jpg',
+      '/examples/photo-magazine/spread-04.jpg',
+    ],
+    updatedAt: '2026-09-21',
+  },
+  {
+    slug: 'portfolio-book',
+    cardImage: '/landing-redesign/cards/06-portfolio.png',
+    video: '/landing-redesign/cards/06-portfolio.mp4',
+    poster: '/examples/portfolio-book/spread-01.jpg',
+    gallery: [
+      '/examples/portfolio-book/spread-01.jpg',
+      '/examples/portfolio-book/spread-02.jpg',
+      '/examples/portfolio-book/spread-03.jpg',
+      '/examples/portfolio-book/spread-04.jpg',
+    ],
+    updatedAt: '2026-09-21',
   },
 ];
 

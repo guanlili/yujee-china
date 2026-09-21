@@ -274,7 +274,7 @@ export const zh: MarketingMessages = {
     hubTitle: '作品示例',
     hubIntro:
       '用 Yujee 能做出来的真实形式。每一本都从一堆照片和几句话开始——AI 帮你分组、起草配文、排好每一个跨页。点开一本看看流程，然后做你自己的。',
-    moreComing: '更多形式——宝宝成长、宠物、爱情故事——正在路上。',
+    moreComing: '更多形式——宠物、婚礼、爱情故事——正在路上。',
     insideHead: '里面有什么',
     madeWithHead: '用到的能力',
     galleryHead: '翻开看看',

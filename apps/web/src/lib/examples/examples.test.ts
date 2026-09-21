@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
+import { hasOwnContent } from '@/lib/examples/content';
 import { locales } from '@/lib/i18n/routing';
 import { INDEXABLE_ROUTES } from '@/lib/seo/routes';
 import { SITE_URL } from '@/lib/seo/site';
@@ -53,6 +54,18 @@ test('every example carries complete, non-empty copy in both locales', () => {
       for (const alt of c.galleryAlt) assert.ok(alt.trim().length > 0, 'empty alt text');
       // JSON-LD reuses the tagline as its description — keep it prose, not markup.
       assert.ok(!c.tagline.includes('<'), 'tagline leaks markup into JSON-LD');
+    }
+  }
+});
+
+test('every example has its own copy in every locale — the English fallback never ships', () => {
+  // The test above reads through contentFor(), which silently substitutes
+  // English, so it was green while three locales were missing four pages. The
+  // hreflang cluster promises all five languages for every example; this is
+  // what makes that promise true.
+  for (const example of EXAMPLES) {
+    for (const locale of locales) {
+      assert.ok(hasOwnContent(example.slug, locale), `${example.slug} has no ${locale} copy — it would ship as English`);
     }
   }
 });

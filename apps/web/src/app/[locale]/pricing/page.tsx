@@ -46,6 +46,16 @@ export function generateStaticParams() {
 }
 
 const usd = (amount: number) => `$${amount}`;
+// Per-photo rate under each pack. 20 credits for $3 is $0.15 and 200 for $20 is
+// $0.10 — the old parseFloat(toFixed(3)) rendered the latter as "$0.1", which
+// reads like a typo on the one page whose whole job is stating prices.
+const perPhoto = (amount: number) =>
+  new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 3,
+  }).format(amount);
 
 /**
  * Copy refers to three price points by role, not by index. Deriving them by
@@ -136,7 +146,7 @@ export default async function PricingPage({ params }: Props) {
                   {pack.books.toLocaleString(loc)} {m.packsCreditsLabel}
                 </div>
                 <div className="mt-1 text-xs text-[var(--meta)]">
-                  ${parseFloat((pack.priceUsd / pack.books).toFixed(3))} {m.packsPerPhoto}
+                  {perPhoto(pack.priceUsd / pack.books)} {m.packsPerPhoto}
                 </div>
               </li>
             ))}

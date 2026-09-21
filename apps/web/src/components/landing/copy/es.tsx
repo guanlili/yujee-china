@@ -26,6 +26,8 @@ export const es: Copy = {
   heroSub: 'YUJEE AI convierte tus fotos, tus historias, tus recuerdos y tus ideas en un libro de recuerdos hecho para ti.',
   heroCta: 'Empezar a crear',
   heroExamples: 'Ver ejemplos',
+  heroSamplesTitle: 'Así queda al final: seis libros de muestra',
+  heroSamplesMore: 'Todos los ejemplos',
   trust: ['Sin saber diseñar', 'Maquetación editable', 'PDF listo para imprimir'],
   workflowTitle: 'Cómo funciona',
   workflow: ['Agrupación automática de fotos', 'Escritura asistida por IA', 'Maquetación automática tipo revista'],
@@ -80,6 +82,7 @@ export const es: Copy = {
   copyright: '© 2026 Yujee · Recuerdos, bien maquetados',
   samples: [
     {
+      slug: 'year-in-review',
       title: 'El año en un libro',
       brief: 'Un fotolibro al año, encuadernado cada diciembre',
       body:
@@ -89,6 +92,7 @@ export const es: Copy = {
       video: '/landing-redesign/cards/03-year-record.mp4',
     },
     {
+      slug: 'life-story',
       title: 'Historia de vida',
       brief: 'Tus momentos clave, en un libro de historia de vida',
       body:
@@ -98,6 +102,7 @@ export const es: Copy = {
       video: '/landing-redesign/cards/02-life-story.mp4',
     },
     {
+      slug: 'travel-journal',
       title: 'Viajes',
       brief: 'Un viaje, encuadernado por sí solo en un fotolibro de viaje',
       body:
@@ -107,6 +112,7 @@ export const es: Copy = {
       video: '/landing-redesign/cards/01-travel.mp4',
     },
     {
+      slug: 'portfolio-book',
       title: 'Portafolio',
       brief: 'Tu trabajo, alineado y sin ruido',
       body:
@@ -116,6 +122,7 @@ export const es: Copy = {
       video: '/landing-redesign/cards/06-portfolio.mp4',
     },
     {
+      slug: 'photo-magazine',
       title: 'Revista',
       brief: 'Maqueta el contenido como una revista de verdad',
       body:
@@ -125,6 +132,7 @@ export const es: Copy = {
       video: '/landing-redesign/cards/05-magazine.mp4',
     },
     {
+      slug: 'growth-story',
       title: 'Historia de crecimiento',
       brief: 'Una página al mes, todos los cambios',
       body:

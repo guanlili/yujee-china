@@ -254,6 +254,14 @@ test('each example page owns its own format keyword — no two pages chase the s
   const owned: Record<string, RegExp[]> = {
     'travel-journal': [/travel photobook/i],
     'life-story': [/biography book/i, /memoir book/i],
+    // The four formats added 2026-09-21. "photo magazine" is deliberately the
+    // two-word form: the bare "magazine" SERP is fake-cover toys (see the July
+    // competitor audit), and "portfolio book" / "pdf portfolio" are the
+    // make-intent forms, not the "portfolio website" SaaS results.
+    'year-in-review': [/year in review photo book/i],
+    'growth-story': [/baby milestone book/i, /baby photo book/i],
+    'photo-magazine': [/photo magazine/i],
+    'portfolio-book': [/portfolio book/i, /pdf portfolio/i],
   };
 
   for (const [slug, patterns] of Object.entries(owned)) {
@@ -277,6 +285,27 @@ test('each example page owns its own format keyword — no two pages chase the s
   const landingText = [landing.metaTitle, landing.metaDesc, copy.createTitle, copy.heroEyebrow].join(' ');
   assert.doesNotMatch(landingText, /travel photobook/i, 'the landing is competing with /examples/travel-journal');
   assert.doesNotMatch(landingText, /biography book/i, 'the landing is competing with /examples/life-story');
+  assert.doesNotMatch(landingText, /year in review/i, 'the landing is competing with /examples/year-in-review');
+  assert.doesNotMatch(landingText, /baby milestone|baby photo book/i, 'the landing is competing with /examples/growth-story');
+  assert.doesNotMatch(landingText, /photo magazine/i, 'the landing is competing with /examples/photo-magazine');
+  assert.doesNotMatch(landingText, /portfolio book|pdf portfolio/i, 'the landing is competing with /examples/portfolio-book');
+
+  // Every example page owns a DIFFERENT term. Two pages carrying the same one
+  // would split the signal between them — the exact thing the map above exists
+  // to prevent, so the map itself is checked for overlap.
+  for (const [slug, patterns] of Object.entries(owned)) {
+    for (const [otherSlug, otherPatterns] of Object.entries(owned)) {
+      if (slug === otherSlug) continue;
+      const other = getExample(otherSlug);
+      assert.ok(other);
+      const c = exampleContent(other, 'en');
+      const otherMeta = `${c.metaTitle} ${c.metaDesc}`;
+      for (const pattern of patterns) {
+        assert.doesNotMatch(otherMeta, pattern, `${otherSlug} <head> chases ${pattern}, which belongs to ${slug}`);
+      }
+      void otherPatterns;
+    }
+  }
 });
 
 // Anchor text is a relevance signal for the DESTINATION page, so both footers

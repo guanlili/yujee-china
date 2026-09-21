@@ -289,7 +289,7 @@ export const en: MarketingMessages = {
     hubTitle: 'Examples',
     hubIntro:
       'Real formats you can make with Yujee. Each one started as a pile of photos and a few words — the AI grouped them, drafted the captions, and laid out every spread. Open one to see the flow, then make your own.',
-    moreComing: 'More formats — baby growth, pets, and love stories — are on the way.',
+    moreComing: 'More formats — pets, weddings, and love stories — are on the way.',
     insideHead: 'What’s inside',
     madeWithHead: 'Made with',
     galleryHead: 'Inside the book',

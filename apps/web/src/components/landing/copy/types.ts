@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 
 export type Sample = {
+  /** The /examples page this card opens — must be a slug in lib/examples/examples.ts. */
+  slug: string;
   title: string;
   brief: string;
   body: string;
@@ -35,6 +37,10 @@ export type Copy = {
   heroSub: string;
   heroCta: string;
   heroExamples: string;
+  /** Heading over the six-book strip under the hero composer. */
+  heroSamplesTitle: string;
+  /** Link text to the /examples hub, used by the strip and the sample grid. */
+  heroSamplesMore: string;
   trust: string[];
   workflowTitle: string;
   workflow: string[];

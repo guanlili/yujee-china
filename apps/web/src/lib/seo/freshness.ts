@@ -1,4 +1,4 @@
-import { EXAMPLE_SLUGS } from '@/lib/examples/examples';
+import { EXAMPLES } from '@/lib/examples/examples';
 import { GUIDES, getGuide } from '@/lib/guides/guides';
 
 /**
@@ -41,28 +41,44 @@ export interface RouteFreshness {
 // 五语拆分后营销/示例文案按语言一文件放在目录里;目录整个作 pathspec,
 // 任何语言的译文改动都会把对应路由拽进这道闸门。
 const MARKETING = 'apps/web/src/messages/marketing';
-const EXAMPLES = ['apps/web/src/lib/examples/examples.ts', 'apps/web/src/lib/examples/content'] as const;
+const EXAMPLE_SOURCES = ['apps/web/src/lib/examples/examples.ts', 'apps/web/src/lib/examples/content'] as const;
+/**
+ * One anchor for every /examples row. Each example carries its own `updatedAt`
+ * (the day its page last changed) but they share sources, so a single review
+ * commit covers them all — same shape as GUIDES_HUB_REVIEWED_AT.
+ */
+const EXAMPLES_REVIEWED_AT = 'c4148143';
 /** Guide prose only. guides.ts is excluded on purpose — see FRESHNESS_DECLARATIONS. */
 const GUIDES_CONTENT = 'apps/web/src/lib/guides/content';
 /** The hub has no article of its own to carry a reviewedAt, so it lives here. */
 const GUIDES_HUB_REVIEWED_AT = 'c4148143';
 
-/** Every example detail page is one row of the same array, so they share sources. */
+/**
+ * Every example detail page is one row of the same array, so they share sources.
+ * The date comes from the example itself: the two 2026-07 formats last moved in
+ * the 2026-08-08 keyword pass; the four added on 2026-09-21 carry that day.
+ * Giving all six one date would tell Google the old pages changed when they
+ * did not — the exact lie this file exists to prevent.
+ */
 const exampleDetailFreshness: Record<string, RouteFreshness> = Object.fromEntries(
-  EXAMPLE_SLUGS.map((slug) => [
-    `/examples/${slug}`,
-    { sources: [...EXAMPLES], updatedAt: '2026-08-08', reviewedAt: 'c4148143' },
+  EXAMPLES.map((example) => [
+    `/examples/${example.slug}`,
+    { sources: [...EXAMPLE_SOURCES], updatedAt: example.updatedAt, reviewedAt: EXAMPLES_REVIEWED_AT },
   ]),
 );
 
 export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
-  // d2bca297 加了首页三处 /guides 入口(桌面导航/移动菜单/页脚),c4148143 把
-  // 页脚的 Pricing 从 #pricing 改指 /pricing。前者读者是真能看见的:导航栏
-  // 多出一项。所以这条 updatedAt 要动 —— 而且动它是有用的,首页正是我们希望
-  // Google 重新抓、从而发现 /guides 和 /pricing 两条新链接的页面。
+  // 首页读者可见的改动,按时间:74c590db(09-09,H1/eyebrow 吃进投放词)、
+  // e9ec66fe(页脚 travel 锚文本改成该页的词)、d2bca297(09-11,桌面导航/移动
+  // 菜单/页脚三处多出 Guides)。注意 c4148143 把「页脚 Pricing 改指 /pricing」
+  // 只落在共用 MarketingFooter 上,首页渲染的是自己的页脚,当时并没有变 ——
+  // 上一版这里把它记成首页改动,是错的。
+  // 2026-09-21:首屏 composer 下面加了六本样书条,样书卡的「查看示例」改指
+  // /examples/<slug>,首页自己的页脚 Pricing 也终于指向 /pricing。首屏多出
+  // 一整排图,读者看得见,updatedAt 落在这天。
   '/': {
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
-    updatedAt: '2026-09-11',
+    updatedAt: '2026-09-21',
     reviewedAt: 'c4148143',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
@@ -87,25 +103,25 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     updatedAt: '2026-09-11',
     reviewedAt: 'c4148143',
   },
-  // d2bca297 / c4148143 都动了 messages/marketing,但对这几页只改了 chrome:
-  // 共用导航多一项 Guides,页脚 Pricing 改指 /pricing。标签一个字没变,正文
-  // 一个字没动。本文件上面 19093baf 那条先例说的就是这种情况(往页脚加一条
-  // 链接 → 只推 reviewedAt)。刷 updatedAt 等于告诉 Google 隐私政策也改了。
+  // messages/marketing 这轮被 74c590db(首页 en meta)、d2bca297(共用导航多一项
+  // Guides)、c4148143(共用页脚 Pricing 改指 /pricing)和 2026-09-21 的
+  // examples.moreComing 一行碰到。对隐私页而言全是 chrome 或别页的文案,正文
+  // 一个字没动 —— 这正是 reviewedAt/updatedAt 分开的意义:只推 reviewedAt。
+  // 刷 updatedAt 等于告诉 Google 隐私政策也改了。
   '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: 'c4148143' },
   // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
   // refund rule) in both locales — a genuine content change, so this one moves.
   '/terms': { sources: [MARKETING], updatedAt: '2026-08-08', reviewedAt: 'c4148143' },
-  // 这五个路由被闸门捞出来,是因为 messages/marketing 被动过两次:19093baf 往
-  // footer 的 Photo Books 组加了一条 /guides 链接,9c34faea 加了 guides.faqHead。
-  // 前者是导航;后者更轻 —— faqHead 只在 guides/[slug]/page.tsx 渲染,这几个营销页
-  // 根本不读它。两次读者看到的 prose 都一个字没动,所以只推 reviewedAt。真去刷新
-  // updatedAt,等于告诉 Google 隐私政策也改了。
-  //
-  // 改 SHA 时这段话必须跟着核对:上一轮机械替换了 SHA 却留着旧句子,于是这份
-  // 审计记录指着一个没干这件事的提交。写错的审计记录比没有更糟。
-  // The hub renders each example's `title`, not its meta — the keyword pass
-  // rewrote titles/descriptions on the detail pages only, so the hub is unchanged.
-  '/examples': { sources: [...EXAMPLES, MARKETING], updatedAt: '2026-08-04', reviewedAt: 'c4148143' },
+  // 改 SHA 时上面的审计话必须跟着核对,而且只能引用 main 上存在的提交:上一轮
+  // 留着一段引用 19093baf / 9c34faea 的旧句子,两个 SHA 都是 squash 前的、不在
+  // main 上,其中一个还没干过它被记的那件事。写错的审计记录比没有更糟。
+  // The hub renders one card per example, so it changes whenever the newest
+  // example does — derived, like the guides hub, instead of hand-dated.
+  '/examples': {
+    sources: [...EXAMPLE_SOURCES, MARKETING],
+    updatedAt: EXAMPLES.map((e) => e.updatedAt).sort().at(-1) ?? '',
+    reviewedAt: EXAMPLES_REVIEWED_AT,
+  },
   ...exampleDetailFreshness,
 };
 

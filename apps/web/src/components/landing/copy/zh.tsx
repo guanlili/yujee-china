@@ -26,6 +26,8 @@ export const zh: Copy = {
   heroSub: '你来讲故事，故事润色、排版、设计，通通交给 Yujee。',
   heroCta: '开始创作',
   heroExamples: '看看示例',
+  heroSamplesTitle: '做出来是这样的 —— 六本官方样书',
+  heroSamplesMore: '全部示例',
   trust: ['无需设计基础', '全程可编辑', '导出高清成品'],
   workflowTitle: '创作工作流',
   workflow: ['自动识图分组', 'AI 辅助内容撰写', '自动设计'],
@@ -77,7 +79,8 @@ export const zh: Copy = {
   copyright: '© 2026 Yujee · 用排版，把回忆收好',
   samples: [
     {
-      title: '年纪记录',
+      slug: 'year-in-review',
+      title: '年度记录',
       brief: '一年一本，年底自动成册',
       body: '把一整年塞进一本。节日、出游、日常按月铺开，年底一键成册，年年续上一本。',
       bullets: ['按月 / 按事件自动归类', '年底一键生成年度册', '风格沿用，逐年成套'],
@@ -85,6 +88,7 @@ export const zh: Copy = {
       video: '/landing-redesign/cards/03-year-record.mp4',
     },
     {
+      slug: 'life-story',
       title: '人生故事',
       brief: '把人生节点，排成一本传记',
       body: '按时间轴铺开重要节点：出生、求学、相遇、远行。每段配一篇可编辑短文，做成传记式相册。',
@@ -93,6 +97,7 @@ export const zh: Copy = {
       video: '/landing-redesign/cards/02-life-story.mp4',
     },
     {
+      slug: 'travel-journal',
       title: '旅行',
       brief: '一趟旅行，自动收成一本游记',
       body: '按日期自动分组，地点、天气、行程顺序都帮你理好。每一天一个跨页，照片之间留出呼吸。',
@@ -101,6 +106,7 @@ export const zh: Copy = {
       video: '/landing-redesign/cards/01-travel.mp4',
     },
     {
+      slug: 'portfolio-book',
       title: '作品集',
       brief: '让作品安静地排成一册',
       body: '摄影、插画、设计：网格对齐、统一留白，弱化装饰，让作品本身是主角。',
@@ -109,6 +115,7 @@ export const zh: Copy = {
       video: '/landing-redesign/cards/06-portfolio.mp4',
     },
     {
+      slug: 'photo-magazine',
       title: '杂志',
       brief: '把内容排成一本杂志感的刊物',
       body: '不只是相册：封面、目录、专题、引言，按真正的杂志骨架排版，把生活做成一期刊物。',
@@ -117,6 +124,7 @@ export const zh: Copy = {
       video: '/landing-redesign/cards/05-magazine.mp4',
     },
     {
+      slug: 'growth-story',
       title: '成长故事',
       brief: '一月一页，记下 TA 的变化',
       body: '按月份归档，自动生成成长时间线。身高体重、第一次的瞬间，都能落在对应的页上。',

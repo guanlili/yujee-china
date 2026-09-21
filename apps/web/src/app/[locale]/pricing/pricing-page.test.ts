@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { readCode } from '@/lib/testing/source';
 import sitemap from '@/app/sitemap';
 import {
   ADDON_PACKS,
@@ -17,26 +15,13 @@ import { CHANGE_FREQUENCY, INDEXABLE_ROUTES, ROUTE_PRIORITY } from '@/lib/seo/ro
 import { pricingAppJsonLd } from '@/lib/seo/schema';
 import { getMarketingMessages } from '@/messages/marketing';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const webSrc = join(here, '..', '..', '..');
 
-function src(path: string): string {
-  return readFileSync(join(webSrc, path), 'utf8');
-}
-
-/**
- * Source with comments removed.
- *
- * The hardcoded-price check runs against this, not the raw file: prose in a
- * comment is allowed to quote "$3" while explaining why the page exists, and a
- * test that trips on that invites the next person to loosen the regex instead
- * of fixing a real leak. Only code can render a price to a reader.
- */
-function code(path: string): string {
-  return src(path)
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '');
-}
+// Both readers strip comments (lib/testing/source.ts). For the hardcoded-price
+// check that is leniency — a comment may quote "$3" while explaining the page.
+// For every positive assertion it is rigour — a commented-out <Link> must not
+// keep the test green. Same helper, both directions.
+const src = readCode;
+const code = readCode;
 
 /**
  * /pricing used to 308 onto the home page's #pricing anchor. That was the right
@@ -337,5 +322,19 @@ test('the marketing nav sends Pricing to the page, not the home anchor', () => {
     nav,
     /key: 'pricing',\s*\n\s*label: m\.nav\.pricing,\s*\n\s*href: pricingPath,/,
     'MarketingNav still bounces Pricing to the home anchor',
+  );
+});
+
+test('the landing page links the real /pricing page from its own footer', () => {
+  // The redesigned home renders its OWN nav and footer; MarketingFooter's
+  // /pricing entry (c4148143) never reaches it. Without this entry the money
+  // page has zero inbound links from the strongest page on the site. Count
+  // the exact call site, on comment-stripped source, so a commented-out line
+  // fails the way a deleted one does.
+  const landing = readCode('components/landing/YujeeLandingHomeClient.tsx');
+  assert.equal(
+    (landing.match(/\[c\.navPricing, `\/\$\{locale\}\/pricing`\]/g) ?? []).length,
+    1,
+    'landing footer must carry exactly one link to /${locale}/pricing',
   );
 });
