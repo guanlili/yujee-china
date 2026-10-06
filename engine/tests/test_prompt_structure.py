@@ -79,9 +79,7 @@ def test_prompt_loader_fills_placeholders_without_breaking_json_examples():
 def test_compose_global_prompt_states_new_rules():
     """三条硬规则必须在 prompt 里:多 title 槽分主副、只用给定时间地点、不许留空。
     同时验证旧 bullet 已删除(防止合并冲突时旧新并存)。"""
-    from pathlib import Path
-
-    text = Path("engine/src/workflows/core/compose/compose_global.md").read_text("utf-8")
+    text = (WORKFLOWS_ROOT / "core/compose/compose_global.md").read_text("utf-8")
 
     # Extract 「规则(硬性)」section for structural anchor (prevents false positives in comments/examples)
     rules_start = text.find("# 规则(硬性)")
