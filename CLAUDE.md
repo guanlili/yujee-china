@@ -35,9 +35,13 @@ Postgres + Cloudflare R2
   普通 1GB Agent 的开关关着 => 404):`POST /internal/open-clip/embeddings`、
   `POST /internal/photo-profile`。已删除的端点:`/v3/judge-layout`、
   `/v3/judge-page-template`、`/v3/design`。
+  `/internal/photo-profile` 有两个调用方:Agent 的 analyze 建档(见下条开关),和 **Web 直连**
+  CLIP worker 取抠图 mask(`AGENT_CLIP_BASE_URL`,不是 `AGENT_BASE_URL` 那台)。
   ⚠️ `/internal/agent-ack` 是**生产有、源码没有**的漂移,还没人补,见 3aa9f113 的账。
 - 分析是**纯确定性分组**:`/v3/analyze` 走 CLIP/时间/GPS/像素,零 AI 调用、不识图;
-  章标题由拍摄时间跨度确定性派生到 `V3Chapter.title`。
+  章标题由拍摄时间跨度确定性派生到 `V3Chapter.title`。前提是建档开关
+  `AGENT_ENABLE_PHOTO_PROFILE` **默认关**:开了 analyze 就会经 `/internal/photo-profile`
+  每本书多出 N 次视觉模型调用,「零 AI」不再成立,开之前先算成本。
 - 排版是**一次确定性选版**:`/v3/select-layout` 直接回调 `completed` + 完整 `pages`,
   零 AI 调用,没有候选缩略图/评委来回;文案先填模板 JSON 的 `sample` 示例文案。
 - 生成链路只剩**一次** AI 调用:`/v3/compose`(按章并发的 Gemini 成稿,看真实照片 +
@@ -69,11 +73,16 @@ Postgres + Cloudflare R2
   `design-chat/route.ts` 的 `DESIGN_WRITE_TOOLS` 集合、
   `editor-v2/chat-history.ts` 的 `DESIGN_CHANGE_CATEGORY` 映射都必须同步,
   否则历史回放会丢更新/少一类彩色条。
-- **后两个写工具与兜底读工具 `look_at_photos` 是条件注册的**:滤镜/抠图写的是
-  `albums.photo_filter` 列(走 `settingsRevision`,不是页面 draft 的 version),
-  经 `AlbumToolsOptions.applyPhotoFilter` seam 落到 web 的 `applyAgentPhotoFilter`;
-  看真图经 `lookAtPhotos` seam。seam 没注入就不注册 —— 宁可没这个能力,也不能让模型
-  调一个写不进去/看不到图的工具。
+- **后两个写工具与兜底读工具 `look_at_photos` 是条件注册的**(seam 没注入就不注册 ——
+  宁可没这个能力,也不能让模型调一个写不进去/看不到图的工具)。滤镜/抠图写的是
+  `albums.photo_filter` 列(走 `settingsRevision`,不是页面 draft 的 version);
+  `applyPhotoFilter` seam 是 design-agent **本地**的:只合进内存书并累计 patch,由
+  `/api/chat` 响应的 `photoFilterPatch` 带回,web 的 `persistDesignChat` 带装书时取的
+  设置基线调 `applyAgentPhotoFilter` 落库 —— agent 不写库,且落不落看 patch 非空,
+  **与 `committed` 无关**(只调色的一轮 committed 是 false)。看真图的 `lookAtPhotos`
+  要 design-agent 配齐 `WEB_BASE_URL` + `AGENT_SHARED_SECRET`,回拉 web 的
+  `POST /api/v3/internal/photo-bytes`;缺一个就不注册。实际注册了哪些看 `GET /api/state`
+  的 `toolNames`。
 
 ### 页面真相
 
@@ -116,7 +125,11 @@ Postgres + Cloudflare R2
 - `albums.photo_filter` 是全书默认 + 单张覆盖的持久化真相;显式 `null` 覆盖表示原片。
   26 个确定性 LUT 只以生成后的 17³/33³ 二进制资源随 Web 发布,`.cube` 源文件不进仓。
 - 滤镜引擎只在 Browser 运行,只生成缓存/导出/上传用的派生像素;IndexedDB 原图不改写,
-  Web/Agent 不做服务端滤镜处理。
+  Web/Agent 不做服务端滤镜处理。**抠图是例外**:alpha mask 由 CLIP worker 的 isnet
+  在服务端出(`persistMask:true`),Web 写 R2 `photo-masks/{albumId}/{photoId}.png`
+  并回填 `album_photos.profile.maskKey`,浏览器经 `photo-masks/urls` 签名取用;取不到才
+  退回浏览器漫水填充(无语义、棚拍人像实测不可用,所以生产没配 `AGENT_CLIP_BASE_URL`
+  会启动告警)。
 - **建书照片直传 R2**:`POST /api/v3/albums` 的 body 里**没有照片字节**。浏览器先
   `POST /api/v3/albums/upload-urls` 换预签名 PUT(不建书/不扣积分/不写库,游客在此
   就按 `ANON_MAX_PHOTOS_PER_GENERATION` 卡住),直传到
@@ -173,5 +186,5 @@ Postgres + Cloudflare R2
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 1adaef05
+checked-at: 035d30da
 -->
