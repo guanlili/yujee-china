@@ -14,7 +14,7 @@
     "templates:check": "pnpm --filter @yujee/contracts templates:check",
     "docs:check": "node scripts/docs-check.mjs",
     "sitemap:check": "pnpm --filter @yujee/web sitemap:check",
-    "test": "pnpm -r test",
+    "test": "pnpm -r --no-bail test",
     "typecheck": "pnpm docs:check && pnpm sitemap:check && pnpm templates:check && pnpm --filter @yujee/contracts typecheck && pnpm --filter @yujee/web typecheck"
   },
   "devDependencies": {

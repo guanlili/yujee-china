@@ -163,8 +163,10 @@ Postgres + Cloudflare R2
 
 ## 验证陷阱(先读再声称通过)
 
-- 仓根 `pnpm test` 是 `pnpm -r test`,**撞到第一个失败的包就中断**,后面的包一个都不跑。
-  只跑它然后看到红,不等于只有那一处坏;看到绿也要确认 scope 覆盖了你改的包。
+- 仓根 `pnpm test` 是 `pnpm -r --no-bail test`:失败**不再中断**、后续包照跑,但
+  **退出码恒 0** —— 失败信号在输出里(pnpm 的 ERR 错误块),不在退出码里,别在
+  脚本/CI 里拿它的退出码当判据。CI 不走这条:四门各自逐包显式跑。
+  看到绿也要确认 scope 覆盖了你改的包。
 - `pnpm typecheck` **不含 engine**。改 Python 要单独跑 pytest。
 - `pnpm typecheck` 里挂着两道时效闸门:`docs:check`(文档)和 `sitemap:check`
   (sitemap 的 `<lastmod>`)。后者报错时别把所有日期一起刷新 —— `updatedAt` 是
