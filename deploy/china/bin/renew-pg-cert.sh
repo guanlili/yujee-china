@@ -10,7 +10,7 @@
 # ssl key 权限敏感,挂载是 ro,别动 inode 之外的任何属性)。
 set -euo pipefail
 
-CERT_DIR="${1:-/root/yujee-clip/deploy/china/pgssl}"
+CERT_DIR="${1:-/home/ubuntu/yujee-clip/deploy/china/pgssl}"
 CRT="$CERT_DIR/server.crt"
 KEY="$CERT_DIR/server.key"
 CONTAINER="${2:-yujee-postgres-1}"

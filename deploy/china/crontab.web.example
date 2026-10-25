@@ -16,6 +16,6 @@
 30 4 * * * docker exec yujee-postgres-1 pg_dump -U yujee yujee | gzip > /var/backups/yujee/pg-$(date +\%F).sql.gz && find /var/backups/yujee -name 'pg-*.sql.gz' -mtime +7 -delete >> /var/log/yujee-cron.log 2>&1
 
 # 每日 04:20 PG 自签证书 ≤30 天自动续期（零停机 pg_reload_conf；web 侧 ssl require 全靠它）
-20 4 * * * /root/yujee-clip/deploy/china/bin/renew-pg-cert.sh >> /var/log/yujee-cron.log 2>&1
+20 4 * * * /home/ubuntu/yujee-clip/deploy/china/bin/renew-pg-cert.sh >> /var/log/yujee-cron.log 2>&1
 # 每周日 04:40 清理 >7 天的悬空旧镜像，防反复 --build 吃满磁盘
 40 4 * * 0 docker image prune -f --filter "until=168h" >> /var/log/yujee-cron.log 2>&1
