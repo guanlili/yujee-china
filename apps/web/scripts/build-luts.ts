@@ -25,7 +25,7 @@ const THUMB_BYTES = THUMB_SIZE ** 3 * CHANNELS;
 const OUTPUT_DIRECTORY = resolve(dirname(fileURLToPath(import.meta.url)), '../public/luts');
 const SOURCE_DIRECTORY_LABEL = '精选26色LUT';
 const DECIMAL_TOKEN = /^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?$/;
-const LOG_COMPANION_IDS = new Set<string>([
+export const LOG_COMPANION_IDS = new Set<string>([
   'cloudy-cool', 'airy-japanese', 'travel-cinematic', 'daily-soft', 'teal-orange-outdoor',
   'cool-cyan', 'rich-teal-orange', 'night-film', 'forest-green', 'retro-film', 'fuji-clear',
   'dark-cool-cinema', 'kodak-daylight', 'sunny-soft', 'autumn-warm', 'altay-wilderness',
@@ -164,7 +164,7 @@ function validateManifest(): void {
   }
 }
 
-function logCompanionName(sourceName: string): string {
+export function logCompanionName(sourceName: string): string {
   return sourceName.replace(/(?:-709)?\.cube$/, '-LOG.cube');
 }
 

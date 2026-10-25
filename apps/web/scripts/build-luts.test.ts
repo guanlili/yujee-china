@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import {
-  copyFileSync,
   existsSync,
+  realpathSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -17,7 +17,15 @@ import { tmpdir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 
 import { LUT_DEFINITIONS } from '../src/lib/photo/filter-state.ts';
-import { buildLuts, buildLutsForTest, downsample33To17, parseCube33, parseSourceArgument } from './build-luts.ts';
+import {
+  LOG_COMPANION_IDS,
+  buildLuts,
+  buildLutsForTest,
+  downsample33To17,
+  logCompanionName,
+  parseCube33,
+  parseSourceArgument,
+} from './build-luts.ts';
 
 const CUBE_SIZE = 33;
 const CUBE_BYTES = CUBE_SIZE ** 3 * 3;
@@ -54,16 +62,18 @@ after(() => {
   for (const directory of temporaryDirectories) rmSync(directory, { recursive: true, force: true });
 });
 
+// 真实 .cube 授权源文件不进仓(仓根 README「26 个 LUT 只以生成后资源发布」),硬编码
+// 原作者本地目录的做法让任何新克隆必挂。行为类用例改用与真实文件**同构**的合成
+// identity cube 驱动(LOG 伴随按脚本同一份白名单写);治理类用例单独按目录存在性跳过。
 function approvedSourceCopy({ includeLogs = false, unexpectedCube = false } = {}): string {
   const target = temporaryDirectory('yujee-lut-source-');
   for (const definition of LUT_DEFINITIONS) {
-    copyFileSync(resolve(approvedSourceDirectory, definition.source), resolve(target, definition.source));
+    writeFileSync(resolve(target, definition.source), identityCube());
   }
   if (includeLogs) {
     for (const definition of LUT_DEFINITIONS) {
-      const logName = definition.source.replace(/(?:-709)?\.cube$/, '-LOG.cube');
-      const logPath = resolve(approvedSourceDirectory, logName);
-      if (existsSync(logPath)) writeFileSync(resolve(target, logName), 'permitted LOG companion');
+      if (!LOG_COMPANION_IDS.has(definition.id)) continue;
+      writeFileSync(resolve(target, logCompanionName(definition.source)), 'permitted LOG companion');
     }
   }
   if (unexpectedCube) writeFileSync(resolve(target, 'unregistered-look-709.cube'), 'unexpected');
@@ -117,20 +127,26 @@ test('rejects non-decimal cube number tokens and malformed sample cardinality', 
   assert.throws(() => parseCube33(identityCube().replace('0 0 0 # RGB', '1.1 0 0 # RGB')), /within \[0, 1\]/);
 });
 
-test('every manifest source resolves in the approved LUT source directory', () => {
-  assert.equal(LUT_DEFINITIONS.length, 26);
-  for (const definition of LUT_DEFINITIONS) {
-    assert.equal(existsSync(resolve(approvedSourceDirectory, definition.source)), true, definition.source);
-  }
-});
+test(
+  'every manifest source resolves in the approved LUT source directory',
+  { skip: !existsSync(approvedSourceDirectory) && 'licensed LUT source directory not present on this machine' },
+  () => {
+    assert.equal(LUT_DEFINITIONS.length, 26);
+    for (const definition of LUT_DEFINITIONS) {
+      assert.equal(existsSync(resolve(approvedSourceDirectory, definition.source)), true, definition.source);
+    }
+  },
+);
 
 test('CLI accepts only --source followed by an existing absolute directory', () => {
-  const argv = ['node', 'build-luts.ts', '--source', approvedSourceDirectory];
-  assert.equal(parseSourceArgument(argv), approvedSourceDirectory);
+  // realpathSync 对齐:parse 返回的是 realpath 后的路径(macOS 的 /var 实为 /private/var)。
+  const existingAbsoluteDirectory = realpathSync(resolve(tmpdir()));
+  const argv = ['node', 'build-luts.ts', '--source', existingAbsoluteDirectory];
+  assert.equal(parseSourceArgument(argv), existingAbsoluteDirectory);
   assert.throws(() => parseSourceArgument(['node', 'build-luts.ts']), /usage/);
   assert.throws(() => parseSourceArgument(['node', 'build-luts.ts', '--source', 'relative']), /usage/);
   assert.throws(() => parseSourceArgument([...argv, 'extra']), /usage/);
-  assert.throws(() => parseSourceArgument(['node', 'build-luts.ts', '--other', approvedSourceDirectory]), /usage/);
+  assert.throws(() => parseSourceArgument(['node', 'build-luts.ts', '--other', existingAbsoluteDirectory]), /usage/);
 });
 
 test('accepts known LOG companions but rejects an unregistered cube source', () => {
@@ -243,7 +259,8 @@ test('preserves owned backup and reports its safe path when restoration fails', 
 
 test('builds deterministic, ordered payloads and hash-verified provenance', () => {
   const outputDirectory = resolve(temporaryDirectory('yujee-lut-output-parent-'), 'luts');
-  const provenance = buildLuts(approvedSourceDirectory, outputDirectory);
+  const sourceDirectory = approvedSourceCopy();
+  const provenance = buildLuts(sourceDirectory, outputDirectory);
 
   assert.equal(provenance.version, 'pf-v1');
   assert.equal(provenance.entries.length, LUT_DEFINITIONS.length);
@@ -252,7 +269,7 @@ test('builds deterministic, ordered payloads and hash-verified provenance', () =
 
   const thumbs = gunzipSync(fileBytes(resolve(outputDirectory, 'thumbs.bin.gz')));
   for (const [index, definition] of LUT_DEFINITIONS.entries()) {
-    const source = fileBytes(resolve(approvedSourceDirectory, definition.source));
+    const source = fileBytes(resolve(sourceDirectory, definition.source));
     const expectedFull = parseCube33(new TextDecoder().decode(source));
     const emittedFull = fileBytes(resolve(outputDirectory, 'full', `${definition.id}.bin.gz`));
     assert.equal(gunzipSync(emittedFull).byteLength, CUBE_BYTES);
@@ -263,6 +280,6 @@ test('builds deterministic, ordered payloads and hash-verified provenance', () =
   }
 
   const before = outputHashManifest(outputDirectory);
-  buildLuts(approvedSourceDirectory, outputDirectory);
+  buildLuts(sourceDirectory, outputDirectory);
   assert.equal(outputHashManifest(outputDirectory), before);
 });

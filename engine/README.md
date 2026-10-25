@@ -1,6 +1,6 @@
 # Yujee Agent
 
-FastAPI service for the current minimal pipeline: deterministic chapter grouping, deterministic layout selection, and a single Gemini compose pass that writes the whole book's copy.
+FastAPI service for the current minimal pipeline: deterministic chapter grouping, deterministic layout selection, and a single compose pass that writes the whole book's copy (Gemini by default; `COMPOSE_PROVIDER=ark` switches it to 火山 Ark for the China deployment).
 
 **只有 `/v3/compose` 会调用模型。** `/v3/analyze` 和 `/v3/select-layout` 都是纯确定性的:
 分析期已经砍掉识图(不再有豆包 vision 调用),排版期也没有候选/缩略图/评委来回。
@@ -16,7 +16,7 @@ The previous edit-chat/theme/cover/finalize surfaces, plus `/v3/judge-layout`, `
 | `GET /health` | sync | Health check |
 | `POST /v3/analyze` | async `202` + callback | 确定性分组(CLIP embedding / 拍摄时间 / GPS / 像素特征)+ 确定性归散图 + 提取章节主色 → tree-only `V3LayoutTree`;章标题由拍摄时间跨度确定性派生到 `V3Chapter.title`。零 AI 调用 |
 | `POST /v3/select-layout` | async `202` + callback | Deterministic layout selection; one `completed` callback returns final `pages` (with template sample copy). 零 AI 调用 |
-| `POST /v3/compose` | async `202` + callback | 一次性成稿:按章并发让 Gemini 看真实照片 + 读用户讲的故事写满全书文案,并出封面/封尾文案与字体。**全链路唯一的 AI 调用** |
+| `POST /v3/compose` | async `202` + callback | 一次性成稿:按章并发让成稿模型(默认 Gemini,`COMPOSE_PROVIDER=ark` 时走火山 Ark 的 OpenAI 兼容通路,消息体本就是 image_url 多模态格式)看真实照片 + 读用户讲的故事写满全书文案,并出封面/封尾文案与字体。**全链路唯一的 AI 调用** |
 
 另有两个 internal 路由,**只在专用的 2GB CLIP worker 上开**
 (`fly.clip.toml`,`AGENT_ENABLE_CLIP_EMBEDDINGS=true`);普通 1GB Agent 开关关着 => 404。
@@ -112,7 +112,7 @@ analyze 会多一步:把照片委托给 2GB CLIP worker 的 `/internal/photo-pro
 
 `/v3/select-layout` is fully deterministic (no AI call): each unit takes a single seeded candidate, gets finalized into pages, and the template `sample` strings are filled into `texts`. 用户在这一步看到的是**有字的版面**,不是空文字框 —— 但那还不是真文案。
 
-`/v3/compose` 是全流程**唯一**的 AI 成稿调用:一章一次 Gemini(照片以真图进上下文、
+`/v3/compose` 是全流程**唯一**的 AI 成稿调用:一章一次(`_completion` 单一汇聚点,provider 由 `COMPOSE_PROVIDER` 决定:默认 Gemini,`ark` 走 `ai_client.chat_completion`,doubao 侧强制 thinking disabled 且不传 `response_format`;模型可用 `COMPOSE_ARK_MODEL` 单独指定,缺省回落 `ark_vision_model`)(照片以真图进上下文、
 `chapterContext` 是最高优先级素材),外加一次全局调用出封面/封尾文案与字体
 (AI 只输出场景名,字体由代码按 场景×语言 查表填)。失败绝不阻断交付 —— 章/全局批次
 单次失败先原地重试一次(瞬时网络抖动、空正文、JSON 解析不出都在此列;截断/少括号的
@@ -155,7 +155,7 @@ Important local `.env` fields:
 | `AGENT_PIPELINE_MODE` | `mock` or `real` |
 | `ARK_API_KEY` / `DEEPSEEK_API_KEY` | 砍掉识图后的残留槽:`mode=real` 启动仍必检,但当前没有 workflow 调用它们 |
 | `OPENAI_API_KEY` | 备用 vision 槽(`VISION_PROVIDER=openai` 时),同样无 workflow 调用 |
-| `SELECT_LAYOUT_API_KEY` | The one Gemini slot (name is historical). Its only consumer is ④ `/v3/compose`; `/v3/select-layout` itself is deterministic and needs no key. `mode=real` fails fast without it: compose degrades *silently* (green `completed`, empty `pagesTexts`, book full of template samples). |
+| `SELECT_LAYOUT_API_KEY` | The one Gemini slot (name is historical). Its only consumer is ④ `/v3/compose`; `/v3/select-layout` itself is deterministic and needs no key. `mode=real` fails fast without it (仅当 `COMPOSE_PROVIDER=gemini`;`ark` 线改查 `ARK_API_KEY`,Gemini 槽整条不被消费): compose degrades *silently* (green `completed`, empty `pagesTexts`, book full of template samples). |
 | `COMPOSE_CHAPTER_TIMEOUT_SECONDS` | 每章成稿的预算(默认 180 = 2 × 60s 单次调用重试上限 + 余量)。超时只让这一章掉队,不作废整本书 |
 | `PORT` | Defaults to `8001` |
 
@@ -228,5 +228,5 @@ CLIP embedding worker 是另一个 app(`engine/fly.clip.toml` → `yujee-agent-c
 
 <!-- doc-scope
 paths: engine/src/**, engine/fly*.toml, engine/pyproject.toml
-checked-at: 6eea1ca0
+checked-at: bb8e19c1
 -->

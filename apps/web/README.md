@@ -30,7 +30,7 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
 - Album-level default and per-photo override filter persistence in `albums.photo_filter`.
 - Browser -> Web -> Agent orchestration for V3 generation.
 - Callback handling from Agent.
-- R2 presigned URLs for PDF, thumbnails, and immutable versioned display-photo snapshots.
+- R2 presigned URLs for PDF, thumbnails, and immutable versioned display-photo snapshots. 国内部署可设 `S3_ENDPOINT`/`S3_REGION`/`S3_FORCE_PATH_STYLE` 把同一门面切到任意 S3 兼容存储(腾讯 COS/MinIO;凭证复用 `R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`,region 自动从 COS 域名推导;不设则完全走 R2)。
 
 Web 调**两个**后端服务,别混:
 
@@ -438,5 +438,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: 07c5158f
+checked-at: bb8e19c1
 -->

@@ -1,0 +1,89 @@
+# 国内版安全网:push/PR 自动跑全部测试与静态闸门。
+# 取代原仓「没有 CI,所有验证靠本地自觉」的状态 —— 重构期的第一道防线。
+# 注意 web 门必须先 design:build:style-append-consistency 测试 import
+# design-agent 源码,其解析依赖 pi 包的 dist/(README「验证陷阱」有专段)。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # docs:check 按提交历史比对 doc-scope 的 checked-at,浅克隆会误报
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # = docs:check + sitemap:check + templates:check + contracts/web tsc
+      - run: pnpm typecheck
+
+  engine:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --extra dev
+        working-directory: engine
+      - run: PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
+
+  web:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: yujee
+          POSTGRES_PASSWORD: yujee
+          POSTGRES_DB: yujee
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U yujee"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # localhost 命中 db client 的 isLocal 分支,不加 ssl require
+      DATABASE_URL: postgres://yujee:yujee@localhost:5432/yujee
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm design:build
+      - run: pnpm --filter @yujee/web db:migrate
+      - run: pnpm --filter @yujee/web test
+
+  packages:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm design:build
+      - run: pnpm --filter @yujee/contracts test
+      - run: pnpm --filter @earendil-works/pi-ai test
+      - run: pnpm --filter @earendil-works/pi-agent-core test
+      - run: pnpm --filter @smalldog/design-agent test
