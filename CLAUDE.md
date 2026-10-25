@@ -1,6 +1,17 @@
 # Yujee(遇己) Agent 起手约束
 
-本仓是 AI 人生纪念册应用。**线上跑的是四个部署单元,不是两个**:
+> ## 🇨🇳 国内版现状（本仓 = guanlili/yujee-china，2026-10-25 起生效）
+>
+> 本仓是海外项目的国内独立演进分支。**下面正文里的 Vercel/Fly/Gemini/R2 描述是海外历史架构,仅作理解原始设计用**;国内现实以本段与 [`deploy/china/README.md`](deploy/china/README.md) 为准:
+>
+> - **部署 = 单机 docker 全家桶** @ 49.232.156.221（`~/yujee-clip/`,五容器:web :8080 入口 / design-agent / agent / clip / postgres,同 compose 网络,同机另有英语测评生产 speakup 不可干扰;编排 `deploy/china/compose.single.yml`）
+> - **provider 已换**:compose 成稿走火山 Ark(`COMPOSE_PROVIDER=ark` + `COMPOSE_ARK_MODEL=doubao-seed-2-0-pro-260215`,原生多模态;三硬约束:thinking disabled/禁 json_object/max_tokens 映射);对象存储 = 腾讯 COS(S3_ENDPOINT 覆盖分支);design-agent = deepseek-v4-pro(思考型,必须关 thinking)。方舟已无独立 -vision 模型,seed 系原生多模态;deepseek-v4-pro 是假多模态(收图不报错全靠幻觉)。
+> - **CI 四门全绿**(`.github/workflows/ci.yml`:typecheck 含 docs/sitemap/templates 三闸 / engine pytest 538 / web 需先 design:build+PG service / packages)。改代码必推 CI,红了先修。基线回滚点 tag:`china-baseline-20261025`。
+> - **密钥全部在服务器** `~/yujee-clip/deploy/china/env/{single,clip}.env`(600,不进仓);ARK key 未换子账号、邮件仍 capture 模式(注册激活须从 web 容器 `/app/apps/web/.tmp/email-capture.jsonl` 捞验证链接)。
+> - **部署姿势**:rsync 必须 `--relative` 从仓根(尾斜杠=内容平铺,已踩两次);远端长任务一律 nohup;SSH 会随机断,操作要幂等。浏览器侧 HTTP+IP 阶段靠根布局的 crypto.randomUUID polyfill(安全上下文限制),上 HTTPS 后自动让位。
+> - 域名/备案/支付/手机号登录未做,见 `docs/plans/2026-10-25-china-deployment-plan.md` 与记忆。
+
+本仓是 AI 人生纪念册应用。**海外历史架构是四个部署单元,不是两个**:
 
 ```text
 Browser
