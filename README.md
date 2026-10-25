@@ -154,9 +154,10 @@ cd apps/web && pnpm test        # 或 pnpm --filter @yujee/web test
 
 ### 验证陷阱
 
-- 仓根 `pnpm test` 是 `pnpm -r test`,**撞到第一个失败的包就中断**,后面的包一个都不跑。
-  看到红不代表只坏了那一处;看到绿要先确认 scope 覆盖了你改的包。
-  要全量结论就逐包单独跑,别用它。
+- 仓根 `pnpm test` 是 `pnpm -r --no-bail test`:失败**不再中断**、后续包照跑,但
+  **退出码恒 0** —— 失败信号在输出(pnpm 的 ERR 错误块),别拿退出码当判据;CI
+  四门逐包显式跑,不走这条。看到绿要先确认 scope 覆盖了你改的包。
+  要可靠退出码就逐包单独跑。
 - `pnpm typecheck` **不含 engine**,改 Python 必须另跑 pytest。
 - **design-agent 测试前必须先 `pnpm design:build`。** 它依赖 `packages/agent` /
   `packages/ai` 的 `dist/` 构建产物,新克隆或新 worktree 里没有。缺了会
@@ -202,5 +203,5 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 6eea1ca0
+checked-at: 1b497248
 -->
