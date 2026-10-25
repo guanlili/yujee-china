@@ -54,9 +54,9 @@ services:
       GROUPING_CLIP_PRETRAINED: openai
       GROUPING_CLIP_MODEL_PATH: /app/models/ViT-B-32.pt
       ARK_BASE_URL: https://ark.cn-beijing.volces.com/api/v3
-      ARK_VISION_MODEL: doubao-seed-1-6-vision-250815
-      DEEPSEEK_BASE_URL: https://ark.cn-beijing.volces.com/api/v3
-      DEEPSEEK_MODEL: deepseek-seed-2-0-lite-260428
+      # ARK_VISION_MODEL / DEEPSEEK_* 不在此设:前者与 settings 默认值同值
+      # (photo-profile 走默认,开启前须换模型,见 README 状态表);后者除
+      # 启动日志外零消费方,DEEPSEEK_API_KEY 仍由 env_file 供给(main.py 必检)。
     mem_limit: 3g
     cpus: 2.5
     healthcheck:
@@ -86,9 +86,8 @@ services:
       COMPOSE_MAX_CONCURRENCY: "4"
       AGENT_ENABLE_PHOTO_PROFILE: "false"
       ARK_BASE_URL: https://ark.cn-beijing.volces.com/api/v3
-      ARK_VISION_MODEL: doubao-seed-1-6-vision-250815
-      DEEPSEEK_BASE_URL: https://ark.cn-beijing.volces.com/api/v3
-      DEEPSEEK_MODEL: deepseek-v4-flash-260425
+      # 同 clip:ARK_VISION_MODEL 与 settings 默认同值、DEEPSEEK_MODEL 零消费方,
+      # 均不显式设置。
     mem_limit: 1400m
     cpus: 1.5
     healthcheck:

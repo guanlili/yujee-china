@@ -47,10 +47,11 @@ uptime-kuma 监控 + 异地备份接收端）。
 | 浏览器全流程实测 | ◐ 前置已清（8080 安全组放行、COS 预检 200）；实测本身待跑 |
 | 域名 / HTTPS / 备案 / 支付 / 手机号登录 | ⬜ 未做（见「域名后补」与 plans §3.4） |
 
-⚠️ compose.single.yml 里 `ARK_VISION_MODEL=doubao-seed-1-6-vision-250815` 指向的
-独立 vision 模型方舟已停开（seed 系原生多模态）——photo-profile 现默认关着无害，
-开启 `AGENT_ENABLE_PHOTO_PROFILE` 前必须先换模型；`agent` 的 `DEEPSEEK_MODEL=
-deepseek-v4-flash-260425` 当前无消费方且未开通，属死配置，清理时一并处理。
+⚠️ photo-profile 的视觉模型走 settings 默认 `doubao-seed-1-6-vision-250815`
+（方舟已停开独立 vision 系，seed 系原生多模态）——photo-profile 现默认关着无害，
+开启 `AGENT_ENABLE_PHOTO_PROFILE` 前必须先换模型。compose 里的显式死配置已随
+2026-10-25 批次清理（`DEEPSEEK_MODEL` 零消费方删除；`DEEPSEEK_API_KEY` 仍是
+engine 启动必检项，由 env_file 供给）。
 
 ## 域名后补（一次性动作，配置已参数化）
 

@@ -18,6 +18,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 依赖漏洞门:只读 lockfile,秒级完成。先卡 critical(当前 0);剩余 13 个
+  # high(sharp/drizzle-orm/zod 等)待 drizzle-orm 0.45 批次清掉后收紧到
+  # --audit-level=high。advisory 库动态更新,平时总数会漂移,此门只拦最严重级。
+  audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - run: pnpm audit --prod --audit-level=critical
+
   typecheck:
     runs-on: ubuntu-24.04
     steps:
