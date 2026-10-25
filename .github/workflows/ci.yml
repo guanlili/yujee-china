@@ -8,6 +8,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # 手动触发:2026-10-25 发现 push 推送不触发任何 run(credential 疑云),
+  # 留 dispatch 作为验证/兜底入口。
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
