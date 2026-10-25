@@ -6,6 +6,10 @@ const EnvSchema = z.object({
     .string()
     .min(1)
     .default('postgresql://yujee:yujee@localhost:5432/yujee_dev'),
+  // PG 连接 TLS 覆盖(db/client.ts 的 resolveDatabaseSsl)。未设维持启发式:
+  // 本地(localhost/127.0.0.1)免 TLS,其余 require。disable = 整体关 TLS
+  //(例如 PG 只在可信内网监听、不想挂证书的单机部署)。
+  DATABASE_SSL: z.enum(['disable', 'prefer', 'require', 'verify-full']).optional(),
   AGENT_BASE_URL: z.string().url().default('http://localhost:8001'),
   AGENT_SHARED_SECRET: z.string().min(8).default('dev_secret_replace_me'),
   // 2GB CLIP worker(yujee-agent-clip)。**不是** AGENT_BASE_URL 那台机器:
