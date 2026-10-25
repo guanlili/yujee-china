@@ -148,7 +148,7 @@ def build_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], V3Usage
     """确定性选版:逐 unit 取唯一候选 → 最终化成页 → 填模板 sample 文案。
 
     候选生成器按容量拆页、每页照片数 == 模板槽数,所以整册页天然「填满、不重不漏」。
-    全程不调 AI,`geminiCallCount` 恒为 0。
+    全程不调 AI,`planningCallCount` 恒为 0。
     """
     started = time.monotonic()
     settings = get_settings()
@@ -186,7 +186,7 @@ def build_pages(req: SelectLayoutRequest) -> tuple[list[dict[str, Any]], V3Usage
 
     usage = V3Usage(
         durationMs=int((time.monotonic() - started) * 1000),
-        geminiCallCount=0,
+        planningCallCount=0,
         models=V3Models(),
     )
     return pages, usage

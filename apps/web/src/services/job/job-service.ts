@@ -481,6 +481,15 @@ function numberValue(record: Record<string, unknown>, key: string): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+// planningCallCount 2026-10 由 geminiCallCount 改名(provider 无关化)。存量
+// agent_jobs.usage 行里还是旧键 —— 聚合按「新键在场用新键,否则回退旧键」读,
+// 改名前后落库的数据加起来不丢计数。
+function planningCallCountOf(record: Record<string, unknown>): number {
+  return record.planningCallCount !== undefined
+    ? numberValue(record, 'planningCallCount')
+    : numberValue(record, 'geminiCallCount');
+}
+
 export function mergeV3Usage(previous: unknown, next: unknown): Record<string, unknown> {
   const prev = recordOrEmpty(previous);
   const cur = recordOrEmpty(next);
@@ -489,7 +498,7 @@ export function mergeV3Usage(previous: unknown, next: unknown): Record<string, u
   const out: Record<string, unknown> = {
     durationMs: numberValue(prev, 'durationMs') + numberValue(cur, 'durationMs'),
     visionCallCount: numberValue(prev, 'visionCallCount') + numberValue(cur, 'visionCallCount'),
-    geminiCallCount: numberValue(prev, 'geminiCallCount') + numberValue(cur, 'geminiCallCount'),
+    planningCallCount: planningCallCountOf(prev) + planningCallCountOf(cur),
     planningInputTokens:
       numberValue(prev, 'planningInputTokens') + numberValue(cur, 'planningInputTokens'),
     planningOutputTokens:

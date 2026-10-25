@@ -275,7 +275,7 @@ async def _run_compose(job: _Job) -> None:
             fonts=global_result.fonts,
             usage=V3Usage(
                 durationMs=int((time.monotonic() - started) * 1000),
-                geminiCallCount=call_count,
+                planningCallCount=call_count,
                 planningInputTokens=input_tokens,
                 planningOutputTokens=output_tokens,
                 # V3Models.planning 标注是 str(默认 None,显式传 None 会被 pydantic 拒);
@@ -296,7 +296,7 @@ async def _run_compose(job: _Job) -> None:
         chapters=len(req.chapters),
         chapters_written=written,
         pages_written=len(pages_texts),
-        gemini_calls=call_count,
+        planning_calls=call_count,
     )
 
 
