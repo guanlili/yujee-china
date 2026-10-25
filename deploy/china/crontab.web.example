@@ -19,3 +19,5 @@
 20 4 * * * /home/ubuntu/yujee-clip/deploy/china/bin/renew-pg-cert.sh >> /var/log/yujee-cron.log 2>&1
 # 每周日 04:40 清理 >7 天的悬空旧镜像，防反复 --build 吃满磁盘
 40 4 * * 0 docker image prune -f --filter "until=168h" >> /var/log/yujee-cron.log 2>&1
+# 每日 05:10 只读巡检（容器健康/内存快照/24h error 计数/磁盘），黑匣子日志
+10 5 * * * /home/ubuntu/yujee-clip/deploy/china/bin/daily-patrol.sh >> /var/log/yujee-cron.log 2>&1

@@ -93,7 +93,8 @@ deploy/china/
 ├── env/clip.env.example      # clip 容器密钥模板（CLIP worker 版 env 说明也在此）
 ├── build/{web,design,clip}.Dockerfile  # 三镜像构建
 ├── bin/renew-pg-cert.sh      # PG 自签证书 ≤30 天零停机自续(cron 每日)
-├── crontab.web.example       # 5 个 cron + PG 备份
+├── bin/daily-patrol.sh       # 每日只读巡检:容器/内存/error 计数/磁盘(cron 05:10)
+├── crontab.web.example       # 6 个 cron + PG 备份
 ├── pgssl/（服务器上生成，不进仓）       # PG 自签证书
 ├── compose.agent.yml         # ┐
 ├── compose.web.yml           # │ 三机时代遗物（82.156/152.136 已退场），仅存档；

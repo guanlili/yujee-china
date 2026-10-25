@@ -1,0 +1,36 @@
+# 依赖自动升级:与 CI 五门 + branch protection 组成闭环 ——
+# Dependabot 开 bump PR → 五门验证 → 绿了才合,audit 门保持长期归零。
+# 周一一批;minor/patch 分组尽量合成一个 PR 防 PR 洪水;major 单独 PR 人工审
+# (next 16 / react 20 这类必须人工判断)。安全披露(critical/high 走
+# security-updates 通路)不等周批,即时开 PR。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
