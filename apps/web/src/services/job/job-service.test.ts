@@ -144,7 +144,7 @@ test('mergeV3Usage keeps Stage1 usage when Stage2 reuses the same job', () => {
       },
       {
         durationMs: 20,
-        geminiCallCount: 1,
+        planningCallCount: 1,
         planningInputTokens: 7,
         planningOutputTokens: 11,
         models: { planning: 'gemini-layout' },
@@ -153,11 +153,30 @@ test('mergeV3Usage keeps Stage1 usage when Stage2 reuses the same job', () => {
     {
       durationMs: 30,
       visionCallCount: 2,
-      geminiCallCount: 1,
+      planningCallCount: 1,
       planningInputTokens: 10,
       planningOutputTokens: 11,
       repairAttempts: 0,
       models: { vision: 'doubao', planning: 'gemini-layout' },
+    },
+  );
+});
+
+test('mergeV3Usage reads legacy geminiCallCount rows written before the rename', () => {
+  // 改名(planningCallCount)前落库的 usage 行只有旧键;聚合时旧键计数不能丢。
+  assert.deepEqual(
+    mergeV3Usage(
+      { durationMs: 5, geminiCallCount: 2 },
+      { durationMs: 5, planningCallCount: 3 },
+    ),
+    {
+      durationMs: 10,
+      visionCallCount: 0,
+      planningCallCount: 5,
+      planningInputTokens: 0,
+      planningOutputTokens: 0,
+      repairAttempts: 0,
+      models: {},
     },
   );
 });

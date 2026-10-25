@@ -634,7 +634,7 @@ test('V3Callback union: analyze progress / analyze completed / select-layout com
       jobKind: 'select-layout',
       event: 'completed',
       pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
-      usage: { durationMs: 1, geminiCallCount: 1, models: { planning: 'gemini-layout' } },
+      usage: { durationMs: 1, planningCallCount: 1, models: { planning: 'gemini-layout' } },
     }).success,
     true,
   );
@@ -654,7 +654,7 @@ test('V3Callback union: analyze progress / analyze completed / select-layout com
       jobKind: 'select-layout',
       event: 'completed',
       pages: [{ pageIndex: 0, templateId: 'mag-08', images: {}, texts: {} }],
-      usage: { durationMs: 1, geminiCallCount: 1, models: { planning: 'gemini-layout' } },
+      usage: { durationMs: 1, planningCallCount: 1, models: { planning: 'gemini-layout' } },
     }).success,
     true,
   );

@@ -44,7 +44,10 @@ export const V3Usage = z
   .object({
     durationMs: z.number().int().nonnegative(),
     visionCallCount: z.number().int().nonnegative().default(0),
-    geminiCallCount: z.number().int().nonnegative().default(0),
+    // 成稿(planning)模型调用数;2026-10 由 geminiCallCount 改名 —— provider 已可切
+    // ark,字段名不该锁死在某家模型上。存量 agent_jobs.usage 行里的旧键由 web 侧
+    // mergeV3Usage 兼容读。
+    planningCallCount: z.number().int().nonnegative().default(0),
     planningInputTokens: z.number().int().nonnegative().default(0),
     planningOutputTokens: z.number().int().nonnegative().default(0),
     repairAttempts: z.number().int().nonnegative().default(0),

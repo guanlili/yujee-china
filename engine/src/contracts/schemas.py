@@ -479,7 +479,9 @@ class V3Usage(_V3Strict):
 
     durationMs: int = Field(ge=0)
     visionCallCount: int = Field(ge=0, default=0)
-    geminiCallCount: int = Field(ge=0, default=0)
+    # 成稿(planning)模型调用数;2026-10 由 geminiCallCount 改名 —— provider 已可切
+    # ark,字段名不该锁死在某家模型上。存量 usage 数据的旧键由 web 侧聚合兼容读。
+    planningCallCount: int = Field(ge=0, default=0)
     planningInputTokens: int = Field(ge=0, default=0)
     planningOutputTokens: int = Field(ge=0, default=0)
     repairAttempts: int = Field(ge=0, default=0)

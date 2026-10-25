@@ -374,6 +374,7 @@ Defaults live in `src/lib/env.ts`. Common fields:
 | Name | Purpose |
 |---|---|
 | `DATABASE_URL` | Postgres connection |
+| `DATABASE_SSL` | PG 连接 TLS 覆盖:`disable` / `prefer` / `require` / `verify-full`。未设走启发式 —— 本地(localhost/127.0.0.1)免 TLS,其余 `require` |
 | `AGENT_BASE_URL` | 生成 Agent base URL, default `http://localhost:8001` |
 | `AGENT_SHARED_SECRET` | Bearer secret shared with 生成 Agent |
 | `AGENT_CLIP_BASE_URL` | 2GB CLIP worker(`yujee-agent-clip`)base URL。**不是** `AGENT_BASE_URL` 那台:`/internal/photo-profile` 只在它上面开。可选,没配 = 抠图 mask 能力不存在,渲染退回浏览器端 |
@@ -438,5 +439,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
-checked-at: bb8e19c1
+checked-at: e4c3f317
 -->

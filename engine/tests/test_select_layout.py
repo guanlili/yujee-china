@@ -96,7 +96,7 @@ async def test_select_layout_emits_completed_with_pages(monkeypatch):
     done = events[-1]
     assert done["jobKind"] == "select-layout"
     assert done["pages"]
-    assert done["usage"]["geminiCallCount"] == 0
+    assert done["usage"]["planningCallCount"] == 0
     # 页码连续从 0 起。
     assert [p["pageIndex"] for p in done["pages"]] == list(range(len(done["pages"])))
 
@@ -142,7 +142,7 @@ def test_build_pages_covers_every_photo_exactly_once(request_id, photo_count):
     expected = [f"a{i}" for i in range(1, photo_count + 1)] + [f"b{i}" for i in range(1, 4)]
     assert sorted(used) == sorted(expected)
     assert len(used) == len(set(used))
-    assert usage.geminiCallCount == 0
+    assert usage.planningCallCount == 0
 
 
 def test_build_pages_covers_every_photo_exactly_once_when_chapter_is_split(monkeypatch):
@@ -238,7 +238,7 @@ def test_build_pages_splits_oversized_chapter_by_max_images(monkeypatch):
     )
 
     assert segments == [["p1", "p2"], ["p3", "p4"], ["p5"]]
-    assert usage.geminiCallCount == 0
+    assert usage.planningCallCount == 0
 
 
 def test_build_pages_seed_is_per_unit_deterministic(monkeypatch):

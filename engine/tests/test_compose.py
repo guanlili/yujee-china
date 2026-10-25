@@ -453,7 +453,7 @@ def test_compose_merges_chapters_into_one_completed_callback(monkeypatch):
     assert body.pagesTexts == {0: {"title": "章 0"}, 1: {"title": "章 1"}}
     assert body.coverTexts == {"title": "我的书"}
     assert body.fonts["title"] == "noto-serif-sc"
-    assert body.usage.geminiCallCount == 3
+    assert body.usage.planningCallCount == 3
     assert body.usage.planningInputTokens == 7
     assert not [e for e in seen if e.event == "failed"]
 

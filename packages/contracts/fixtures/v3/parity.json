@@ -552,7 +552,7 @@
         ],
         "usage": {
           "durationMs": 1,
-          "geminiCallCount": 1,
+          "planningCallCount": 1,
           "models": {
             "planning": "gemini-layout"
           }
@@ -682,7 +682,7 @@
         "usage": {
           "durationMs": 70,
           "visionCallCount": 0,
-          "geminiCallCount": 0,
+          "planningCallCount": 0,
           "planningInputTokens": 0,
           "planningOutputTokens": 0,
           "repairAttempts": 0,
