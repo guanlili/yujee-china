@@ -1,0 +1,143 @@
+# 国内单机全家桶：49.232.156.221（speakup 生产同机，只加不改）。
+# 五个服务同一 compose 网络，机器间组网（WireGuard）不再需要。
+#   cd ~/yujee-clip && docker compose -f deploy/china/compose.single.yml --env-file deploy/china/env/single.env up -d --build
+# 与 speakup 的隔离手段：
+#   - 独立 compose 项目（name: yujee），不碰 speakup 的容器/卷/网络；
+#   - 全部新容器带 mem/cpus 限额；端口只用 8080（80/443 是 speakup 的，绝不动）；
+#   - agent 复用 clip 镜像（torch 惰性加载，agent 走 GROUPING_CLIP_BASE_URL 不碰 torch）。
+name: yujee
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    # web 的 db 客户端（apps/web/src/db/client.ts:15）对非 localhost 主机强制
+    # ssl:'require'（Neon 时代遗产），因此本地 PG 也要开 TLS：自签证书即可
+    # （postgres.js 的 'require' 只加密不校验）。长期应在 P2 把 ssl 做成 env 可配。
+    command: >
+      postgres -c ssl=on
+               -c ssl_cert_file=/etc/pg-tls/server.crt
+               -c ssl_key_file=/etc/pg-tls/server.key
+    environment:
+      POSTGRES_USER: yujee
+      POSTGRES_PASSWORD: ${PG_PASSWORD}
+      POSTGRES_DB: yujee
+      shared_buffers: 256MB
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./pgssl:/etc/pg-tls:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yujee -d yujee"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 800m
+    logging: { driver: json-file, options: { max-size: "20m", max-file: "3" } }
+
+  # CLIP worker：从 compose.clip.yml 并入（原 yujee-clip 项目先 down 再 up 本文件）。
+  clip:
+    image: yujee/clip:china
+    build:
+      context: ../..
+      dockerfile: deploy/china/build/clip.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8001"   # 运维调试口；业务流量走容器网络
+    env_file: env/clip.env
+    environment:
+      PORT: "8001"
+      AGENT_ENV: production
+      AGENT_PIPELINE_MODE: real
+      AGENT_ENABLE_ANALYZE: "false"
+      AGENT_ENABLE_CLIP_EMBEDDINGS: "true"
+      GROUPING_CLIP_MODEL_NAME: ViT-B-32
+      GROUPING_CLIP_PRETRAINED: openai
+      GROUPING_CLIP_MODEL_PATH: /app/models/ViT-B-32.pt
+      ARK_BASE_URL: https://ark.cn-beijing.volces.com/api/v3
+      ARK_VISION_MODEL: doubao-seed-1-6-vision-250815
+      DEEPSEEK_BASE_URL: https://ark.cn-beijing.volces.com/api/v3
+      DEEPSEEK_MODEL: deepseek-seed-2-0-lite-260428
+    mem_limit: 3g
+    cpus: 2.5
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    logging: { driver: json-file, options: { max-size: "20m", max-file: "3" } }
+
+  # 生成 agent：复用 clip 镜像（同一个 engine 应用，环境不同）。
+  # torch/open_clip 惰性 import；GROUPING_CLIP_BASE_URL 指容器名，永不加载本地 torch。
+  agent:
+    image: yujee/clip:china
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8002:8001"   # 运维调试口；web 走 http://agent:8001
+    env_file: env/single.env
+    environment: &agent-env
+      PORT: "8001"
+      AGENT_ENV: production
+      AGENT_PIPELINE_MODE: real
+      AGENT_ENABLE_ANALYZE: "true"
+      AGENT_ENABLE_CLIP_EMBEDDINGS: "false"
+      GROUPING_CLIP_BASE_URL: http://clip:8001
+      BACKGROUND_TASK_TIMEOUT_SECONDS: "600"
+      COMPOSE_MAX_CONCURRENCY: "4"
+      AGENT_ENABLE_PHOTO_PROFILE: "false"
+      ARK_BASE_URL: https://ark.cn-beijing.volces.com/api/v3
+      ARK_VISION_MODEL: doubao-seed-1-6-vision-250815
+      DEEPSEEK_BASE_URL: https://ark.cn-beijing.volces.com/api/v3
+      DEEPSEEK_MODEL: deepseek-v4-flash-260425
+    mem_limit: 1400m
+    cpus: 1.5
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: { driver: json-file, options: { max-size: "20m", max-file: "3" } }
+
+  design-agent:
+    image: yujee/design:china
+    build:
+      context: ../..
+      dockerfile: deploy/china/build/design.Dockerfile
+    restart: unless-stopped
+    # 不发布端口：web 经容器网络 http://design-agent:8787 调用。
+    env_file: env/single.env
+    environment:
+      PORT: "8787"
+      NODE_ENV: production
+      DESIGN_AGENT_PROVIDER: volcengine
+      DESIGN_AGENT_MODEL: deepseek-v4-pro-260425
+      WEB_BASE_URL: http://web:3000
+    mem_limit: 1300m
+    cpus: 1.5
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:8787/health').then(r=>{if(!r.ok)throw 1})\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging: { driver: json-file, options: { max-size: "20m", max-file: "3" } }
+
+  web:
+    image: yujee/web:china
+    build:
+      context: ../..
+      dockerfile: deploy/china/build/web.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:3000"   # IP 阶段入口 http://49.232.156.221:8080（80/440 归 speakup）
+    env_file: env/single.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 1000m
+    cpus: 1.5
+    logging: { driver: json-file, options: { max-size: "20m", max-file: "3" } }
+
+volumes:
+  pgdata:

@@ -44,6 +44,17 @@ def test_real_mode_requires_gemini_key(monkeypatch):
         _validate_startup_config()
 
 
+def test_real_mode_ark_provider_skips_gemini_key(monkeypatch):
+    """compose_provider=ark(国内线)时成稿走 ARK 槽,Gemini 槽整条不被消费,
+    不该再强制供一把用不上的 SELECT_LAYOUT_API_KEY。"""
+    from src.main import _validate_startup_config
+
+    env = {k: v for k, v in _REAL_KEYS.items() if k != "SELECT_LAYOUT_API_KEY"}
+    monkeypatch.delenv("SELECT_LAYOUT_API_KEY", raising=False)
+    _real_mode(monkeypatch, COMPOSE_PROVIDER="ark", **env)
+    _validate_startup_config()  # 不抛即通过
+
+
 def test_real_mode_passes_with_all_keys(monkeypatch):
     from src.main import _validate_startup_config
 

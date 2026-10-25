@@ -153,6 +153,14 @@ class Settings(BaseSettings):
     compose_max_output_tokens: int = 8192
     compose_max_concurrency: int = Field(default=4, ge=1)
     compose_chapter_timeout_seconds: float = Field(default=180, gt=0)
+    # compose 的 provider:gemini(默认,海外线)或 ark(国内线,复用 ARK_* 槽走
+    # OpenAI 兼容 /chat/completions;消息体本来就是 image_url 多模态格式)。
+    # ark 分支的两个硬约束(doubao 侧):thinking 必须 disabled —— 推理 token 与
+    # max_tokens 共享预算,整章 8192 token 长文会被思考挤截断;不能
+    # response_format=json_object —— doubao 文本模型直接 400。
+    compose_provider: Literal["gemini", "ark"] = "gemini"
+    # 缺省回落 ark_vision_model;compose 想单独换模型时设它,不影响 photo profile。
+    compose_ark_model: str | None = None
 
     # planning + chat-edit (DeepSeek slot; in prod points at Volcano Ark doubao)
     deepseek_api_key: str | None = None

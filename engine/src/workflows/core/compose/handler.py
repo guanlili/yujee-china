@@ -1,6 +1,7 @@
 """compose(§ 一次性成稿):用户选完设计之后,一次把全书文案写满。
 
-两类调用,都走 Gemini(`providers/gemini_client`),编排在 `workflows/compose.py`:
+两类调用,共用一个 provider 汇聚点(`_completion`:默认 Gemini,`compose_provider=ark` 时走火山),
+编排在 `workflows/compose.py`:
 
 - **章节批次**(`compose_chapter`):一章一次调用,把【本章真实照片】以多模态 image
   部件喂进上下文 + 把【用户在采访环节讲的原话】(`chapterContext`)当最高优先级素材,
@@ -34,6 +35,7 @@ from typing import Any, get_args
 from ....contracts.schemas import ArtFontPack
 from ....logging_config import get_logger
 from ....providers import ai_client, gemini_client
+from ....providers.vision_provider import ark_vision_slot
 from ....settings import get_settings
 from ...prompts import load_prompt
 from ..layout import templates
@@ -279,13 +281,54 @@ def _parse_result(
     return out
 
 
-async def _gemini(messages: list[dict[str, Any]], *, temperature: float) -> tuple[str, int, int]:
-    """一次 Gemini 调用 → (正文, 输入 token, 输出 token)。
+def _compose_slot_ready(settings: Any) -> bool:
+    """成稿调用前的 key 预检(与 main.py 启动校验同一套口径)。缺 key 是
+    「静默成功」事故的源头(completed 照发、全书模板文案),所以要在这里也拦一道;
+    warning 单声部,与旧行为一致。ark 线(国内)只看 ARK_API_KEY。"""
+    if settings.compose_provider == "ark":
+        if not settings.ark_api_key:
+            log.warning("compose.slot_unavailable", error="ark_api_key missing")
+            return False
+        return True
+    if not settings.select_layout_api_key:
+        log.warning("compose.slot_unavailable", error="select_layout_api_key missing")
+        return False
+    return True
 
-    走 select_layout_* 那组设置(Gemini 槽的 endpoint/key/model/出口代理,名字是历史
-    产物,它就是仓里唯一的 Gemini 槽);输出预算用 compose 自己的
-    `compose_max_output_tokens` —— 成稿要一次吐出整章逐页多槽正文,比判图长得多。"""
+
+async def _completion(messages: list[dict[str, Any]], *, temperature: float) -> tuple[str, int, int]:
+    """一次成稿模型调用 → (正文, 输入 token, 输出 token)。provider 由
+    ``compose_provider`` 决定:gemini(默认,海外线)或 ark(国内线)。
+
+    gemini 走 select_layout_* 那组设置(Gemini 槽的 endpoint/key/model/出口代理,
+    名字是历史产物,它就是仓里唯一的 Gemini 槽);ark 走 ai_client 的 OpenAI 兼容
+    通路 —— 消息体本来就是 image_url 多模态格式,chat_completion 原样透传。
+    输出预算用 compose 自己的 `compose_max_output_tokens` —— 成稿要一次吐出整章
+    逐页多槽正文,比判图长得多。"""
     settings = get_settings()
+    if settings.compose_provider == "ark":
+        # 超时对齐章预算的一半:chat_completion 内部瞬时错误重试一次,
+        # 2 × timeout ≤ compose_chapter_timeout_seconds,与 gemini 路径的
+        # 预算纪律(2×60+余量=180)同构。
+        slot = ark_vision_slot(
+            settings,
+            model=settings.compose_ark_model,
+            timeout_seconds=int(settings.compose_chapter_timeout_seconds // 2),
+        )
+        response = await ai_client.chat_completion(
+            base_url=slot.base_url,
+            api_key=slot.api_key,
+            model=slot.model,
+            messages=messages,
+            timeout_seconds=slot.timeout_seconds,
+            max_tokens=settings.compose_max_output_tokens,
+            temperature=temperature,
+            extra_body=slot.extra_body,
+            response_format=slot.response_format,
+        )
+        text = ai_client.extract_text(response)
+        prompt_tokens, completion_tokens = ai_client.extract_usage(response)
+        return text, prompt_tokens, completion_tokens
     response = await gemini_client.generate_content(
         base_url=settings.select_layout_base_url,
         api_key=settings.select_layout_api_key or "",
@@ -330,14 +373,13 @@ async def compose_chapter(chapter: Any, *, language: str = "zh") -> ComposeChapt
         if not page_specs:
             return _EMPTY_CHAPTER
 
-        if not settings.select_layout_api_key:
-            log.warning("compose.chapter_slot_unavailable", error="select_layout_api_key missing")
+        if not _compose_slot_ready(settings):
             return _EMPTY_CHAPTER
 
         messages = _build_chapter_messages(chapter, page_specs, language=language)
         calls = 1
         try:
-            raw_text, in_tok, out_tok = await _gemini(messages, temperature=0.6)
+            raw_text, in_tok, out_tok = await _completion(messages, temperature=0.6)
             pages_texts = _parse_result(raw_text, page_specs)
         except Exception as exc:  # noqa: BLE001
             # 一次瞬时失败(网络抖动/空正文/解析不出)不值一整章 sample:重试一次。
@@ -349,7 +391,7 @@ async def compose_chapter(chapter: Any, *, language: str = "zh") -> ComposeChapt
                 error=str(exc),
             )
             calls = 2
-            raw_text, in_tok, out_tok = await _gemini(messages, temperature=0.6)
+            raw_text, in_tok, out_tok = await _completion(messages, temperature=0.6)
             pages_texts = _parse_result(raw_text, page_specs)
     except Exception as exc:  # noqa: BLE001 — 写文案绝不能抛出去搞崩成稿
         log.warning(
@@ -491,8 +533,7 @@ async def compose_global(
             # 字体由代码按 场景×语言 查表填,不发字体给 AI。
             payload["scenes"] = _scene_menu()
 
-        if not settings.select_layout_api_key:
-            log.warning("compose.global_slot_unavailable", error="select_layout_api_key missing")
+        if not _compose_slot_ready(settings):
             return _fallback()
 
         messages = [
@@ -501,12 +542,12 @@ async def compose_global(
         ]
         calls = 1
         try:
-            raw_text, in_tok, out_tok = await _gemini(messages, temperature=0.7)
+            raw_text, in_tok, out_tok = await _completion(messages, temperature=0.7)
             parsed = ai_client.parse_json_loose(raw_text)
         except Exception as exc:  # noqa: BLE001 — 与章节批次同款:瞬时失败重试一次
             log.warning("compose.global_retry", error=str(exc))
             calls = 2
-            raw_text, in_tok, out_tok = await _gemini(messages, temperature=0.7)
+            raw_text, in_tok, out_tok = await _completion(messages, temperature=0.7)
             parsed = ai_client.parse_json_loose(raw_text)
     except Exception as exc:  # noqa: BLE001 — 设计/封面绝不阻断交付
         log.warning("compose.global_fallback", error=str(exc))

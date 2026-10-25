@@ -1,0 +1,16 @@
+# 49.232（单机全家桶）crontab —— 接管 Vercel 3 个 cron + PG 备份。
+# 安装：sudo crontab -e（root，为 docker exec 权限）后粘贴并替换 ${CRON_SECRET}
+#（值在 ~/yujee-clip/deploy/china/env/single.env）。机器时区确认：
+#   timedatectl | grep Timezone  （非 Asia/Shanghai 先 set-timezone）
+# Vercel 原时刻为 UTC 2/3/4 点；按北京时间凌晨低峰排。
+# 注意 cron 注册的 set -e 自抹除坑：每行独立、无脚本链。
+
+# 每日 02:00 清理过期匿名账号
+0 2 * * * curl -fsS -m 60 -H "Authorization: Bearer ${CRON_SECRET}" http://127.0.0.1:8080/api/v1/admin/cleanup-anon >> /var/log/yujee-cron.log 2>&1
+# 每日 03:00 清理孤立照片对象（可加 ?olderThanDays=30）
+0 3 * * * curl -fsS -m 300 -H "Authorization: Bearer ${CRON_SECRET}" http://127.0.0.1:8080/api/v1/admin/cleanup-photos >> /var/log/yujee-cron.log 2>&1
+# 每日 04:00 恢复卡死的生成任务（释放积分 hold）
+0 4 * * * curl -fsS -m 120 -H "Authorization: Bearer ${CRON_SECRET}" http://127.0.0.1:8080/api/v1/admin/recover-stuck >> /var/log/yujee-cron.log 2>&1
+
+# 每日 04:30 PG 备份（gzip + 7 天轮转；容器名 yujee-postgres-1）
+30 4 * * * docker exec yujee-postgres-1 pg_dump -U yujee yujee | gzip > /var/backups/yujee/pg-$(date +\%F).sql.gz && find /var/backups/yujee -name 'pg-*.sql.gz' -mtime +7 -delete >> /var/log/yujee-cron.log 2>&1

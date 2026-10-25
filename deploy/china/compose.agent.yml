@@ -1,0 +1,45 @@
+# agent机：82.156.14.48（2C/2G）—— 生成 agent 独占，CLIP 走东京。
+# 构建上下文必须是仓根（engine/Dockerfile 要 COPY packages/contracts/templates）：
+#   docker compose -f deploy/china/compose.agent.yml --env-file deploy/china/env/agent.env up -d --build
+# 纪律：不加 replicas、不加 uvicorn workers（进程内并发原语，见 plans 文档 §2.2）。
+name: yujee-agent
+
+services:
+  agent:
+    build:
+      context: ../..
+      dockerfile: engine/Dockerfile
+    image: yujee/agent:china
+    restart: unless-stopped
+    # 8001 只绑 WireGuard IP，不出公网（安全组另配双保险）。
+    ports:
+      - "10.8.0.1:8001:8001"
+    env_file: env/agent.env
+    environment:
+      PORT: "8001"
+      AGENT_ENV: production
+      AGENT_PIPELINE_MODE: real
+      AGENT_ENABLE_ANALYZE: "true"
+      # 本机不装 CLIP（镜像不含 torch），embedding 委托东京 worker。
+      AGENT_ENABLE_CLIP_EMBEDDINGS: "false"
+      GROUPING_CLIP_BASE_URL: https://yujee-agent-clip.fly.dev
+      # 生产预算：600（勿抄 engine/.env.example 的 dev 值 180）。
+      BACKGROUND_TASK_TIMEOUT_SECONDS: "600"
+      COMPOSE_MAX_CONCURRENCY: "4"
+      # 照片档案默认关（零 AI 承诺 + 省成本；开了才走东京 worker 的视觉建档）。
+      AGENT_ENABLE_PHOTO_PROFILE: "false"
+      # ark 生产槽位（与海外 fly.toml 同源）。
+      ARK_BASE_URL: https://ark.cn-beijing.volces.com/api/v3
+      ARK_VISION_MODEL: doubao-seed-1-6-vision-250815
+      DEEPSEEK_BASE_URL: https://ark.cn-beijing.volces.com/api/v3
+      DEEPSEEK_MODEL: deepseek-v4-flash-260425
+    mem_limit: 1400m
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=3)\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "3" }

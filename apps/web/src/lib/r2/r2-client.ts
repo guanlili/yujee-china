@@ -7,15 +7,30 @@ import { logger } from '@/lib/log/logger';
 // Cloudflare R2 is S3-compatible. The server only ever hands out presigned URLs
 // (PUT for direct browser uploads, GET for private reads like photo-originals) —
 // the Web tier never proxies the actual bytes either direction.
+//
+// 国内部署:设 S3_ENDPOINT 即切到任意 S3 兼容存储(腾讯 COS / MinIO),凭证复用
+// R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY;未设则拼 R2 endpoint(海外线零影响)。
+// region 未显式配置时从 COS 域名推导 —— SigV4 的 region 必须与桶所在地域一致,
+// 签名才会被 COS 接受,'auto' 只对 R2 有意义。
 let _client: S3Client | null = null;
 function client(): S3Client {
-  if (!env.R2_ACCOUNT_ID || !env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY) {
+  if (!env.R2_ACCESS_KEY_ID || !env.R2_SECRET_ACCESS_KEY) {
+    throw ERRORS.R2_SIGN_FAILED();
+  }
+  const endpoint = env.S3_ENDPOINT
+    ?? (env.R2_ACCOUNT_ID
+      ? `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+      : null);
+  if (!endpoint) {
     throw ERRORS.R2_SIGN_FAILED();
   }
   if (!_client) {
     _client = new S3Client({
-      region: 'auto',
-      endpoint: `https://${env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+      region: env.S3_ENDPOINT ? resolveRegion(env.S3_ENDPOINT) : 'auto',
+      endpoint,
+      forcePathStyle: env.S3_ENDPOINT
+        ? env.S3_FORCE_PATH_STYLE === 'true' || env.S3_FORCE_PATH_STYLE === '1'
+        : undefined,
       credentials: {
         accessKeyId: env.R2_ACCESS_KEY_ID,
         secretAccessKey: env.R2_SECRET_ACCESS_KEY,
@@ -25,12 +40,20 @@ function client(): S3Client {
       // PUT URLs. The browser then uploads a real body → checksum mismatch →
       // R2 rejects the PUT (cover-thumbnail + PDF direct uploads both broke).
       // WHEN_REQUIRED keeps checksums off unless an operation needs them, so
-      // presigned PUTs sign cleanly. See r2-presign.test.ts.
+      // presigned PUTs sign cleanly. See r2-presign.test.ts. COS 同样受益:
+      // 实测(2026-10-25)该配置下 COS 的预签名 PUT 干净可用。
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
     });
   }
   return _client;
+}
+
+function resolveRegion(endpoint: string): string {
+  if (env.S3_REGION) return env.S3_REGION;
+  const cos = endpoint.match(/cos\.([a-z0-9-]+)\.myqcloud\.com/);
+  if (cos) return cos[1];
+  return 'us-east-1';
 }
 
 export const r2 = {

@@ -23,6 +23,11 @@ def _validate_startup_config() -> None:
     不用这把 key)。缺它时 compose 不会报错 —— 每章记一条 warning,照常发 `completed`
     + 空 `pagesTexts`,观测台上一片绿,用户却拿到一本全是模板示例文案的书。这种「静默
     成功」必须在启动时就拦下。
+
+    compose_provider=ark(国内线)时,成稿走 ARK_API_KEY(已在必检清单),Gemini 槽
+    整条不再被消费 —— 此时不再强制 SELECT_LAYOUT_API_KEY,否则国内部署永远要供一把
+    用不上的占位 key。ark 线的同款「静默成功」防线由 ARK_API_KEY 必检 + ark_vision_slot
+    的 VisionSlotError 兜住。
     """
     settings = get_settings()
     if settings.agent_env == "production" and settings.agent_pipeline_mode != "real":
@@ -36,7 +41,7 @@ def _validate_startup_config() -> None:
             missing.append("ARK_API_KEY")
         if not settings.deepseek_api_key:
             missing.append("DEEPSEEK_API_KEY")
-        if not settings.select_layout_api_key:
+        if settings.compose_provider == "gemini" and not settings.select_layout_api_key:
             missing.append("SELECT_LAYOUT_API_KEY")
         if missing:
             raise RuntimeError(

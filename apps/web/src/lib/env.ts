@@ -87,6 +87,14 @@ const EnvSchema = z.object({
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_BUCKET: z.string().default('yujee-pdfs'),
 
+  // S3 兼容存储直连覆盖(国内版:腾讯 COS / 自建 MinIO)。设了 S3_ENDPOINT 就用它
+  // 替代 R2_ACCOUNT_ID 拼出的 R2 endpoint;凭证仍复用 R2_ACCESS_KEY_ID /
+  // R2_SECRET_ACCESS_KEY(名字带 R2,语义就是 S3 密钥对)。未设则完全走 R2,
+  // 海外部署零影响。region 未显式给时从 COS 域名推导(cos.<region>.myqcloud.com)。
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_REGION: z.string().optional(),
+  S3_FORCE_PATH_STYLE: z.string().optional(),
+
   // 生图(AI 图片生成)。生产走 gemini —— Web 在 Vercel(美国),Ark 在北京,跨境
   // 一张要 17s(实测),而 Gemini 同大洲且直接回 inlineData 免掉第二趟下载。
   // 本地开发把 IMAGE_PROVIDER 设成 ark 更快(国内直连 5.6s)。

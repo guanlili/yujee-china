@@ -95,18 +95,27 @@ def openai_vision_slot(
     )
 
 
-def ark_vision_slot(settings: Settings) -> VisionSlot:
+def ark_vision_slot(
+    settings: Settings,
+    *,
+    model: str | None = None,
+    timeout_seconds: int | None = None,
+) -> VisionSlot:
     """Resolve the 火山 doubao vision slot explicitly. Used as the V3
     describe-content FAILOVER (architecture §6.8 第 2 条). Raises VisionSlotError if
-    the ARK key is missing."""
+    the ARK key is missing.
+
+    ``model`` / ``timeout_seconds`` 覆盖参数是给 compose(④ 成稿)用的:它要自己的
+    模型选择(compose_ark_model)和输出预算对齐的超时,不能复用判图槽写死的
+    ark_vision_model / ark_timeout_seconds。其余调用方不传,行为不变。"""
     if not settings.ark_api_key:
         raise VisionSlotError("ARK_API_KEY missing; cannot run 火山 vision slot")
     return VisionSlot(
         provider="ark",
         base_url=settings.ark_base_url,
         api_key=settings.ark_api_key,
-        model=settings.ark_vision_model,
-        timeout_seconds=settings.ark_timeout_seconds,
+        model=model or settings.ark_vision_model,
+        timeout_seconds=timeout_seconds or settings.ark_timeout_seconds,
         # `thinking` gated by ark_disable_thinking (one knob across callers).
         extra_body=(
             {"thinking": {"type": "disabled"}} if settings.ark_disable_thinking else None
