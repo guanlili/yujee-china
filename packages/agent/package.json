@@ -30,9 +30,9 @@
 	},
 	"dependencies": {
 		"@earendil-works/pi-ai": "workspace:*",
-		"ignore": "7.0.5",
-		"typebox": "1.1.38",
-		"yaml": "2.9.0"
+		"ignore": "7.0.13",
+		"typebox": "1.4.3",
+		"yaml": "2.9.1"
 	},
 	"keywords": [
 		"ai",
