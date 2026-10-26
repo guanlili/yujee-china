@@ -18,6 +18,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 生产部署:五门全绿后 SSH 到 49.232 跑 deploy-from-git.sh(ForceCommand 锁死,
+  # restricted key 见 deploy/china/README「自动部署」)。只在 push main(即 PR 合并)
+  # 触发;concurrency 排队不取消,防两次部署并发打架。
+  deploy:
+    needs: [audit, typecheck, engine, web, packages]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    timeout-minutes: 30
+    steps:
+      - name: Deploy to production
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 600 /dev/stdin ~/.ssh/id_ed25519 <<< "$DEPLOY_SSH_KEY"
+          echo "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_ed25519 -o ServerAliveInterval=30 ubuntu@$DEPLOY_HOST deploy
+
   # 依赖漏洞门:只读 lockfile,秒级完成。先卡 critical(当前 0);剩余 13 个
   # high(sharp/drizzle-orm/zod 等)待 drizzle-orm 0.45 批次清掉后收紧到
   # --audit-level=high。advisory 库动态更新,平时总数会漂移,此门只拦最严重级。

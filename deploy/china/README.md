@@ -53,6 +53,22 @@ uptime-kuma 监控 + 异地备份接收端）。
 2026-10-25 批次清理（`DEEPSEEK_MODEL` 零消费方删除；`DEEPSEEK_API_KEY` 仍是
 engine 启动必检项，由 env_file 供给）。
 
+## 自动部署（2026-10-26 起：merge 即上线）
+
+merge 到 main → CI 五门全绿 → `deploy` job 用**专用 restricted key**（ForceCommand
+锁死只能跑 `bin/deploy-from-git.sh`，无 pty/转发，密钥在 GitHub Secrets）SSH 到
+本机执行：`git fetch → reset --hard → compose up -d --build --wait` + 首页 200 +
+巡检验证。部署现场 `~/yujee-clip/` 已 git 化（remote = 本仓 public URL，fetch 免凭证）。
+
+- 未跟踪的 `env/`（密钥）、`pgssl/`、**`weights/`（540MB CLIP/isnet 权重，不进
+  git）**不受 reset 影响；**新机器重建时 weights 须单独传输**。
+- deploy 日志：`~/yujee-clip/logs/deploy.log`（与 CI job log 双写）。
+- 回滚：revert PR 走同一通道，或登服跑 `git reset --hard <旧sha> && compose up -d --build`。
+- 失败兜底：`compose up` 失败时旧容器继续运行（滚动替换失败不退旧），deploy job
+  红，线上仍是上一版。
+- 升级路线：镜像改由 CI 构建推腾讯 TCR、服务器只 pull（生产机减负，方案见
+  「TCR 镜像 CI」待办）。
+
 ## 域名后补（一次性动作，配置已参数化）
 
 1. `single.env` 里 `WEB_BASE_URL` 换域名；engine 侧 callbackUrl 由 web 请求自动携带，无需改。
