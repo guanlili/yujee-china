@@ -203,7 +203,11 @@ Postgres + Cloudflare R2
 `pnpm docs:check` 会校验这件事:覆盖路径自 `checked-at` 以来有新提交、而 `checked-at`
 没跟上,就报错。它已挂进 `pnpm typecheck`。不要靠自觉,靠这个脚本。
 
+机器生成的锁文件(`pnpm-lock.yaml`)不进任何 doc-scope:它只随依赖 bump PR 变,
+而 dependabot 不会推 `checked-at`,盖住它会把每个依赖 PR 永久卡死在时效闸上
+(2026-10-26 前的四个依赖 PR 全红在这,教训见 #21-#24)。
+
 <!-- doc-scope
-paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, pnpm-lock.yaml
+paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json
 checked-at: 14d71895
 -->
