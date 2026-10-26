@@ -36,6 +36,7 @@ jobs:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
           install -m 600 /dev/stdin ~/.ssh/id_ed25519 <<< "$DEPLOY_SSH_KEY"
           echo "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
           ssh -i ~/.ssh/id_ed25519 -o ServerAliveInterval=30 ubuntu@$DEPLOY_HOST deploy
