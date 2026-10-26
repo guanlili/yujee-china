@@ -184,6 +184,10 @@ Postgres + Cloudflare R2
 - 新增顶层目录、依赖、数据库 schema、外部 API、跨服务协议前,先说明影响面。
 - 临时脚本、验证产物、trace 文件用完即删。
 - 长期说明放在仓根 README、对应 app README,或靠近模块的小 README。
+- **所有改动一律走 PR 合并 main 上线**(2026-10-26 起,agent 侧改动同样遵守):
+  merge 触发六门 CI + 自动部署(见 deploy/china/README「自动部署」);分支保护
+  enforce admins,直推被拒。生产服务器上的跟踪文件不要 rsync 直改 —— 自动部署
+  的 reset --hard 会覆盖;应急/回滚通道见 deploy README。
 - 推送/PR/合并前先跑相应验证;没验证不要声称通过。
 
 ## 文档时效规则
