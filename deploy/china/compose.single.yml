@@ -34,7 +34,7 @@ services:
     mem_limit: 800m
     logging: { driver: json-file, options: { max-size: "20m", max-file: "3" } }
 
-  # CLIP worker：从 compose.clip.yml 并入（原 yujee-clip 项目先 down 再 up 本文件）。
+  # CLIP worker（2GB：open_clip embedding + isnet 抠图）。
   clip:
     image: yujee/clip:china
     build:

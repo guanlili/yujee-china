@@ -435,7 +435,7 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 - 改动调后端的 Web 路由前,先看对应服务的真实 surface(`engine/src/api/routes.py` 或
   `packages/design-agent/src/web/album-server.ts`);已删的端点不要当成在用的行为写进文档。
 - Web 与两个 Agent 必须同版本部署。跨服务契约是手工镜像、无 codegen,只部署一边会契约漂移。
-  Web 走 Vercel 自动部署,两个 Agent 都要**手动** `flyctl deploy`。
+  国内所有服务 merge 到 main 即自动部署(五容器同批重建,见 `deploy/china/README.md`)。
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json

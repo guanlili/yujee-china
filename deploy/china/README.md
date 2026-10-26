@@ -1,7 +1,8 @@
 # 国内部署（deploy/china/）—— IP 起步、域名后补
 
 > 2026-10-25 起草,同日落地为单机全家桶(历史草案曾规划两台 CVM + 东京 Fly CLIP,
-> 已废弃,见文末「三机时代遗物」)。本目录是**国内专属部署层**：业务代码改动走主仓
+> 已废弃 —— 其遗留编排/env/wireguard 文件已于 2026-10-26 清仓,历史版本在 git)。
+> 本目录是**国内专属部署层**：业务代码改动走主仓
 > PR（env 门控），不在此 fork。
 
 ## 机器落位（2026-10-25 已部署：单机全家桶 @ 49.232.156.221）
@@ -111,11 +112,5 @@ deploy/china/
 ├── bin/renew-pg-cert.sh      # PG 自签证书 ≤30 天零停机自续(cron 每日)
 ├── bin/daily-patrol.sh       # 每日只读巡检:容器/内存/error 计数/磁盘(cron 05:10)
 ├── crontab.web.example       # 6 个 cron + PG 备份
-├── pgssl/（服务器上生成，不进仓）       # PG 自签证书
-├── compose.agent.yml         # ┐
-├── compose.web.yml           # │ 三机时代遗物（82.156/152.136 已退场），仅存档；
-├── compose.clip.yml          # │ 不要按它们部署
-├── env/agent.env.example     # │
-├── env/web.env.example       # ┘
-└── wireguard/                # 组网配置模板（历史；单机方案不再需要）
+└── pgssl/（服务器上生成，不进仓）       # PG 自签证书
 ```

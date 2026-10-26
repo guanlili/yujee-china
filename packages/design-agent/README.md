@@ -6,7 +6,7 @@
 ## 在系统里的位置
 
 ```text
-编辑器 → Web /api/v3/albums/[uuid]/design-chat → 本服务 (Fly: yujee-design-agent, :8787)
+编辑器 → Web /api/v3/albums/[uuid]/design-chat → 本服务 (国内:单机 compose 容器, :8787)
 ```
 
 Web 侧客户端:`apps/web/src/lib/agent/design-agent-client.ts`。
@@ -70,11 +70,8 @@ Bearer)。请求体只送 `albumId` + `photoIds`,**不送 R2 key** —— key �
 任意对象的读取钥匙。不发签名 URL:`ImageContent` 只收 base64,图终究要经过本进程,
 何况 `signGetUrl` 默认 300s 比一轮对话短。
 
-需要两个环境变量才通(缺一样 `look_at_photos` 就不注册):
-
-```bash
-fly secrets set WEB_BASE_URL=https://<web> AGENT_SHARED_SECRET=... -a yujee-design-agent
-```
+需要两个环境变量才通(缺一样 `look_at_photos` 就不注册);国内部署在服务器
+`deploy/china/env/single.env` 里配:
 
 
 `set_text_colors` 带对比度硬校验(2026-08-29):三色配到该页**实际底色**上(取
@@ -185,22 +182,16 @@ renderVersion 一变,已发布的分享快照当场失配。
 ## 部署:必须单机
 
 每册的 session / trace / 书状态**在进程内存里**,而 Web 每轮先 `POST /api/book`
-再 `POST /api/chat` —— 这两个请求必须命中同一台机器。Fly 的多机负载均衡会直接打断编辑。
+再 `POST /api/chat` —— 这两个请求必须命中同一台机器。多实例负载均衡会直接打断编辑
+(海外 Fly 时代如此,国内同理):compose 里就一个 design-agent 容器,**不要扩副本**。
 
-部署由 `.github/workflows/deploy-design-agent.yml` 自动完成(main 上
-`packages/design-agent/**` 或 `packages/contracts/**` 变动时触发,CI 里带 `--ha=false`)。
-要手动补一次:
-
-```bash
-gh workflow run deploy-design-agent.yml --ref main
-fly scale count 1 -a yujee-design-agent    # 保持 1,不要开 HA
-```
-
-**不要在本机跑 `flyctl deploy`**,这台开发机上它已经跑不通(原因见 `engine/README.md`)。
+国内部署:merge 到 main 即自动部署(单机 compose 五容器,编排
+`deploy/china/compose.single.yml`,见 [`deploy/china/README.md`](../../deploy/china/README.md)
+「自动部署」)。海外 Fly 线与其 `fly.toml` 已于 2026-10-26 删除,历史版本在 git。
 
 **镜像里烤着 `packages/contracts/templates`**(Dockerfile 是 `COPY . .`,运行时从磁盘读),
-所以 contracts 一变它就必须重新部署 —— 这正是 workflow 的 paths 包含
-`packages/contracts/**` 的原因。2026-07-25 漏了这一步:模板改动比部署晚 2 小时,
+所以 contracts 一变它就必须重新部署 —— 自动部署对每次 merge 统一 `--build` 已覆盖;
+但直接改服务器文件而不重建镜像会重演下面的漂移。2026-07-25 漏了这一步:模板改动比部署晚 2 小时,
 之后 6 天没再部署,导致 mag-59 槽位漂移、任何用到该模板的册子对话改书 100% 失败
 (`422 book 契约不合法`)。
 
@@ -211,13 +202,12 @@ fly scale count 1 -a yujee-design-agent    # 保持 1,不要开 HA
 严格校验留在写工具层,AI 写错槽仍会被逐次拦下。重发在模板变更后依然必要(换模板/
 写槽校验要用新目录),但目录漂移不再把任何册子锁死在设计对话外。
 
-`auto_stop_machines = false`(停机会丢正在进行的会话)。完整理由写在 `fly.toml` 注释里。
+容器重启 / OOM 会丢正在进行的编辑会话(session 在进程内存、不落盘是有意设计;
+daily-patrol 盯 design-agent 内存正是为此)。
 
-密钥不入库,out-of-band 设置:
-
-```bash
-fly secrets set ARK_API_KEY=... DESIGN_AGENT_SHARED_SECRET=... -a yujee-design-agent
-```
+密钥不入库:国内在服务器 `deploy/china/env/single.env`(`ARK_API_KEY`、
+`DESIGN_AGENT_SHARED_SECRET`,以及 `look_at_photos` 需要的 `WEB_BASE_URL` +
+`AGENT_SHARED_SECRET`)。
 
 ## 本地
 
@@ -235,6 +225,6 @@ print/RPC/interactive 三种模式。**通用 agent loop 在 `packages/agent`**,
 需要一个通用能力,否则不要改它。
 
 <!-- doc-scope
-paths: packages/design-agent/src/**, packages/design-agent/fly.toml, apps/web/src/lib/agent/design-agent-client.ts
+paths: packages/design-agent/src/**, apps/web/src/lib/agent/design-agent-client.ts
 checked-at: 6eea1ca0
 -->
