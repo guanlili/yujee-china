@@ -205,5 +205,5 @@ Postgres + Cloudflare R2
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, pnpm-lock.yaml
-checked-at: 98abd6a6
+checked-at: 14d71895
 -->
