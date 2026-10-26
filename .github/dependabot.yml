@@ -19,7 +19,12 @@ updates:
         update-types:
           - "minor"
           - "patch"
-
+    ignore:
+      # 以下走专门迁移批,不让 Dependabot 自动追(0.x minor 即 breaking / 大版本迁移):
+      - dependency-name: "zod"                # zod 3→4 breaking,#6/#11 已拒
+      - dependency-name: "drizzle-orm"        # 0.36→0.45 迁移批
+      - dependency-name: "drizzle-kit"        # 同上
+      - dependency-name: "@typescript/native-preview"  # tsgo dev 预发布,按需手动(#10)
   - package-ecosystem: github-actions
     directory: /
     schedule:
