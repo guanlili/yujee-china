@@ -1,4 +1,5 @@
-import { test } from 'node:test';
+import { test as baseTest } from 'node:test';
+import assert from 'node:assert/strict';
 import assert from 'node:assert/strict';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client';
@@ -10,6 +11,12 @@ import { cleanupUser, isDbReachable, makeAlbum, makeUser } from '../../db/repos/
 import { draftPageRepo } from '../../db/repos/draft-page-repo';
 import type { Page } from '@yujee/contracts';
 import { adminService } from './admin-service';
+
+// 本文件的断言对全库用户集合敏感(total/offset 分页),测试文件并行跑时
+// 其他文件插/删用户会移动窗口(上游注释已记录此竞态,全量下偶发红)。
+// 因此本文件只在独占批跑:ADMIN_TEST_EXCLUSIVE=1 时用真 test,常规并行批
+// 整文件 skip,由 `pnpm --filter @yujee/web test:admin` 串行独占执行(CI 已挂)。
+const test = process.env.ADMIN_TEST_EXCLUSIVE ? baseTest : baseTest.skip;
 
 const DAY = 24 * 60 * 60 * 1000;
 
