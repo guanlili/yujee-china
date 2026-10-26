@@ -223,6 +223,6 @@ SSH 到 49.232 跑 `deploy/china/bin/deploy-from-git.sh`(reset --hard + 五容�
 - Do not document removed endpoints as active until they exist again in `api/routes.py` and tests.
 
 <!-- doc-scope
-paths: engine/src/**, engine/pyproject.toml
+paths: engine/src/**
 checked-at: 45f31aaa
 -->

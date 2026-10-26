@@ -438,6 +438,6 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
   国内所有服务 merge 到 main 即自动部署(五容器同批重建,见 `deploy/china/README.md`)。
 
 <!-- doc-scope
-paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**, apps/web/package.json
+paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**
 checked-at: 45f31aaa
 -->
