@@ -2,6 +2,9 @@
   "name": "yujee-agent-rebuild",
   "private": true,
   "packageManager": "pnpm@9.15.1",
+  "engines": {
+    "node": "^24.0.0"
+  },
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "web:dev": "pnpm --filter @yujee/web dev",
