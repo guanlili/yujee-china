@@ -1,6 +1,5 @@
 import { test as baseTest } from 'node:test';
 import assert from 'node:assert/strict';
-import assert from 'node:assert/strict';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client';
 import { accounts, albums as albumsTable, users as usersTable } from '../../db/schema';
