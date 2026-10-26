@@ -153,10 +153,12 @@ def test_profiles_are_built_before_the_tree_is_assembled(monkeypatch, captured):
 
     real_assemble = analyze.tree_builder.assemble_stage1_tree
 
-    def _spy_assemble(grouping, assignments, photos_by_id, profiles=None):
+    def _spy_assemble(grouping, assignments, photos_by_id, profiles=None, language="zh"):
         order.append("assemble")
         assert profiles, "建树时必须已经拿到档案"
-        return real_assemble(grouping, assignments, photos_by_id, profiles=profiles)
+        return real_assemble(
+            grouping, assignments, photos_by_id, profiles=profiles, language=language
+        )
 
     monkeypatch.setattr(
         analyze.profile_remote, "fetch_photo_profiles",

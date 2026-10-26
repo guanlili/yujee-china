@@ -15,8 +15,12 @@ from ....contracts.schemas import (
 from .schema import GroupingResult, UnplacedAssignments
 
 
-# 无任何 EXIF 时间时的章标识回退文案;重名消歧也认这个常量。
-NO_TIME_LABEL = "这一段"
+# 无任何 EXIF 时间时的章标识回退文案;重名消歧也认这两个常量(按请求 language 取)。
+# 章标签会原样出现在 web 聊天卡与 compose 上下文里,EN 书必须给 EN 标签
+# (2026-10-26 浏览器实测:EN 界面露出「这一段」)。
+NO_TIME_LABELS: dict[str, str] = {"zh": "这一段", "en": "Untitled section"}
+# 保留旧名兼容存量测试引用。
+NO_TIME_LABEL = NO_TIME_LABELS["zh"]
 
 # 契约上限:V3Chapter.title 的 max_length=120(Web 侧 zod 同值)。
 _TITLE_MAX_LEN = 120
@@ -25,12 +29,15 @@ MAX_CHAPTER_LABEL_LEN = 100
 
 
 def deterministic_chapter_label(
-    *, taken_ats: Sequence[str], places: Sequence[str]
+    *, taken_ats: Sequence[str], places: Sequence[str], language: str = "zh"
 ) -> str:
     """章标题的确定性派生:时间跨度(最早日 – 最晚日)+ 最常见地名。
 
     砍掉豆包识图后章不再有 AI 命名,这是 story 环节聊天卡片和 compose 环节上下文
     唯一的章标识。写出跨度而非只写年月,是为了让同月的两章天然可区分。
+
+    language 取自 V3AnalyzeRequest.language(zh/en),标签按语言出 —— 它会原样
+    展示给用户,不按语言出会在 EN 界面露出中文。
 
     注意:唯一调用点 `assemble_stage1_tree` 恒传 `places=[]` —— §3 隐私口径下坐标
     止步于浏览器,分析期拿不到地名,地名要到采访环节才写回 `chapter.place`。这个
@@ -41,23 +48,38 @@ def deterministic_chapter_label(
     """
     place = Counter(p for p in places if p).most_common(1)
     place_part = place[0][0] if place else ""
-    time_part = _time_span_label(taken_ats)
+    time_part = _time_span_label(taken_ats, language)
     parts = [p for p in (time_part, place_part) if p]
-    label = " · ".join(parts) if parts else NO_TIME_LABEL
+    label = " · ".join(parts) if parts else NO_TIME_LABELS.get(language, NO_TIME_LABEL)
     # 截断:地名长度不受本模块控制(采访环节写回的 place 上限 100),加上时间跨度
     # (~40 字)就会顶破 V3Chapter.title 的 max_length=120,而越界的 title 会让 Web 侧
     # zod 把整个 analyze 回调打回、整本书 failed。
     return label[:MAX_CHAPTER_LABEL_LEN]
 
 
-def _time_span_label(taken_ats: Sequence[str]) -> str:
-    """把一组 ISO 时间戳压成中文日期跨度,如 `2024 年 03 月 11–14 日`。"""
+_EN_MONTHS = (
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+)
+
+
+def _time_span_label(taken_ats: Sequence[str], language: str = "zh") -> str:
+    """把一组 ISO 时间戳压成日期跨度。zh: `2024 年 03 月 11–14 日`;en: `Mar 11–14, 2024`。"""
     stamps = sorted(t for t in taken_ats if t)
     if not stamps:
         return ""
     first, last = stamps[0][:10], stamps[-1][:10]
     fy, fm, fd = first[:4], first[5:7], first[8:10]
     ly, lm, ld = last[:4], last[5:7], last[8:10]
+    if language == "en":
+        mz = lambda m: _EN_MONTHS[int(m) - 1]  # noqa: E731
+        if first == last:
+            return f"{mz(fm)} {fd}, {fy}"
+        if (fy, fm) == (ly, lm):
+            return f"{mz(fm)} {fd}–{ld}, {fy}"
+        if fy == ly:
+            return f"{mz(fm)} {fd} – {mz(lm)} {ld}, {fy}"
+        return f"{mz(fm)} {fd}, {fy} – {mz(lm)} {ld}, {ly}"
     if first == last:
         return f"{fy} 年 {fm} 月 {fd} 日"
     if (fy, fm) == (ly, lm):
@@ -67,10 +89,11 @@ def _time_span_label(taken_ats: Sequence[str]) -> str:
     return f"{fy} 年 {fm} 月 {fd} 日 – {ly} 年 {lm} 月 {ld} 日"
 
 
-def _disambiguate_labels(labels: Sequence[str]) -> list[str]:
+def _disambiguate_labels(labels: Sequence[str], language: str = "zh") -> list[str]:
     """给重复的章标识追加序号,保证同一棵树里章标识两两不同。
 
-    首个保持原样,后续依次 `… · 第 2 段`;无时间的回退标识用 `这一段 2`。
+    首个保持原样,后续依次 zh `… · 第 2 段` / en `… · Part 2`;
+    无时间的回退标识 zh 用 `这一段 2` / en 用 `Untitled section 2`。
     """
     used: set[str] = set()
     seen: Counter[str] = Counter()
@@ -78,10 +101,10 @@ def _disambiguate_labels(labels: Sequence[str]) -> list[str]:
     for label in labels:
         seen[label] += 1
         ordinal = seen[label]
-        candidate = label if ordinal == 1 else _with_ordinal(label, ordinal)
+        candidate = label if ordinal == 1 else _with_ordinal(label, ordinal, language)
         while candidate in used:
             ordinal += 1
-            candidate = _with_ordinal(label, ordinal)
+            candidate = _with_ordinal(label, ordinal, language)
         used.add(candidate)
         result.append(candidate)
     return result
@@ -92,10 +115,11 @@ def _cap_label(label: str) -> str:
     return label[:MAX_CHAPTER_LABEL_LEN]
 
 
-def _with_ordinal(label: str, ordinal: int) -> str:
-    if label == NO_TIME_LABEL:
-        return f"{NO_TIME_LABEL} {ordinal}"
-    return f"{label} · 第 {ordinal} 段"
+def _with_ordinal(label: str, ordinal: int, language: str = "zh") -> str:
+    if label in NO_TIME_LABELS.values():
+        return f"{label} {ordinal}"
+    suffix = f" · 第 {ordinal} 段" if language == "zh" else f" · Part {ordinal}"
+    return f"{label}{suffix}"
 
 
 # 契约 V3ChapterPhoto.composition 的合法取值。档案里冒出枚举外的值(模型乱吐、
@@ -127,6 +151,7 @@ def assemble_stage1_tree(
     assignments: UnplacedAssignments,
     photos_by_id: Mapping[str, V3AnalyzePhoto],
     profiles: Mapping[str, Mapping[str, object]] | None = None,
+    language: str = "zh",
 ) -> V3LayoutTree:
     if not grouping.chapters:
         raise ValueError("Stage1 grouping produced no chapters")
@@ -204,6 +229,7 @@ def assemble_stage1_tree(
                     # 地名由 Web 采访环节写回 chapter.place,分析期无地名可用(§3 隐私:
                     # 坐标止步于浏览器,EXIF 只带 takenAt)。
                     places=[],
+                    language=language,
                 )),
                 # 关键词此前来自识图分章,砍掉后分析期为空,设计环节自行降级。
                 keywords=[],
@@ -219,7 +245,7 @@ def assemble_stage1_tree(
 
     # Web 侧只在 title 为空串时才降级(description → `Group N`),重名章会让用户看到
     # 一串无法区分的标题,所以这里保证同一棵树内章标识两两不同。
-    for chapter, label in zip(chapters, _disambiguate_labels([c.title for c in chapters])):
+    for chapter, label in zip(chapters, _disambiguate_labels([c.title for c in chapters], language)):
         # 构造后赋值绕过 pydantic(_V3Strict 没开 validate_assignment),契约上限只能
         # 在这里自己守:越界的 title 会让 Web 侧 zod 把整个 analyze 回调打回。
         chapter.title = label[:_TITLE_MAX_LEN]

@@ -142,7 +142,8 @@ async def _run_analyze(job: _Job) -> None:
     try:
         assignments = chapter_unplaced.group_unplaced(grouping, photos_by_id)
         tree = tree_builder.assemble_stage1_tree(
-            grouping, assignments, photos_by_id, profiles=profiles
+            grouping, assignments, photos_by_id, profiles=profiles,
+            language=req.language,
         )
     except Exception as exc:  # noqa: BLE001
         log.exception("v3_analyze.regroup_or_assemble_failed", error=str(exc))

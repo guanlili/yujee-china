@@ -187,6 +187,61 @@ def test_tree_labels_stay_distinct_without_any_exif():
     assert [c.description for c in tree.chapters] == ["", "", ""]
 
 
+def test_tree_labels_localize_for_english_books():
+    """EN 书的章标签按 language=en 出(2026-10-26 浏览器实测 EN 界面露出「这一段」后补)。"""
+    photos = [
+        _photo("p1", taken_at="2024-03-11T09:00:00Z"),
+        _photo("p2", taken_at="2024-03-14T09:00:00Z"),
+    ]
+    photos_by_id = _by_id(photos)
+    grouping = GroupingResult(
+        chapters=[GroupingChapter(chapterId="ch_1", photoIds=["p1", "p2"])],
+        unplacedPhotoIds=[],
+    )
+
+    tree = assemble_stage1_tree(
+        grouping, UnplacedAssignments(assignments={}), photos_by_id, language="en"
+    )
+    assert [c.title for c in tree.chapters] == ["Mar 11–14, 2024"]
+
+    # 无 EXIF 的回退标识与消歧序号同样走 EN 文案。
+    no_time_photos = [_photo("p1"), _photo("p2")]
+    no_time = GroupingResult(
+        chapters=[
+            GroupingChapter(chapterId="ch_1", photoIds=["p1"]),
+            GroupingChapter(chapterId="ch_2", photoIds=["p2"]),
+        ],
+        unplacedPhotoIds=[],
+    )
+    tree2 = assemble_stage1_tree(
+        no_time, UnplacedAssignments(assignments={}), _by_id(no_time_photos),
+        language="en",
+    )
+    assert [c.title for c in tree2.chapters] == [
+        "Untitled section", "Untitled section 2",
+    ]
+
+    # 同日撞名的消歧后缀也按语言出。
+    same_day_photos = [
+        _photo("p1", taken_at="2024-03-11T09:00:00Z"),
+        _photo("p2", taken_at="2024-03-11T21:00:00Z"),
+    ]
+    same_day = GroupingResult(
+        chapters=[
+            GroupingChapter(chapterId="ch_1", photoIds=["p1"]),
+            GroupingChapter(chapterId="ch_2", photoIds=["p2"]),
+        ],
+        unplacedPhotoIds=[],
+    )
+    tree3 = assemble_stage1_tree(
+        same_day, UnplacedAssignments(assignments={}), _by_id(same_day_photos),
+        language="en",
+    )
+    assert [c.title for c in tree3.chapters] == [
+        "Mar 11, 2024", "Mar 11, 2024 · Part 2",
+    ]
+
+
 def test_tree_titles_never_exceed_the_contract_max_length(monkeypatch):
     # 建树用的是构造后赋值(绕过 pydantic 校验),所以哪怕标签算长了,落进
     # V3Chapter.title 的值也必须 <= 120,否则 Web 侧 zod 会把整个 analyze 打回。

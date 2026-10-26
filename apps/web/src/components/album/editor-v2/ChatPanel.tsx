@@ -570,7 +570,11 @@ export function ChatPanel({
     function appendReplyBody(host: HTMLElement, reply: string): HTMLElement {
       const body = document.createElement('div');
       body.className = 'ai-text';
-      body.innerHTML = renderMarkdownSafe(reply);
+      // design-agent 只执行写工具不说话时会回空文案 —— 兜一条本地化的「已更新」,
+      // 不再把内部占位符(旧版 design-agent 的「(无文字回复)」)或空气泡亮给用户。
+      body.innerHTML = renderMarkdownSafe(
+        reply.trim() || aT('已更新页面。', 'Pages updated.'),
+      );
       host.appendChild(body);
       return body;
     }
@@ -2887,7 +2891,7 @@ export function ChatPanel({
         <div className="chat-drag hidden md:flex items-center gap-2 px-3.5 h-11 border-b border-bdsoft flex-shrink-0" id="chatDrag">
           <span className="chat-grip"><svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></svg></span>
           <span className="text-[13px] font-semibold text-fg2">{pick(locale, { zh: '对话', en: 'Chat' })}</span>
-          <button type="button" className="chat-fold-btn chat-fold-collapse ml-auto" data-action="toggleChat" data-i18n-title="collapseChat" title="折叠对话" aria-label="折叠对话">
+          <button type="button" className="chat-fold-btn chat-fold-collapse ml-auto" data-action="toggleChat" data-i18n-title="collapseChat" title={pick(locale, { zh: '折叠对话', en: 'Collapse chat' })} aria-label={pick(locale, { zh: '折叠对话', en: 'Collapse chat' })}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><polyline points="15 18 9 12 15 6" /></svg>
           </button>
         </div>
@@ -2936,7 +2940,7 @@ export function ChatPanel({
             <div className="staged-progress" id="stagedProgress" role="status" aria-live="polite" style={{ display: 'none' }} />
             <textarea className="w-full outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none px-4 pt-3.5 pb-1 disabled:cursor-not-allowed" style={{ fontFamily: 'var(--font-body)' }} placeholder="" rows={1} id="msgInput" />
             <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-0.5">
-              <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted" data-action="pickAddPhotos" data-i18n-title="addPhoto" title="添加图片" aria-label="添加图片">
+              <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted" data-action="pickAddPhotos" data-i18n-title="addPhoto" title={pick(locale, { zh: '添加图片', en: 'Add photos' })} aria-label={pick(locale, { zh: '添加图片', en: 'Add photos' })}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
               </button>
               {/* 中途加图(W11):"+" 打开这个隐藏 picker;accept 用共享的 HEIC-aware 串,和主上传口
@@ -2944,7 +2948,7 @@ export function ChatPanel({
               <input type="file" id="addPhotoInput" accept={IMAGE_INPUT_ACCEPT} multiple className="hidden" />
               <span className="flex-1" />
               <span className="btn-glow btn-glow-round shrink-0">
-                <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center cursor-pointer transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:hover:translate-y-0" id="sendBtn" data-i18n-title="send" title="发送">
+                <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center cursor-pointer transition-transform hover:-translate-y-px disabled:cursor-not-allowed disabled:hover:translate-y-0" id="sendBtn" data-i18n-title="send" title={pick(locale, { zh: '发送', en: 'Send' })}>
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[17px] h-[17px]"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
                 </button>
               </span>
