@@ -941,8 +941,10 @@ function buildParams(
 	}
 
 	// Temperature is incompatible with extended thinking and unsupported on Claude Opus 4.7+.
+	// SDK 1.x removed `temperature` from MessageCreateParams* (deprecated upstream);
+	// older models still accept it during the transition, so send via a typed escape.
 	if (options?.temperature !== undefined && !options?.thinkingEnabled && compat.supportsTemperature) {
-		params.temperature = options.temperature;
+		(params as typeof params & { temperature?: number }).temperature = options.temperature;
 	}
 
 	if (context.tools && context.tools.length > 0) {
