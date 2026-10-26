@@ -1,0 +1,21 @@
+# design-agent 国内构建变体（上游 packages/design-agent/Dockerfile + npmmirror 一处差异）。
+# 上游改动（install 过滤、pi 包构建、CMD）时应同步回灌本文件。
+# 构建上下文 = 仓根等价目录树（由 design.Dockerfile.dockerignore 裁剪）。
+FROM node:24-slim
+
+RUN corepack enable
+WORKDIR /app
+ENV PORT=8787
+# 国内 npm 源（唯一与上游的差异）。
+ENV npm_config_registry=https://registry.npmmirror.com
+
+COPY . .
+
+# 与上游一致：只装 design-agent 子树（含 workspace 依赖与 devDeps——tsx 运行、
+# tsgo 构建 pi 包），随后构建两个 pi 包到 dist/。
+RUN pnpm install --filter @smalldog/design-agent... --frozen-lockfile \
+ && pnpm --filter @earendil-works/pi-ai build \
+ && pnpm --filter @earendil-works/pi-agent-core build
+
+EXPOSE 8787
+CMD ["sh", "-c", "pnpm -C packages/design-agent exec tsx src/web/album-server.ts --host 0.0.0.0 --port ${PORT}"]

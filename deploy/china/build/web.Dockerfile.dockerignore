@@ -1,0 +1,9 @@
+# web 构建上下文白名单：根工作区清单 + contracts + apps/web（含 public 的 LUT 资源）。
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!tsconfig.pi.base.json
+!packages/contracts
+!apps/web

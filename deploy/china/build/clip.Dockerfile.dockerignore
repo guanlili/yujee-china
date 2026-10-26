@@ -1,0 +1,7 @@
+# clip 构建上下文白名单（BuildKit 同名 dockerignore，优先于根 .dockerignore）。
+*
+!engine/pyproject.toml
+!engine/src
+!packages/contracts/templates
+!packages/contracts/pricing
+!weights

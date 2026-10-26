@@ -1,0 +1,8 @@
+# design-agent 构建上下文白名单：根清单 + packages 全量（含 contracts 的 skills/）。
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!tsconfig.pi.base.json
+!packages

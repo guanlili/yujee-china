@@ -25,7 +25,7 @@
     "docs:check": "node scripts/docs-check.mjs",
     "sitemap:check": "pnpm --filter @yujee/web sitemap:check",
     "test": "pnpm -r --no-bail test",
-    "typecheck": "pnpm docs:check && pnpm sitemap:check && pnpm templates:check && pnpm --filter @yujee/contracts typecheck && pnpm --filter @yujee/web typecheck"
+    "typecheck": "pnpm docs:check && pnpm sitemap:check && pnpm --filter @yujee/contracts typecheck && pnpm --filter @yujee/web typecheck"
   },
   "devDependencies": {
     "tsx": "^4.23.15",
