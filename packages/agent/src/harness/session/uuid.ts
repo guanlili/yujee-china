@@ -1,7 +1,9 @@
 let lastTimestamp = -Infinity;
 let sequence = 0;
 
-function fillRandomBytes(bytes: Uint8Array): void {
+// 参数钉 Uint8Array<ArrayBuffer>:@types/node 26 起 getRandomValues 只收
+// ArrayBuffer 背板的 typed array(默认泛型是 ArrayBufferLike,不再 assignable)。
+function fillRandomBytes(bytes: Uint8Array<ArrayBuffer>): void {
 	const crypto = globalThis.crypto;
 	if (crypto?.getRandomValues) {
 		crypto.getRandomValues(bytes);
