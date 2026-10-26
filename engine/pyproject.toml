@@ -30,7 +30,7 @@ dev = [
   # 档案几何组的预处理/后处理要 numpy(推理本身在 clip extra 里)。没有它
   # tests/test_profile_geometry.py 的模型接线用例整组收集不了。
   "numpy>=1.26",
-  "pytest>=8.2.0",
+  "pytest>=9.1.1",
   # Required by the @pytest.mark.asyncio tests (test_chapter_chat / test_theme /
   # test_chat_edit_v2 / test_draft_edit / test_inspect_render). It was assumed
   # present in dev envs but never pinned; without it those async tests error on a
