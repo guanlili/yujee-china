@@ -26,6 +26,8 @@ docker compose -f deploy/china/compose.single.yml \
   up -d --build --wait --wait-timeout 300
 
 # 部署后验证:首页 200(308→/en 相对跳转)+ 巡检(容器/内存/error/磁盘)。
-curl -fsS -m 15 -L -o /dev/null -w "home http %{http_code}\n" http://127.0.0.1:8080/
+# web 刚 Started 时 Next.js 监听未就绪,curl 会被 reset —— retry-connrefused 等它。
+curl -fsS -m 15 -L --retry 6 --retry-connrefused --retry-delay 3 \
+  -o /dev/null -w "home http %{http_code}\n" http://127.0.0.1:8080/
 bash deploy/china/bin/daily-patrol.sh
 echo "=== deploy done $(date '+%F %T') ==="
