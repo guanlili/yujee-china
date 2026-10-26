@@ -309,8 +309,12 @@ export function mapToolChoice(choice: string): FunctionCallingConfigMode {
 export function mapStopReason(reason: FinishReason): StopReason {
 	switch (reason) {
 		case FinishReason.STOP:
+		// CONTINUATION(v2 新增):思考配置下的分段边界,非错误,按正常停点处理
+		case FinishReason.CONTINUATION:
 			return "stop";
 		case FinishReason.MAX_TOKENS:
+		// TOO_MANY_TOOL_CALLS(v2 新增):工具调用轮数达上限,与 MAX_TOKENS 同属预算耗尽
+		case FinishReason.TOO_MANY_TOOL_CALLS:
 			return "length";
 		case FinishReason.BLOCKLIST:
 		case FinishReason.PROHIBITED_CONTENT:
