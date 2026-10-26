@@ -54,9 +54,9 @@
 	"devDependencies": {
 		"@types/node": "24.12.4",
 		"@typescript/native-preview": "7.0.0-dev.20260120.1",
-		"@vitest/coverage-v8": "4.1.9",
+		"@vitest/coverage-v8": "4.1.11",
 		"shx": "0.4.0",
 		"typescript": "5.9.3",
-		"vitest": "4.1.9"
+		"vitest": "4.1.11"
 	}
 }
