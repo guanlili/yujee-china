@@ -173,6 +173,8 @@ Postgres + Cloudflare R2
   发给 Google 的,只有页面内容真变了才动;没变就只推进 `reviewedAt`。
   理由写在 `apps/web/src/lib/seo/freshness.ts` 顶部。
 - Web 测试单跑:`cd apps/web && pnpm test`(或 `pnpm --filter @yujee/web test`)。
+  **admin 集成测试不在其中**:它对全库用户集合敏感(并行必竞态),常规批整文件
+  skip,独占跑用 `pnpm --filter @yujee/web test:admin`(CI web 门已挂)。
 - Agent 测试从仓根跑:`PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests`。
 - 本地起全流程要**三个**服务:web 3000 / agent 8001 / design-agent 8787。
   漏了第三个,design-chat 直接 502。

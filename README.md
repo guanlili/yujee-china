@@ -150,6 +150,7 @@ Web 测试单跑:
 
 ```bash
 cd apps/web && pnpm test        # 或 pnpm --filter @yujee/web test
+pnpm --filter @yujee/web test:admin   # admin 集成测试独占批(常规批整文件 skip)
 ```
 
 ### 验证陷阱

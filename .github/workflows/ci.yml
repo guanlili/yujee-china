@@ -120,6 +120,8 @@ jobs:
       - run: pnpm design:build
       - run: pnpm --filter @yujee/web db:migrate
       - run: pnpm --filter @yujee/web test
+      # admin 集成测试对全库状态敏感,常规并行批整文件 skip,此处串行独占跑。
+      - run: pnpm --filter @yujee/web test:admin
 
   packages:
     runs-on: ubuntu-24.04
