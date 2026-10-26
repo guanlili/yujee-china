@@ -134,6 +134,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # 2026-10-26 补:五容器里此前只有 web 没有 healthcheck,deploy 的 --wait
+    # 对它只能等 running 而非就绪(首演时 curl 撞启动窗口的根因)。
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/v1/health').then(r=>{if(r.status>=400)throw 1}).catch(()=>process.exit(1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     mem_limit: 1000m
     cpus: 1.5
     logging: { driver: json-file, options: { max-size: "20m", max-file: "3" } }
