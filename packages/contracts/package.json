@@ -1,34 +1,34 @@
 {
-  "name": "@yujee/contracts",
-  "version": "0.0.1",
-  "private": true,
-  "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "exports": {
-    ".": "./src/index.ts",
-    "./layout": "./src/layout.ts",
-    "./agent": "./src/agent.ts",
-    "./api": "./src/api.ts",
-    "./enums": "./src/enums.ts",
-    "./templates": "./src/templates.ts",
-    "./v3": "./src/v3.ts",
-    "./render": "./src/render/index.ts",
-    "./render/*": "./src/render/*.ts",
-    "./design": "./src/design/index.ts"
-  },
-  "scripts": {
-    "build": "tsc -p tsconfig.json --noEmit",
-    "templates:generate": "tsx scripts/gen-templates.ts",
-    "templates:check": "tsx scripts/gen-templates.ts --check && HTML_TEMPLATES_REQUIRE_ALL=1 tsx scripts/check-html-templates.ts",
-    "test": "tsx --test \"src/*.test.ts\" \"src/render/*.test.ts\" \"src/design/*.test.ts\"",
-    "typecheck": "pnpm templates:check && tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "zod": "^3.23.0"
-  },
-  "devDependencies": {
-    "tsx": "^4.19.2",
-    "typescript": "^5.4.5"
-  }
+	"name": "@yujee/contracts",
+	"version": "0.0.1",
+	"private": true,
+	"type": "module",
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": "./src/index.ts",
+		"./layout": "./src/layout.ts",
+		"./agent": "./src/agent.ts",
+		"./api": "./src/api.ts",
+		"./enums": "./src/enums.ts",
+		"./templates": "./src/templates.ts",
+		"./v3": "./src/v3.ts",
+		"./render": "./src/render/index.ts",
+		"./render/*": "./src/render/*.ts",
+		"./design": "./src/design/index.ts"
+	},
+	"scripts": {
+		"build": "tsc -p tsconfig.json --noEmit",
+		"templates:generate": "tsx scripts/gen-templates.ts",
+		"templates:check": "tsx scripts/gen-templates.ts --check && HTML_TEMPLATES_REQUIRE_ALL=1 tsx scripts/check-html-templates.ts",
+		"test": "tsx --test \"src/*.test.ts\" \"src/render/*.test.ts\" \"src/design/*.test.ts\"",
+		"typecheck": "pnpm templates:check && tsc -p tsconfig.json --noEmit"
+	},
+	"dependencies": {
+		"zod": "^3.23.0"
+	},
+	"devDependencies": {
+		"tsx": "^4.23.15",
+		"typescript": "^5.4.5"
+	}
 }
