@@ -5,6 +5,13 @@
   "engines": {
     "node": "^24.0.0"
   },
+  "pnpm": {
+    "overrides": {
+      "sharp": "^0.35.5",
+      "postcss": "^8.5.10",
+      "source-map-js": "^1.2.2"
+    }
+  },
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "web:dev": "pnpm --filter @yujee/web dev",
