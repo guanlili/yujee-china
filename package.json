@@ -18,7 +18,7 @@
     "typecheck": "pnpm docs:check && pnpm sitemap:check && pnpm templates:check && pnpm --filter @yujee/contracts typecheck && pnpm --filter @yujee/web typecheck"
   },
   "devDependencies": {
-    "tsx": "^4.19.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.4.5"
   }
 }
