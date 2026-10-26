@@ -4,6 +4,11 @@ node_modules/
 .vercel/
 dist/
 build/
+# 生产三镜像的 Dockerfile 是部署关键件(compose.single.yml 直接引用),
+# 必须进版本控制 —— 服务器上那份是无备份的单份拷贝,漂移了没人知道。
+# git 的排除规则不能重新包含「父目录已被排除」的内容,先放行目录再放行内容。
+!deploy/china/build/
+!deploy/china/build/**
 .env
 .env.local
 .env.*.local
