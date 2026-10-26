@@ -1,0 +1,8 @@
+# gitleaks 配置(CI secrets-scan 门用)。
+# 默认规则集 + 对 env 模板的占位值放行:example 文件里全是「待生成_xxx」
+# 占位与连接串形状的示例,不构成泄露。
+[allowlist]
+  description = "env 模板占位与示例值"
+  paths = [
+    '''deploy/china/env/.*\.example$''',
+  ]
