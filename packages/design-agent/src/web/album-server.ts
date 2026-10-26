@@ -574,11 +574,14 @@ async function runAlbumChat(
 				operations: [`v${bookBefore.version}->v${bookAfter.version}`],
 			});
 		}
-		runtime.traces.finishTrace(trace.id);
-		const response: AlbumChatResponse = {
-			prompt: message,
-			albumId: runtime.albumId,
-			assistant: { text: assistantText.trim() || "（无文字回复）" },
+			runtime.traces.finishTrace(trace.id);
+			const response: AlbumChatResponse = {
+				prompt: message,
+				albumId: runtime.albumId,
+				// 只执行写工具不说话时就是空串 —— 占位文案由 web 按用户语言兜底
+				// (「已更新页面。/ Pages updated.」),别在这里硬编码中文哨兵
+				// (2026-10-26 实测 EN 界面把「(无文字回复)」原样亮给了用户)。
+				assistant: { text: assistantText.trim() },
 			committed,
 			book: bookAfter,
 			// 滤镜不进 book.version(它不是页面写入),所以 committed 不代表它 ——

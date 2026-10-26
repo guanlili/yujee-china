@@ -148,8 +148,9 @@ Postgres + Cloudflare R2
   `uploadSessionId` + 元信息;Web 在**建库之前**从 R2 取回字节拼成 `V3AnalyzeRequest`
   (engine 侧零改动),取不齐就 409 `ANALYZE_UPLOAD_INCOMPLETE`。理由:内联 base64
   时 27~50 张就撞 Vercel 4.5MB 的 `FUNCTION_PAYLOAD_TOO_LARGE`。
-  `/retry` 和 `/add-photos` **仍走内联**(`RetryBodySchema` 里 base64 必填),因此仍受
-  4.5MB 约束 —— 大书重试会 413,尚未治。
+  `/retry` 和 `/add-photos` **仍走内联**(`RetryBodySchema` 里 base64 必填)。海外
+  Vercel 时代的 4.5MB 上限在国内 docker 部署已不成立(2026-10-26 实测 7.3MB body
+  完整通过解析,约束只剩积分检查);真遇超大重试再让它读 R2 即可。
   `analyze-uploads/` 前缀需要 R2 生命周期规则回收(运维前置条件,应用层不删)。
 - 照片规范原图(压缩派生物,长边 3400/q0.82 无滤镜 JPEG,`getCanonicalUploadBlob` 产出)
   以 R2 私有桶 `photo-originals/{albumId}/{photoId}.jpg` 为真相源,presigned PUT 上传 +
