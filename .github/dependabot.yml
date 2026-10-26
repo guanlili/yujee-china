@@ -25,6 +25,7 @@ updates:
       - dependency-name: "drizzle-orm"        # 0.36→0.45 迁移批
       - dependency-name: "drizzle-kit"        # 同上
       - dependency-name: "@typescript/native-preview"  # tsgo dev 预发布,按需手动(#10)
+      - dependency-name: "next"                # 16 是大版本迁移(#25),major 队列
   - package-ecosystem: github-actions
     directory: /
     schedule:
