@@ -74,8 +74,8 @@ Postgres + Cloudflare R2
   (直接 JSON,不是 `{ok,data}`)。客户端是 `apps/web/src/lib/agent/design-agent-client.ts`。
 - 对外:`GET /health`、`POST /api/book`、`POST /api/chat`、`GET /api/albums|traces|state`。
 - **必须单机运行。** 每册的 session/trace/书状态在进程内存里,Web 每轮先 `POST /api/book`
-  再 `POST /api/chat`,两个请求必须命中同一台机器。`fly scale count 1`,不要开 HA,
-  不要 `auto_stop_machines`。理由和部署命令写在 `packages/design-agent/fly.toml` 注释里。
+  再 `POST /api/chat`,两个请求必须命中同一台机器;compose 里就一个 design-agent 容器,
+  不要扩副本。理由见 `packages/design-agent/README.md`「部署:必须单机」。
 - 十三个写工具:`update_page_texts` / `write_page_html` / `swap_page_template` /
   `update_page_images` / `set_image_pos` / `set_text_colors` / `set_page_background` /
   `apply_book_style` / `set_text_fonts` / `move_pages` / `delete_page` /
@@ -204,6 +204,6 @@ Postgres + Cloudflare R2
 没跟上,就报错。它已挂进 `pnpm typecheck`。不要靠自觉,靠这个脚本。
 
 <!-- doc-scope
-paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, pnpm-lock.yaml, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 98abd6a6
+paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json, pnpm-lock.yaml
+checked-at: 14d71895
 -->

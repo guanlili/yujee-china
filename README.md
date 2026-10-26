@@ -7,7 +7,8 @@ AI 人生纪念册 Web 应用,面向海外市场。用户选择照片后进入�
 
 ## 系统框架
 
-线上是**四个部署单元**:
+海外历史架构是**四个部署单元**(国内现状:单机 docker 五容器 @ 49.232,见
+[`CLAUDE.md`](CLAUDE.md) 顶部段与 [`deploy/china/README.md`](deploy/china/README.md)):
 
 ```text
 Browser
@@ -41,7 +42,7 @@ memoir-agent-rebuild/
 ├── engine/README.md                # 生成 Agent 的 route/workflow/provider/测试
 └── packages/
     ├── contracts/                  # 跨服务契约和模板
-    └── design-agent/README.md      # 对话式改书 Agent(部署约束见其 fly.toml)
+    └── design-agent/README.md      # 对话式改书 Agent(部署约束见其 README「部署:必须单机」)
 ```
 
 ## 当前工作流
@@ -181,15 +182,18 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 ## 上线注意
 
+- **所有改动 merge 到 main 即自动部署**(2026-10-26 起,含 Agent/design-agent 侧):
+  CI 全绿后 deploy job 到 49.232 拉最新 main 重建五容器,回滚走 revert PR,见
+  [`deploy/china/README.md`](deploy/china/README.md)「自动部署」。
 - **Web 与 Agent 必须同版本部署。** 跨服务契约(`packages/contracts/src/v3.ts` 与
   `engine/src/contracts/schemas.py`)是**手工镜像,没有 codegen**,只部署一边会当场
-  契约漂移。Web 走 Vercel 自动部署,Agent 要**手动** `flyctl deploy`。
-- **Design Agent 也要手动部署,且必须保持单机**:
-  `fly deploy -c packages/design-agent/fly.toml --dockerfile packages/design-agent/Dockerfile --ha=false .`
-  session 在进程内存,扩到两台会掉正在进行的编辑会话。
-- **`flyctl deploy` 之前先确认 Fly 上 `yujee-agent` 有 `SELECT_LAYOUT_API_KEY`**
-  (compose 的 Gemini key)。缺它时 `mode=real` 会 fail-fast 启动失败 —— 这是刻意的,
-  详见 [`engine/README.md`](engine/README.md)。
+  契约漂移(merge 自动部署天然保证同批上线)。
+- **Design Agent 必须保持单机**:session 在进程内存,compose 里就一个 design-agent
+  容器,扩副本或重启会掉正在进行的编辑会话。
+- **engine 启动必检 provider key**(密钥在服务器 `deploy/china/env/single.env`):
+  `COMPOSE_PROVIDER=ark` 查 `ARK_API_KEY`;gemini 线查 `SELECT_LAYOUT_API_KEY`
+  (compose 的 Gemini key,名字是历史产物)。缺 key 会 fail-fast 启动失败 ——
+  这是刻意的,详见 [`engine/README.md`](engine/README.md)。
 - **数据库迁移 `0020` 要单独一批部署。** 它给 `agent_jobs.kind` 枚举加了 `'compose'`;
   PG 不允许在同一个事务里使用刚加的枚举值,而 drizzle 把待跑迁移放进同一个事务,
   所以将来任何引用 `'compose'` 的迁移都必须等 0020 跑完提交之后再跑。
@@ -203,6 +207,6 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 - Agent 起手约束与文档时效规则: [`CLAUDE.md`](CLAUDE.md)
 
 <!-- doc-scope
-paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json, engine/fly*.toml, packages/design-agent/fly.toml
-checked-at: 98abd6a6
+paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json
+checked-at: 14d71895
 -->

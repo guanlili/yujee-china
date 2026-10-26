@@ -19,7 +19,8 @@ The previous edit-chat/theme/cover/finalize surfaces, plus `/v3/judge-layout`, `
 | `POST /v3/compose` | async `202` + callback | 一次性成稿:按章并发让成稿模型(默认 Gemini,`COMPOSE_PROVIDER=ark` 时走火山 Ark 的 OpenAI 兼容通路,消息体本就是 image_url 多模态格式)看真实照片 + 读用户讲的故事写满全书文案,并出封面/封尾文案与字体。**全链路唯一的 AI 调用** |
 
 另有两个 internal 路由,**只在专用的 2GB CLIP worker 上开**
-(`fly.clip.toml`,`AGENT_ENABLE_CLIP_EMBEDDINGS=true`);普通 1GB Agent 开关关着 => 404。
+(国内为 compose 的 clip 容器,`AGENT_ENABLE_CLIP_EMBEDDINGS=true`);普通 1GB Agent
+开关关着 => 404。
 鉴权走 `GROUPING_CLIP_SECRET`(未设则回落 `AGENT_SHARED_SECRET`):
 
 | Endpoint | Purpose |
@@ -193,30 +194,25 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests/test_vision_gro
 
 ## Deploy
 
-Agent 不走自动部署,合并后要**手动** `flyctl deploy`(从干净的 `origin/main` worktree,
-带 `--depot=false`):
+2026-10-26 起 engine 侧改动同样 **merge 到 main 即自动部署**:CI 全绿后 deploy job
+SSH 到 49.232 跑 `deploy/china/bin/deploy-from-git.sh`(reset --hard + 五容器
+`compose up -d --build`),详见 [`deploy/china/README.md`](../deploy/china/README.md)
+「自动部署」。海外 Fly 线(`engine/fly*.toml`)已随单机方案退场删除(2026-10-26),
+历史版本在 git;CLIP worker 不再是独立 app,是同一 compose 里的 clip 容器。
 
-```bash
-fly deploy -c engine/fly.toml --dockerfile engine/Dockerfile --depot=false .
-```
+部署仍要记住:
 
-上线前置动作,顺序不要跳:
-
-1. **先确认 Fly 上 `yujee-agent` 有 `SELECT_LAYOUT_API_KEY`**(即 compose 的 Gemini key,
-   名字是历史产物)。`fly secrets list -a yujee-agent` 看得到就行。
-   缺它时 `AGENT_PIPELINE_MODE=real` 会在 `src/main.py` 的启动校验里 **fail-fast,
-   服务直接起不来**。这是刻意的:缺 key 时 compose 不会报错,它会每章记一条 warning、
-   照常发 `completed` + 空 `pagesTexts`,观测台一片绿,用户却拿到一本全是模板示例文案
-   的书。宁可开不起来,也不静默交付这种书。
-   同理 `ARK_API_KEY` / `DEEPSEEK_API_KEY` 目前也在必检清单里(虽已无 workflow 消费)。
-2. **Web 和 Agent 必须同版本部署。** 这一版是契约变更:删了 `/v3/judge-layout`、
-   `/v3/judge-page-template`、`/v3/design`,新增 `/v3/compose`,`V3Chapter` 加了 `title`。
-   只更新一边会当场契约漂移。
+1. **Web 和 Agent 必须同版本部署。** 跨服务契约是手工镜像、没有 codegen,只部署一边
+   会当场契约漂移(merge 自动部署天然保证同批上线)。
+2. `AGENT_PIPELINE_MODE=real` 启动必检 provider key(密钥在服务器
+   `deploy/china/env/single.env`):`COMPOSE_PROVIDER=ark` 查 `ARK_API_KEY`,
+   gemini 线查 `SELECT_LAYOUT_API_KEY`(compose 的 Gemini key,名字是历史产物)。
+   缺 key 会 **fail-fast 起不来,这是刻意的**:缺 key 时 compose 不会报错,它会
+   每章记一条 warning、照常发 `completed` + 空 `pagesTexts`,观测台一片绿,用户
+   却拿到一本全是模板示例文案的书。宁可开不起来,也不静默交付这种书。
+   `DEEPSEEK_API_KEY` 目前也在必检清单里(虽已无 workflow 消费)。
 3. Web 侧的迁移 `0020` 给 `agent_jobs.kind` 加了 `'compose'`;PG 不允许在同一个事务里
    使用刚加的枚举值,所以将来引用 `'compose'` 的迁移必须与 0020 分批部署。
-
-CLIP embedding worker 是另一个 app(`engine/fly.clip.toml` → `yujee-agent-clip`),
-按需单独部署。
 
 ## Change Notes
 
@@ -227,6 +223,6 @@ CLIP embedding worker 是另一个 app(`engine/fly.clip.toml` → `yujee-agent-c
 - Do not document removed endpoints as active until they exist again in `api/routes.py` and tests.
 
 <!-- doc-scope
-paths: engine/src/**, engine/fly*.toml, engine/pyproject.toml
-checked-at: e4c3f317
+paths: engine/src/**, engine/pyproject.toml
+checked-at: 14d71895
 -->
