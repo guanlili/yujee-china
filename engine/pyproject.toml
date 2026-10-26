@@ -6,11 +6,16 @@ dependencies = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",
   "httpx>=0.27.0",
+  # certifi 是 httpx 的传递依赖;显式钉地板是因为 2026-10 的 emSign 根证书
+  # 撤销事件(GHSA:中介 CA 私钥泄露),2026.10.19 之前的 bundle 带污染根。
+  "certifi>=2026.10.19",
   "pydantic>=2.7.0",
   "pydantic-settings>=2.4.0",
   "structlog>=24.1.0",
   "python-multipart>=0.0.9",
-  "pillow>=10.0.0",
+  # 13.0.0 之前有 JPEG 解码堆溢出等一批已披露 CVE(<=12.3.0 一档含 critical),
+  # engine 直接解码用户上传的照片,必须钉在修复线之上。
+  "pillow>=13.0.0",
   "psycopg[binary]>=3.2.0"
 ]
 

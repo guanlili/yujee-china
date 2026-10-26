@@ -40,3 +40,20 @@ updates:
         update-types:
           - "minor"
           - "patch"
+  # 2026-10-26 起:engine 的 Python 依赖此前不在这列,Pillow/certifi 的
+  # critical 只告警不开 PR,只能手动追。manifest 在 engine/pyproject.toml,
+  # 装依赖走 `pip install .`(Dockerfile),地板钉在 pyproject 即随镜像生效。
+  - package-ecosystem: pip
+    directory: /engine
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Asia/Shanghai
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      pip-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
