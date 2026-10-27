@@ -25,8 +25,9 @@ export function LoginForm({
   appleEnabled?: boolean;
 }) {
   const router = useRouter();
-  const [showEmail, setShowEmail] = useState(false);
-  const [email, setEmail] = useState('');
+  // 手机号登录是免验证期的主入口(邮箱注册卡验证邮件);邮箱登录保留给存量账号。
+  const [mode, setMode] = useState<'none' | 'phone' | 'email'>('none');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,18 +60,38 @@ export function LoginForm({
     }
   };
 
-  const onSubmit = async (e: FormEvent) => {
+  const routeIn = () => {
+    router.push(dest);
+    router.refresh();
+  };
+
+  const onPhoneSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const { error: signInError } = await authClient.signIn.email({ email, password, callbackURL: dest });
+    const { error: signInError } = await authClient.signIn.phoneNumber({
+      phoneNumber: identifier,
+      password,
+    });
     if (signInError) {
       setError(messages.loginError);
       setBusy(false);
       return;
     }
-    router.push(dest);
-    router.refresh();
+    routeIn();
+  };
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    const { error: signInError } = await authClient.signIn.email({ email: identifier, password, callbackURL: dest });
+    if (signInError) {
+      setError(messages.loginError);
+      setBusy(false);
+      return;
+    }
+    routeIn();
   };
 
   return (
@@ -101,18 +122,75 @@ export function LoginForm({
         <span>{messages.or}</span>
       </div>
 
-      {!showEmail && (
-        <button
-          type="button"
-          onClick={() => setShowEmail(true)}
-          className="flex w-full items-center justify-center gap-2.5 rounded-full border border-[var(--border)] bg-transparent px-5 py-3 text-[15px] font-medium text-[var(--fg-2)] transition-colors duration-[var(--motion-fast)] hover:border-[var(--muted)] hover:bg-[var(--bg)]"
-        >
-          <MailIcon />
-          <span>{messages.continueWithEmail}</span>
-        </button>
+      {mode === 'none' && (
+        <>
+          <button
+            type="button"
+            onClick={() => setMode('phone')}
+            className="flex w-full items-center justify-center gap-2.5 rounded-full border border-[var(--border)] bg-transparent px-5 py-3 text-[15px] font-medium text-[var(--fg-2)] transition-colors duration-[var(--motion-fast)] hover:border-[var(--muted)] hover:bg-[var(--bg)]"
+          >
+            <PhoneIcon />
+            <span>{messages.continueWithPhone}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('email')}
+            className="mt-2.5 flex w-full items-center justify-center gap-2.5 rounded-full border border-[var(--border)] bg-transparent px-5 py-3 text-[15px] font-medium text-[var(--fg-2)] transition-colors duration-[var(--motion-fast)] hover:border-[var(--muted)] hover:bg-[var(--bg)]"
+          >
+            <MailIcon />
+            <span>{messages.continueWithEmail}</span>
+          </button>
+        </>
       )}
 
-      {showEmail && (
+      {mode === 'phone' && (
+        <form className="flex flex-col gap-3.5" onSubmit={onPhoneSubmit}>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-medium text-[var(--fg-2)]">{messages.phone}</span>
+            <input
+              name="phone"
+              type="tel"
+              required
+              autoComplete="tel"
+              autoFocus
+              inputMode="tel"
+              placeholder={messages.phonePlaceholder}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              className="w-full rounded-full border border-[var(--border-soft)] bg-[var(--surface)] px-[18px] py-3 text-[15px] text-[var(--fg)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-color,box-shadow] duration-[var(--motion-fast)] placeholder:text-[var(--meta)] focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(19,184,166,0.12)] focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-medium text-[var(--fg-2)]">{messages.password}</span>
+            <input
+              name="password"
+              type="password"
+              required
+              autoComplete="current-password"
+              placeholder={messages.passwordPlaceholder}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-full border border-[var(--border-soft)] bg-[var(--surface)] px-[18px] py-3 text-[15px] text-[var(--fg)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-color,box-shadow] duration-[var(--motion-fast)] placeholder:text-[var(--meta)] focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(19,184,166,0.12)] focus:outline-none"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy}
+            className="mt-0.5 w-full rounded-full bg-[var(--fg)] px-5 py-3.5 text-[15px] font-semibold text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[0_3px_10px_rgba(0,0,0,0.18)] disabled:opacity-50"
+          >
+            {busy ? messages.loading : messages.loginAction}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('email')}
+            className="text-center text-[12px] font-medium text-[var(--muted)] hover:text-[var(--fg-2)] hover:underline"
+          >
+            {messages.useEmailInstead}
+          </button>
+        </form>
+      )}
+
+      {mode === 'email' && (
         <form className="flex flex-col gap-3.5" onSubmit={onSubmit}>
           <label className="flex flex-col gap-1.5">
             <span className="text-[13px] font-medium text-[var(--fg-2)]">
@@ -125,8 +203,8 @@ export function LoginForm({
               autoComplete="email"
               autoFocus
               placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               className="w-full rounded-full border border-[var(--border-soft)] bg-[var(--surface)] px-[18px] py-3 text-[15px] text-[var(--fg)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-color,box-shadow] duration-[var(--motion-fast)] placeholder:text-[var(--meta)] focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(19,184,166,0.12)] focus:outline-none"
             />
           </label>
@@ -157,6 +235,13 @@ export function LoginForm({
             className="mt-0.5 w-full rounded-full bg-[var(--fg)] px-5 py-3.5 text-[15px] font-semibold text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[0_3px_10px_rgba(0,0,0,0.18)] disabled:opacity-50"
           >
             {busy ? messages.loading : messages.loginAction}
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode('phone')}
+            className="text-center text-[12px] font-medium text-[var(--muted)] hover:text-[var(--fg-2)] hover:underline"
+          >
+            {messages.usePhoneInstead}
           </button>
         </form>
       )}
@@ -190,6 +275,14 @@ function MailIcon() {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true">
       <rect x="2" y="4" width="20" height="16" rx="2" />
       <path d="m22 7-10 5L2 7" />
+    </svg>
+  );
+}
+
+function PhoneIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]" aria-hidden="true">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />
     </svg>
   );
 }
