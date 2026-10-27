@@ -115,3 +115,30 @@ test('phone auth forms share one normalizer; conflicts guide the guest to login 
     'the conflict panel must link to login using the from-preserving loginHref',
   );
 });
+
+test('login page offers no Google entry (China build: email + phone only)', () => {
+  const loginForm = source('app/[locale]/login/login-form.tsx');
+  const loginPage = source('app/[locale]/login/page.tsx');
+
+  // 2026-10-27 起国内版移除 Google 登录:按钮、文案键、signIn.social('google')
+  // 都不应回潮。存量 accounts 行保留,Apple 维持「配了才显示」不变。
+  for (const src of [loginForm, loginPage]) {
+    assert.doesNotMatch(
+      src,
+      /GoogleIcon|continueWithGoogle|googleError|provider:\s*'google'/,
+      'Google login entry must not come back on the login page',
+    );
+  }
+
+  // 五个 locale 的 auth 段不再携带 Google 键(en.json 是 AppMessages 的类型源,
+  // 键回来了登录页就会拿到未定义引用;其余 locale 留着就是死文案)。
+  for (const locale of ['en', 'zh', 'ja', 'fr', 'es']) {
+    const messages = JSON.parse(
+      readFileSync(join(srcRoot, 'messages', `${locale}.json`), 'utf8'),
+    );
+    assert.ok(
+      !('continueWithGoogle' in messages.auth) && !('googleError' in messages.auth),
+      `${locale}.json still carries Google auth copy`,
+    );
+  }
+});
