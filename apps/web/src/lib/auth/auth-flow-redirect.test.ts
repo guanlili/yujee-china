@@ -48,8 +48,13 @@ test('login/register pages preserve the generation resume redirect through accou
   );
   assert.match(
     loginForm,
-    /authClient\.signIn\.email\(\{ email, password, callbackURL: dest \}\)/,
+    /authClient\.signIn\.email\(\{ email: identifier, password, callbackURL: dest \}\)/,
     'email sign-in must forward callbackURL so verification redirects resume generation',
+  );
+  assert.match(
+    loginForm,
+    /authClient\.signIn\.phoneNumber\(\{\s*phoneNumber: identifier,\s*password,/,
+    'phone sign-in must run through the phoneNumber plugin client',
   );
   assert.match(
     registerPage,
@@ -65,6 +70,16 @@ test('login/register pages preserve the generation resume redirect through accou
     registerForm,
     /authClient\.signUp\.email\(\{ name, email, password, callbackURL: dest \}\)/,
     'signup verification email must carry the resume callbackURL',
+  );
+  assert.match(
+    registerForm,
+    /fetch\('\/api\/auth\/phone-signup'/,
+    'phone signup must hit the custom better-auth endpoint',
+  );
+  assert.match(
+    registerForm,
+    /router\.push\(dest\);/,
+    'phone signup (which creates the session immediately) must route to the carried destination',
   );
   assert.match(
     registerForm,
