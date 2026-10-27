@@ -90,20 +90,22 @@ export function LoginForm({
   return (
     <div className="flex flex-col">
       {appleEnabled && (
-        <button
-          type="button"
-          onClick={onApple}
-          disabled={busy}
-          className="flex w-full items-center justify-center gap-3 rounded-full border border-[var(--border)] bg-[var(--surface)] px-5 py-3.5 text-[15px] font-semibold text-[var(--fg)] shadow-[var(--shadow-card)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[var(--shadow-card-hover)] disabled:opacity-50"
-        >
-          <AppleIcon />
-          <span>{messages.continueWithApple}</span>
-        </button>
-      )}
+        <>
+          <button
+            type="button"
+            onClick={onApple}
+            disabled={busy}
+            className="flex w-full items-center justify-center gap-3 rounded-full border border-[var(--border)] bg-[var(--surface)] px-5 py-3.5 text-[15px] font-semibold text-[var(--fg)] shadow-[var(--shadow-card)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[var(--shadow-card-hover)] disabled:opacity-50"
+          >
+            <AppleIcon />
+            <span>{messages.continueWithApple}</span>
+          </button>
 
-      <div className="my-[22px] flex items-center gap-3.5 text-[12px] text-[var(--meta)] before:h-px before:flex-1 before:bg-[var(--border-soft)] after:h-px after:flex-1 after:bg-[var(--border-soft)]">
-        <span>{messages.or}</span>
-      </div>
+          <div className="my-[22px] flex items-center gap-3.5 text-[12px] text-[var(--meta)] before:h-px before:flex-1 before:bg-[var(--border-soft)] after:h-px after:flex-1 after:bg-[var(--border-soft)]">
+            <span>{messages.or}</span>
+          </div>
+        </>
+      )}
 
       {mode === 'none' && (
         <>
