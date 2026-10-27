@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildPasswordResetEmail, createAuthOptions, getBetterAuthSchema, localeFromResetUrl, normalizePhoneNumber } from './better-auth';
+import { buildPasswordResetEmail, createAuthOptions, getBetterAuthSchema, localeFromResetUrl, normalizePhoneNumber, PHONE_AUTH_LINK_PATHS } from './better-auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
 
 describe('normalizePhoneNumber(手机号归一)', () => {
@@ -86,6 +86,29 @@ describe('better-auth schema bridge', () => {
     assert.equal(ids[ids.length - 1], 'next-cookies');
     assert.ok(ids.includes('phone-number'));
     assert.ok(ids.includes('yujee-phone-signup'));
+  });
+
+  it('declares the explicit anon-link paths for phone auth (independent of the plugin matcher)', () => {
+    // /phone-signup 不在 anonymous 插件转正 matcher 的前缀名单里,必须显式接管;
+    // /sign-in/phone-number 虽被 matcher 覆盖,显式接管让它不依赖插件版本行为。
+    assert.ok(PHONE_AUTH_LINK_PATHS.has('/phone-signup'));
+    assert.ok(PHONE_AUTH_LINK_PATHS.has('/sign-in/phone-number'));
+    assert.equal(PHONE_AUTH_LINK_PATHS.size, 2);
+  });
+
+  it('registers a single after-hook middleware (options-level after must not be an array)', () => {
+    const options = createAuthOptions({
+      users: {},
+      sessions: {},
+      accounts: {},
+      verifications: {},
+    });
+
+    // better-auth 1.7.12 的 getHooks 把 options.hooks.after 整体当作单一 handler,
+    // 传数组会在每个请求上炸 'hook.handler is not a function'(匿名注册都 500)。
+    // 两条匿名并号逻辑(verify-email 兜底 + 手机号显式并号)由这一个分派器串起。
+    const after = options.hooks?.after;
+    assert.equal(typeof after, 'function', 'hooks.after must be one callable middleware');
   });
 
   it('zeroes the welcome credits for anonymous (guest) user creation only', async () => {

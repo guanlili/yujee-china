@@ -19,6 +19,8 @@
     "useEmailInstead": "改用邮箱",
     "usePhoneInstead": "改用手机号",
     "phoneSignupError": "创建账号失败,该手机号可能已注册。",
+    "phoneAlreadyRegistered": "该手机号已注册账号。",
+    "phoneAlreadyRegisteredHint": "请改用登录 —— 你在游客模式下完成的作品会自动并入该账号。",
     "or": "或",
     "forgotPassword": "忘记密码？",
     "forgotPasswordTitle": "重置密码",

@@ -75,6 +75,20 @@
 补发新账号 20 积分、删匿名用户行 → Web 检测 `copySource='placeholder'` 自动派发真
 compose(走现有积分/402 逻辑)→ 真文案落地 → 用户继续原操作。
 
+> **2026-10-27 订正:手机号注册/登录同样并号,且不能只靠插件 matcher。** 免验证期
+> 的主入口是手机号(`/phone-signup` 注册、`/sign-in/phone-number` 登录)。anonymous
+> 插件转正 matcher 的前缀名单(`/sign-in`、`/sign-up`、`/callback`…)不含自定义
+> 路径 `/phone-signup` —— 游客走手机号注册不会触发 `onLinkAccount`,相册会滞留在
+> 无人可见的匿名号下。`better-auth.ts` 因此加了显式 after-hook(镜像
+> `linkAnonymousOnVerifyEmail`)覆盖两条手机号路径:user 级 after-hook 先于插件
+> hook 执行,过户+删匿名号之后,插件 hook 对 `/sign-in/phone-number` 的二次触发被
+> `onLinkAccount` 里的按主键实查闸拦成 no-op(cookie 缓存里的匿名 session 在删行后
+> 还能活 5 分钟)。过户失败不向上抛(账号与会话已建好,500 只会让前端误判注册失败;
+> transfer 单事务,失败即匿名侧原封未动),留结构化日志给运维。相册数上限
+> (`ANON_MAX_ALBUMS`)按 `isAnonymous` 判定,过户到正式号后天然解除。手机号归一
+> 的唯一真相在 `lib/auth/phone.ts`(前后端共用):插件登录是精确匹配查询,注册端
+> 归一落库、登录端发原始输入就会查无此人。
+
 ## 限流(三层)
 
 1. **Vercel WAF**(部署配置,不在仓内):按 IP 限 `/api/auth/sign-in/anonymous` 与

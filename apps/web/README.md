@@ -17,8 +17,12 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
   见 `design-apply.ts` 的 `coverTextBase`/`placeholderCoverTextBase`),
   `albums.copy_source='placeholder'`,零 AI/零积分/零 R2)→ 本地导出。只有三件事要
   真实账号:对话改书(design-chat)、保存(照片快照)、分享 —— API 层 `requireRealUser`
-  403 `ANON_UPGRADE_REQUIRED`,前端统一弹登录。登录时 `onLinkAccount` 过户相册并删匿名
-  号,前端检测 `copySource='placeholder'` 自动重发 POST /design 补跑真 compose(此时才
+  403 `ANON_UPGRADE_REQUIRED`,前端统一弹登录。登录时过户相册并删匿名号 —— 邮箱验证/
+  OAuth 走 `onLinkAccount` 与 `linkAnonymousOnVerifyEmail` 兜底;手机号注册/登录
+  (`/phone-signup`、`/sign-in/phone-number`)走显式 after-hook(插件默认 matcher 的
+  前缀名单不含 `/phone-signup`;user 级 after 先跑,`onLinkAccount` 里的按主键实查
+  闸把插件 hook 的二次触发拦成 no-op)。前端检测 `copySource='placeholder'`
+  自动重发 POST /design 补跑真 compose(此时才
   precheck+hold 计费)。游客硬上限:20 张/本、1 本/号、匿名注册每 IP 每小时 5 次
   (`src/config/anon.ts`)。清理只扫**一本书都没做**的空游客(超 7 天未转正,cron
   `/api/v1/admin/cleanup-anon`);**做过书的游客永久保留** —— 他传过照片、等过生成、
@@ -439,5 +443,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**
-checked-at: 45f31aaa
+checked-at: a9ca0110
 -->

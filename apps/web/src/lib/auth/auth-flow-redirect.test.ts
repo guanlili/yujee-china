@@ -53,8 +53,8 @@ test('login/register pages preserve the generation resume redirect through accou
   );
   assert.match(
     loginForm,
-    /authClient\.signIn\.phoneNumber\(\{\s*phoneNumber: identifier,\s*password,/,
-    'phone sign-in must run through the phoneNumber plugin client',
+    /authClient\.signIn\.phoneNumber\(\{\s*phoneNumber: normalizePhoneNumber\(identifier\) \|\| identifier,\s*password,/,
+    'phone sign-in must run through the phoneNumber plugin client with normalized input',
   );
   assert.match(
     registerPage,
@@ -85,5 +85,33 @@ test('login/register pages preserve the generation resume redirect through accou
     registerForm,
     /authHrefWithFrom\(`\/\$\{locale\}\/login`, from\)/,
     'register form login links must preserve the carried from param',
+  );
+});
+
+test('phone auth forms share one normalizer; conflicts guide the guest to login (R3)', () => {
+  const loginForm = source('app/[locale]/login/login-form.tsx');
+  const registerForm = source('app/[locale]/register/register-form.tsx');
+
+  // 归一的唯一真相在 lib/auth/phone:注册端落库前归一,登录端精确匹配查询,
+  // 两端不共用就会「注册得了、登不回」。
+  for (const form of [loginForm, registerForm]) {
+    assert.match(
+      form,
+      /import \{ normalizePhoneNumber \} from '@\/lib\/auth\/phone';/,
+      'both phone forms must import the shared normalizer',
+    );
+  }
+
+  // 已注册号误走注册:服务端回 PHONE_ALREADY_REGISTERED,前端出专属面板引导登录
+  // (登录会并走游客作品),跳转链接必须继续携带 from(登录后回跳原相册)。
+  assert.match(
+    registerForm,
+    /body\?\.code === 'PHONE_ALREADY_REGISTERED'/,
+    'register form must branch on the PHONE_ALREADY_REGISTERED error code',
+  );
+  assert.match(
+    registerForm,
+    /loginHref.*phoneAlreadyRegistered|phoneAlreadyRegistered.*loginHref/s,
+    'the conflict panel must link to login using the from-preserving loginHref',
   );
 });
