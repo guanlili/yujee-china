@@ -27,8 +27,9 @@ const EnvSchema = z.object({
   WEB_BASE_URL: z.string().url().default('http://localhost:3000'),
   BETTER_AUTH_SECRET: z.string().min(16).default('dev_better_auth_secret_change_me'),
 
-  // Google OAuth (better-auth social provider). Both unset => Google sign-in
-  // disabled, email/password still works.
+  // Google OAuth —— 已移除 Google 登录(2026-10-27 起,国内版只有邮箱+手机号)。
+  // buildSocialProviders 不再读取这两个字段;schema 保留一迭代仅为兼容存量
+  // 环境(生产应清空 GOOGLE_*),之后可连字段一起删。
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
 

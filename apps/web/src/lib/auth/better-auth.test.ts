@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
-import { buildPasswordResetEmail, createAuthOptions, getBetterAuthSchema, localeFromResetUrl, normalizePhoneNumber, PHONE_AUTH_LINK_PATHS } from './better-auth';
+import { buildPasswordResetEmail, buildSocialProviders, createAuthOptions, getBetterAuthSchema, localeFromResetUrl, normalizePhoneNumber, PHONE_AUTH_LINK_PATHS } from './better-auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
 
 describe('normalizePhoneNumber(手机号归一)', () => {
@@ -248,5 +250,34 @@ describe('password reset email', () => {
     );
 
     assert.match(email.html, /ava@example\.com/);
+  });
+});
+
+describe('social providers(国内版无 Google)', () => {
+  it('does not wire the google provider even if GOOGLE_* lingers in the environment', () => {
+    // GOOGLE_* 字段在 env.ts 保留一迭代(兼容存量环境),但挂载点已删:
+    // 钉住源码里不再出现 providers.google / env.GOOGLE_ 的接线,防止照着旧
+    // 注释把分支加回来(真挂回去,配了 env 的环境就会多出一个不该有的入口)。
+    const src = readFileSync(join(process.cwd(), 'src/lib/auth/better-auth.ts'), 'utf8');
+    assert.doesNotMatch(src, /providers\.google|env\.GOOGLE_/, 'google provider must not be wired');
+  });
+
+  it('buildSocialProviders returns at most apple', () => {
+    const providers = buildSocialProviders();
+    assert.ok(
+      !providers || !('google' in providers),
+      `unexpected google in socialProviders: ${Object.keys(providers ?? {}).join(',')}`,
+    );
+  });
+
+  it('createAuthOptions mounts no google social provider', () => {
+    const options = createAuthOptions({
+      users: {},
+      sessions: {},
+      accounts: {},
+      verifications: {},
+    });
+    const social = options.socialProviders as Record<string, unknown> | undefined;
+    assert.ok(!social || !('google' in social), 'socialProviders must not include google');
   });
 });

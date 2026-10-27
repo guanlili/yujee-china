@@ -156,12 +156,9 @@ const yujeePhoneSignup = {
 export function buildSocialProviders(): BetterAuthOptions['socialProviders'] {
   const providers: NonNullable<BetterAuthOptions['socialProviders']> = {};
 
-  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
-    providers.google = {
-      clientId: env.GOOGLE_CLIENT_ID,
-      clientSecret: env.GOOGLE_CLIENT_SECRET,
-    };
-  }
+  // 国内版不提供 Google 登录(2026-10-27 起):登录方式只有邮箱 + 手机号。
+  // 即使 env 里残留 GOOGLE_*(字段为兼容存量环境保留一迭代),这里也不再挂载
+  // google provider —— 配了也无效,存量 accounts 行不受影响。
 
   const appleCreds = getAppleCredentials();
   if (appleCreds) {
