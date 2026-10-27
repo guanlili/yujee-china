@@ -38,7 +38,7 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "subset-font": "^2.9.0",
-    "zod": "^3.23.8"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
