@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { BrandMark } from '@/components/app/Brand';
 import { authClient } from '@/lib/auth/client';
+import { normalizePhoneNumber } from '@/lib/auth/phone';
 import { AUTH_FIELD_CLASS } from '../auth-styles';
 import { authHrefWithFrom, safeAuthRedirect } from '@/lib/auth/redirect';
 import { stashPendingInvite } from '@/lib/invite/pending-invite';
@@ -35,6 +36,8 @@ export function RegisterForm({
   const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 已注册号误走注册(R3):专属面板引导去登录,登录会把游客期作品并进该账号。
+  const [phoneConflict, setPhoneConflict] = useState(false);
   const [sentTo, setSentTo] = useState<string | null>(null);
   const dest = safeAuthRedirect(from, `/${locale}/my-albums`);
   const loginHref = authHrefWithFrom(`/${locale}/login`, from);
@@ -43,15 +46,21 @@ export function RegisterForm({
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setPhoneConflict(false);
+    // 归一(与服务端 /phone-signup 同款函数):注册端归一后落库,登录是精确匹配,
+    // 两端不同口径就会「注册得了、登不回」。
+    const normalized = normalizePhoneNumber(phone) ?? phone;
     try {
       const res = await fetch('/api/auth/phone-signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ phoneNumber: phone, password, name: name.trim() || undefined }),
+        body: JSON.stringify({ phoneNumber: normalized, password, name: name.trim() || undefined }),
       });
       if (!res.ok) {
-        setError(messages.phoneSignupError);
+        const body = (await res.json().catch(() => null)) as { code?: string } | null;
+        if (body?.code === 'PHONE_ALREADY_REGISTERED') setPhoneConflict(true);
+        else setError(messages.phoneSignupError);
         setBusy(false);
         return;
       }
@@ -177,6 +186,16 @@ export function RegisterForm({
             />
           </label>
           {error && <p className="text-[var(--text-sm)] text-red-600">{error}</p>}
+          {phoneConflict && (
+            <div className="flex flex-col gap-2 rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--surface)] px-5 py-4">
+              <p className="text-[var(--text-sm)] font-semibold text-[var(--fg)]">{messages.phoneAlreadyRegistered}</p>
+              <p className="text-[var(--text-sm)] text-[var(--muted)]">{messages.phoneAlreadyRegisteredHint}</p>
+              {/* loginHref 由 authHrefWithFrom 构造,游客从相册被拦来注册时 from 一路带回登录页。 */}
+              <Link className="text-[var(--text-sm)] font-semibold text-[var(--fg)] hover:underline" href={loginHref}>
+                {messages.loginAction} →
+              </Link>
+            </div>
+          )}
           <button
             type="submit"
             disabled={busy}
@@ -186,7 +205,7 @@ export function RegisterForm({
           </button>
           <button
             type="button"
-            onClick={() => { setMode('email'); setError(null); }}
+            onClick={() => { setMode('email'); setError(null); setPhoneConflict(false); }}
             className="text-[var(--text-sm)] font-medium text-[var(--muted)] hover:text-[var(--fg-2)] hover:underline"
           >
             {messages.useEmailInstead}

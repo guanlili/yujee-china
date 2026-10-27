@@ -12,6 +12,7 @@ import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import * as schema from '@/db/schema';
 import { anonTransferService } from '@/services/user/anon-transfer-service';
+import { logger } from '@/lib/log/logger';
 import { clientIpFrom } from '@/lib/api/client-ip';
 import { ANON_SIGNUP_PER_IP_PER_HOUR } from '@/config/anon';
 import { sendEmail } from '@/lib/email/send-email';
@@ -21,6 +22,10 @@ import { env } from '@/lib/env';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/config/auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
 import { generateAppleClientSecret, getAppleCredentials } from './apple-client-secret';
+import { normalizePhoneNumber } from './phone';
+
+// re-export:归一的唯一真相在 ./phone(前后端共用),旧导入路径保持可用。
+export { normalizePhoneNumber };
 
 type SchemaModule = Record<string, unknown>;
 type BetterAuthSchema = {
@@ -70,12 +75,6 @@ export function getBetterAuthSchema(schemaModule: Partial<SchemaModule>): Better
 // 后期接短信:把 sendOTP 换成真短信商,再把 requireVerification 打开即可,
 // 注册路由与存量数据零改动。
 const PHONE_PLACEHOLDER_DOMAIN = 'phone.yujee.local';
-
-/** 归一:去空格/连字符/括号,认 `+` 开头 5-15 位数字;其余一律拒。 */
-export function normalizePhoneNumber(input: string): string | null {
-  const trimmed = input.replace(/[\s\-()]/g, '');
-  return /^(\+?\d{5,15})$/.test(trimmed) ? trimmed : null;
-}
 
 async function capturePhoneOtp(phoneNumber: string, code: string): Promise<void> {
   // 短信未接入:验证码与邮件同落 capture 文件(EMAIL_CAPTURE_FILE),排查与
@@ -208,13 +207,16 @@ const throttleAnonymousSignIn = createAuthMiddleware(async (ctx) => {
   }
 });
 
+// after-hook 收到的 ctx 类型(从 createAuthMiddleware 的 handler 形参推导)。
+type AuthHookCtx = Parameters<Parameters<typeof createAuthMiddleware>[0]>[0];
+
 // 邮箱注册转正兜底:anonymous 插件的转正 matcher(dist/plugins/anonymous/index.mjs:118)
 // 不含 /verify-email,而本仓 requireEmailVerification=true + autoSignInAfterVerification=true
 // —— 邮箱注册的 session 是在点验证链接时才发的,插件的 onLinkAccount 在这条路上永远
 // 不会触发。这里镜像插件 after-hook 的判定:响应真的种了 session cookie + 请求 cookie
 // 里的旧 session 是匿名 → 过户相册并删除匿名用户。跨设备打开验证链接时旧 cookie 不在,
 // 无法过户,由 7 天清理 cron 兜底(设计文档已知边界)。
-const linkAnonymousOnVerifyEmail = createAuthMiddleware(async (ctx) => {
+async function linkAnonymousOnVerifyEmail(ctx: AuthHookCtx) {
   if (ctx.path !== '/verify-email') return;
   const setCookie = ctx.context.responseHeaders?.get('set-cookie');
   const sessionTokenName = ctx.context.authCookies.sessionToken.name;
@@ -226,6 +228,89 @@ const linkAnonymousOnVerifyEmail = createAuthMiddleware(async (ctx) => {
   if (!newSession || newSession.user.id === oldUser.id) return;
   await anonTransferService.transfer(oldUser.id, newSession.user.id);
   await ctx.context.internalAdapter.deleteUser(oldUser.id);
+}
+
+// ─── 手机号注册/登录的游客并号(2026-10-27)──────────────────────────────────
+// 游客持匿名 session 走手机号注册或登录:过户业务数据 → 删匿名号。两条路各有一个坑:
+// - /phone-signup(自定义端点)不在 anonymous 插件转正 matcher 的路径名单里(matcher
+//   认 /sign-in、/sign-up、/callback 等前缀),插件 hook 对它完全不跑 —— 没有显式
+//   hook,游客的书会滞留在无人可见的匿名号下;
+// - /sign-in/phone-number 在名单里(插件 hook 本就会转正),这里仍是权威路径:user
+//   级 after-hook 先于插件 hook 执行,先做完过户+删号;插件 hook 随后的二次触发由
+//   transferAnonWithGuard 开头的实查闸拦成 no-op,一次请求恰好一次过户(Q1)。
+// 判定镜像 linkAnonymousOnVerifyEmail:响应真的种了 session cookie + 请求 cookie 里
+// 的旧 session 是匿名 → 过户 + 删匿名号。无匿名 session 的普通注册/登录(#52 行为)
+// 在 oldSession 判定处自然早退,零副作用(R4)。
+export const PHONE_AUTH_LINK_PATHS: ReadonlySet<string> = new Set(['/phone-signup', '/sign-in/phone-number']);
+
+// 幂等闸 + 过户共用体:按主键实查匿名行。cookie 缓存里的旧匿名 session 作不了数 ——
+// 删行之后缓存最多还能「活」5 分钟(cookieCache maxAge),插件 hook 会带着它再进来。
+// 行没了/不是匿名 = 已处理过,整个跳过,防双次 transfer 与误导性日志(Q1)。
+type AnonLinkAdapterCtx = {
+  context: { internalAdapter: { findUserById: (id: string) => Promise<unknown> } };
+};
+
+async function transferAnonWithGuard(
+  ctx: AnonLinkAdapterCtx,
+  anonUserId: string,
+  realUserId: string,
+): Promise<boolean> {
+  const anonRow = (await ctx.context.internalAdapter.findUserById(anonUserId)) as
+    | { isAnonymous?: boolean | null }
+    | null;
+  if (!anonRow || !anonRow.isAnonymous) return false;
+  await anonTransferService.transfer(anonUserId, realUserId);
+  return true;
+}
+
+async function linkAnonymousOnPhoneAuth(ctx: AuthHookCtx) {
+  if (!PHONE_AUTH_LINK_PATHS.has(ctx.path)) return;
+  const setCookie = ctx.context.responseHeaders?.get('set-cookie');
+  const sessionTokenName = ctx.context.authCookies.sessionToken.name;
+  if (!parseSetCookieHeader(setCookie || '').get(sessionTokenName)?.value.split('.')[0]) return;
+  const oldSession = await getSessionFromCtx(ctx, { disableRefresh: true });
+  const oldUser = oldSession?.user as ({ id: string; isAnonymous?: boolean | null }) | undefined;
+  if (!oldSession || !oldUser?.isAnonymous) return;
+  const newSession = ctx.context.newSession;
+  if (!newSession || newSession.user.id === oldUser.id) return;
+  let transferred = false;
+  try {
+    transferred = await transferAnonWithGuard(ctx, oldUser.id, newSession.user.id);
+  } catch (error) {
+    // 过户失败不抛(R8):此刻账号与会话已建好,抛出去只会把注册/登录打成 500,前端
+    // 误判失败。transfer 是单事务,失败即整体未动、匿名侧原封无损,留结构化错误
+    // 日志给运维补救(管理端并号工具本期不做)。
+    logger.error(
+      { source: ctx.path, anonUserId: oldUser.id, realUserId: newSession.user.id, error },
+      'anon phone link: transfer failed; anon data left intact',
+    );
+    return;
+  }
+  if (!transferred) return;
+  logger.info(
+    { source: ctx.path, anonUserId: oldUser.id, realUserId: newSession.user.id },
+    'anon phone link: transferred',
+  );
+  // 顺序契约(R8):transfer 成功之后才删匿名行;删失败只留日志 —— 匿名号此时已无
+  // 业务数据,空壳由 7 天清理 cron 兜底。不能反过来:先删 = 11 处 cascade 连锅端。
+  try {
+    await ctx.context.internalAdapter.deleteUser(oldUser.id);
+  } catch (error) {
+    logger.error(
+      { source: ctx.path, anonUserId: oldUser.id, realUserId: newSession.user.id, error },
+      'anon phone link: anon user delete failed; empty shell left for cleanup cron',
+    );
+  }
+}
+
+// options.hooks.after 只收**单个** middleware:better-auth 1.7.12 的 getHooks
+// (dist/api/dispatch.mjs:149-155)直接把整个值塞进 { matcher: ()=>true, handler },
+// 传数组会在每个请求上炸 'hook.handler is not a function'(连带 /sign-in/anonymous
+// 一起 500)。这里用一个显式分派器串起两条匿名并号逻辑,路径判定在各自函数开头,
+// 互不越界;user 级 after 仍先于插件 hook 执行(见 linkAnonymousOnPhoneAuth 注释)。
+const yujeeAuthAfterHooks = createAuthMiddleware(async (ctx) => {
+  await linkAnonymousOnVerifyEmail(ctx);
+  await linkAnonymousOnPhoneAuth(ctx);
 });
 
 /**
@@ -281,9 +366,12 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
     // anonymous 的转正 after-hook 要从 responseHeaders 里读 set-cookie)。
     plugins: [
       anonymous({
-        onLinkAccount: async ({ anonymousUser, newUser }) => {
+        onLinkAccount: async ({ anonymousUser, newUser, ctx }) => {
           // 在插件删除匿名用户之前过户,否则 albums 等 11 处 cascade 连锅端。
-          await anonTransferService.transfer(anonymousUser.user.id, newUser.user.id);
+          // 走共用体(带幂等闸):手机号登录路径上,显式 after-hook(user 级先跑)
+          // 已过户并删了匿名行,插件 hook 从 cookie 缓存还会再触发到这里,闸门让它
+          // no-op。邮箱/OAuth 路径行为不变(过户失败照旧向上抛)。
+          await transferAnonWithGuard(ctx, anonymousUser.user.id, newUser.user.id);
         },
       }),
       // 手机号:官方插件给登录(/sign-in/phone-number)与 OTP 升级通路;
@@ -299,7 +387,7 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
     ],
     hooks: {
       before: throttleAnonymousSignIn,
-      after: linkAnonymousOnVerifyEmail,
+      after: yujeeAuthAfterHooks,
     },
     databaseHooks: {
       user: {

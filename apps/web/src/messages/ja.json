@@ -19,6 +19,8 @@
     "useEmailInstead": "メールアドレスを使う",
     "usePhoneInstead": "電話番号を使う",
     "phoneSignupError": "アカウントを作成できませんでした。この電話番号は既に登録されている可能性があります。",
+    "phoneAlreadyRegistered": "この電話番号には既にアカウントがあります。",
+    "phoneAlreadyRegisteredHint": "ログインをご利用ください。ゲストとして作成したアルバムは、そのアカウントに自動的に統合されます。",
     "or": "または",
     "forgotPassword": "お忘れですか？",
     "forgotPasswordTitle": "パスワードの再設定",

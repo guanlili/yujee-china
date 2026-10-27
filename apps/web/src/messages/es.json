@@ -19,6 +19,8 @@
     "useEmailInstead": "Usar correo electrónico",
     "usePhoneInstead": "Usar número de teléfono",
     "phoneSignupError": "No se pudo crear la cuenta. Puede que este número ya esté registrado.",
+    "phoneAlreadyRegistered": "Este número de teléfono ya tiene una cuenta.",
+    "phoneAlreadyRegisteredHint": "Inicia sesión: cualquier álbum creado como invitado se fusionará con esa cuenta.",
     "or": "o",
     "forgotPassword": "¿La olvidaste?",
     "forgotPasswordTitle": "Restablece tu contraseña",

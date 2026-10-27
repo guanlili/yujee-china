@@ -19,6 +19,8 @@
     "useEmailInstead": "Use email instead",
     "usePhoneInstead": "Use phone number instead",
     "phoneSignupError": "Could not create the account. This phone number may already be registered.",
+    "phoneAlreadyRegistered": "This phone number already has an account.",
+    "phoneAlreadyRegisteredHint": "Log in instead — any book you made as a guest will be merged into that account.",
     "or": "or",
     "forgotPassword": "Forgot?",
     "forgotPasswordTitle": "Reset your password",

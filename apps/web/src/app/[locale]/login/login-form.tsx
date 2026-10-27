@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
+import { normalizePhoneNumber } from '@/lib/auth/phone';
 import { safeAuthRedirect } from '@/lib/auth/redirect';
 import type { AppMessages } from '@/lib/i18n/messages';
 
@@ -69,8 +70,11 @@ export function LoginForm({
     e.preventDefault();
     setBusy(true);
     setError(null);
+    // /sign-in/phone-number 是 phoneNumber 精确匹配查询,注册端落库前归一过;这里
+    // 发原始输入,「+86 138…」注册、「138…」登录就会查无此人。与服务端共用同一
+    // 归一函数,归一不合法(过短/含字母)时仍发原值,由服务端按凭据错误兜底。
     const { error: signInError } = await authClient.signIn.phoneNumber({
-      phoneNumber: identifier,
+      phoneNumber: normalizePhoneNumber(identifier) || identifier,
       password,
     });
     if (signInError) {
