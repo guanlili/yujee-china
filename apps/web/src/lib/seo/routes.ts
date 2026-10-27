@@ -28,8 +28,24 @@ export function localesForRoute(route: string): readonly Locale[] {
   // Fails CLOSED. Unreachable today (GUIDE_ROUTES derives from GUIDES, so every
   // /guides/<slug> route has an article), but the whole job of this function is
   // to avoid claiming languages that do not exist — so an unknown article must
-  // collapse to English, never fan out to all five.
+  // collapse to the locale it can actually serve, never fan out to all five.
   return slug ? (getGuide(slug)?.availableLocales ?? [defaultLocale]) : locales;
+}
+
+/**
+ * The locale whose URL hreflang x-default points at. The site default when the
+ * route exists in it; otherwise the locale the route itself serves when asked
+ * for one it lacks — the same fallback `resolveGuideLocale` applies to a reader.
+ *
+ * x-default must never name a URL outside the route's cluster (not in the
+ * sitemap, 307s on fetch): Google reads the sitemap, the <head> tags and any
+ * Link header as one cluster and discounts hreflang sitewide when they
+ * disagree. With a zh site default and English-only guides, pointing x-default
+ * at /zh/guides/<slug> would do exactly that.
+ */
+export function xDefaultLocaleForRoute(route: string): Locale {
+  const available = localesForRoute(route);
+  return available.includes(defaultLocale) ? defaultLocale : available[0];
 }
 
 /**

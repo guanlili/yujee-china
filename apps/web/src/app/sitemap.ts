@@ -1,7 +1,7 @@
 import type { MetadataRoute } from 'next';
-import { defaultLocale, localizePath } from '@/lib/i18n/routing';
+import { localizePath } from '@/lib/i18n/routing';
 import { contentUpdatedAt } from '@/lib/seo/freshness';
-import { CHANGE_FREQUENCY, INDEXABLE_ROUTES, localesForRoute, ROUTE_PRIORITY } from '@/lib/seo/routes';
+import { CHANGE_FREQUENCY, INDEXABLE_ROUTES, localesForRoute, ROUTE_PRIORITY, xDefaultLocaleForRoute } from '@/lib/seo/routes';
 import { absoluteUrl } from '@/lib/seo/site';
 
 /**
@@ -31,7 +31,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       alternates: {
         languages: {
           ...languages,
-          'x-default': absoluteUrl(localizePath(route, defaultLocale)),
+          'x-default': absoluteUrl(localizePath(route, xDefaultLocaleForRoute(route))),
         },
       },
     }));
