@@ -448,6 +448,15 @@ test('every sitemap entry declares exactly the locales its route exists in, plus
     const declared = Object.keys(languages).filter((k) => k !== 'x-default').sort();
     assert.deepEqual(declared, [...localesForRoute(route)].sort(), `${entry.url} hreflang cluster drifted`);
     assert.ok(languages['x-default'], `${entry.url} is missing x-default`);
+    // x-default must name a URL from the route's own cluster. A zh site default
+    // makes this load-bearing: an English-only guide whose x-default pointed at
+    // /zh/guides/<slug> would advertise a URL that is in no sitemap and 307s on
+    // fetch — the cluster disagreement Google answers sitewide.
+    const clusterUrls = declared.map((l) => languages[l]);
+    assert.ok(
+      clusterUrls.includes(languages['x-default']),
+      `${entry.url} x-default points outside its own cluster: ${languages['x-default']}`,
+    );
   }
 });
 

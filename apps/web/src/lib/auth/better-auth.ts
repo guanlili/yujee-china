@@ -356,8 +356,9 @@ const yujeeAuthAfterHooks = createAuthMiddleware(async (ctx) => {
  * better-auth hands `sendResetPassword` one absolute URL and nothing else — no
  * request locale, no user preference. The only language signal on it is the
  * `callbackURL` we asked for from the browser (`/zh/reset-password`), so we read
- * the locale back out of that. A miss falls back to English rather than throwing:
- * an English reset mail still gets someone back into their account.
+ * the locale back out of that. A miss falls back to the default locale rather
+ * than throwing: a default-language reset mail still gets someone back into
+ * their account.
  */
 export function localeFromResetUrl(url: string): Locale {
   try {
