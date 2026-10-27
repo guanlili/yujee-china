@@ -14,7 +14,8 @@ import {
 describe('i18n routing', () => {
   it('defines the supported locale contract', () => {
     assert.deepEqual(locales, ['en', 'zh', 'es', 'ja', 'fr']);
-    assert.equal(defaultLocale, 'en');
+    // 国内版默认中文：无前缀/无 cookie 的首访落到 /zh，英文经切换器仍可用。
+    assert.equal(defaultLocale, 'zh');
     assert.equal(isLocale('en'), true);
     assert.equal(isLocale('ja'), true);
     // A plausible-looking language tag we do NOT ship must still be rejected.
@@ -38,9 +39,9 @@ describe('i18n routing', () => {
     assert.equal(stripLocale('/en'), '/');
   });
 
-  it('detects the locale from a pathname and falls back to English', () => {
+  it('detects the locale from a pathname and falls back to the default locale', () => {
     assert.equal(detectLocale('/zh/register'), 'zh');
     assert.equal(detectLocale('/es/register'), 'es');
-    assert.equal(detectLocale('/login'), 'en');
+    assert.equal(detectLocale('/login'), 'zh');
   });
 });

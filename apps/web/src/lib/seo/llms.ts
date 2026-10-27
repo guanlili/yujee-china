@@ -5,7 +5,7 @@ import {
   PHOTOS_PER_CREDIT,
 } from '@/config/pricing';
 import { LOCALE_LABELS, defaultLocale, locales, localizePath } from '@/lib/i18n/routing';
-import { GUIDES, guideContent } from '@/lib/guides/guides';
+import { GUIDES, guideContent, resolveGuideLocale } from '@/lib/guides/guides';
 import { absoluteUrl } from '@/lib/seo/site';
 
 /**
@@ -74,12 +74,14 @@ export function buildLlmsTxt(): string {
     // exists to serve: they answer a question rather than describe a product,
     // which is what gets a page quoted in an AI answer. Derived from GUIDES so a
     // new article lands here without anyone remembering to add it.
-    ...GUIDES.map(
-      (guide) =>
-        `- [${guideContent(guide, defaultLocale).title}](${absoluteUrl(
-          localizePath(`/guides/${guide.slug}`, defaultLocale),
-        )}): ${guideContent(guide, defaultLocale).excerpt}`,
-    ),
+    // resolveGuideLocale, not the raw default: guides are English-only today, and
+    // guideContent throws for a locale the article has no content in.
+    ...GUIDES.map((guide) => {
+      const locale = resolveGuideLocale(guide, defaultLocale);
+      return `- [${guideContent(guide, locale).title}](${absoluteUrl(
+        localizePath(`/guides/${guide.slug}`, locale),
+      )}): ${guideContent(guide, locale).excerpt}`;
+    }),
     `- [Privacy Policy](${absoluteUrl('/en/privacy')}): how photos and personal data are handled`,
     `- [Terms of Service](${absoluteUrl('/en/terms')})`,
     '',

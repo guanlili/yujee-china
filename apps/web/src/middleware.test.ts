@@ -31,8 +31,9 @@ describe('middleware routing decisions', () => {
 
   it('permanently redirects the bare apex to the default locale', () => {
     // Must be a 308, not next-intl's 307 — Bing keeps a temporarily-redirected
-    // URL in its index, which made / and /en duplicate title/description pairs.
-    assert.equal(middleware.getRootRedirect('/'), '/en');
+    // URL in its index, which made / and the default locale duplicate
+    // title/description pairs.
+    assert.equal(middleware.getRootRedirect('/'), '/zh');
     assert.equal(middleware.getRootRedirect('/en'), null);
     assert.equal(middleware.getRootRedirect('/zh'), null);
     assert.equal(middleware.getRootRedirect('/about'), null);
@@ -41,7 +42,7 @@ describe('middleware routing decisions', () => {
   it('redirects the removed /create route to the live homepage composer', () => {
     assert.equal(typeof middleware.getLegacyRedirect, 'function');
     assert.deepEqual(middleware.getLegacyRedirect('/create'), {
-      pathname: '/en',
+      pathname: '/zh',
       hash: '#homepage-composer',
     });
     assert.deepEqual(middleware.getLegacyRedirect('/zh/create'), {

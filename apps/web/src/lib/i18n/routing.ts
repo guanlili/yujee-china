@@ -2,7 +2,9 @@ import { defineRouting } from 'next-intl/routing';
 
 export const locales = ['en', 'zh', 'es', 'ja', 'fr'] as const;
 export type Locale = (typeof locales)[number];
-export const defaultLocale: Locale = 'en';
+// 国内版默认中文（2026-10 需求）：首访无 cookie 无前缀时落到 /zh。
+// localeDetection 关着，所以这纯粹是「无显式偏好时给什么」，不是按 Accept-Language 协商。
+export const defaultLocale: Locale = 'zh';
 export const localeCookieName = 'YUJEE_LOCALE';
 
 /**
@@ -33,10 +35,11 @@ export const routing = defineRouting({
    * That header is path-agnostic — it cannot know that a /guides article exists
    * in English only. It advertised four translations that 307 away and appear in
    * no sitemap, on the very response whose <head> correctly claimed one, and its
-   * x-default pointed at the unprefixed URL, which 308s to /en. Google treats
-   * the header, the <head> tags and the sitemap as three statements of one
-   * cluster and discounts hreflang site-wide when they contradict each other, so
-   * this would have cost the landing page and /examples their clusters too.
+   * x-default pointed at the unprefixed URL, which 308s to the default
+   * locale. Google treats the header, the <head> tags and the sitemap as three
+   * statements of one cluster and discounts hreflang site-wide when they
+   * contradict each other, so this would have cost the landing page and
+   * /examples their clusters too.
    *
    * Nothing is lost: every indexable page emits real <link rel="alternate"> tags
    * through publicPageMetadata → localeAlternates, which narrows per route via

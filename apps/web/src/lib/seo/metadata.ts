@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import { defaultLocale, type Locale, locales, localizePath } from '@/lib/i18n/routing';
-import { localesForRoute } from './routes';
+import { type Locale, localizePath } from '@/lib/i18n/routing';
+import { localesForRoute, xDefaultLocaleForRoute } from './routes';
 import { absoluteUrl } from './site';
 
 const OG_LOCALE: Record<Locale, string> = {
@@ -37,7 +37,9 @@ export function localeAlternates(route: string, locale: Locale): Metadata['alter
   const languages: Record<string, string> = Object.fromEntries(
     localesForRoute(route).map((l) => [l, absoluteUrl(localizePath(route, l))]),
   );
-  languages['x-default'] = absoluteUrl(localizePath(route, defaultLocale));
+  // x-default narrows with the cluster (see xDefaultLocaleForRoute): naming a
+  // URL the route does not serve would point readers and crawlers at a redirect.
+  languages['x-default'] = absoluteUrl(localizePath(route, xDefaultLocaleForRoute(route)));
 
   return {
     canonical: absoluteUrl(localizePath(route, locale)),

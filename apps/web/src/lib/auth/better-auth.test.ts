@@ -225,10 +225,10 @@ describe('password reset email', () => {
     );
   });
 
-  it('falls back to English for a missing, unknown or malformed callbackURL', () => {
-    assert.equal(localeFromResetUrl('https://yujeeai.com/api/auth/reset-password/tok123'), 'en');
-    assert.equal(localeFromResetUrl(url('/reset-password')), 'en');
-    assert.equal(localeFromResetUrl('not a url'), 'en');
+  it('falls back to the default locale for a missing, unknown or malformed callbackURL', () => {
+    assert.equal(localeFromResetUrl('https://yujeeai.com/api/auth/reset-password/tok123'), 'zh');
+    assert.equal(localeFromResetUrl(url('/reset-password')), 'zh');
+    assert.equal(localeFromResetUrl('not a url'), 'zh');
   });
 
   it('addresses the reset email to the user and carries the reset link', () => {
