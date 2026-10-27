@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
+import { env } from '@/lib/env';
 import { buildPasswordResetEmail, buildSocialProviders, createAuthOptions, getBetterAuthSchema, localeFromResetUrl, normalizePhoneNumber, PHONE_AUTH_LINK_PATHS } from './better-auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
 
@@ -111,6 +112,53 @@ describe('better-auth schema bridge', () => {
     // 两条匿名并号逻辑(verify-email 兜底 + 手机号显式并号)由这一个分派器串起。
     const after = options.hooks?.after;
     assert.equal(typeof after, 'function', 'hooks.after must be one callable middleware');
+    // before 同样只能是单个 middleware:手机号找回归一与匿名限流由这一个分派器串起。
+    assert.equal(typeof options.hooks?.before, 'function', 'hooks.before must be one callable middleware');
+  });
+
+  it('wires sendPasswordResetOTP into capture and throttles phone reset requests', async () => {
+    const options = createAuthOptions({
+      users: {},
+      sessions: {},
+      accounts: {},
+      verifications: {},
+    });
+
+    // 找回路径不回落 sendOTP。漏接 sendPasswordResetOTP 时插件仍对已注册号返回
+    // 成功,但永远不写验证码(K1)。requireVerification 保持默认关。
+    const plugin = options.plugins?.find((p) => p.id === 'phone-number') as {
+      options?: {
+        sendOTP?: (data: { phoneNumber: string; code: string }) => Promise<void>;
+        sendPasswordResetOTP?: (data: { phoneNumber: string; code: string }) => Promise<void>;
+        requireVerification?: boolean;
+      };
+    } | undefined;
+    assert.equal(typeof plugin?.options?.sendOTP, 'function');
+    assert.equal(typeof plugin?.options?.sendPasswordResetOTP, 'function');
+    assert.notEqual(plugin?.options?.requireVerification, true);
+    assert.deepEqual(options.rateLimit?.customRules?.['/phone-number/request-password-reset'], {
+      window: 3600,
+      max: 3,
+    });
+
+    const phone = `+8619900${String(Date.now()).slice(-6)}`;
+    await plugin?.options?.sendPasswordResetOTP?.({ phoneNumber: phone, code: '654321' });
+    await plugin?.options?.sendOTP?.({ phoneNumber: phone, code: '111111' });
+
+    const capturePath = resolve(process.cwd(), env.EMAIL_CAPTURE_FILE);
+    const lines = readFileSync(capturePath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { kind?: string; phoneNumber?: string; code?: string; capturedAt?: string })
+      .filter((row) => row.phoneNumber === phone);
+    assert.deepEqual(
+      lines.map((row) => ({ kind: row.kind, code: row.code })),
+      [
+        { kind: 'phone-otp-reset', code: '654321' },
+        { kind: 'phone-otp', code: '111111' },
+      ],
+    );
+    assert.ok(lines.every((row) => typeof row.capturedAt === 'string' && row.capturedAt.length > 0));
   });
 
   it('zeroes the welcome credits for anonymous (guest) user creation only', async () => {

@@ -72,18 +72,24 @@ export function getBetterAuthSchema(schemaModule: Partial<SchemaModule>): Better
 // 注册走「OTP 验证时自动建号」);登录=插件的 /sign-in/phone-number(默认不查
 // phoneNumberVerified,正合「先不校验」)。email 用 `{手机号}@phone.yujee.local`
 // 占位且 emailVerified=true —— 这类账号永远不收邮件,也不该被邮箱验证墙拦。
-// 后期接短信:把 sendOTP 换成真短信商,再把 requireVerification 打开即可,
-// 注册路由与存量数据零改动。
+// 后期接短信:把 sendOTP / sendPasswordResetOTP 换成真短信商,再把 requireVerification
+// 打开即可,注册路由与存量数据零改动。找回路径不回落到 sendOTP,两个回调都要接。
 const PHONE_PLACEHOLDER_DOMAIN = 'phone.yujee.local';
 
-async function capturePhoneOtp(phoneNumber: string, code: string): Promise<void> {
-  // 短信未接入:验证码与邮件同落 capture 文件(EMAIL_CAPTURE_FILE),排查与
-  // 后期接线只动这一个函数。
+type PhoneOtpKind = 'phone-otp' | 'phone-otp-reset';
+
+async function capturePhoneOtp(
+  phoneNumber: string,
+  code: string,
+  kind: PhoneOtpKind,
+): Promise<void> {
+  // 短信未接入:登录 OTP 与找回 OTP 都落 capture 文件(EMAIL_CAPTURE_FILE)。
+  // kind 分开,便于验收时按 phone-otp-reset 取码。后期接线只动这两个回调。
   const capturePath = resolve(process.cwd(), env.EMAIL_CAPTURE_FILE);
   await mkdir(dirname(capturePath), { recursive: true });
   await appendFile(
     capturePath,
-    `${JSON.stringify({ kind: 'phone-otp', phoneNumber, code, capturedAt: new Date().toISOString() })}\n`,
+    `${JSON.stringify({ kind, phoneNumber, code, capturedAt: new Date().toISOString() })}\n`,
     'utf8',
   );
 }
@@ -202,6 +208,42 @@ const throttleAnonymousSignIn = createAuthMiddleware(async (ctx) => {
       message: 'Too many guest sessions from this address',
     });
   }
+});
+
+// 插件的找回端点按 body.phoneNumber 精确查用户、精确写 verification identifier。
+// 注册端落库前走过 normalizePhoneNumber;这里同样归一,否则「+86 138…」注册、
+// 「+86-138-…」找回会查无此人(账号不存在时插件仍返回成功且不发码)。
+const PHONE_PASSWORD_RESET_PATHS: ReadonlySet<string> = new Set([
+  '/phone-number/request-password-reset',
+  '/phone-number/reset-password',
+]);
+
+function normalizePhonePasswordResetBody(ctx: {
+  path: string;
+  body?: { phoneNumber?: unknown } & Record<string, unknown>;
+}) {
+  if (!PHONE_PASSWORD_RESET_PATHS.has(ctx.path)) return;
+  const raw = typeof ctx.body?.phoneNumber === 'string' ? ctx.body.phoneNumber : '';
+  const phone = normalizePhoneNumber(raw);
+  if (!phone) {
+    throw new APIError('BAD_REQUEST', { message: 'Invalid phone number' });
+  }
+  if (!ctx.body || phone === raw) return;
+  return {
+    context: {
+      body: {
+        ...ctx.body,
+        phoneNumber: phone,
+      },
+    },
+  };
+}
+
+// options.hooks.before 与 after 一样只收单个 middleware(见 yujeeAuthAfterHooks)。
+const yujeeAuthBeforeHooks = createAuthMiddleware(async (ctx) => {
+  const rewritten = normalizePhonePasswordResetBody(ctx);
+  if (rewritten) return rewritten;
+  await throttleAnonymousSignIn(ctx);
 });
 
 // after-hook 收到的 ctx 类型(从 createAuthMiddleware 的 handler 形参推导)。
@@ -371,19 +413,25 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
           await transferAnonWithGuard(ctx, anonymousUser.user.id, newUser.user.id);
         },
       }),
-      // 手机号:官方插件给登录(/sign-in/phone-number)与 OTP 升级通路;
+      // 手机号:官方插件给登录(/sign-in/phone-number)、OTP 升级,以及找回
+      // (/phone-number/request-password-reset + /reset-password)。
       // 注册走我们自定义的 /phone-signup(见 yujeePhoneSignup)。requireVerification
       // 不设(默认关):未验证手机号也能登录 —— 接短信后再打开。
+      // 找回发码只调 sendPasswordResetOTP,不回落 sendOTP;漏接则账号存在也无码。
+      // 找回成功不改 phoneNumberVerified(免验证期,见 onPasswordReset 只补邮箱验证)。
       phoneNumberPlugin({
         sendOTP: async ({ phoneNumber, code }) => {
-          await capturePhoneOtp(phoneNumber, code);
+          await capturePhoneOtp(phoneNumber, code, 'phone-otp');
+        },
+        sendPasswordResetOTP: async ({ phoneNumber, code }) => {
+          await capturePhoneOtp(phoneNumber, code, 'phone-otp-reset');
         },
       }),
       yujeePhoneSignup,
       nextCookies(),
     ],
     hooks: {
-      before: throttleAnonymousSignIn,
+      before: yujeeAuthBeforeHooks,
       after: yujeeAuthAfterHooks,
     },
     databaseHooks: {
@@ -414,6 +462,9 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
         // 不配就会落到默认 100 次/10 秒 —— 注册 10 分钟 5 次、发码 1 分钟 3 次。
         '/phone-signup': { window: 600, max: 5 },
         '/phone-number/send-otp': { window: 60, max: 3 },
+        // 手机号找回与邮件找回同一量级。插件对 /phone-number* 另有 10 次/60s
+        // 兜底;customRules 精确路径在其后覆盖,这条是 3 次/小时。
+        '/phone-number/request-password-reset': { window: 3600, max: 3 },
       },
     },
     socialProviders: buildSocialProviders(),

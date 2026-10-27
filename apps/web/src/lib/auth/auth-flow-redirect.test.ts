@@ -116,6 +116,59 @@ test('phone auth forms share one normalizer; conflicts guide the guest to login 
   );
 });
 
+test('phone password reset is a same-page flow; email reset keeps its link', () => {
+  const loginForm = source('app/[locale]/login/login-form.tsx');
+  const forgotForm = source('app/[locale]/forgot-password/forgot-password-form.tsx');
+  const forgotPage = source('app/[locale]/forgot-password/page.tsx');
+  const resetForm = source('app/[locale]/reset-password/reset-password-form.tsx');
+
+  const phoneBlock = loginForm.split("mode === 'phone'")[1]?.split("mode === 'email'")[0] ?? '';
+  const emailBlock = loginForm.split("mode === 'email'")[1] ?? '';
+  assert.match(phoneBlock, /forgot-password\?mode=phone/, 'phone login must link to the phone reset tab');
+  assert.match(phoneBlock, /messages\.forgotPassword/);
+  assert.match(emailBlock, /forgot-password\?mode=email/, 'email login must keep the email reset tab');
+
+  assert.match(forgotPage, /mode === 'email' \? 'email' : 'phone'/, 'forgot-password defaults to phone');
+  assert.match(forgotForm, /normalizePhoneNumber\(phone\)/);
+  assert.match(forgotForm, /authClient\.phoneNumber\.requestPasswordReset\(\{\s*phoneNumber: target,\s*\}\)/);
+  assert.match(
+    forgotForm,
+    /authClient\.phoneNumber\.resetPassword\(\{\s*phoneNumber: normalizedPhone,\s*otp: otp\.trim\(\),\s*newPassword: password,\s*\}\)/,
+  );
+  assert.match(forgotForm, /error\.status === 429/);
+  assert.match(forgotForm, /messages\.forgotPasswordPhoneRateLimit/);
+  assert.match(forgotForm, /messages\.forgotPasswordPhoneCodeBody/);
+  // 邮件找回仍是同一页上的 requestPasswordReset → /reset-password?token= 链接流。
+  assert.match(forgotForm, /authClient\.requestPasswordReset\(\{\s*email,\s*redirectTo: `\/\$\{locale\}\/reset-password`,\s*\}\)/);
+  assert.match(resetForm, /authClient\.resetPassword\(\{\s*newPassword: password,\s*token,\s*\}\)/);
+  assert.match(resetForm, /forgot-password\?mode=email/);
+
+  const required = [
+    'forgotPasswordPhoneSubtitle',
+    'forgotPasswordPhoneAction',
+    'forgotPasswordPhoneCodeTitle',
+    'forgotPasswordPhoneCodeBody',
+    'forgotPasswordPhoneOtp',
+    'forgotPasswordPhoneResend',
+    'forgotPasswordPhoneResent',
+    'forgotPasswordPhoneInvalid',
+    'forgotPasswordPhoneOtpError',
+    'forgotPasswordPhoneError',
+    'forgotPasswordPhoneRateLimit',
+    'resetPasswordTooLong',
+  ];
+  for (const locale of ['en', 'zh', 'ja', 'fr', 'es']) {
+    const auth = JSON.parse(readFileSync(join(srcRoot, 'messages', `${locale}.json`), 'utf8')).auth as Record<string, string>;
+    for (const key of required) {
+      assert.equal(typeof auth[key], 'string', `${locale}.json auth.${key} must be set`);
+      assert.doesNotMatch(auth[key], /capture/i, `${locale}.json auth.${key} must not mention capture`);
+    }
+  }
+  const zh = JSON.parse(readFileSync(join(srcRoot, 'messages', 'zh.json'), 'utf8')).auth as Record<string, string>;
+  assert.match(zh.forgotPasswordPhoneCodeBody, /若账号存在将收到验证码/);
+  assert.match(zh.forgotPasswordPhoneSubtitle, /若账号存在/);
+});
+
 test('login page offers no Google entry (China build: email + phone only)', () => {
   const loginForm = source('app/[locale]/login/login-form.tsx');
   const loginPage = source('app/[locale]/login/page.tsx');

@@ -29,10 +29,11 @@ export default async function LoginPage({
   searchParams,
 }: {
   params: Promise<{ locale: Locale }>;
-  searchParams: Promise<{ from?: string }>;
+  searchParams: Promise<{ from?: string; mode?: string }>;
 }) {
   const { locale } = await params;
-  const { from } = await searchParams;
+  const { from, mode } = await searchParams;
+  const initialMode = mode === 'phone' || mode === 'email' ? mode : 'none';
   const messages = getMessages(locale).auth;
   const registerHref = authHrefWithFrom(`/${locale}/register`, from);
   // Apple button only renders once all four APPLE_* env vars are configured.
@@ -61,7 +62,13 @@ export default async function LoginPage({
             <p className="text-[15px] text-[var(--muted)]">{messages.loginSubtitle}</p>
           </div>
 
-          <LoginForm messages={messages} locale={locale} from={from} appleEnabled={appleEnabled} />
+          <LoginForm
+            messages={messages}
+            locale={locale}
+            from={from}
+            appleEnabled={appleEnabled}
+            initialMode={initialMode}
+          />
 
           <p className="mt-6 text-center text-[13px] text-[var(--muted)]">
             {messages.noAccount}{' '}

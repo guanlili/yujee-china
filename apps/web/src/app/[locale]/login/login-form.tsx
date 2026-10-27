@@ -19,15 +19,17 @@ export function LoginForm({
   locale,
   from,
   appleEnabled = false,
+  initialMode = 'none',
 }: {
   messages: AuthMessages;
   locale: string;
   from?: string;
   appleEnabled?: boolean;
+  initialMode?: 'none' | 'phone' | 'email';
 }) {
   const router = useRouter();
   // 手机号登录是免验证期的主入口(邮箱注册卡验证邮件);邮箱登录保留给存量账号。
-  const [mode, setMode] = useState<'none' | 'phone' | 'email'>('none');
+  const [mode, setMode] = useState<'none' | 'phone' | 'email'>(initialMode);
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
@@ -146,7 +148,15 @@ export function LoginForm({
             />
           </label>
           <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-medium text-[var(--fg-2)]">{messages.password}</span>
+            <span className="flex items-baseline justify-between text-[13px] font-medium text-[var(--fg-2)]">
+              {messages.password}
+              <Link
+                href={`/${locale}/forgot-password?mode=phone`}
+                className="text-[12px] font-normal text-[var(--accent)] hover:underline"
+              >
+                {messages.forgotPassword}
+              </Link>
+            </span>
             <input
               name="password"
               type="password"
@@ -197,7 +207,7 @@ export function LoginForm({
             <span className="flex items-baseline justify-between text-[13px] font-medium text-[var(--fg-2)]">
               {messages.password}
               <Link
-                href={`/${locale}/forgot-password`}
+                href={`/${locale}/forgot-password?mode=email`}
                 className="text-[12px] font-normal text-[var(--accent)] hover:underline"
               >
                 {messages.forgotPassword}

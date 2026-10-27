@@ -88,7 +88,7 @@ export function ResetPasswordForm({
         <p className="mt-6 text-[var(--text-sm)]">
           <Link
             className="font-semibold text-[var(--fg)] hover:underline"
-            href={`/${locale}/forgot-password`}
+            href={`/${locale}/forgot-password?mode=email`}
           >
             {messages.resetPasswordRequestNew}
           </Link>
