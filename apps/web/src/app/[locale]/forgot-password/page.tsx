@@ -19,15 +19,20 @@ export async function generateMetadata({
 
 export default async function ForgotPasswordPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: Locale }>;
+  searchParams: Promise<{ mode?: string }>;
 }) {
   const { locale } = await params;
+  const { mode } = await searchParams;
   const messages = getMessages(locale).auth;
+  // 国内主通道是手机号。显式 ?mode=email 才落到邮件找回。
+  const initialMode = mode === 'email' ? 'email' : 'phone';
 
   return (
     <AuthPageShell locale={locale}>
-      <ForgotPasswordForm messages={messages} locale={locale} />
+      <ForgotPasswordForm messages={messages} locale={locale} initialMode={initialMode} />
     </AuthPageShell>
   );
 }
