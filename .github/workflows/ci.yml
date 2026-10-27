@@ -41,15 +41,15 @@ jobs:
           echo "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
           ssh -i ~/.ssh/id_ed25519 -o ServerAliveInterval=30 ubuntu@$DEPLOY_HOST deploy
 
-  # 依赖漏洞门:只读 lockfile,秒级完成。先卡 critical(当前 0);剩余 13 个
-  # high(sharp/drizzle-orm/zod 等)待 drizzle-orm 0.45 批次清掉后收紧到
-  # --audit-level=high。advisory 库动态更新,平时总数会漂移,此门只拦最严重级。
+  # 依赖漏洞门:只读 lockfile,秒级完成。2026-10-26 迁移批(drizzle 0.45 / zod 4 /
+  # vite 8.1.6 override)清掉全部 high 后,收紧到 --audit-level=high —— 今后新 high
+  # 直接红门。advisory 库动态更新,moderate/low 仍放行(靠周批 dependabot 消化)。
   audit:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
-      - run: pnpm audit --prod --audit-level=critical
+      - run: pnpm audit --prod --audit-level=high
 
   # 密钥扫描(全 git 历史):防密钥进仓 —— env 模板多,且历史上有过
   # CRON_SECRET 泄露进会话输出的先例。占位/example 由 .gitleaks.toml 放行。
