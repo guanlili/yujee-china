@@ -140,8 +140,9 @@ async def submit_compose(
 # **拆哑雷**:防的是「下次谁拿当前源码重新 deploy CLIP worker,analyze 当场 404」。
 # 响应形状由调用方 features.py:_remote_clip_embeddings 决定,不能改。
 #
-# 欠账(本批不还):/internal/agent-ack 也存在同样的「生产有、源码没有」漂移,
-# 但它没有活的调用方,单独记账。
+# (已销账)曾同病 的 /internal/agent-ack 漂移:2026-10-25 国内单机从源码全量重部
+# 后自然消失,2026-10-26 以生产 OpenAPI(127.0.0.1:8002)核验,运行路由 == 本文件
+# 声明的六个,无 agent-ack。
 
 # 推理单飞锁在 workflows/core/profile/inference.py —— CLIP 与档案共用一把,
 # 因为它们抢的是同一台 2GB 机器的同一块内存,各锁各的等于没锁。理由和实测数字
