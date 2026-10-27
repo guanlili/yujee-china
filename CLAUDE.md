@@ -48,7 +48,8 @@ Postgres + Cloudflare R2
   `/v3/judge-page-template`、`/v3/design`。
   `/internal/photo-profile` 有两个调用方:Agent 的 analyze 建档(见下条开关),和 **Web 直连**
   CLIP worker 取抠图 mask(`AGENT_CLIP_BASE_URL`,不是 `AGENT_BASE_URL` 那台)。
-  ⚠️ `/internal/agent-ack` 是**生产有、源码没有**的漂移,还没人补,见 3aa9f113 的账。
+  (已销账)`/internal/agent-ack` 的「生产有、源码没有」漂移,随 2026-10-25 国内
+  单机从源码全量重部自然消失;2026-10-26 用生产 OpenAPI 核验,运行路由 == 本表。
 - 分析是**纯确定性分组**:`/v3/analyze` 走 CLIP/时间/GPS/像素,零 AI 调用、不识图;
   章标题由拍摄时间跨度确定性派生到 `V3Chapter.title`。前提是建档开关
   `AGENT_ENABLE_PHOTO_PROFILE` **默认关**:开了 analyze 就会经 `/internal/photo-profile`
@@ -212,5 +213,5 @@ dependabot 不会推 `checked-at`,盖住它们会把对应生态的每个依赖 
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json
-checked-at: 19930384
+checked-at: 844574d3
 -->
