@@ -31,7 +31,9 @@ export const albumStatusEnum = pgEnum('album_status', [
 // init job lifecycle + credits (unchanged), stage tracks which of the five steps
 // the user is on + the export gate. Enum members come straight from the contracts
 // `AlbumStage` (packages/contracts/src/enums.ts) so there is one source of truth.
-export const albumStageEnum = pgEnum('album_stage', AlbumStage.options);
+// (zod 4 起 `.options` 类型是普通数组,drizzle 的 pgEnum 要非空元组 —— 枚举
+// 构造保证非空,这里断言一次。)
+export const albumStageEnum = pgEnum('album_stage', AlbumStage.options as [string, ...string[]]);
 
 export const agentJobStatusEnum = pgEnum('agent_job_status', [
   'QUEUED',
