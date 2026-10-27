@@ -58,8 +58,9 @@ engine 启动必检项，由 env_file 供给）。
 
 merge 到 main → CI 五门全绿 → `deploy` job 用**专用 restricted key**（ForceCommand
 锁死只能跑 `bin/deploy-from-git.sh`，无 pty/转发，密钥在 GitHub Secrets）SSH 到
-本机执行：`git fetch → reset --hard → compose up -d --build --wait` + 首页 200 +
-巡检验证。部署现场 `~/yujee-clip/` 已 git 化（remote = 本仓 public URL，fetch 免凭证）。
+本机执行：`git fetch → reset --hard → compose up -d --build --wait` → **容器内
+`db:migrate`**（2026-10-27 起,幂等,见脚本注释）+ 首页 200 + 巡检验证。
+部署现场 `~/yujee-clip/` 已 git 化（remote = 本仓 public URL，fetch 免凭证）。
 
 - 未跟踪的 `env/`（密钥）、`pgssl/`、**`weights/`（540MB CLIP/isnet 权重，不进
   git）**不受 reset 影响；**新机器重建时 weights 须单独传输**。

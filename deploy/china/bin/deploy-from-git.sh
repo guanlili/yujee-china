@@ -25,6 +25,15 @@ docker compose -f deploy/china/compose.single.yml \
   --env-file deploy/china/env/single.env \
   up -d --build --wait --wait-timeout 300
 
+# 数据库迁移(2026-10-27 起):web 容器带完整 builder 工作区(devDeps +
+# migrations),容器内跑 drizzle-kit migrate —— 幂等(journal 跟踪),单 web
+# 实例无并发迁移问题。此前迁移只在建站时手动跑过一次,之后的新迁移全部漏掉
+# (0033 手机号列是第一例)。放 compose up 之后:新迁移都是加性可空列,新代码
+# 在迁移完成前的短窗口不碰新列;迁移失败 deploy 红(set -e),可重跑。
+docker compose -f deploy/china/compose.single.yml \
+  --env-file deploy/china/env/single.env \
+  exec -T web pnpm --filter @yujee/web db:migrate
+
 # 部署后验证:首页 200(308→/en 相对跳转)+ 巡检(容器/内存/error/磁盘)。
 # web 刚 Started 时 Next.js 监听未就绪,curl 会被 reset —— retry-connrefused 等它。
 curl -fsS -m 15 -L --retry 6 --retry-connrefused --retry-delay 3 \

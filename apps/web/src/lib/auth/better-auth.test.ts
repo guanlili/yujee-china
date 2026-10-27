@@ -1,8 +1,24 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildPasswordResetEmail, createAuthOptions, getBetterAuthSchema, localeFromResetUrl } from './better-auth';
+import { buildPasswordResetEmail, createAuthOptions, getBetterAuthSchema, localeFromResetUrl, normalizePhoneNumber } from './better-auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
+
+describe('normalizePhoneNumber(手机号归一)', () => {
+  it('strips spaces/dashes/parens and accepts 5-15 digits with optional +', () => {
+    assert.equal(normalizePhoneNumber('13812345678'), '13812345678');
+    assert.equal(normalizePhoneNumber('+86 138-1234-5678'), '+8613812345678');
+    assert.equal(normalizePhoneNumber('(138) 1234 5678'), '13812345678');
+  });
+
+  it('rejects anything with non-digits, or too short/long digit runs', () => {
+    assert.equal(normalizePhoneNumber('1381234567a'), null);
+    assert.equal(normalizePhoneNumber('abc@x'), null);
+    assert.equal(normalizePhoneNumber('1234'), null);
+    assert.equal(normalizePhoneNumber('123456789012345678'), null);
+    assert.equal(normalizePhoneNumber('++8613812345678'), null);
+  });
+});
 
 describe('better-auth schema bridge', () => {
   it('maps B2 plural table exports to better-auth singular model names', () => {
@@ -61,11 +77,15 @@ describe('better-auth schema bridge', () => {
       verifications: {},
     });
 
-    assert.equal(options.plugins?.length, 2);
+    const ids = options.plugins?.map((p) => p.id) ?? [];
     // anonymous 插件的转正 after-hook 要从 responseHeaders 读 set-cookie,
-    // nextCookies() 必须是最后一个插件。
-    assert.equal(options.plugins?.[0]?.id, 'anonymous');
-    assert.equal(options.plugins?.[1]?.id, 'next-cookies');
+    // nextCookies() 必须是最后一个插件。中间夹着谁(2026-10 起是手机号两件套)
+    // 不影响该契约 —— 断言顺序而非死数,加插件不需要改这里。
+    assert.ok(ids.length >= 2, `plugins: ${ids.join(',')}`);
+    assert.equal(ids[0], 'anonymous');
+    assert.equal(ids[ids.length - 1], 'next-cookies');
+    assert.ok(ids.includes('phone-number'));
+    assert.ok(ids.includes('yujee-phone-signup'));
   });
 
   it('zeroes the welcome credits for anonymous (guest) user creation only', async () => {

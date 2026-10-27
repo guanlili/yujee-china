@@ -107,6 +107,11 @@ export const users = pgTable('users', {
   // 游客(匿名)账号:better-auth anonymous 插件创建,临时邮箱占位。登录转正时
   // onLinkAccount 过户相册后删除该行;超过 ANON_CLEANUP_DAYS 未转正由 cron 清理。
   isAnonymous: boolean('is_anonymous').notNull().default(false),
+  // 手机号注册/登录(2026-10-27,better-auth phoneNumber 插件):当前免验证
+  // (requireVerification 默认关),后期接短信后走插件的 send-otp/verify 升级
+  // phoneNumberVerified。唯一索引允许 NULL(邮箱老账号没有手机号)。
+  phoneNumber: text('phone_number').unique(),
+  phoneNumberVerified: boolean('phone_number_verified'),
   // Column default aligned to FREE_PLAN_CREDITS (welcome grant). better-auth
   // normally inserts that value explicitly; this default is the fallback for any
   // other insert path. Re-denominated to 20 with the 1-credit-per-photo change

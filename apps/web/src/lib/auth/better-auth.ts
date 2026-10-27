@@ -2,8 +2,12 @@ import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { nextCookies } from 'better-auth/next-js';
 import { anonymous } from 'better-auth/plugins/anonymous';
-import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
-import { parseSetCookieHeader } from 'better-auth/cookies';
+import { phoneNumber as phoneNumberPlugin } from 'better-auth/plugins/phone-number';
+import { APIError, createAuthEndpoint, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
+import { parseSetCookieHeader, setSessionCookie } from 'better-auth/cookies';
+import { appendFile, mkdir } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { z } from 'zod';
 import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import * as schema from '@/db/schema';
@@ -57,6 +61,98 @@ export function getBetterAuthSchema(schemaModule: Partial<SchemaModule>): Better
     verification: schemaModule.verifications,
   };
 }
+
+// ─── 手机号注册/登录(2026-10-27,免短信验证版)───────────────────────────────
+// 决策:注册=手机号+密码直接建号(phoneNumber 插件没有原生的密码注册路由,其
+// 注册走「OTP 验证时自动建号」);登录=插件的 /sign-in/phone-number(默认不查
+// phoneNumberVerified,正合「先不校验」)。email 用 `{手机号}@phone.yujee.local`
+// 占位且 emailVerified=true —— 这类账号永远不收邮件,也不该被邮箱验证墙拦。
+// 后期接短信:把 sendOTP 换成真短信商,再把 requireVerification 打开即可,
+// 注册路由与存量数据零改动。
+const PHONE_PLACEHOLDER_DOMAIN = 'phone.yujee.local';
+
+/** 归一:去空格/连字符/括号,认 `+` 开头 5-15 位数字;其余一律拒。 */
+export function normalizePhoneNumber(input: string): string | null {
+  const trimmed = input.replace(/[\s\-()]/g, '');
+  return /^(\+?\d{5,15})$/.test(trimmed) ? trimmed : null;
+}
+
+async function capturePhoneOtp(phoneNumber: string, code: string): Promise<void> {
+  // 短信未接入:验证码与邮件同落 capture 文件(EMAIL_CAPTURE_FILE),排查与
+  // 后期接线只动这一个函数。
+  const capturePath = resolve(process.cwd(), env.EMAIL_CAPTURE_FILE);
+  await mkdir(dirname(capturePath), { recursive: true });
+  await appendFile(
+    capturePath,
+    `${JSON.stringify({ kind: 'phone-otp', phoneNumber, code, capturedAt: new Date().toISOString() })}\n`,
+    'utf8',
+  );
+}
+
+const yujeePhoneSignup = {
+  id: 'yujee-phone-signup',
+  endpoints: {
+    /** 手机号+密码注册(免验证)。会话/cookie/密码哈希全部走 better-auth 内部
+     *  通道,与官方 /sign-up/email 同款收尾(internalAdapter + setSessionCookie)。 */
+    signUpWithPhone: createAuthEndpoint(
+      '/phone-signup',
+      {
+        method: 'POST',
+        body: z.object({
+          phoneNumber: z.string().min(5).max(20),
+          password: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
+          name: z.string().trim().min(1).max(40).optional(),
+        }),
+      },
+      async (ctx) => {
+        const phone = normalizePhoneNumber(ctx.body.phoneNumber);
+        if (!phone) {
+          throw new APIError('BAD_REQUEST', { message: 'Invalid phone number' });
+        }
+        const email = `${phone}@${PHONE_PLACEHOLDER_DOMAIN}`;
+        const [byEmail, byPhone] = await Promise.all([
+          ctx.context.internalAdapter.findUserByEmail(email),
+          ctx.context.adapter.findOne({
+            model: 'user',
+            where: [{ field: 'phoneNumber', value: phone }],
+          }),
+        ]);
+        if (byEmail || byPhone) {
+          throw new APIError('BAD_REQUEST', { code: 'PHONE_ALREADY_REGISTERED', message: 'Phone number already registered' });
+        }
+        // 与官方 /sign-up/email 同款:先哈希、createUser(不含密码)、linkAccount
+        // 落 credential 账户 —— 哈希在创建前做完,任何插件坏了也不会留下半截用户。
+        const hash = await ctx.context.password.hash(ctx.body.password);
+        const user = await ctx.context.internalAdapter.createUser(
+          {
+            email,
+            name: ctx.body.name?.trim() || `用户 ${phone.slice(-4)}`,
+            emailVerified: true,
+            phoneNumber: phone,
+            phoneNumberVerified: false,
+          },
+          { method: 'phone-number' },
+        );
+        if (!user) {
+          throw new APIError('BAD_REQUEST', { code: 'FAILED_TO_CREATE_USER', message: 'Failed to create user' });
+        }
+        await ctx.context.internalAdapter.linkAccount({
+          userId: user.id,
+          providerId: 'credential',
+          accountId: user.id,
+          password: hash,
+        });
+        const session = await ctx.context.internalAdapter.createSession(user.id);
+        if (!session) {
+          throw new APIError('BAD_REQUEST', { code: 'FAILED_TO_CREATE_SESSION', message: 'Failed to create session' });
+        }
+        // biome-ignore lint/suspicious/noExplicitAny: 插件端点的 user 泛型与内部类型有出入,与官方路由同款用法
+        await setSessionCookie(ctx, { session, user: user as any });
+        return ctx.json({ token: session.token, user });
+      },
+    ),
+  },
+};
 
 export function buildSocialProviders(): BetterAuthOptions['socialProviders'] {
   const providers: NonNullable<BetterAuthOptions['socialProviders']> = {};
@@ -190,6 +286,15 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
           await anonTransferService.transfer(anonymousUser.user.id, newUser.user.id);
         },
       }),
+      // 手机号:官方插件给登录(/sign-in/phone-number)与 OTP 升级通路;
+      // 注册走我们自定义的 /phone-signup(见 yujeePhoneSignup)。requireVerification
+      // 不设(默认关):未验证手机号也能登录 —— 接短信后再打开。
+      phoneNumberPlugin({
+        sendOTP: async ({ phoneNumber, code }) => {
+          await capturePhoneOtp(phoneNumber, code);
+        },
+      }),
+      yujeePhoneSignup,
       nextCookies(),
     ],
     hooks: {
@@ -219,6 +324,11 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
     rateLimit: {
       customRules: {
         '/request-password-reset': { window: 3600, max: 3 },
+        // 手机号注册与发码不在 better-auth 内置特殊限流的路径名单里
+        // (那套只认 /sign-in /sign-up /change-* /request-password-reset 前缀),
+        // 不配就会落到默认 100 次/10 秒 —— 注册 10 分钟 5 次、发码 1 分钟 3 次。
+        '/phone-signup': { window: 600, max: 5 },
+        '/phone-number/send-otp': { window: 60, max: 3 },
       },
     },
     socialProviders: buildSocialProviders(),
