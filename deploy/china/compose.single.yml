@@ -111,9 +111,10 @@ services:
       NODE_ENV: production
       # 2026-10-28 起对话改书走 kexiangai 中转站(models.ts 的 openai-compat
       # provider):base URL/key 由 env_file 供给(DESIGN_AGENT_API_BASE_URL /
-      # DESIGN_AGENT_API_KEY)。中转站模型名无日期后缀。
+      # DESIGN_AGENT_API_KEY)。kimi-k2.6 = 方案 A 选型(2026-10-28 实测:
+      # 1.9s/轮、13 工具链冒烟通过、不思考);deepseek-v4-pro 为备用。
       DESIGN_AGENT_PROVIDER: openai-compat
-      DESIGN_AGENT_MODEL: deepseek-v4-pro
+      DESIGN_AGENT_MODEL: kimi-k2.6
       WEB_BASE_URL: http://web:3000
     mem_limit: 1300m
     cpus: 1.5

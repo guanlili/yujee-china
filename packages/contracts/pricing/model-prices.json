@@ -22,42 +22,134 @@
     "doubao-seed-1-6": {
       "currency": "CNY",
       "tiers": [
-        { "maxInputTokens": 32000, "input": 0.8, "output": 8.0 },
-        { "maxInputTokens": 128000, "input": 1.2, "output": 16.0 },
-        { "maxInputTokens": null, "input": 2.4, "output": 24.0 }
+        {
+          "maxInputTokens": 32000,
+          "input": 0.8,
+          "output": 8.0
+        },
+        {
+          "maxInputTokens": 128000,
+          "input": 1.2,
+          "output": 16.0
+        },
+        {
+          "maxInputTokens": null,
+          "input": 2.4,
+          "output": 24.0
+        }
       ]
     },
     "doubao-seed-2-0-lite": {
       "currency": "CNY",
       "tiers": [
-        { "maxInputTokens": 32000, "input": 0.6, "output": 3.6 },
-        { "maxInputTokens": 128000, "input": 0.9, "output": 5.4 },
-        { "maxInputTokens": null, "input": 1.8, "output": 10.8 }
+        {
+          "maxInputTokens": 32000,
+          "input": 0.6,
+          "output": 3.6
+        },
+        {
+          "maxInputTokens": 128000,
+          "input": 0.9,
+          "output": 5.4
+        },
+        {
+          "maxInputTokens": null,
+          "input": 1.8,
+          "output": 10.8
+        }
       ]
     },
     "doubao-seed-2-0-pro": {
       "currency": "CNY",
       "tiers": [
-        { "maxInputTokens": 32000, "input": 3.2, "output": 16.0 },
-        { "maxInputTokens": 128000, "input": 4.8, "output": 24.0 },
-        { "maxInputTokens": null, "input": 9.6, "output": 48.0 }
+        {
+          "maxInputTokens": 32000,
+          "input": 3.2,
+          "output": 16.0
+        },
+        {
+          "maxInputTokens": 128000,
+          "input": 4.8,
+          "output": 24.0
+        },
+        {
+          "maxInputTokens": null,
+          "input": 9.6,
+          "output": 48.0
+        }
       ]
     },
     "deepseek-v4-pro": {
       "currency": "USD",
-      "tiers": [{ "maxInputTokens": null, "input": 0.435, "output": 0.87, "cacheRead": 0.003625 }]
+      "tiers": [
+        {
+          "maxInputTokens": null,
+          "input": 0.435,
+          "output": 0.87,
+          "cacheRead": 0.003625
+        }
+      ]
     },
     "deepseek-v4-flash": {
       "currency": "USD",
-      "tiers": [{ "maxInputTokens": null, "input": 0.14, "output": 0.28, "cacheRead": 0.0028 }]
+      "tiers": [
+        {
+          "maxInputTokens": null,
+          "input": 0.14,
+          "output": 0.28,
+          "cacheRead": 0.0028
+        }
+      ]
     },
     "gpt-5-4-mini": {
       "currency": "USD",
-      "tiers": [{ "maxInputTokens": null, "input": 0.75, "output": 4.5 }]
+      "tiers": [
+        {
+          "maxInputTokens": null,
+          "input": 0.75,
+          "output": 4.5
+        }
+      ]
     },
     "gemini-2-5-flash": {
       "currency": "USD",
-      "tiers": [{ "maxInputTokens": null, "input": 0.3, "output": 2.5 }]
+      "tiers": [
+        {
+          "maxInputTokens": null,
+          "input": 0.3,
+          "output": 2.5
+        }
+      ]
+    },
+    "doubao-seed-2-1-pro": {
+      "currency": "CNY",
+      "tiers": [
+        {
+          "maxInputTokens": null,
+          "input": 6.0,
+          "output": 30.0
+        }
+      ]
+    },
+    "doubao-seed-2-1-turbo": {
+      "currency": "CNY",
+      "tiers": [
+        {
+          "maxInputTokens": null,
+          "input": 3.0,
+          "output": 15.0
+        }
+      ]
+    },
+    "kimi-k2.6": {
+      "currency": "CNY",
+      "tiers": [
+        {
+          "maxInputTokens": null,
+          "input": 6.5,
+          "output": 27.0
+        }
+      ]
     }
   }
 }
