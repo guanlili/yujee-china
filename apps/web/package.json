@@ -19,6 +19,8 @@
     "test:admin": "ADMIN_TEST_EXCLUSIVE=1 tsx --test src/services/admin/admin-service.test.ts"
   },
   "dependencies": {
+    "@alicloud/dysmsapi20170525": "4.6.0",
+    "@alicloud/openapi-client": "0.4.15",
     "@aws-sdk/client-s3": "^3.1155.0",
     "@aws-sdk/s3-request-presigner": "^3.1155.0",
     "@waffo/pancake-ts": "0.26.0",

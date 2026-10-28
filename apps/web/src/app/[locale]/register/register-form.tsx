@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { BrandMark } from '@/components/app/Brand';
 import { authClient } from '@/lib/auth/client';
 import { normalizePhoneNumber } from '@/lib/auth/phone';
@@ -13,9 +13,14 @@ import type { AppMessages } from '@/lib/i18n/messages';
 
 type AuthMessages = AppMessages['auth'];
 
+// /phone-signup 验码失败时插件回的错误码(consumePhoneNumberOTP):码错/过期/
+// 没发过码/连错三次作废 —— 统一展示「验证码不正确或已过期」。
+const OTP_ERROR_CODES = new Set(['INVALID_OTP', 'OTP_NOT_FOUND', 'OTP_EXPIRED', 'TOO_MANY_ATTEMPTS']);
+
 // 两种注册通道:
-// - 手机号(默认,免验证):POST /api/auth/phone-signup(自定义 better-auth 端点)
-//   注册即建会话,直接进应用 —— 邮箱验证墙不存在。
+// - 手机号(默认):先获取短信验证码,验码通过才建号(POST /api/auth/phone-signup
+//   带 code,服务端 consumePhoneNumberOTP 消费后建 phoneNumberVerified=true 的号)
+//   —— 注册即完成手机号验证,不存在邮箱验证墙。
 // - 邮箱(存量通道):/sign-up/email 返回 JSON 不跳转,requireEmailVerification
 //   下注册当下无会话,成功后显示「去邮箱激活」面板。
 export function RegisterForm({
@@ -33,6 +38,9 @@ export function RegisterForm({
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCooldown, setOtpCooldown] = useState(0);
   const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -41,6 +49,43 @@ export function RegisterForm({
   const [sentTo, setSentTo] = useState<string | null>(null);
   const dest = safeAuthRedirect(from, `/${locale}/my-albums`);
   const loginHref = authHrefWithFrom(`/${locale}/login`, from);
+
+  // 60s 重发冷却(与登录页/找回页同款交互);后端对同一号码另有 60s 硬限。
+  useEffect(() => {
+    if (otpCooldown === 0) return;
+    const timer = setTimeout(() => setOtpCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [otpCooldown]);
+
+  const sendSignupCode = async () => {
+    const normalized = normalizePhoneNumber(phone);
+    if (!normalized) {
+      setError(messages.forgotPasswordPhoneInvalid);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      // 自定义端点:未注册号才真实下发;已注册号静默 200(提交时自然撞
+      // PHONE_ALREADY_REGISTERED 冲突面板,与登录侧 D1 短路对称)。
+      const res = await fetch('/api/auth/phone-signup/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ phoneNumber: normalized }),
+      });
+      if (!res.ok) {
+        setError(res.status === 429 ? messages.phoneOtpRateLimit : messages.phoneOtpSendError);
+        setBusy(false);
+        return;
+      }
+      setOtpSent(true);
+      setOtpCooldown(60);
+    } catch {
+      setError(messages.phoneOtpSendError);
+    }
+    setBusy(false);
+  };
 
   const onPhoneSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -55,11 +100,18 @@ export function RegisterForm({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ phoneNumber: normalized, password, name: name.trim() || undefined }),
+        body: JSON.stringify({
+          phoneNumber: normalized,
+          password,
+          code: otp.trim(),
+          name: name.trim() || undefined,
+        }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { code?: string } | null;
         if (body?.code === 'PHONE_ALREADY_REGISTERED') setPhoneConflict(true);
+        else if (body && OTP_ERROR_CODES.has(body.code ?? '')) setError(messages.phoneOtpError);
+        else if (res.status === 429) setError(messages.phoneOtpRateLimit);
         else setError(messages.phoneSignupError);
         setBusy(false);
         return;
@@ -155,10 +207,41 @@ export function RegisterForm({
               autoComplete="tel"
               placeholder={messages.phonePlaceholder}
               value={phone}
-              onChange={(e) => setPhone(e.target.value)}
+              onChange={(e) => {
+                setPhone(e.target.value);
+                setOtpSent(false);
+              }}
               className={AUTH_FIELD_CLASS}
             />
           </label>
+          <label className="flex flex-col gap-[7px]">
+            <span className="text-[var(--text-sm)] font-medium text-[var(--fg-2)]">{messages.phoneOtpLabel}</span>
+            <div className="flex gap-2">
+              <input
+                name="otp"
+                type="text"
+                required
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder={messages.phoneOtpPlaceholder}
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                className={AUTH_FIELD_CLASS}
+              />
+              <button
+                type="button"
+                onClick={sendSignupCode}
+                disabled={busy || otpCooldown > 0}
+                className="shrink-0 rounded-[var(--radius-pill)] border border-[var(--border)] px-4 text-[var(--text-sm)] font-semibold text-[var(--fg-2)] transition-colors duration-[var(--motion-fast)] hover:border-[var(--muted)] hover:bg-[var(--bg)] disabled:opacity-40"
+              >
+                {otpCooldown > 0 ? `${otpCooldown}s` : messages.phoneSendCode}
+              </button>
+            </div>
+          </label>
+          {otpSent && (
+            <p className="text-[var(--text-sm)] text-[var(--meta)]">{messages.phoneOtpSent}</p>
+          )}
           <label className="flex flex-col gap-[7px]">
             <span className="text-[var(--text-sm)] font-medium text-[var(--fg-2)]">{messages.password}</span>
             <input

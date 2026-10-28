@@ -1,14 +1,22 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { authClient } from '@/lib/auth/client';
 import { normalizePhoneNumber } from '@/lib/auth/phone';
-import { safeAuthRedirect } from '@/lib/auth/redirect';
+import { authHrefWithFrom, safeAuthRedirect } from '@/lib/auth/redirect';
 import type { AppMessages } from '@/lib/i18n/messages';
 
 type AuthMessages = AppMessages['auth'];
+
+// 429 判定与找回页同款:发码/验码被应用层或阿里云频控拦下时,统一展示
+// 「请求过于频繁」而不是吓人的失败文案。
+function isRateLimited(error: { status?: number; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  if (error.status === 429) return true;
+  return /too many requests/i.test(error.message ?? '');
+}
 
 // The login form must run client-side: better-auth's /sign-in/email returns
 // JSON ({ redirect:false, token }), not a 3xx. A native <form> POST therefore
@@ -28,14 +36,30 @@ export function LoginForm({
   initialMode?: 'none' | 'phone' | 'email';
 }) {
   const router = useRouter();
-  // 手机号登录是免验证期的主入口(邮箱注册卡验证邮件);邮箱登录保留给存量账号。
+  // 手机号登录是主入口(密码/验证码两种子模式);邮箱登录保留给存量账号。
   const [mode, setMode] = useState<'none' | 'phone' | 'email'>(initialMode);
+  const [phoneMethod, setPhoneMethod] = useState<'password' | 'otp'>('password');
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCooldown, setOtpCooldown] = useState(0);
+  // 未注册号走验证码登录:后端发码端点静默 200(D1 防枚举),用户点验码拿到
+  // OTP_NOT_FOUND —— 这里引导去注册(与注册页的已注册冲突面板对称)。
+  const [notRegistered, setNotRegistered] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const dest = safeAuthRedirect(from, `/${locale}/my-albums`);
+  const registerHref = authHrefWithFrom(`/${locale}/register`, from);
+
+  // 60s 重发冷却(与找回页同款交互):后端对同一号码也有 60s 硬限,这里只是
+  // 不让用户白白把 429 撞在脸上。
+  useEffect(() => {
+    if (otpCooldown === 0) return;
+    const timer = setTimeout(() => setOtpCooldown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [otpCooldown]);
 
   // 国内版只保留邮箱 + 手机号登录(2026-10-27 起);Google 入口已随 provider
   // 一起移除,Apple 维持「配了才显示」,别在它前面再补别的社交按钮。
@@ -76,6 +100,56 @@ export function LoginForm({
     routeIn();
   };
 
+  const sendLoginCode = async () => {
+    const normalized = normalizePhoneNumber(identifier);
+    if (!normalized) {
+      setError(messages.forgotPasswordPhoneInvalid);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotRegistered(false);
+    const { error: sendError } = await authClient.phoneNumber.sendOtp({ phoneNumber: normalized });
+    if (sendError) {
+      setError(isRateLimited(sendError) ? messages.phoneOtpRateLimit : messages.phoneOtpSendError);
+      setBusy(false);
+      return;
+    }
+    // 未注册号这里也是 200(服务端静默不发码):用户下一秒验码时会拿到
+    // OTP_NOT_FOUND,由 notRegistered 面板接住引导注册。
+    setOtpSent(true);
+    setOtpCooldown(60);
+    setBusy(false);
+  };
+
+  const onOtpSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    const normalized = normalizePhoneNumber(identifier);
+    if (!normalized) {
+      setError(messages.forgotPasswordPhoneInvalid);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    setNotRegistered(false);
+    // 验码登录:已注册用户验码通过即置 phoneNumberVerified 并种会话(顺带把
+    // 免验证期的存量账号洗成 verified);游客 session 会被服务端并号。
+    const { error: verifyError } = await authClient.phoneNumber.verify({
+      phoneNumber: normalized,
+      code: otp.trim(),
+    });
+    if (verifyError) {
+      if (verifyError.code === 'OTP_NOT_FOUND' || /otp not found/i.test(verifyError.message ?? '')) {
+        setNotRegistered(true);
+      } else {
+        setError(isRateLimited(verifyError) ? messages.phoneOtpRateLimit : messages.phoneOtpError);
+      }
+      setBusy(false);
+      return;
+    }
+    routeIn();
+  };
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -88,6 +162,11 @@ export function LoginForm({
     }
     routeIn();
   };
+
+  const fieldClass =
+    'w-full rounded-full border border-[var(--border-soft)] bg-[var(--surface)] px-[18px] py-3 text-[15px] text-[var(--fg)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-color,box-shadow] duration-[var(--motion-fast)] placeholder:text-[var(--meta)] focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(19,184,166,0.12)] focus:outline-none';
+  const submitClass =
+    'mt-0.5 w-full rounded-full bg-[var(--fg)] px-5 py-3.5 text-[15px] font-semibold text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[0_3px_10px_rgba(0,0,0,0.18)] disabled:opacity-50';
 
   return (
     <div className="flex flex-col">
@@ -131,50 +210,148 @@ export function LoginForm({
       )}
 
       {mode === 'phone' && (
-        <form className="flex flex-col gap-3.5" onSubmit={onPhoneSubmit}>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[13px] font-medium text-[var(--fg-2)]">{messages.phone}</span>
-            <input
-              name="phone"
-              type="tel"
-              required
-              autoComplete="tel"
-              autoFocus
-              inputMode="tel"
-              placeholder={messages.phonePlaceholder}
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              className="w-full rounded-full border border-[var(--border-soft)] bg-[var(--surface)] px-[18px] py-3 text-[15px] text-[var(--fg)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-color,box-shadow] duration-[var(--motion-fast)] placeholder:text-[var(--meta)] focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(19,184,166,0.12)] focus:outline-none"
-            />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="flex items-baseline justify-between text-[13px] font-medium text-[var(--fg-2)]">
-              {messages.password}
-              <Link
-                href={`/${locale}/forgot-password?mode=phone`}
-                className="text-[12px] font-normal text-[var(--accent)] hover:underline"
-              >
-                {messages.forgotPassword}
-              </Link>
-            </span>
-            <input
-              name="password"
-              type="password"
-              required
-              autoComplete="current-password"
-              placeholder={messages.passwordPlaceholder}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-full border border-[var(--border-soft)] bg-[var(--surface)] px-[18px] py-3 text-[15px] text-[var(--fg)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-color,box-shadow] duration-[var(--motion-fast)] placeholder:text-[var(--meta)] focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(19,184,166,0.12)] focus:outline-none"
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={busy}
-            className="mt-0.5 w-full rounded-full bg-[var(--fg)] px-5 py-3.5 text-[15px] font-semibold text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[0_3px_10px_rgba(0,0,0,0.18)] disabled:opacity-50"
-          >
-            {busy ? messages.loading : messages.loginAction}
-          </button>
+        <div className="flex flex-col gap-3.5">
+          {/* 子模式切换:密码登录 | 验证码登录(新增能力,不是替换)。 */}
+          <div className="grid grid-cols-2 rounded-full border border-[var(--border)] p-1">
+            <button
+              type="button"
+              onClick={() => {
+                setPhoneMethod('password');
+                setError(null);
+              }}
+              aria-pressed={phoneMethod === 'password'}
+              className={
+                phoneMethod === 'password'
+                  ? 'rounded-full bg-[var(--fg)] py-2 text-[13px] font-semibold text-white'
+                  : 'rounded-full py-2 text-[13px] font-medium text-[var(--muted)]'
+              }
+            >
+              {messages.phonePasswordLogin}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPhoneMethod('otp');
+                setError(null);
+                setNotRegistered(false);
+              }}
+              aria-pressed={phoneMethod === 'otp'}
+              className={
+                phoneMethod === 'otp'
+                  ? 'rounded-full bg-[var(--fg)] py-2 text-[13px] font-semibold text-white'
+                  : 'rounded-full py-2 text-[13px] font-medium text-[var(--muted)]'
+              }
+            >
+              {messages.phoneOtpLogin}
+            </button>
+          </div>
+
+          {phoneMethod === 'password' ? (
+            <form className="flex flex-col gap-3.5" onSubmit={onPhoneSubmit}>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[13px] font-medium text-[var(--fg-2)]">{messages.phone}</span>
+                <input
+                  name="phone"
+                  type="tel"
+                  required
+                  autoComplete="tel"
+                  autoFocus
+                  inputMode="tel"
+                  placeholder={messages.phonePlaceholder}
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  className={fieldClass}
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="flex items-baseline justify-between text-[13px] font-medium text-[var(--fg-2)]">
+                  {messages.password}
+                  <Link
+                    href={`/${locale}/forgot-password?mode=phone`}
+                    className="text-[12px] font-normal text-[var(--accent)] hover:underline"
+                  >
+                    {messages.forgotPassword}
+                  </Link>
+                </span>
+                <input
+                  name="password"
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  placeholder={messages.passwordPlaceholder}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className={fieldClass}
+                />
+              </label>
+              <button type="submit" disabled={busy} className={submitClass}>
+                {busy ? messages.loading : messages.loginAction}
+              </button>
+            </form>
+          ) : (
+            <form className="flex flex-col gap-3.5" onSubmit={onOtpSubmit}>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[13px] font-medium text-[var(--fg-2)]">{messages.phone}</span>
+                <input
+                  name="phone"
+                  type="tel"
+                  required
+                  autoComplete="tel"
+                  autoFocus
+                  inputMode="tel"
+                  placeholder={messages.phonePlaceholder}
+                  value={identifier}
+                  onChange={(e) => {
+                    setIdentifier(e.target.value);
+                    setOtpSent(false);
+                  }}
+                  className={fieldClass}
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[13px] font-medium text-[var(--fg-2)]">{messages.phoneOtpLabel}</span>
+                <div className="flex gap-2">
+                  <input
+                    name="otp"
+                    type="text"
+                    required
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    placeholder={messages.phoneOtpPlaceholder}
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                    className={fieldClass}
+                  />
+                  <button
+                    type="button"
+                    onClick={sendLoginCode}
+                    disabled={busy || otpCooldown > 0}
+                    className="shrink-0 rounded-full border border-[var(--border)] px-4 text-[13px] font-semibold text-[var(--fg-2)] transition-colors duration-[var(--motion-fast)] hover:border-[var(--muted)] hover:bg-[var(--bg)] disabled:opacity-50"
+                  >
+                    {otpCooldown > 0 ? `${otpCooldown}s` : messages.phoneSendCode}
+                  </button>
+                </div>
+              </label>
+              {otpSent && !notRegistered && (
+                <p className="text-[12px] text-[var(--meta)]">{messages.phoneOtpSent}</p>
+              )}
+              {notRegistered && (
+                <div className="flex flex-col gap-2 rounded-[var(--radius-pill)] border border-[var(--border)] bg-[var(--surface)] px-5 py-4">
+                  <p className="text-[13px] font-semibold text-[var(--fg)]">{messages.phoneNotRegistered}</p>
+                  <p className="text-[13px] text-[var(--muted)]">{messages.phoneNotRegisteredHint}</p>
+                  {/* registerHref 继续携带 from:游客从相册被拦来登录时,注册后仍回跳原相册。 */}
+                  <Link className="text-[13px] font-semibold text-[var(--fg)] hover:underline" href={registerHref}>
+                    {messages.signUpFree} →
+                  </Link>
+                </div>
+              )}
+              <button type="submit" disabled={busy} className={submitClass}>
+                {busy ? messages.loading : messages.loginAction}
+              </button>
+            </form>
+          )}
+
           <button
             type="button"
             onClick={() => setMode('email')}
@@ -182,7 +359,7 @@ export function LoginForm({
           >
             {messages.useEmailInstead}
           </button>
-        </form>
+        </div>
       )}
 
       {mode === 'email' && (
@@ -200,7 +377,7 @@ export function LoginForm({
               placeholder="you@example.com"
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
-              className="w-full rounded-full border border-[var(--border-soft)] bg-[var(--surface)] px-[18px] py-3 text-[15px] text-[var(--fg)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-color,box-shadow] duration-[var(--motion-fast)] placeholder:text-[var(--meta)] focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(19,184,166,0.12)] focus:outline-none"
+              className={fieldClass}
             />
           </label>
           <label className="flex flex-col gap-1.5">
@@ -221,14 +398,10 @@ export function LoginForm({
               placeholder={messages.passwordPlaceholder}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-full border border-[var(--border-soft)] bg-[var(--surface)] px-[18px] py-3 text-[15px] text-[var(--fg)] shadow-[0_1px_2px_rgba(0,0,0,0.03)] transition-[border-color,box-shadow] duration-[var(--motion-fast)] placeholder:text-[var(--meta)] focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_rgba(19,184,166,0.12)] focus:outline-none"
+              className={fieldClass}
             />
           </label>
-          <button
-            type="submit"
-            disabled={busy}
-            className="mt-0.5 w-full rounded-full bg-[var(--fg)] px-5 py-3.5 text-[15px] font-semibold text-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[0_3px_10px_rgba(0,0,0,0.18)] disabled:opacity-50"
-          >
+          <button type="submit" disabled={busy} className={submitClass}>
             {busy ? messages.loading : messages.loginAction}
           </button>
           <button

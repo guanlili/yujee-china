@@ -27,27 +27,28 @@ function localPhone(): string {
 
 function intlPhone(): string {
   phoneSeq += 1;
-  return `+86139${`${Date.now()}${phoneSeq}`.slice(-8)}`;
+  // 137 段第二组号码;归一后的裸号形态(identifier/落库口径)。
+  // +86 输入形态的覆盖用 plus86() 包装。
+  return `137${`${Date.now()}${phoneSeq}`.slice(-8)}`;
 }
 
 function spaced(phone: string): string {
   const normalized = normalizePhoneNumber(phone);
   assert.ok(normalized, `fixture phone must normalize: ${phone}`);
-  if (normalized.startsWith('+86')) {
-    const national = normalized.slice(3);
-    return `+86 ${national.slice(0, 3)} ${national.slice(3, 7)} ${national.slice(7)}`;
-  }
   return `${normalized.slice(0, 3)} ${normalized.slice(3, 7)} ${normalized.slice(7)}`;
 }
 
 function dashed(phone: string): string {
   const normalized = normalizePhoneNumber(phone);
   assert.ok(normalized);
-  if (normalized.startsWith('+86')) {
-    const national = normalized.slice(3);
-    return `+86-${national.slice(0, 3)}-${national.slice(3, 7)}-${national.slice(7)}`;
-  }
   return `${normalized.slice(0, 3)}-${normalized.slice(3, 7)}-${normalized.slice(7)}`;
+}
+
+// +86 前缀输入形态:归一后与裸号是同一把钥匙(D5 收紧后)。
+function plus86(phone: string): string {
+  const normalized = normalizePhoneNumber(phone);
+  assert.ok(normalized);
+  return `+86 ${normalized.slice(0, 3)} ${normalized.slice(3, 7)} ${normalized.slice(7)}`;
 }
 
 function jsonInit(body: unknown, cookie?: string): RequestInit {
@@ -86,12 +87,12 @@ function captureRows(phone: string) {
   try {
     text = readFileSync(capturePath, 'utf8');
   } catch {
-    return [] as Array<{ kind?: string; phoneNumber?: string; code?: string; capturedAt?: string }>;
+    return [] as Array<{ kind?: string; scene?: string; phoneNumber?: string; code?: string; capturedAt?: string }>;
   }
   return text
     .split('\n')
     .filter(Boolean)
-    .map((line) => JSON.parse(line) as { kind?: string; phoneNumber?: string; code?: string; capturedAt?: string })
+    .map((line) => JSON.parse(line) as { kind?: string; scene?: string; phoneNumber?: string; code?: string; capturedAt?: string })
     .filter((row) => row.phoneNumber === phone);
 }
 
@@ -117,12 +118,28 @@ async function sessionCount(userId: string) {
 
 async function clearOtps(phone: string) {
   await db.delete(verifications).where(eq(verifications.identifier, `${phone}-request-password-reset`));
+  // 注册发码(2026-10-28 起)与登录发码共用 identifier=裸号,一并清。
+  await db.delete(verifications).where(eq(verifications.identifier, phone));
+}
+
+async function waitForSignupCode(phone: string): Promise<string> {
+  for (let i = 0; i < 20; i++) {
+    const row = captureRows(phone).filter((r) => r.kind === 'phone-otp' && r.scene === 'signup').at(-1);
+    if (row?.code) return row.code;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+  }
+  assert.fail(`no signup otp capture row for ${phone}`);
 }
 
 async function signUp(phoneInput: string): Promise<{ id: string; phone: string }> {
   const phone = normalizePhoneNumber(phoneInput);
   assert.ok(phone);
-  const res = await callAuth('/phone-signup', jsonInit({ phoneNumber: phoneInput, password: OLD_PASSWORD, name: 'Reset User' }));
+  // 注册强制 OTP(D3):先经 /phone-signup/send-otp 取码(capture 模式落文件)。
+  const sent = await callAuth('/phone-signup/send-otp', jsonInit({ phoneNumber: phone }));
+  const sentBody = await readBody(sent, 'signup send-otp');
+  assert.equal(sentBody.status, 200, sentBody.text);
+  const code = await waitForSignupCode(phone);
+  const res = await callAuth('/phone-signup', jsonInit({ phoneNumber: phoneInput, password: OLD_PASSWORD, name: 'Reset User', code }));
   const body = await readBody(res, 'phone-signup');
   assert.equal(body.status, 200, `${body.what} -> ${body.status}: ${body.text}`);
   const user = body.json.user as { id: string };
@@ -143,6 +160,9 @@ test('R1/R2/R6/R10: capture OTP resets the password, revokes sessions, leaves ph
     const created = await signUp(raw);
     userId = created.id;
     assert.equal(created.phone, phone);
+    // 注册即 verified(D3)。这里手动翻回 false,守住「找回成功不改
+    // phoneNumberVerified」的原有断言语义(免验证期存量号的形状)。
+    await db.update(users).set({ phoneNumberVerified: false }).where(eq(users.id, userId));
     const before = await userByPhone(phone);
     assert.equal(before?.phoneNumberVerified, false);
     assert.ok((await sessionCount(userId)) >= 1, 'signup must open a session');
@@ -315,7 +335,7 @@ test('R7: email request-password-reset still answers 200 for an unknown address'
   assert.equal(body.json.status, true);
 });
 
-test('R9: spaced and dashed phone input normalizes to the registered value', async (t) => {
+test('R9: spaced/dashed/+86 inputs all normalize to the registered bare number (D5)', async (t) => {
   if (!(await isDbReachable())) {
     t.skip('DATABASE_URL is not reachable; skipping integration test');
     return;
@@ -342,20 +362,20 @@ test('R9: spaced and dashed phone input normalizes to the registered value', asy
     assert.equal((await readBody(intlReset, 'intl dashed')).status, 200);
     assert.match(await waitForResetCode(intl), /^\d{6}$/);
 
-    // +86… 与去掉国家码的国内号不是同一把钥匙:两边都走同一个归一函数,
-    // 归一结果不同,就不能互相找回。
-    const bare = intl.slice(3);
-    const crossed = await callAuth('/phone-number/request-password-reset', jsonInit({ phoneNumber: bare }));
-    assert.equal((await readBody(crossed, 'country-code is part of the key')).status, 200);
-    assert.equal(captureRows(bare).filter((row) => row.kind === 'phone-otp-reset').length, 0);
+    // D5 收紧后 +86 前缀只是输入形态,与裸号是同一账号/同一把钥匙 —— 互通找回。
+    const crossed = await callAuth('/phone-number/request-password-reset', jsonInit({ phoneNumber: plus86(intl) }));
+    assert.equal((await readBody(crossed, '+86 is the same key as bare')).status, 200);
+    assert.ok(captureRows(intl).filter((row) => row.kind === 'phone-otp-reset').length >= 2);
 
+    // 非大陆号与乱输入一律 400(港澳台/国际后续迭代再放开)。
+    const hk = await callAuth('/phone-number/request-password-reset', jsonInit({ phoneNumber: '+852 1234 5678' }));
+    assert.equal((await readBody(hk, 'hongkong number')).status, 400);
     const invalid = await callAuth('/phone-number/request-password-reset', jsonInit({ phoneNumber: '13812abc' }));
     const invalidBody = await readBody(invalid, 'invalid phone');
     assert.equal(invalidBody.status, 400, invalidBody.text);
   } finally {
     await clearOtps(local);
     await clearOtps(intl);
-    await clearOtps(intl.slice(3));
     for (const id of ids) await cleanupUser(id);
   }
 });

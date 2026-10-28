@@ -239,6 +239,13 @@
       "when": 1793069902554,
       "tag": "0033_luxuriant_hellfire_club",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793156788186,
+      "tag": "0034_strip_plus86_phone",
+      "breakpoints": true
     }
   ]
 }

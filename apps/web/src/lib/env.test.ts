@@ -203,3 +203,67 @@ test('assertProductionEnv: 两个都配齐 → 放行', () => {
     AGENT_CLIP_SECRET: 'a-real-clip-secret',
   }));
 });
+
+// ── 短信 OTP 的 aliyun 开关必须有四件套 ──────────────────────────────────────
+// SMS_DELIVERY=aliyun 却没配阿里云四件套:验证码登录/注册/手机找回会静默发不出
+// 短信(接口层看不出,用户只是收不到码)—— 欠费/漏配是这类故障的主形状。
+// 宁可启动即炸(fail-fast),也不要带着静默故障上线;capture 模式四件套可缺
+// (作为阿里云故障期的应急降级通道)。
+const ALIYUN_SMS_CONFIG = {
+  ALIYUN_SMS_ACCESS_KEY_ID: 'LTAI_ram_subaccount',
+  ALIYUN_SMS_ACCESS_KEY_SECRET: 'a-real-sms-secret',
+  ALIYUN_SMS_SIGN_NAME: '北京知景方略信息科技',
+  ALIYUN_SMS_TEMPLATE_CODE: 'SMS_000000000',
+};
+
+test('assertProductionEnv: 真生产 SMS_DELIVERY=aliyun 缺任何一个短信配置 → 当场抛', () => {
+  for (const key of Object.keys(ALIYUN_SMS_CONFIG)) {
+    const raw: Record<string, string | undefined> = {
+      ...FULL_PROD,
+      ...ALIYUN_SMS_CONFIG,
+      SMS_DELIVERY: 'aliyun',
+      NODE_ENV: 'production',
+      VERCEL_ENV: 'production',
+    };
+    delete raw[key];
+    assert.throws(
+      () => assertProductionEnv(raw),
+      new RegExp(key),
+      `缺 ${key} 时应当 fail-fast,而不是让验证码静默发不出`,
+    );
+  }
+});
+
+test('assertProductionEnv: 真生产 SMS_DELIVERY=aliyun 四件套配齐 → 放行', () => {
+  assert.doesNotThrow(() => assertProductionEnv({
+    ...FULL_PROD,
+    ...ALIYUN_SMS_CONFIG,
+    SMS_DELIVERY: 'aliyun',
+    NODE_ENV: 'production',
+    VERCEL_ENV: 'production',
+  }));
+});
+
+test('assertProductionEnv: 真生产 SMS_DELIVERY 不设或为 capture → 不因短信四件套缺失抛', () => {
+  // capture 是合法形态(本地/CI/应急降级),四件套缺着也不拦。
+  assert.doesNotThrow(() => assertProductionEnv({
+    ...FULL_PROD,
+    NODE_ENV: 'production',
+    VERCEL_ENV: 'production',
+    SMS_DELIVERY: 'capture',
+  }));
+  const withoutDelivery: Record<string, string | undefined> = {
+    ...FULL_PROD,
+    NODE_ENV: 'production',
+    VERCEL_ENV: 'production',
+  };
+  delete withoutDelivery.SMS_DELIVERY;
+  assert.doesNotThrow(() => assertProductionEnv(withoutDelivery));
+});
+
+test('assertProductionEnv: 非生产环境 SMS_DELIVERY=aliyun 不检查四件套', () => {
+  assert.doesNotThrow(() => assertProductionEnv({
+    NODE_ENV: 'development',
+    SMS_DELIVERY: 'aliyun',
+  }));
+});

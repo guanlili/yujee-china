@@ -7,19 +7,25 @@ import { env } from '@/lib/env';
 import { buildPasswordResetEmail, buildSocialProviders, createAuthOptions, getBetterAuthSchema, localeFromResetUrl, normalizePhoneNumber, PHONE_AUTH_LINK_PATHS } from './better-auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
 
-describe('normalizePhoneNumber(手机号归一)', () => {
-  it('strips spaces/dashes/parens and accepts 5-15 digits with optional +', () => {
+describe('normalizePhoneNumber(手机号归一,大陆 11 位)', () => {
+  it('accepts mainland numbers, stripping spaces/dashes/parens and the +86 prefix', () => {
     assert.equal(normalizePhoneNumber('13812345678'), '13812345678');
-    assert.equal(normalizePhoneNumber('+86 138-1234-5678'), '+8613812345678');
+    assert.equal(normalizePhoneNumber('+86 138-1234-5678'), '13812345678');
     assert.equal(normalizePhoneNumber('(138) 1234 5678'), '13812345678');
+    assert.equal(normalizePhoneNumber('+8613812345678'), '13812345678');
   });
 
-  it('rejects anything with non-digits, or too short/long digit runs', () => {
-    assert.equal(normalizePhoneNumber('1381234567a'), null);
+  it('rejects non-mainland formats and malformed input (D5: 仅大陆 11 位)', () => {
+    assert.equal(normalizePhoneNumber('1381234567a'), null); // 含字母
     assert.equal(normalizePhoneNumber('abc@x'), null);
-    assert.equal(normalizePhoneNumber('1234'), null);
-    assert.equal(normalizePhoneNumber('123456789012345678'), null);
+    assert.equal(normalizePhoneNumber('1234'), null); // 过短
+    assert.equal(normalizePhoneNumber('123456789012345678'), null); // 过长
     assert.equal(normalizePhoneNumber('++8613812345678'), null);
+    assert.equal(normalizePhoneNumber('23812345678'), null); // 1[3-9] 开头之外
+    assert.equal(normalizePhoneNumber('1381234567'), null); // 10 位
+    assert.equal(normalizePhoneNumber('138123456789'), null); // 12 位
+    assert.equal(normalizePhoneNumber('+85212345678'), null); // 港澳台/国际
+    assert.equal(normalizePhoneNumber('85312345678'), null); // 裸国际号
   });
 });
 
@@ -92,11 +98,14 @@ describe('better-auth schema bridge', () => {
   });
 
   it('declares the explicit anon-link paths for phone auth (independent of the plugin matcher)', () => {
-    // /phone-signup 不在 anonymous 插件转正 matcher 的前缀名单里,必须显式接管;
+    // /phone-signup 与 /phone-number/verify 都不在 anonymous 插件转正 matcher 的
+    // 前缀名单里(只认 /sign-in、/sign-up、/callback),必须显式接管 —— 漏了
+    // /phone-number/verify,游客用验证码登录后其书会滞留匿名号(方案 §4.1);
     // /sign-in/phone-number 虽被 matcher 覆盖,显式接管让它不依赖插件版本行为。
     assert.ok(PHONE_AUTH_LINK_PATHS.has('/phone-signup'));
     assert.ok(PHONE_AUTH_LINK_PATHS.has('/sign-in/phone-number'));
-    assert.equal(PHONE_AUTH_LINK_PATHS.size, 2);
+    assert.ok(PHONE_AUTH_LINK_PATHS.has('/phone-number/verify'));
+    assert.equal(PHONE_AUTH_LINK_PATHS.size, 3);
   });
 
   it('registers a single after-hook middleware (options-level after must not be an array)', () => {
@@ -125,7 +134,7 @@ describe('better-auth schema bridge', () => {
     });
 
     // 找回路径不回落 sendOTP。漏接 sendPasswordResetOTP 时插件仍对已注册号返回
-    // 成功,但永远不写验证码(K1)。requireVerification 保持默认关。
+    // 成功,但永远不写验证码(K1)。requireVerification 保持默认关(D7)。
     const plugin = options.plugins?.find((p) => p.id === 'phone-number') as {
       options?: {
         sendOTP?: (data: { phoneNumber: string; code: string }) => Promise<void>;
@@ -140,8 +149,17 @@ describe('better-auth schema bridge', () => {
       window: 3600,
       max: 3,
     });
+    // 发码两入口(登录/注册)与插件兜底之外的应用层按 IP 限流(方案 §5.1 第②层)。
+    assert.deepEqual(options.rateLimit?.customRules?.['/phone-number/send-otp'], {
+      window: 60,
+      max: 3,
+    });
+    assert.deepEqual(options.rateLimit?.customRules?.['/phone-signup/send-otp'], {
+      window: 60,
+      max: 3,
+    });
 
-    const phone = `+8619900${String(Date.now()).slice(-6)}`;
+    const phone = `19900${String(Date.now()).slice(-6)}`;
     await plugin?.options?.sendPasswordResetOTP?.({ phoneNumber: phone, code: '654321' });
     await plugin?.options?.sendOTP?.({ phoneNumber: phone, code: '111111' });
 
@@ -159,6 +177,32 @@ describe('better-auth schema bridge', () => {
       ],
     );
     assert.ok(lines.every((row) => typeof row.capturedAt === 'string' && row.capturedAt.length > 0));
+  });
+
+  it('requires the OTP code on /phone-signup (D3: 注册强制验证)', () => {
+    const options = createAuthOptions({
+      users: {},
+      sessions: {},
+      accounts: {},
+      verifications: {},
+    });
+    const signup = options.plugins?.find((p) => p.id === 'yujee-phone-signup') as {
+      endpoints?: {
+        signUpWithPhone?: { options?: { body?: { safeParse: (input: unknown) => { success: boolean } } } };
+      };
+    } | undefined;
+    const body = signup?.endpoints?.signUpWithPhone?.options?.body;
+    assert.ok(body, '/phone-signup must declare a body schema');
+    // 漏 code(免验证期旧形态)必须被 schema 拒掉;带 code 的完整形态通过。
+    assert.equal(
+      body.safeParse({ phoneNumber: '13812345678', password: 'password123' }).success,
+      false,
+      'signup without code must fail validation',
+    );
+    assert.equal(
+      body.safeParse({ phoneNumber: '13812345678', password: 'password123', code: '123456' }).success,
+      true,
+    );
   });
 
   it('zeroes the welcome credits for anonymous (guest) user creation only', async () => {
