@@ -18,14 +18,24 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
   `albums.copy_source='placeholder'`,零 AI/零积分/零 R2)→ 本地导出。只有三件事要
   真实账号:对话改书(design-chat)、保存(照片快照)、分享 —— API 层 `requireRealUser`
   403 `ANON_UPGRADE_REQUIRED`,前端统一弹登录。登录时过户相册并删匿名号 —— 邮箱验证/
-  OAuth 走 `onLinkAccount` 与 `linkAnonymousOnVerifyEmail` 兜底;手机号注册/登录
-  (`/phone-signup`、`/sign-in/phone-number`)走显式 after-hook(插件默认 matcher 的
-  前缀名单不含 `/phone-signup`;user 级 after 先跑,`onLinkAccount` 里的按主键实查
-  闸把插件 hook 的二次触发拦成 no-op)。手机号找回密码走插件
-  `POST /phone-number/request-password-reset` 与 `POST /phone-number/reset-password`:
-  `sendPasswordResetOTP` 与登录 OTP 一样先写入 `EMAIL_CAPTURE_FILE`(kind
-  `phone-otp-reset`,登录是 `phone-otp`),限流 3 次/小时;成功后不改
-  `phoneNumberVerified`。忘记密码页默认手机号,`?mode=email` 仍走邮件链接。
+  OAuth 走 `onLinkAccount` 与 `linkAnonymousOnVerifyEmail` 兜底;手机号注册/密码登录/
+  验证码登录(`/phone-signup`、`/sign-in/phone-number`、`/phone-number/verify`)走显式
+  after-hook(插件默认 matcher 的前缀名单一个都不含;user 级 after 先跑,
+  `onLinkAccount` 里的按主键实查闸把插件 hook 的二次触发拦成 no-op)。手机号体系
+  2026-10-28 起为短信 OTP 真实验证版:注册强制验码(`/phone-signup/send-otp` 发码,
+  `consumePhoneNumberOTP` 验码消费,建号即 `phoneNumberVerified=true`);登录页手机
+  模式有「密码 | 验证码」子模式(验证码走插件 `/phone-number/send-otp` +
+  `/phone-number/verify`,未注册号发码静默 200 不烧钱、验码回 OTP_NOT_FOUND 由前端
+  引导注册;`requireVerification` 保持全局关,存量号首次验码登录自动转正);找回密码
+  走插件 `POST /phone-number/request-password-reset` 与 `POST /phone-number/reset-password`。
+  验证码真实下发集中在 `lib/sms/`(`SMS_DELIVERY=capture|aliyun` 开关,镜像
+  `EMAIL_DELIVERY`:capture 写 `EMAIL_CAPTURE_FILE`,kind `phone-otp`/`phone-otp-reset`
+  按 scene 分;aliyun 走阿里云 SDK,错误码翻译见 `aliyun-sms.ts`,频控类回 429)。
+  限流四层:同号 60s 一条(before-hook/端点内查 `verifications` 最新行,登录与注册
+  发码共享窗口)+ 同 IP(发码 3 次/分钟、找回 3 次/小时、注册 5 次/10 分钟)+
+  插件兜底 10 次/分钟 + 阿里云控制台流控。手机号归一收紧为大陆 11 位裸号
+  (`1[3-9]` 开头,剥 `+86`;存量混格式由迁移 0034 收敛)。忘记密码页默认手机号,
+  `?mode=email` 仍走邮件链接。
   前端检测 `copySource='placeholder'`
   自动重发 POST /design 补跑真 compose(此时才
   precheck+hold 计费)。游客硬上限:20 张/本、1 本/号、匿名注册每 IP 每小时 5 次
@@ -449,5 +459,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**
-checked-at: 83e0db16
+checked-at: 6d4d3546
 -->

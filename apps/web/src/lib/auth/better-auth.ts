@@ -5,10 +5,9 @@ import { anonymous } from 'better-auth/plugins/anonymous';
 import { phoneNumber as phoneNumberPlugin } from 'better-auth/plugins/phone-number';
 import { APIError, createAuthEndpoint, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
 import { parseSetCookieHeader, setSessionCookie } from 'better-auth/cookies';
-import { appendFile, mkdir } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { randomInt } from 'node:crypto';
 import { z } from 'zod';
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import * as schema from '@/db/schema';
 import { anonTransferService } from '@/services/user/anon-transfer-service';
@@ -17,6 +16,7 @@ import { clientIpFrom } from '@/lib/api/client-ip';
 import { ANON_SIGNUP_PER_IP_PER_HOUR } from '@/config/anon';
 import { sendEmail } from '@/lib/email/send-email';
 import { renderPasswordResetEmail, renderVerificationEmail } from '@/lib/email/templates';
+import { sendSms } from '@/lib/sms/send-sms';
 import { defaultLocale, detectLocale, type Locale } from '@/lib/i18n/routing';
 import { env } from '@/lib/env';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/config/auth';
@@ -67,38 +67,110 @@ export function getBetterAuthSchema(schemaModule: Partial<SchemaModule>): Better
   };
 }
 
-// ─── 手机号注册/登录(2026-10-27,免短信验证版)───────────────────────────────
-// 决策:注册=手机号+密码直接建号(phoneNumber 插件没有原生的密码注册路由,其
-// 注册走「OTP 验证时自动建号」);登录=插件的 /sign-in/phone-number(默认不查
-// phoneNumberVerified,正合「先不校验」)。email 用 `{手机号}@phone.yujee.local`
-// 占位且 emailVerified=true —— 这类账号永远不收邮件,也不该被邮箱验证墙拦。
-// 后期接短信:把 sendOTP / sendPasswordResetOTP 换成真短信商,再把 requireVerification
-// 打开即可,注册路由与存量数据零改动。找回路径不回落到 sendOTP,两个回调都要接。
+// ─── 手机号注册/登录(2026-10-28 起:短信 OTP 真实验证版)──────────────────────
+// 演进:2026-10-27 免验证期(手机号+密码直接建号)→ 本批接入阿里云短信后,注册
+// 强制 OTP 验证(建号即 phoneNumberVerified=true,终结免验证期),登录新增「验证码
+// 登录」子模式(插件 /phone-number/send-otp + /phone-number/verify),密码登录保留。
+// email 仍用 `{手机号}@phone.yujee.local` 占位且 emailVerified=true —— 这类账号
+// 永远不收邮件,也不该被邮箱验证墙拦。验证码真实下发/回落在 lib/sms(sendOTP /
+// sendPasswordResetOTP 两个回调 + 自定义注册发码端点),capture 模式沿用
+// EMAIL_CAPTURE_FILE。requireVerification 保持全局关闭(D7):新号天然 verified,
+// 存量号首次 OTP 登录时由 /phone-number/verify 自动转正,密码登录不设验证墙。
 const PHONE_PLACEHOLDER_DOMAIN = 'phone.yujee.local';
 
-type PhoneOtpKind = 'phone-otp' | 'phone-otp-reset';
+// 与 phoneNumber 插件默认值钉同口径(otpLength=6 / expiresIn=300s / allowedAttempts=3):
+// 自定义注册发码端点自己造 verification 行,格式必须与插件的 `${code}:${attempts}`
+// 完全一致,否则 consumePhoneNumberOTP 验不了。
+const PHONE_OTP_LENGTH = 6;
+const PHONE_OTP_EXPIRES_IN_SECONDS = 300;
 
-async function capturePhoneOtp(
-  phoneNumber: string,
-  code: string,
-  kind: PhoneOtpKind,
-): Promise<void> {
-  // 短信未接入:登录 OTP 与找回 OTP 都落 capture 文件(EMAIL_CAPTURE_FILE)。
-  // kind 分开,便于验收时按 phone-otp-reset 取码。后期接线只动这两个回调。
-  const capturePath = resolve(process.cwd(), env.EMAIL_CAPTURE_FILE);
-  await mkdir(dirname(capturePath), { recursive: true });
-  await appendFile(
-    capturePath,
-    `${JSON.stringify({ kind, phoneNumber, code, capturedAt: new Date().toISOString() })}\n`,
-    'utf8',
-  );
+function generatePhoneOtp(): string {
+  return String(randomInt(0, 10 ** PHONE_OTP_LENGTH)).padStart(PHONE_OTP_LENGTH, '0');
+}
+
+// phoneNumber 插件的内部 API:验码并消费,不发会话、不动用户。运行时挂在
+// auth.api 上,但 createAuthOptions 的返回类型注解(BetterAuthOptions)把
+// plugins 数组收窄成了泛型,infer 丢了插件端点 —— 这里用最小签名钉住契约
+// (与 require-auth.ts 调 getSession、插件源码 routes.mjs 的实现对照)。
+type ConsumePhoneNumberOtp = (input: {
+  body: { phoneNumber: string; code: string };
+}) => Promise<{ status: boolean }>;
+
+function consumePhoneNumberOtp(phone: string, code: string): Promise<{ status: boolean }> {
+  const api = getAuth().api as unknown as { consumePhoneNumberOTP: ConsumePhoneNumberOtp };
+  return api.consumePhoneNumberOTP({ body: { phoneNumber: phone, code } });
+}
+
+// 同号 60s 一条(方案 §5.1 第①层):better-auth 的限流只有按 IP,换 IP 轰炸同号
+// 拦不住 —— 直查 verifications 表该 identifier 最新一行,60s 内有新行即 429。
+// 登录发码与注册发码共用 identifier=裸手机号,窗口天然共享。
+const OTP_SEND_MIN_INTERVAL_MS = 60_000;
+
+export async function lastOtpSentAt(identifier: string): Promise<Date | null> {
+  const rows = await db
+    .select({ createdAt: schema.verifications.createdAt })
+    .from(schema.verifications)
+    .where(eq(schema.verifications.identifier, identifier))
+    .orderBy(desc(schema.verifications.createdAt))
+    .limit(1);
+  return rows[0]?.createdAt ?? null;
+}
+
+async function throttleOtpByPhone(phone: string): Promise<void> {
+  const last = await lastOtpSentAt(phone);
+  if (last && Date.now() - last.getTime() < OTP_SEND_MIN_INTERVAL_MS) {
+    throw new APIError('TOO_MANY_REQUESTS', {
+      message: 'Too many OTP requests for this phone number',
+    });
+  }
 }
 
 const yujeePhoneSignup = {
   id: 'yujee-phone-signup',
   endpoints: {
-    /** 手机号+密码注册(免验证)。会话/cookie/密码哈希全部走 better-auth 内部
-     *  通道,与官方 /sign-up/email 同款收尾(internalAdapter + setSessionCookie)。 */
+    /**
+     * 注册发码(仅未注册号真实下发)。与登录发码(插件 /phone-number/send-otp,
+     * 仅已注册号真实下发)互为镜像 —— 同一号码在两种流程里的「该不该收到码」
+     * 状态相反,必须分开两个端点各自把关,共用同号 60s 窗口与同一 verification
+     * identifier,防换端点绕过限频。
+     * 已注册号:静默 200 不发码不烧钱(防枚举,与 D1 登录侧短路同款语义);提交
+     * 注册时自然会拿到 PHONE_ALREADY_REGISTERED 冲突面板。
+     */
+    sendPhoneSignupOtp: createAuthEndpoint(
+      '/phone-signup/send-otp',
+      {
+        method: 'POST',
+        body: z.object({ phoneNumber: z.string().min(5).max(20) }),
+      },
+      async (ctx) => {
+        const phone = normalizePhoneNumber(ctx.body.phoneNumber);
+        if (!phone) {
+          throw new APIError('BAD_REQUEST', { message: 'Invalid phone number' });
+        }
+        await throttleOtpByPhone(phone);
+        const existing = await ctx.context.adapter.findOne({
+          model: 'user',
+          where: [{ field: 'phoneNumber', value: phone }],
+        });
+        if (existing) {
+          return ctx.json({ message: 'code sent' });
+        }
+        // 镜像插件 sendPhoneNumberOTP 的存码格式(identifier=裸号,value=`code:0`)
+        const code = generatePhoneOtp();
+        await ctx.context.internalAdapter.createVerificationValue({
+          value: `${code}:0`,
+          identifier: phone,
+          expiresAt: new Date(Date.now() + PHONE_OTP_EXPIRES_IN_SECONDS * 1000),
+        });
+        await sendSms({ phoneNumber: phone, code, scene: 'signup' });
+        return ctx.json({ message: 'code sent' });
+      },
+    ),
+    /** 手机号+密码+验证码注册。会话/cookie/密码哈希全部走 better-auth 内部通道,
+     *  与官方 /sign-up/email 同款收尾(internalAdapter + setSessionCookie)。
+     *  建号前先经插件的 consumePhoneNumberOTP 验码并消费(内部 API:不发会话、
+     *  不动用户;码错/过期 400 INVALID_OTP,连错 3 次 403 TOO_MANY_ATTEMPTS),
+     *  通过才建号且 phoneNumberVerified=true —— 注册即完成手机号验证(D3)。 */
     signUpWithPhone: createAuthEndpoint(
       '/phone-signup',
       {
@@ -106,6 +178,7 @@ const yujeePhoneSignup = {
         body: z.object({
           phoneNumber: z.string().min(5).max(20),
           password: z.string().min(MIN_PASSWORD_LENGTH).max(MAX_PASSWORD_LENGTH),
+          code: z.string().trim().min(4).max(10),
           name: z.string().trim().min(1).max(40).optional(),
         }),
       },
@@ -125,6 +198,9 @@ const yujeePhoneSignup = {
         if (byEmail || byPhone) {
           throw new APIError('BAD_REQUEST', { code: 'PHONE_ALREADY_REGISTERED', message: 'Phone number already registered' });
         }
+        // 验码并消费。放在注册冲突预检之后:已注册号不该烧掉用户手里还没用的码。
+        // getAuth() 在请求期已初始化(端点由它挂载),与 require-auth.ts 同款用法。
+        await consumePhoneNumberOtp(phone, ctx.body.code.trim());
         // 与官方 /sign-up/email 同款:先哈希、createUser(不含密码)、linkAccount
         // 落 credential 账户 —— 哈希在创建前做完,任何插件坏了也不会留下半截用户。
         const hash = await ctx.context.password.hash(ctx.body.password);
@@ -134,7 +210,7 @@ const yujeePhoneSignup = {
             name: ctx.body.name?.trim() || `用户 ${phone.slice(-4)}`,
             emailVerified: true,
             phoneNumber: phone,
-            phoneNumberVerified: false,
+            phoneNumberVerified: true,
           },
           { method: 'phone-number' },
         );
@@ -210,19 +286,23 @@ const throttleAnonymousSignIn = createAuthMiddleware(async (ctx) => {
   }
 });
 
-// 插件的找回端点按 body.phoneNumber 精确查用户、精确写 verification identifier。
+// 插件的手机端点全部按 body.phoneNumber 精确查用户、精确写 verification identifier。
 // 注册端落库前走过 normalizePhoneNumber;这里同样归一,否则「+86 138…」注册、
-// 「+86-138-…」找回会查无此人(账号不存在时插件仍返回成功且不发码)。
-const PHONE_PASSWORD_RESET_PATHS: ReadonlySet<string> = new Set([
+// 「+86-138-…」登录/找回会查无此人(账号不存在时插件仍返回成功且不发码)。
+// 覆盖面:密码登录、验证码登录发码/验码、找回两条 —— 注册端点在 handler 内自归一。
+const PHONE_BODY_NORMALIZE_PATHS: ReadonlySet<string> = new Set([
+  '/sign-in/phone-number',
+  '/phone-number/send-otp',
+  '/phone-number/verify',
   '/phone-number/request-password-reset',
   '/phone-number/reset-password',
 ]);
 
-function normalizePhonePasswordResetBody(ctx: {
+function normalizePhoneAuthBody(ctx: {
   path: string;
   body?: { phoneNumber?: unknown } & Record<string, unknown>;
 }) {
-  if (!PHONE_PASSWORD_RESET_PATHS.has(ctx.path)) return;
+  if (!PHONE_BODY_NORMALIZE_PATHS.has(ctx.path)) return;
   const raw = typeof ctx.body?.phoneNumber === 'string' ? ctx.body.phoneNumber : '';
   const phone = normalizePhoneNumber(raw);
   if (!phone) {
@@ -239,9 +319,40 @@ function normalizePhonePasswordResetBody(ctx: {
   };
 }
 
+// 验证码登录的发码门(方案 §4.1,默认 D1):归一 → 同号 60s 限频 → 未注册号
+// 静默短路。短路返回 200 与插件成功响应同形(防枚举:攻击者扫号既拿不到码也
+// 探不出「该号是否注册」),真实短信不下发、不烧钱;已注册 → 放行进插件正常
+// 发码。顺序与限频口径和 /phone-signup/send-otp 对齐(同 identifier 共享窗口)。
+// middleware 短路契约(better-call):直接返回 body 对象 —— Node ESM interop 下
+// 它会被包成 { response: body },dispatch 层拿它当最终响应(实测钉住,见
+// phone-otp-login.test.ts)。
+async function gateLoginPhoneOtpSend(ctx: {
+  path: string;
+  body?: { phoneNumber?: unknown } & Record<string, unknown>;
+}): Promise<{ message: string } | undefined> {
+  if (ctx.path !== '/phone-number/send-otp') return;
+  const raw = typeof ctx.body?.phoneNumber === 'string' ? ctx.body.phoneNumber : '';
+  const phone = normalizePhoneNumber(raw);
+  if (!phone) {
+    throw new APIError('BAD_REQUEST', { message: 'Invalid phone number' });
+  }
+  await throttleOtpByPhone(phone);
+  const existing = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.phoneNumber, phone))
+    .limit(1);
+  if (existing.length === 0) {
+    return { message: 'code sent' };
+  }
+  return undefined;
+}
+
 // options.hooks.before 与 after 一样只收单个 middleware(见 yujeeAuthAfterHooks)。
 const yujeeAuthBeforeHooks = createAuthMiddleware(async (ctx) => {
-  const rewritten = normalizePhonePasswordResetBody(ctx);
+  const shortCircuit = await gateLoginPhoneOtpSend(ctx);
+  if (shortCircuit) return shortCircuit as never;
+  const rewritten = normalizePhoneAuthBody(ctx);
   if (rewritten) return rewritten;
   await throttleAnonymousSignIn(ctx);
 });
@@ -270,17 +381,25 @@ async function linkAnonymousOnVerifyEmail(ctx: AuthHookCtx) {
 }
 
 // ─── 手机号注册/登录的游客并号(2026-10-27)──────────────────────────────────
-// 游客持匿名 session 走手机号注册或登录:过户业务数据 → 删匿名号。两条路各有一个坑:
+// 游客持匿名 session 走手机号注册或登录:过户业务数据 → 删匿名号。三条路各有坑:
 // - /phone-signup(自定义端点)不在 anonymous 插件转正 matcher 的路径名单里(matcher
 //   认 /sign-in、/sign-up、/callback 等前缀),插件 hook 对它完全不跑 —— 没有显式
 //   hook,游客的书会滞留在无人可见的匿名号下;
-// - /sign-in/phone-number 在名单里(插件 hook 本就会转正),这里仍是权威路径:user
-//   级 after-hook 先于插件 hook 执行,先做完过户+删号;插件 hook 随后的二次触发由
-//   transferAnonWithGuard 开头的实查闸拦成 no-op,一次请求恰好一次过户(Q1)。
+// - /sign-in/phone-number 与 /phone-number/verify(验证码登录,2026-10-28 起)都在
+//   matcher 名单里(1.7.12 的 dist/plugins/anonymous/index.mjs:170 含
+//   /phone-number/verify 前缀 —— SA 方案稿写的「不在名单」与实际不符),插件 hook
+//   本就会转正;这里仍是权威路径:user 级 after-hook 先于插件 hook 执行,先做完
+//   过户+删号;插件 hook 随后的二次触发由 transferAnonWithGuard 开头的实查闸拦成
+//   no-op,一次请求恰好一次过户(Q1,phone-otp-login.test.ts L3 实测钉住)。显式
+//   接管让并号语义不依赖插件版本的 matcher 名单。
 // 判定镜像 linkAnonymousOnVerifyEmail:响应真的种了 session cookie + 请求 cookie 里
 // 的旧 session 是匿名 → 过户 + 删匿名号。无匿名 session 的普通注册/登录(#52 行为)
 // 在 oldSession 判定处自然早退,零副作用(R4)。
-export const PHONE_AUTH_LINK_PATHS: ReadonlySet<string> = new Set(['/phone-signup', '/sign-in/phone-number']);
+export const PHONE_AUTH_LINK_PATHS: ReadonlySet<string> = new Set([
+  '/phone-signup',
+  '/sign-in/phone-number',
+  '/phone-number/verify',
+]);
 
 // 幂等闸 + 过户共用体:按主键实查匿名行。cookie 缓存里的旧匿名 session 作不了数 ——
 // 删行之后缓存最多还能「活」5 分钟(cookieCache maxAge),插件 hook 会带着它再进来。
@@ -414,18 +533,20 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
           await transferAnonWithGuard(ctx, anonymousUser.user.id, newUser.user.id);
         },
       }),
-      // 手机号:官方插件给登录(/sign-in/phone-number)、OTP 升级,以及找回
+      // 手机号:官方插件给密码登录(/sign-in/phone-number)、验证码登录发码/验码
+      // (/phone-number/send-otp、/phone-number/verify),以及找回
       // (/phone-number/request-password-reset + /reset-password)。
       // 注册走我们自定义的 /phone-signup(见 yujeePhoneSignup)。requireVerification
-      // 不设(默认关):未验证手机号也能登录 —— 接短信后再打开。
+      // 保持不设(默认关,D7):新号注册即 verified,存量号首次 OTP 登录自动转正,
+      // 密码登录不设验证墙 —— 存量用户零感知。
       // 找回发码只调 sendPasswordResetOTP,不回落 sendOTP;漏接则账号存在也无码。
-      // 找回成功不改 phoneNumberVerified(免验证期,见 onPasswordReset 只补邮箱验证)。
+      // 验证码真实下发/回落全在 lib/sms(SMS_DELIVERY 开关),这里只接线。
       phoneNumberPlugin({
         sendOTP: async ({ phoneNumber, code }) => {
-          await capturePhoneOtp(phoneNumber, code, 'phone-otp');
+          await sendSms({ phoneNumber, code, scene: 'login' });
         },
         sendPasswordResetOTP: async ({ phoneNumber, code }) => {
-          await capturePhoneOtp(phoneNumber, code, 'phone-otp-reset');
+          await sendSms({ phoneNumber, code, scene: 'reset' });
         },
       }),
       yujeePhoneSignup,
@@ -460,8 +581,11 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
         '/request-password-reset': { window: 3600, max: 3 },
         // 手机号注册与发码不在 better-auth 内置特殊限流的路径名单里
         // (那套只认 /sign-in /sign-up /change-* /request-password-reset 前缀),
-        // 不配就会落到默认 100 次/10 秒 —— 注册 10 分钟 5 次、发码 1 分钟 3 次。
+        // 不配就会落到默认 100 次/10 秒 —— 注册 10 分钟 5 次、发码(登录/注册两个
+        // 端点)各 1 分钟 3 次;同号 60s 窗口另由 before-hook/端点内的
+        // throttleOtpByPhone 把关(按 IP 之外的第二层)。
         '/phone-signup': { window: 600, max: 5 },
+        '/phone-signup/send-otp': { window: 60, max: 3 },
         '/phone-number/send-otp': { window: 60, max: 3 },
         // 手机号找回与邮件找回同一量级。插件对 /phone-number* 另有 10 次/60s
         // 兜底;customRules 精确路径在其后覆盖,这条是 3 次/小时。

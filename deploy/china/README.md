@@ -43,10 +43,11 @@ uptime-kuma 监控 + 异地备份接收端）。
 | P2.1 engine compose→Ark（`COMPOSE_PROVIDER=ark`） | ✅ 已合入主仓（`engine/tests/test_compose_provider_ark.py`）；2026-10-28 起成稿/改书切 kexiangai 中转站（OpenAI 兼容，`ARK_BASE_URL` 指向 `https://kexiangai.com/api/v1`，成稿 `doubao-seed-2-1-pro-260628`、改书走 design-agent 新 `openai-compat` provider） |
 | P2.2 web 存储 env 化（COS endpoint/path-style） | ✅ 已合入主仓；桶 CORS + `analyze-uploads/` 生命周期已配好并实测 |
 | P2.3 三个 Dockerfile（web/design/clip） | ✅ 已跑通，镜像 `yujee/{web,design,clip}:china` |
-| 单机五容器部署 + 33 迁移 + crontab | ✅ 2026-10-25 全部上线健康 |
+| 单机五容器部署 + 34 迁移 + crontab | ✅ 2026-10-25 全部上线健康（0034 手机号 +86 前缀收敛随 2026-10-28 短信 OTP 批） |
 | 端到端验收 | ◐ 合成书 e2e 已过（成稿 7.2s、回调三连达）；**真实照片成稿质量验收待做** |
 | 浏览器全流程实测 | ◐ 前置已清（8080 安全组放行、COS 预检 200）；实测本身待跑 |
-| 域名 / HTTPS / 备案 / 支付 / 手机号登录 | ⬜ 未做（见「域名后补」与 plans §3.4） |
+| 短信 OTP（阿里云，登录/注册/找回） | ✅ 代码已合（2026-10-28 批）；上线待服务器配 `SMS_DELIVERY=aliyun` 四件套（见密钥清单与「短信 OTP」节） |
+| 域名 / HTTPS / 备案 / 支付 | ⬜ 未做（见「域名后补」与 plans §3.4） |
 
 ⚠️ photo-profile 的视觉模型走 settings 默认 `doubao-seed-1-6-vision-250815`，
 **该名不在中转站模型列表**（2026-10-28 起 ARK_* 槽指向 kexiangai；站内模型列表
@@ -104,6 +105,30 @@ merge 到 main → CI 五门全绿 → `deploy` job 用**专用 restricted key**
 | `CRON_SECRET` | web crontab | 已生成（曾泄露轮换过一次） |
 | `PG_PASSWORD` | web+postgres | 已生成 |
 | `R2_*` 三件套 + `S3_ENDPOINT/REGION/FORCE_PATH_STYLE` | web → 腾讯 COS | 已配好并实测（CORS/生命周期见上表） |
+| `ALIYUN_SMS_ACCESS_KEY_ID/SECRET` | web 短信 OTP（RAM 子账号，只授 `dysms:SendSms`） | 待建（2026-10-28 起，见「短信 OTP」节；不复用 ARK 主账号 key） |
+| `ALIYUN_SMS_SIGN_NAME` + `ALIYUN_SMS_TEMPLATE_CODE` + `SMS_DELIVERY` | web 短信 OTP（签名/模板 CODE/开关） | 具体值在生产 single.env（模板形态见 single.env.example 示例行） |
+
+## 短信 OTP（阿里云国内短信，2026-10-28 批）
+
+登录（密码/验证码双模式）、注册强制验证、手机号找回全部走阿里云国内短信；
+代码开关 `SMS_DELIVERY=capture|aliyun`（`capture` 回落 email-capture.jsonl，
+作为阿里云故障/欠费期的应急降级通道，勿长期停留）。上线前人工清单：
+
+1. **RAM 子账号**：专用子账号 + 自定义策略只授 `dysms:SendSms`，AK/SK 进
+   single.env（600）。泄露应急 = RAM 控制台禁用 AK → 换新 AK 改 env 重启 web。
+2. **签名**：复用公司已有可用签名（名称见生产 single.env / 阿里云控制台）；
+   若需新申请，国内站验证码签名要实名主体资质（本站尚无域名/备案，新签名
+   大概率卡备案）。
+3. **模板**：验证码类模板 ×1（登录/注册与找回共用），变量 `${code}`，文案
+   含「5 分钟内有效」；控制台拿到 CODE 后填 `ALIYUN_SMS_TEMPLATE_CODE`。
+4. **控制台流控**（应用限流之外的最后防线）：同一号码 1 条/分钟、5 条/小时、
+   10 条/天；应用侧另有同号 60s + 同 IP 3 次/分钟（send-otp）与 3 次/小时（找回）。
+5. **余额告警**：阿里云费用中心设余额预警 —— 欠费即停发且接口层看不出
+   （`isv.AMOUNT_NOT_ENOUGH` 只在日志里 error），必须告警兜底。
+6. **切换步骤**：single.env 填四件套 + `SMS_DELIVERY=aliyun` → `compose up -d`
+   （web 重启）；env.ts 会在漏配时启动即炸（fail-fast），真机冒烟一条验证码。
+7. **对账**：web 日志 `sms.send.ok {scene, 脱敏手机号, bizId}` ↔ 阿里云控制台
+   「发送记录」按 BizId/手机号/时间检索；日志任何模式都不落验证码明文。
 
 ## 目录
 

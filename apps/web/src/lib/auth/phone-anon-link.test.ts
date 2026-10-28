@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { test } from 'node:test';
 
 import { eq } from 'drizzle-orm';
@@ -6,7 +8,9 @@ import { db } from '@/db/client';
 import { users } from '@/db/schema';
 import { albumRepo } from '@/db/repos/album-repo';
 import { cleanupUser, isDbReachable, makeAlbum } from '@/db/repos/__test__/setup';
+import { env } from '@/lib/env';
 import { getAuth } from './better-auth';
+import { normalizePhoneNumber } from './phone';
 
 // 手机号注册/登录的游客并号(R1–R5):直接驱动真实 better-auth handler,连 after-hook
 // 一起验,不 mock。请求形态对齐浏览器:JSON POST + origin 头(带 cookie 时 better-auth
@@ -38,9 +42,34 @@ function cookieHeaderFrom(res: Response): string {
     .join('; ');
 }
 
-// Date.now() 尾数保证多场景间手机号不撞;+86 + 12 位数字,过 normalizePhoneNumber。
+let phoneSeq = 0;
+
+// Date.now() 尾数 + 序号保证多场景间手机号不撞;+86 输入形态,归一后为大陆
+// 11 位裸号(138 + 8 位)。
 function uniquePhone(): string {
-  return `+86138${String(Date.now()).slice(-9)}${String(Math.floor(Math.random() * 9))}`;
+  phoneSeq += 1;
+  return `+86138${String(Date.now()).slice(-7)}${phoneSeq % 10}`;
+}
+
+// 注册强制 OTP(D3,2026-10-28 起):capture 模式下验证码落 EMAIL_CAPTURE_FILE。
+async function signupCodeFor(phoneInput: string): Promise<string> {
+  const phone = normalizePhoneNumber(phoneInput);
+  assert.ok(phone);
+  const sent = await callAuth('/phone-signup/send-otp', jsonInit({ phoneNumber: phone }));
+  const text = await sent.text();
+  assert.equal(sent.status, 200, `signup send-otp -> ${sent.status}: ${text}`);
+  const capturePath = resolve(process.cwd(), env.EMAIL_CAPTURE_FILE);
+  for (let i = 0; i < 20; i++) {
+    const rows = readFileSync(capturePath, 'utf8')
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { kind?: string; scene?: string; phoneNumber?: string; code?: string })
+      .filter((row) => row.phoneNumber === phone && row.kind === 'phone-otp' && row.scene === 'signup');
+    const code = rows.at(-1)?.code;
+    if (code) return code;
+    await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+  }
+  assert.fail(`no signup otp capture row for ${phone}`);
 }
 
 interface AuthJson {
@@ -79,7 +108,7 @@ test('R1: 未注册手机号 /phone-signup → 游客相册过户 + 匿名号删
   try {
     const res = await callAuth(
       '/phone-signup',
-      jsonInit({ phoneNumber: phone, password: 'password123', name: 'R1 用户' }, anon.cookie),
+      jsonInit({ phoneNumber: phone, password: 'password123', name: 'R1 用户', code: await signupCodeFor(phone) }, anon.cookie),
     );
     const body = await readJson(res, 'phone-signup', 200);
 
@@ -101,7 +130,7 @@ test('R2: 已注册手机号 /sign-in/phone-number 登录 → 过户到已有正
   }
   // 先用无匿名 cookie 的注册建正式号 —— 顺带覆盖 R4:无匿名 session 不误触发并号。
   const phone = uniquePhone();
-  const signUp = await callAuth('/phone-signup', jsonInit({ phoneNumber: phone, password: 'password123' }));
+  const signUp = await callAuth('/phone-signup', jsonInit({ phoneNumber: phone, password: 'password123', code: await signupCodeFor(phone) }));
   const realUserId = (await readJson(signUp, 'phone-signup', 200)).user.id;
 
   const anon = await createAnonSession();
@@ -132,7 +161,7 @@ test('R3: 已注册号误走注册 → PHONE_ALREADY_REGISTERED,不过户不删�
     return;
   }
   const phone = uniquePhone();
-  const signUp = await callAuth('/phone-signup', jsonInit({ phoneNumber: phone, password: 'password123' }));
+  const signUp = await callAuth('/phone-signup', jsonInit({ phoneNumber: phone, password: 'password123', code: await signupCodeFor(phone) }));
   const realUserId = (await readJson(signUp, 'phone-signup', 200)).user.id;
 
   const anon = await createAnonSession();
@@ -140,7 +169,8 @@ test('R3: 已注册号误走注册 → PHONE_ALREADY_REGISTERED,不过户不删�
   try {
     const res = await callAuth(
       '/phone-signup',
-      jsonInit({ phoneNumber: phone, password: 'password123' }, anon.cookie),
+      // 已注册号的发码被静默短路(不发码);冲突预检在验码之前,code 只需过 schema。
+      jsonInit({ phoneNumber: phone, password: 'password123', code: '000000' }, anon.cookie),
     );
     const body = (await readJson(res, 'duplicate phone-signup', 400)) as { code?: string };
     assert.equal(body.code, 'PHONE_ALREADY_REGISTERED');
@@ -164,7 +194,7 @@ test('R5: 无业务数据的空游客 → transfer 空仍成功,匿名号照删'
   try {
     const res = await callAuth(
       '/phone-signup',
-      jsonInit({ phoneNumber: phone, password: 'password123' }, anon.cookie),
+      jsonInit({ phoneNumber: phone, password: 'password123', code: await signupCodeFor(phone) }, anon.cookie),
     );
     const body = await readJson(res, 'phone-signup', 200);
     assert.equal(await userRow(anon.userId), null, 'empty anonymous user must still be deleted');

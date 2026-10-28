@@ -52,6 +52,20 @@ const EnvSchema = z.object({
   EMAIL_DELIVERY: z.enum(['capture', 'console', 'resend']).default('capture'),
   EMAIL_CAPTURE_FILE: z.string().min(1).default('.tmp/email-capture.jsonl'),
   RESEND_API_KEY: z.string().optional(),
+
+  // 短信 OTP(阿里云国内短信),镜像 EMAIL_DELIVERY 的开关模式:
+  //   capture = 验证码写 EMAIL_CAPTURE_FILE(kind phone-otp / phone-otp-reset),
+  //             本地开发、CI、以及「代码先上线、密钥后配」的灰度窗口用它,现有
+  //             测试全部保持绿;
+  //   aliyun  = 真实下发(lib/sms/aliyun-sms.ts)。
+  // 登录/注册与找回共用一个验证码模板(变量 ${code},5 分钟有效,与插件
+  // expiresIn=300s 对齐)。RAM 子账号专用 AK(只授 dysms:SendSms)。
+  // 生产 SMS_DELIVERY=aliyun 时四件套必填,见 assertProductionEnv 的条件校验。
+  SMS_DELIVERY: z.enum(['capture', 'aliyun']).default('capture'),
+  ALIYUN_SMS_ACCESS_KEY_ID: z.string().optional(),
+  ALIYUN_SMS_ACCESS_KEY_SECRET: z.string().optional(),
+  ALIYUN_SMS_SIGN_NAME: z.string().optional(),
+  ALIYUN_SMS_TEMPLATE_CODE: z.string().optional(),
   DEMO_USER_ID: z.string().default('demo-user-001'),
   DEMO_USER_EMAIL: z.string().default('demo@yujee.local'),
   DEMO_USER_PASSWORD: z.string().min(8).default('demo-password-123'),
@@ -190,6 +204,27 @@ export function assertProductionEnv(raw: RawEnv): void {
         '客户端只认 base URL,只配密钥这条抠图 mask 链路根本不会被启用 —— ' +
         '要么两个都配,要么两个都别配。',
     );
+  }
+
+  // 短信开关:声称要真实下发却没配齐阿里云四件套 —— 宁可启动即炸,也不要带着
+  // 「用户点了获取验证码但永远收不到」的静默故障上线(欠费/漏配是这类故障的
+  // 主形状,见 WAFFO 条件校验的同一动机)。SMS_DELIVERY 不设或为 capture 时
+  // 四件套可缺(回落 capture 模式,作为阿里云故障期的应急降级通道)。
+  if (raw.SMS_DELIVERY === 'aliyun') {
+    const smsKeys = [
+      'ALIYUN_SMS_ACCESS_KEY_ID',
+      'ALIYUN_SMS_ACCESS_KEY_SECRET',
+      'ALIYUN_SMS_SIGN_NAME',
+      'ALIYUN_SMS_TEMPLATE_CODE',
+    ] as const;
+    const missingSms = smsKeys.filter((key) => !raw[key]?.trim());
+    if (missingSms.length > 0) {
+      throw new Error(
+        `生产环境 SMS_DELIVERY=aliyun 但缺少阿里云短信配置: ${missingSms.join(', ')}。` +
+          '验证码登录/注册验证/手机找回会静默发不出短信 —— 要么配齐四件套,' +
+          '要么把 SMS_DELIVERY 降回 capture(应急降级,勿长期停留)。',
+      );
+    }
   }
 }
 
