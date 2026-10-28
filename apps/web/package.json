@@ -11,6 +11,7 @@
     "test:repos": "tsx --test src/db/repos/*.test.ts src/services/job/zombie-sweeper.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "sitemap:check": "tsx scripts/sitemap-freshness-check.ts",
+    "sitemap:stamp": "tsx scripts/sitemap-stamp.ts",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",

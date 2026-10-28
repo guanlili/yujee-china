@@ -480,7 +480,7 @@ test('no indexable route escapes the freshness gate', () => {
 
   for (const [route, d] of Object.entries(FRESHNESS_DECLARATIONS)) {
     assert.ok(d.sources.length > 0, `${route} declares no sources, so the gate can never fire`);
-    assert.ok(d.reviewedAt.length > 0, `${route} has no reviewedAt commit`);
+    assert.ok(/^[0-9a-f]{12}$/.test(d.reviewedSources), `${route} has no 12-hex reviewedSources fingerprint`);
     assert.equal(d.updatedAt, contentUpdatedAt(route), `${route} gate and sitemap disagree on lastmod`);
   }
 });
