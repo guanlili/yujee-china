@@ -2,6 +2,9 @@
 # 与上游的三处差异：
 #   1) pip 走清华源；torch/torchvision CPU wheel 走阿里 pytorch-wheels 镜像
 #      （download.pytorch.org 国内不通；PyPI 的 linux torch 是 CUDA 巨包，不能碰）；
+#      2026-10-28 起大 wheel 用远程 ADD 预取：阿里镜像 CDN 开始对 HTTP/1.1 限速
+#      ~80KB/s（pip 只会 http1.1，两个 wheel ~460MB 要磨 1 小时），builder 的
+#      Go HTTP 走 HTTP/2 实测 14MB/s。URL 只含 x86_64（目标机固定）。
 #   2) 两个 ONNX 权重从构建上下文 COPY（rembg GitHub Releases 国内不稳，
 #      预下载放 weights/，与上游 URL 同源：v0.0.0 release 资产，Apache-2.0）；
 #   3) 本文件只服务 CLIP worker，无 INSTALL_CLIP 开关。
@@ -28,9 +31,13 @@ COPY packages/contracts/pricing ./packages/contracts/pricing
 # sha256 = 40d36571…eba950af 即校验值）：open_clip 3.x 的 pretrained="openai" 走
 # HuggingFace Hub，国内不通，因此烤进镜像并用 GROUPING_CLIP_MODEL_PATH 本地加载。
 
+ADD https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.12.1+cpu-cp312-cp312-manylinux_2_28_x86_64.whl \
+    https://mirrors.aliyun.com/pytorch-wheels/cpu/torchvision-0.27.1+cpu-cp312-cp312-manylinux_2_28_x86_64.whl \
+    /tmp/
+
 RUN pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
-      --find-links https://mirrors.aliyun.com/pytorch-wheels/cpu/ \
-      torch==2.12.1 torchvision==0.27.1 \
+      /tmp/torch-2.12.1+cpu-*.whl /tmp/torchvision-0.27.1+cpu-*.whl \
+ && rm -f /tmp/torch-*.whl /tmp/torchvision-*.whl \
  && pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
       "open_clip_torch>=2.26.0" \
  && pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
