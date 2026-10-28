@@ -22,8 +22,15 @@ ENV DATABASE_URL=postgres://build:build@build:5432/build \
     AGENT_SHARED_SECRET=build_placeholder \
     DESIGN_AGENT_BASE_URL=http://build.placeholder \
     DESIGN_AGENT_SHARED_SECRET=build_placeholder
-COPY . .
+# 依赖层只用清单文件:lockfile/根配置/workspace 各包 package.json 不变时,
+# 下面的 install 命中缓存 —— 源码改动(乃至纯文档 PR)不再触发全量重装。
+# (2026-10-29 修复:此前 COPY . . 在 install 之前,任何改动都重装,白烧 ~3min/次)
+# 注意 web 上下文白名单只含 contracts + apps/web,manifest 就只拷这两个包。
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.pi.base.json ./
+COPY apps/web/package.json ./apps/web/
+COPY packages/contracts/package.json ./packages/contracts/
 RUN pnpm install --filter @yujee/web... --frozen-lockfile
+COPY . .
 RUN pnpm --filter @yujee/web build
 
 # ---- runner ----

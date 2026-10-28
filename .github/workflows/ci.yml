@@ -90,7 +90,17 @@ jobs:
         working-directory: engine
       - run: PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
-  web:
+  # web 测试分片(2026-10-29):单 job 7m51s 是全流水线长杆,拆 2 片并行
+  # 后 ~4m。分片 = 排序后按行号取模,确定性;admin 独占批只在 shard 1 跑。
+  # 聚合:下面的 `web` 空门 job 聚合两片 —— check 名保持 "web" 不变,分支
+  # 保护与 deploy 的 needs 都无需改动(聚合 job 改名会牵动 required checks,
+  # 而分支保护配置只能网页端改,别绕)。
+  web-tests:
+    name: web tests (${{ matrix.shard }}/2)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -119,9 +129,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm design:build
       - run: pnpm --filter @yujee/web db:migrate
-      - run: pnpm --filter @yujee/web test
+      - name: web tests (shard ${{ matrix.shard }}/2)
+        run: |
+          cd apps/web
+          FILES=$(git ls-files 'src/**/*.test.ts' 'scripts/**/*.test.ts' | sort | awk -v s='${{ matrix.shard }}' -v n=2 'NR % n == (s-1)')
+          echo "本片文件数: $(echo "$FILES" | grep -c .)"
+          pnpm exec tsx --test $FILES
       # admin 集成测试对全库状态敏感,常规并行批整文件 skip,此处串行独占跑。
-      - run: pnpm --filter @yujee/web test:admin
+      - name: admin 集成测试(独占,仅 shard 1)
+        if: matrix.shard == 1
+        run: pnpm --filter @yujee/web test:admin
+
+  # 聚合门:check 名 = "web"(分支保护 required 与 deploy.needs 均认这个名)。
+  web:
+    needs: [web-tests]
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "web 两个分片全部通过"
 
   packages:
     runs-on: ubuntu-24.04
