@@ -114,16 +114,17 @@ const EnvSchema = z.object({
   S3_REGION: z.string().optional(),
   S3_FORCE_PATH_STYLE: z.string().optional(),
 
-  // 生图(AI 图片生成)。生产走 gemini —— Web 在 Vercel(美国),Ark 在北京,跨境
-  // 一张要 17s(实测),而 Gemini 同大洲且直接回 inlineData 免掉第二趟下载。
-  // 本地开发把 IMAGE_PROVIDER 设成 ark 更快(国内直连 5.6s)。
-  // 两把 key 都可缺省:缺了对应 provider 就不可用,生图入口关掉,其余功能不受影响。
-  IMAGE_PROVIDER: z.enum(['gemini', 'ark']).default('gemini'),
+  // 生图(AI 图片生成)。国内生产走 kexiang(中转站 SeeDream4.5 异步任务 API,
+  // 2026-10-28 起);gemini 是海外历史默认;ark(火山直连)是遗留回退。
+  // key 都可缺省:缺了对应 provider 就不可用,生图入口关掉,其余功能不受影响。
+  IMAGE_PROVIDER: z.enum(['gemini', 'ark', 'kexiang']).default('gemini'),
   GEMINI_API_KEY: z.string().optional(),
   ARK_API_KEY: z.string().optional(),
   // 生图独立 key:engine 的 ARK_API_KEY 已切中转站(kexiangai),生图仍直连火山
   // seedream,两把 key 不通用;未配时回落 ARK_API_KEY 兼容旧环境。
   ARK_IMAGE_API_KEY: z.string().optional(),
+  // kexiang 生图可省:缺省复用 ARK_API_KEY(自动剥 sk- 前缀,任务 API 用原始 key)。
+  KEXIANG_API_KEY: z.string().optional(),
   R2_PUBLIC_BASE_URL: z.string().url().default('https://cdn.yujeeai.com'),
 });
 

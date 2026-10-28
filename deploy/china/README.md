@@ -141,7 +141,7 @@ merge 到 main → CI 五门全绿 → `deploy` job 用**专用 restricted key**
 | `GROUPING_CLIP_SECRET` | agent→clip 本机回落链 | 已生成（clip.env） |
 | `ARK_API_KEY` | agent（compose 成稿 + photo-profile 视觉槽） | kexiangai 中转站 key（`sk-`+控制台 x-api-key；2026-10-28 起） |
 | `DESIGN_AGENT_API_KEY` | design-agent（openai-compat provider） | 与 `ARK_API_KEY` 同值 |
-| `ARK_IMAGE_API_KEY` | web AI 生图（仍直连火山 seedream，待第二批迁中转） | 火山方舟 key |
+| `ARK_IMAGE_API_KEY` | web AI 生图遗留回退（ark 直连火山）；生产已迁 kexiang（复用 `ARK_API_KEY`） | 火山方舟 key |
 | `BETTER_AUTH_SECRET` | web | 已生成 |
 | `CRON_SECRET` | web crontab | 已生成（曾泄露轮换过一次） |
 | `PG_PASSWORD` | web+postgres | 已生成 |
