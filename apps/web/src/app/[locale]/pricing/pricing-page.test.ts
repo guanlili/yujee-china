@@ -60,7 +60,7 @@ test('/pricing appears in the sitemap for every locale', async () => {
 
   for (const locale of locales) {
     assert.ok(
-      urls.includes(`https://yujeeai.com/${locale}/pricing`),
+      urls.includes(`https://outman.press/${locale}/pricing`),
       `sitemap is missing /${locale}/pricing`,
     );
   }

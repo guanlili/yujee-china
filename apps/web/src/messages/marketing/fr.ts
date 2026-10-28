@@ -54,7 +54,7 @@ export const fr: MarketingMessages = {
     sections: [
       {
         h: '1. Introduction',
-        body: 'Yujee (« nous ») attache de l’importance à votre vie privée. La présente politique de confidentialité explique comment nous collectons, utilisons, divulguons et protégeons vos informations lorsque vous utilisez yujeeai.com.',
+        body: 'Yujee (« nous ») attache de l’importance à votre vie privée. La présente politique de confidentialité explique comment nous collectons, utilisons, divulguons et protégeons vos informations lorsque vous utilisez outman.press.',
       },
       {
         h: '2. Informations que nous collectons',
@@ -89,7 +89,7 @@ export const fr: MarketingMessages = {
         body: '',
       },
     ],
-    contactLine: 'Une question ? Écrivez-nous à privacy@yujeeai.com.',
+    contactLine: 'Une question ? Écrivez-nous à privacy@outman.press.',
   },
   terms: {
     metaTitle: 'Yujee — Conditions d’utilisation',
@@ -100,7 +100,7 @@ export const fr: MarketingMessages = {
     sections: [
       {
         h: '1. Acceptation des conditions',
-        body: 'En accédant à Yujee (yujeeai.com) ou en l’utilisant, vous acceptez d’être lié par les présentes conditions d’utilisation. Si vous ne les acceptez pas, n’utilisez pas le service.',
+        body: 'En accédant à Yujee (outman.press) ou en l’utilisant, vous acceptez d’être lié par les présentes conditions d’utilisation. Si vous ne les acceptez pas, n’utilisez pas le service.',
       },
       {
         h: '2. Description du service',
@@ -167,7 +167,7 @@ export const fr: MarketingMessages = {
         body: '',
       },
     ],
-    contactLine: 'Une question ? Écrivez-nous à support@yujeeai.com.',
+    contactLine: 'Une question ? Écrivez-nous à support@outman.press.',
   },
   story: {
     metaTitle: 'Notre histoire — pourquoi j’ai créé Yujee',

@@ -51,7 +51,7 @@ export const zh: MarketingMessages = {
     sections: [
       {
         h: '1. 引言',
-        body: 'Yujee（"我们"）重视您的隐私。本政策说明我们在您使用 yujeeai.com 时如何收集、使用、披露和保护您的信息。',
+        body: 'Yujee（"我们"）重视您的隐私。本政策说明我们在您使用 outman.press 时如何收集、使用、披露和保护您的信息。',
       },
       {
         h: '2. 我们收集的信息',
@@ -97,7 +97,7 @@ export const zh: MarketingMessages = {
     sections: [
       {
         h: '1. 接受条款',
-        body: '访问或使用 Yujee（yujeeai.com）即表示你同意受本服务条款约束。如不同意，请勿使用本服务。',
+        body: '访问或使用 Yujee（outman.press）即表示你同意受本服务条款约束。如不同意，请勿使用本服务。',
       },
       {
         h: '2. 服务描述',

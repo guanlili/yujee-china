@@ -53,7 +53,7 @@ export const ja: MarketingMessages = {
     sections: [
       {
         h: '1. はじめに',
-        body: 'Yujee（以下「当社」）は、お客様のプライバシーを尊重します。本プライバシーポリシーは、お客様が yujeeai.com をご利用になる際に、当社がどのように情報を収集、利用、開示、保護するかを説明するものです。',
+        body: 'Yujee（以下「当社」）は、お客様のプライバシーを尊重します。本プライバシーポリシーは、お客様が outman.press をご利用になる際に、当社がどのように情報を収集、利用、開示、保護するかを説明するものです。',
       },
       {
         h: '2. 収集する情報',
@@ -88,7 +88,7 @@ export const ja: MarketingMessages = {
         body: '',
       },
     ],
-    contactLine: 'ご不明な点は privacy@yujeeai.com までメールでお問い合わせください。',
+    contactLine: 'ご不明な点は privacy@outman.press までメールでお問い合わせください。',
   },
   terms: {
     metaTitle: 'Yujee — 利用規約',
@@ -99,7 +99,7 @@ export const ja: MarketingMessages = {
     sections: [
       {
         h: '1. 規約への同意',
-        body: 'Yujee（yujeeai.com）にアクセスまたはご利用いただくことで、本利用規約に拘束されることに同意したものとみなされます。同意されない場合は、本サービスをご利用にならないでください。',
+        body: 'Yujee（outman.press）にアクセスまたはご利用いただくことで、本利用規約に拘束されることに同意したものとみなされます。同意されない場合は、本サービスをご利用にならないでください。',
       },
       {
         h: '2. サービスの内容',
@@ -166,7 +166,7 @@ export const ja: MarketingMessages = {
         body: '',
       },
     ],
-    contactLine: 'ご不明な点は support@yujeeai.com までメールでお問い合わせください。',
+    contactLine: 'ご不明な点は support@outman.press までメールでお問い合わせください。',
   },
   story: {
     metaTitle: '創業ストーリー — わたしが Yujee をつくった理由',

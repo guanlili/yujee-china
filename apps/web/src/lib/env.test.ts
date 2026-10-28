@@ -4,7 +4,7 @@ import { assertProductionEnv, isRealProduction, productionWarnings } from './env
 
 const FULL_PROD = {
   DATABASE_URL: 'postgresql://u:p@db.example.com:5432/yujee',
-  WEB_BASE_URL: 'https://yujeeai.com',
+  WEB_BASE_URL: 'https://outman.press',
   BETTER_AUTH_SECRET: 'a-real-secret-that-is-long-enough',
   AGENT_BASE_URL: 'https://yujee-agent.fly.dev',
   AGENT_SHARED_SECRET: 'a-real-agent-secret',

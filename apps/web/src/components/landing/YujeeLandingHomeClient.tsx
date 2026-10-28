@@ -8,6 +8,7 @@ import { useChromeSession } from '@/components/app/useChromeSession';
 import { LANDING_COPIES, type Sample } from '@/components/landing/copy';
 import { ADDON_PACKS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { SOCIAL_LINKS, SUPPORT_EMAIL } from '@/config/social';
+import { IcpBeianLink } from '@/components/marketing/IcpBeianLink';
 import { useSession } from '@/lib/auth/client';
 import { getMessages } from '@/lib/i18n/messages';
 import { pick } from '@/lib/i18n/pick';
@@ -868,7 +869,10 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
               <FooterColumn title={c.footerAccount} links={accountLinks} />
             </div>
             <div className="flex flex-col items-start justify-between gap-4 pt-8 sm:flex-row sm:items-center">
-              <div className="text-xs text-[var(--meta)]">{c.copyright}</div>
+              <div className="flex flex-col gap-1 text-xs text-[var(--meta)]">
+                <div>{c.copyright}</div>
+                <IcpBeianLink className="hover:text-[var(--fg)] underline-offset-2 hover:underline" />
+              </div>
               {/* Accounts come from @/config/social — an entry with no href is not
                   rendered. The Weibo icon that used to sit here pointed at weibo.com's
                   homepage, not an account. Email is always real, so it always shows. */}

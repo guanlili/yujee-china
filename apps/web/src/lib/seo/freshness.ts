@@ -111,10 +111,10 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   // examples.moreComing 一行碰到。对隐私页而言全是 chrome 或别页的文案,正文
   // 一个字没动 —— 这正是 reviewedAt/updatedAt 分开的意义:只推 reviewedAt。
   // 刷 updatedAt 等于告诉 Google 隐私政策也改了。
-  '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: '3fb63bbc' },
+  '/privacy': { sources: [MARKETING], updatedAt: '2026-10-28', reviewedAt: 'pending' },
   // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
   // refund rule) in both locales — a genuine content change, so this one moves.
-  '/terms': { sources: [MARKETING], updatedAt: '2026-08-08', reviewedAt: '3fb63bbc' },
+  '/terms': { sources: [MARKETING], updatedAt: '2026-10-28', reviewedAt: 'pending' },
   // 改 SHA 时上面的审计话必须跟着核对,而且只能引用 main 上存在的提交:上一轮
   // 留着一段引用 19093baf / 9c34faea 的旧句子,两个 SHA 都是 squash 前的、不在
   // main 上,其中一个还没干过它被记的那件事。写错的审计记录比没有更糟。

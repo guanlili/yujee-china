@@ -41,8 +41,8 @@ const nextConfig = {
       // 308 keeps the method and tells crawlers the apex is the real one.
       {
         source: "/:path*",
-        has: [{ type: "host", value: "www.yujeeai.com" }],
-        destination: "https://yujeeai.com/:path*",
+        has: [{ type: "host", value: "www.outman.press" }],
+        destination: "https://outman.press/:path*",
         permanent: true,
       },
       // /about is a grouping segment, not a page. Without this it 404s, which

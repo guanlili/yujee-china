@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
 import { env } from '@/lib/env';
-import { buildPasswordResetEmail, buildSocialProviders, createAuthOptions, getBetterAuthSchema, localeFromResetUrl, normalizePhoneNumber, PHONE_AUTH_LINK_PATHS } from './better-auth';
+import { buildPasswordResetEmail, buildSocialProviders, buildTrustedOrigins, createAuthOptions, getBetterAuthSchema, localeFromResetUrl, normalizePhoneNumber, PHONE_AUTH_LINK_PATHS } from './better-auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
 
 describe('normalizePhoneNumber(手机号归一,大陆 11 位)', () => {
@@ -228,14 +228,7 @@ describe('better-auth schema bridge', () => {
   });
 
   it('trusts common local dev origins used by alternate ports', () => {
-    const options = createAuthOptions({
-      users: {},
-      sessions: {},
-      accounts: {},
-      verifications: {},
-    });
-
-    assert.deepEqual(options.trustedOrigins, [
+    assert.deepEqual(buildTrustedOrigins('http://localhost:3000'), [
       'http://localhost:3000',
       'https://localhost:3000',
       'http://127.0.0.1:3000',
@@ -244,9 +237,36 @@ describe('better-auth schema bridge', () => {
       'https://localhost:3210',
       'http://127.0.0.1:3210',
       'https://127.0.0.1:3210',
-      // Apple 登录:appleid.apple.com 以 form_post 跨站回调,必须列入信任(见 better-auth.ts)。
       'https://appleid.apple.com',
     ]);
+  });
+
+  it('trusts production WEB_BASE_URL and its www variant for CSRF', () => {
+    assert.deepEqual(buildTrustedOrigins('https://outman.press'), [
+      'http://localhost:3000',
+      'https://localhost:3000',
+      'http://127.0.0.1:3000',
+      'https://127.0.0.1:3000',
+      'http://localhost:3210',
+      'https://localhost:3210',
+      'http://127.0.0.1:3210',
+      'https://127.0.0.1:3210',
+      'https://outman.press',
+      'https://www.outman.press',
+      'https://appleid.apple.com',
+    ]);
+  });
+
+  it('createAuthOptions wires trustedOrigins from env WEB_BASE_URL', () => {
+    const options = createAuthOptions({
+      users: {},
+      sessions: {},
+      accounts: {},
+      verifications: {},
+    });
+
+    assert.ok(Array.isArray(options.trustedOrigins));
+    assert.ok(options.trustedOrigins?.includes('https://appleid.apple.com'));
   });
 
   it('enables password reset and revokes every session once the password changes', () => {
@@ -300,7 +320,7 @@ describe('better-auth schema bridge', () => {
 
 describe('password reset email', () => {
   const url = (callback: string) =>
-    `https://yujeeai.com/api/auth/reset-password/tok123?callbackURL=${encodeURIComponent(callback)}`;
+    `https://outman.press/api/auth/reset-password/tok123?callbackURL=${encodeURIComponent(callback)}`;
 
   it('reads the locale back out of the callbackURL better-auth built', () => {
     assert.equal(localeFromResetUrl(url('/zh/reset-password')), 'zh');
@@ -312,13 +332,13 @@ describe('password reset email', () => {
     // so detectLocale must not be handed a whole URL — it splits on '/' and
     // would read the scheme as the locale segment.
     assert.equal(
-      localeFromResetUrl(url('https://yujeeai.com/ja/reset-password')),
+      localeFromResetUrl(url('https://outman.press/ja/reset-password')),
       'ja',
     );
   });
 
   it('falls back to the default locale for a missing, unknown or malformed callbackURL', () => {
-    assert.equal(localeFromResetUrl('https://yujeeai.com/api/auth/reset-password/tok123'), 'zh');
+    assert.equal(localeFromResetUrl('https://outman.press/api/auth/reset-password/tok123'), 'zh');
     assert.equal(localeFromResetUrl(url('/reset-password')), 'zh');
     assert.equal(localeFromResetUrl('not a url'), 'zh');
   });

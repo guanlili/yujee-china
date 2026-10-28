@@ -65,7 +65,7 @@ export const en: MarketingMessages = {
     sections: [
       {
         h: '1. Introduction',
-        body: 'Yujee ("we") values your privacy. This Privacy Policy explains how we collect, use, disclose, and protect your information when you use yujeeai.com.',
+        body: 'Yujee ("we") values your privacy. This Privacy Policy explains how we collect, use, disclose, and protect your information when you use outman.press.',
       },
       {
         h: '2. Information We Collect',
@@ -111,7 +111,7 @@ export const en: MarketingMessages = {
     sections: [
       {
         h: '1. Acceptance of Terms',
-        body: 'By accessing or using Yujee (yujeeai.com), you agree to be bound by these Terms of Service. If you do not agree, do not use the service.',
+        body: 'By accessing or using Yujee (outman.press), you agree to be bound by these Terms of Service. If you do not agree, do not use the service.',
       },
       {
         h: '2. Description of Service',

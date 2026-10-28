@@ -108,8 +108,8 @@ deploy/china/
 
 ### 3.4 域名切换清单（换域即查）
 
-- env：`WEB_BASE_URL`、`R2_PUBLIC_BASE_URL`、`AUTH_EMAIL_FROM`
-- 硬编码：`lib/seo/site.ts:10` SITE_URL（sitemap/canonical/JSON-LD 全走它）、`next.config.mjs:44-45` www 308、`config/social.ts:21`、`settings/page.tsx:10`、`templates/mag-20/index.tsx:48`（**印在书页上的网址**，模板改版要过 templates:check）
+- env：`WEB_BASE_URL`（生产 `https://outman.press`）、`R2_PUBLIC_BASE_URL`、`AUTH_EMAIL_FROM`
+- 硬编码：`lib/seo/site.ts:10` SITE_URL（**国内生产 = outman.press**；sitemap/canonical/JSON-LD 全走它）、`next.config.mjs` www 308 → apex、`config/social.ts:21`、`settings/page.tsx:10`、`templates/mag-20/index.tsx:48`（**印在书页上的网址**，模板改版要过 templates:check）
 - Google/Apple OAuth 控制台回调（国内版可不配：Google 缺省自动关闭、Apple 四件套缺一即禁用，邮箱密码登录不受影响）
 - `NEXT_PUBLIC_*` 零使用，无需重建客户端 bundle
 

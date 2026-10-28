@@ -400,7 +400,7 @@ Defaults live in `src/lib/env.ts`. Common fields:
 | `AGENT_CLIP_SECRET` | CLIP worker 的 bearer,未设则回落 `AGENT_SHARED_SECRET`(与 engine 的 `grouping_clip_secret or agent_shared_secret` 同一条回落规则) |
 | `DESIGN_AGENT_BASE_URL` | 设计 Agent base URL, default `http://localhost:8787` |
 | `DESIGN_AGENT_SHARED_SECRET` | Bearer secret shared with 设计 Agent(未设则不带鉴权头) |
-| `WEB_BASE_URL` | Web origin used in callbacks |
+| `WEB_BASE_URL` | Web origin used in callbacks; **国内生产** = `https://outman.press`（无尾斜杠，better-auth `baseURL` + CSRF trustedOrigins） |
 | `BETTER_AUTH_SECRET` | Auth signing secret |
 | `WAFFO_*` | Billing(主通道,2026-08 起) |
 | `CREEM_*` | Billing(仅在途订单 webhook 兜底) |
