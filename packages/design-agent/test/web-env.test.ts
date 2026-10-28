@@ -66,6 +66,19 @@ test("resolveDesignAgentModelConfig defaults to mock and supports real provider 
 		}),
 		{ provider: "volcengine", modelId: "ep-test" },
 	);
+	assert.deepEqual(
+		resolveDesignAgentModelConfig({
+			DESIGN_AGENT_PROVIDER: "openai-compat",
+		}),
+		{ provider: "openai-compat", modelId: "deepseek-v4-pro" },
+	);
+	assert.deepEqual(
+		resolveDesignAgentModelConfig({
+			DESIGN_AGENT_PROVIDER: "openai-compatible",
+			DESIGN_AGENT_MODEL: "doubao-seed-2-1-pro-260628",
+		}),
+		{ provider: "openai-compat", modelId: "doubao-seed-2-1-pro-260628" },
+	);
 });
 
 test("createDesignAgentModelRuntime registers Volcengine Ark through the core model layer", async () => {
@@ -79,4 +92,24 @@ test("createDesignAgentModelRuntime registers Volcengine Ark through the core mo
 	assert.equal(runtime.model.provider, "volcengine");
 	assert.equal(runtime.model.id, "ep-test");
 	assert.equal(runtime.models.getProvider("volcengine")?.name, "Volcengine Ark");
+});
+
+test("createDesignAgentModelRuntime registers the OpenAI-compatible relay with an env-overridable base URL", async () => {
+	const runtime = await createDesignAgentModelRuntime({
+		env: {
+			DESIGN_AGENT_PROVIDER: "openai-compat",
+			DESIGN_AGENT_MODEL: "deepseek-v4-pro",
+			DESIGN_AGENT_API_BASE_URL: "https://relay.example.com/api/v1",
+		},
+	});
+
+	assert.equal(runtime.model.provider, "openai-compat");
+	assert.equal(runtime.model.id, "deepseek-v4-pro");
+	assert.equal(runtime.model.baseUrl, "https://relay.example.com/api/v1");
+	assert.equal(runtime.models.getProvider("openai-compat")?.name, "OpenAI Compatible");
+
+	const defaultRuntime = await createDesignAgentModelRuntime({
+		env: { DESIGN_AGENT_PROVIDER: "openai-compat" },
+	});
+	assert.equal(defaultRuntime.model.baseUrl, "https://kexiangai.com/api/v1");
 });
