@@ -33,14 +33,14 @@ function disallowedPaths(): string[] {
 }
 
 test('SITE_URL is the bare apex, no trailing slash', () => {
-  assert.equal(SITE_URL, 'https://yujeeai.com');
+  assert.equal(SITE_URL, 'https://outman.press');
   assert.ok(!SITE_URL.endsWith('/'));
 });
 
 test('absoluteUrl joins without double slashes and keeps the apex host', () => {
-  assert.equal(absoluteUrl('/en'), 'https://yujeeai.com/en');
-  assert.equal(absoluteUrl('en'), 'https://yujeeai.com/en');
-  assert.equal(absoluteUrl('/'), 'https://yujeeai.com');
+  assert.equal(absoluteUrl('/en'), 'https://outman.press/en');
+  assert.equal(absoluteUrl('en'), 'https://outman.press/en');
+  assert.equal(absoluteUrl('/'), 'https://outman.press');
 });
 
 test('indexable routes exclude every auth/app route', () => {

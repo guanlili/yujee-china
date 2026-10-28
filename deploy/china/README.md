@@ -1,16 +1,25 @@
-# 国内部署（deploy/china/）—— IP 起步、域名后补
+# 国内部署（deploy/china/）—— 正式入口 https://outman.press
 
 > 2026-10-25 起草,同日落地为单机全家桶(历史草案曾规划两台 CVM + 东京 Fly CLIP,
 > 已废弃 —— 其遗留编排/env/wireguard 文件已于 2026-10-26 清仓,历史版本在 git)。
 > 本目录是**国内专属部署层**：业务代码改动走主仓
 > PR（env 门控），不在此 fork。
+>
+> **正式用户入口（2026-10-28 起）**：仅 **`https://outman.press`**（备案号
+> **京ICP备2022033467号-4**，主体展示 **李梨🍐个人主体**（个人域名备案））。
+> **禁止**对真实用户宣传或依赖明文 **`http://49.232.156.221:8080`** —— 该口仅
+> 供本机 nginx 反代与运维内测；公网 8080 在 merge + DevOps 收口后应关闭（见下）。
 
 ## 机器落位（2026-10-25 已部署：单机全家桶 @ 49.232.156.221）
 
 ```
-用户浏览器 ──HTTP──▶ 49.232.156.221:8080（speakup 生产同机，80/443 归 speakup 不动）
-   ┌─ yujee-web-1        Next.js :8080
-   ├─ yujee-design-agent-1  容器内网 :8787（对话改书，kexiangai 中转站）
+用户浏览器 ──HTTPS──▶ outman.press:443（SpeakUp frontend 容器 nginx，SNI 选证书）
+        │                      │
+        │                      └── proxy_pass host.docker.internal:8080 → yujee-web
+        └── HTTP :80 ──301──▶ https://outman.press（运维须保证 301 正常，勿留 500）
+
+内网/运维（非公网入口）：49.232.156.221:8080 → yujee-web-1（Next.js 容器 :8080）
+   ┌─ yujee-design-agent-1  容器内网 :8787（对话改书，kexiangai 中转站）
    ├─ yujee-agent-1      容器内网 :8001（生成主链路；调试口 127.0.0.1:8002）
    ├─ yujee-clip-1       CLIP+isnet（调试口 127.0.0.1:8001）
    ├─ yujee-postgres-1   PG16 + 自签 TLS（web 的 db 客户端对非 localhost 强制 ssl require）
@@ -18,11 +27,15 @@
 编排：compose.single.yml（五服务同一网络，agent→clip / web→agent 全走容器名）
 ```
 
+SpeakUp 仍占同机 **80/443**；遇己 HTTPS 通过 **english-speaking-assessment** 仓库已入库的
+`nginx-extra/outman.press.conf`（证书存在时 entrypoint 启用）反代到 **8080**，**不改
+SpeakUp 业务代码**。conf 维护在 SpeakUp 仓，本 PR 只文档化 coexistence。
+
 部署记录（2026-10-25）：五服务全部上线健康；33 个 drizzle 迁移已跑；三个镜像
 yujee/{clip:2.73GB, web:2.38GB, design:750MB}；实测内存 ~0.5G 常驻（CLIP 惰性
 加载，embedding 时 +1G）；speakup 全程无影响（无 OOM、无重启，其 10:45 的容器
-重建是它自己的 CI 部署）。入口：**http://49.232.156.221:8080**（IP 阶段明文，
-仅测试账号）。部署现场 `~/yujee-clip/`，密钥 `deploy/china/env/{clip,single}.env`。
+重建是它自己的 CI 部署）。**历史 IP 入口** `http://49.232.156.221:8080` 仅测试期使用；
+正式收口后不对真实用户开放。部署现场 `~/yujee-clip/`，密钥 `deploy/china/env/{clip,single}.env`。
 
 途中排掉的坑（都已固化到配置注释）：
 1. open_clip 3.x `pretrained="openai"` 拉 HuggingFace 国内不通 → ViT-B-32.pt 烤进
@@ -47,7 +60,7 @@ uptime-kuma 监控 + 异地备份接收端）。
 | 端到端验收 | ◐ 合成书 e2e 已过（成稿 7.2s、回调三连达）；**真实照片成稿质量验收待做** |
 | 浏览器全流程实测 | ◐ 前置已清（8080 安全组放行、COS 预检 200）；实测本身待跑 |
 | 短信 OTP（阿里云，登录/注册/找回） | ✅ 代码已合（2026-10-28 批）；上线待服务器配 `SMS_DELIVERY=aliyun` 四件套（见密钥清单与「短信 OTP」节） |
-| 域名 / HTTPS / 备案 / 支付 | ⬜ 未做（见「域名后补」与 plans §3.4） |
+| 域名 / HTTPS / 备案 / 支付 | ◐ **outman.press** 已备案（京ICP备2022033467号-4 / 李梨🍐个人主体）；HTTPS 反代已入库 SpeakUp nginx；应用侧 SITE_URL/页脚/WEB_BASE_URL 示例本 PR；生产 `single.env` + 关公网 8080 = **DevOps merge 后** |
 
 ⚠️ photo-profile 的视觉模型走 settings 默认 `doubao-seed-1-6-vision-250815`，
 **该名不在中转站模型列表**（2026-10-28 起 ARK_* 槽指向 kexiangai；站内模型列表
@@ -74,21 +87,49 @@ merge 到 main → CI 五门全绿 → `deploy` job 用**专用 restricted key**
 - 升级路线：镜像改由 CI 构建推腾讯 TCR、服务器只 pull（生产机减负，方案见
   「TCR 镜像 CI」待办）。
 
-## 域名后补（一次性动作，配置已参数化）
+## HTTPS 正式入口与 DevOps 收口（merge 后，本 PR 不改云控制台）
 
-1. `single.env` 里 `WEB_BASE_URL` 换域名；engine 侧 callbackUrl 由 web 请求自动携带，无需改。
-2. web 容器前加 nginx + certbot（`8080:3000` 改为 nginx 443 反代容器；届时根布局的
-   crypto.randomUUID polyfill 自动让位于原生实现）。
-3. 硬编码域名清单见 plans 文档 §3.4（`lib/seo/site.ts` SITE_URL 等 5 处 + OAuth 回调注册）。
+应用仓（本 PR）已做：
+
+| 项 | 说明 |
+|---|---|
+| 页脚 | 全站 chrome 展示 **京ICP备2022033467号-4**，链 [beian.miit.gov.cn](https://beian.miit.gov.cn) |
+| SEO | `lib/seo/site.ts` → `https://outman.press`（sitemap / canonical / OG / JSON-LD） |
+| Auth | `WEB_BASE_URL` 驱动 better-auth `baseURL`；`buildTrustedOrigins()` 含 apex + `www` |
+| 示例 env | `single.env.example` 中 `WEB_BASE_URL=https://outman.press`（无尾斜杠） |
+
+**DevOps / 运维（merge + 李梨🍐确认 deploy 后执行，勿在 PR 中声称已完成）：**
+
+| 步骤 | 动作 |
+|---|---|
+| B0 | [工信部 beian.miit.gov.cn](https://beian.miit.gov.cn) 再核备案号与 **李梨🍐个人主体** |
+| 证书 | 核对 SpeakUp `./ssl/outman.press/` 链路与续期；必要时补签 |
+| nginx | 备份 conf/ssl → 确认 `outman.press.conf` 已启用 → `nginx -t` → reload **仅 frontend** |
+| HTTP→HTTPS | 修 `http://outman.press` 301（曾见 500）；www 策略与 conf 一致 |
+| 应用 env | 生产 `~/yujee-clip/deploy/china/env/single.env`：`WEB_BASE_URL=https://outman.press` → `compose up -d` 重启 web（**密钥不入仓**） |
+| COS CORS | 控制台 Origin 增加 `https://outman.press`（及 `https://www.outman.press` 若使用） |
+| 安全组 | **关闭公网 8080**；保留 22 + 80/443；8080 仅本机反代可达 |
+| 冒烟 A1–A8 | HTTPS 首页/登录/成书路径各 1 轮；SpeakUp 原域名无回归；页脚可见备案号 |
+| 回滚演练 | 移走 outman 证书或 conf → SpeakUp 仍正常、遇己 HTTPS 下线（见下） |
+
+**应用 env 回滚**：`single.env` 中 `WEB_BASE_URL` 改回上一值（或临时 IP 内测）→ `compose up -d` 重启 web；nginx/证书按 SpeakUp 仓备份恢复。**DNS 默认不回滚**。
+
+勿混淆 **`outman.vip`**（浙ICP备20004006号-1，不同域名）。
+
+## 域名与 WEB_BASE_URL（一次性动作，配置已参数化）
+
+1. 生产 `single.env` 里 `WEB_BASE_URL=https://outman.press`（无尾斜杠）；engine 侧 callbackUrl 由 web 请求自动携带，无需改。
+2. better-auth 读 `WEB_BASE_URL` 作 `baseURL`；HTTPS 下 Set-Cookie 应带 **Secure**（验证登录一轮）。
+3. `trustedOrigins`：`buildTrustedOrigins(WEB_BASE_URL)` = localhost 列表 + 生产 apex/www + Apple。
+4. 硬编码域名清单见 plans §3.4（`lib/seo/site.ts` SITE_URL、`next.config.mjs` www 308 等）；书页模板 `mag-20` 仍印旧域，换品牌另开模板流程。
 
 ## 安全基线（单机 49.232 现实）
 
-- **安全组**：只开 22/8080（80/443 归同机 speakup，绝不动）；8001/8002 调试口仅绑定
-  127.0.0.1，不进公网安全组。
+- **安全组（目标态）**：22 + 80/443；**公网 8080 关闭**（仅本机 nginx→8080）。80/443 与同机 speakup 共用，改 nginx 前先备份。
 - 与 speakup 的隔离：独立 compose 项目（name: yujee）、全部容器 mem/cpus 限额、
-  端口只用 8080。
+  yujee-web 只监听 8080（不经公网暴露）。
 - 所有 `待生成` 密钥用 `openssl rand -base64 32` 现生成。
-- IP 阶段浏览器→web 为明文 HTTP：**仅限内部测试账号，禁止真实用户**（密码明文过网）。
+- **正式用户仅走 HTTPS 域名**；明文 IP:8080 禁止对真实用户开放。
 - 遗留：ARK key 仍是主账号密钥，正式前应换 CAM 子账号。
 
 ## 密钥清单

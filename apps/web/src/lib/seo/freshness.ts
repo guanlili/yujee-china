@@ -47,11 +47,11 @@ const EXAMPLE_SOURCES = ['apps/web/src/lib/examples/examples.ts', 'apps/web/src/
  * (the day its page last changed) but they share sources, so a single review
  * commit covers them all — same shape as GUIDES_HUB_REVIEWED_AT.
  */
-const EXAMPLES_REVIEWED_AT = '3fb63bbc';
+const EXAMPLES_REVIEWED_AT = '26420977';
 /** Guide prose only. guides.ts is excluded on purpose — see FRESHNESS_DECLARATIONS. */
 const GUIDES_CONTENT = 'apps/web/src/lib/guides/content';
 /** The hub has no article of its own to carry a reviewedAt, so it lives here. */
-const GUIDES_HUB_REVIEWED_AT = '3fb63bbc';
+const GUIDES_HUB_REVIEWED_AT = '26420977';
 
 /**
  * Every example detail page is one row of the same array, so they share sources.
@@ -76,10 +76,11 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   // 2026-09-21:首屏 composer 下面加了六本样书条,样书卡的「查看示例」改指
   // /examples/<slug>,首页自己的页脚 Pricing 也终于指向 /pricing。首屏多出
   // 一整排图,读者看得见,updatedAt 落在这天。
+  // 2026-10-28: landing + shared footers show MIIT ICP filing link (reader-visible chrome).
   '/': {
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
-    updatedAt: '2026-09-21',
-    reviewedAt: '3fb63bbc',
+    updatedAt: '2026-10-28',
+    reviewedAt: '26420977',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback
@@ -87,7 +88,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/about/story': {
     sources: [MARKETING, 'apps/web/src/app/[locale]/about/story/page.tsx'],
     updatedAt: '2026-08-10',
-    reviewedAt: '3fb63bbc',
+    reviewedAt: '26420977',
   },
   // Privacy prose last moved in the pre-launch pass that aligned it with what the
   // product actually does (b69eb438). marketing.ts has moved several times since —
@@ -104,17 +105,17 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/pricing': {
     sources: [MARKETING, 'apps/web/src/config/pricing.ts', 'apps/web/src/app/[locale]/pricing/page.tsx'],
     updatedAt: '2026-09-21',
-    reviewedAt: '3fb63bbc',
+    reviewedAt: '26420977',
   },
   // messages/marketing 这轮被 74c590db(首页 en meta)、d2bca297(共用导航多一项
   // Guides)、c4148143(共用页脚 Pricing 改指 /pricing)和 2026-09-21 的
   // examples.moreComing 一行碰到。对隐私页而言全是 chrome 或别页的文案,正文
   // 一个字没动 —— 这正是 reviewedAt/updatedAt 分开的意义:只推 reviewedAt。
   // 刷 updatedAt 等于告诉 Google 隐私政策也改了。
-  '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: '3fb63bbc' },
+  '/privacy': { sources: [MARKETING], updatedAt: '2026-10-28', reviewedAt: '26420977' },
   // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
   // refund rule) in both locales — a genuine content change, so this one moves.
-  '/terms': { sources: [MARKETING], updatedAt: '2026-08-08', reviewedAt: '3fb63bbc' },
+  '/terms': { sources: [MARKETING], updatedAt: '2026-10-28', reviewedAt: '26420977' },
   // 改 SHA 时上面的审计话必须跟着核对,而且只能引用 main 上存在的提交:上一轮
   // 留着一段引用 19093baf / 9c34faea 的旧句子,两个 SHA 都是 squash 前的、不在
   // main 上,其中一个还没干过它被记的那件事。写错的审计记录比没有更糟。

@@ -54,7 +54,7 @@ export const es: MarketingMessages = {
     sections: [
       {
         h: '1. Introducción',
-        body: 'Yujee ("nosotros") valora tu privacidad. Esta Política de privacidad explica cómo recopilamos, usamos, divulgamos y protegemos tu información cuando utilizas yujeeai.com.',
+        body: 'Yujee ("nosotros") valora tu privacidad. Esta Política de privacidad explica cómo recopilamos, usamos, divulgamos y protegemos tu información cuando utilizas outman.press.',
       },
       {
         h: '2. Información que recopilamos',
@@ -100,7 +100,7 @@ export const es: MarketingMessages = {
     sections: [
       {
         h: '1. Aceptación de los términos',
-        body: 'Al acceder a Yujee (yujeeai.com) o utilizarlo, aceptas quedar vinculado por estos Términos del servicio. Si no estás de acuerdo, no uses el servicio.',
+        body: 'Al acceder a Yujee (outman.press) o utilizarlo, aceptas quedar vinculado por estos Términos del servicio. Si no estás de acuerdo, no uses el servicio.',
       },
       {
         h: '2. Descripción del servicio',

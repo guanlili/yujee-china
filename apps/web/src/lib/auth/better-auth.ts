@@ -42,6 +42,8 @@ const requiredTableExports = ['users', 'sessions', 'accounts', 'verifications'] 
 // 强制 CSRF origin 校验 —— 于是「干净浏览器能登、有过期 cookie 的浏览器 403」,
 // 报错还只写在服务端日志里,前端看着就是「点了登录没反应」。之前只列 http,
 // 一开 https 本地登录就废。
+// 生产 `WEB_BASE_URL`（如 https://outman.press）及其 www 变体也须列入，否则
+// CSRF 校验会拒掉真实用户的登录/注册。
 const LOCAL_TRUSTED_ORIGINS = [
   'http://localhost:3000',
   'https://localhost:3000',
@@ -52,6 +54,28 @@ const LOCAL_TRUSTED_ORIGINS = [
   'http://127.0.0.1:3210',
   'https://127.0.0.1:3210',
 ];
+
+/** @internal exported for unit tests */
+export function buildTrustedOrigins(webBaseUrl: string): string[] {
+  const origins = new Set<string>(LOCAL_TRUSTED_ORIGINS);
+  const base = webBaseUrl.trim();
+  if (base) {
+    try {
+      const url = new URL(base);
+      origins.add(url.origin);
+      const host = url.hostname;
+      const isLocalHost =
+        host === 'localhost' || host === '127.0.0.1' || host.endsWith('.localhost');
+      if (host && !host.startsWith('www.') && !isLocalHost) {
+        origins.add(`${url.protocol}//www.${host}`);
+      }
+    } catch {
+      // env schema already validated WEB_BASE_URL; ignore parse edge cases in tests
+    }
+  }
+  origins.add('https://appleid.apple.com');
+  return [...origins];
+}
 
 export function getBetterAuthSchema(schemaModule: Partial<SchemaModule>): BetterAuthSchema {
   const missing = requiredTableExports.filter((key) => !schemaModule[key]);
@@ -513,7 +537,7 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
     baseURL: env.WEB_BASE_URL,
     // Apple posts its callback from appleid.apple.com (response_mode=form_post);
     // that cross-site origin must be trusted for the callback to be accepted.
-    trustedOrigins: [...LOCAL_TRUSTED_ORIGINS, 'https://appleid.apple.com'],
+    trustedOrigins: buildTrustedOrigins(env.WEB_BASE_URL),
     basePath: '/api/auth',
     secret: env.BETTER_AUTH_SECRET,
     database: drizzleAdapter(db, {

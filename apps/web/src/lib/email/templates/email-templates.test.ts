@@ -10,12 +10,12 @@ describe('email templates', () => {
     const email = renderVerificationEmail({
       locale: 'en',
       name: 'Ava',
-      actionUrl: 'https://yujeeai.com/api/auth/verify-email?token=abc',
+      actionUrl: 'https://outman.press/api/auth/verify-email?token=abc',
     });
 
     assert.equal(email.subject, 'Verify your Yujee email');
     assert.match(email.html, /Ava/);
-    assert.match(email.html, /https:\/\/yujeeai\.com\/api\/auth\/verify-email\?token=abc/);
+    assert.match(email.html, /https:\/\/outman\.press\/api\/auth\/verify-email\?token=abc/);
     assert.match(email.text, /Verify your email/);
   });
 
@@ -25,7 +25,7 @@ describe('email templates', () => {
       orderId: 'ord_123',
       amountLabel: '$19.00',
       albumTitle: 'Family Spring',
-      receiptUrl: 'https://yujeeai.com/zh/my-albums',
+      receiptUrl: 'https://outman.press/zh/my-albums',
     });
 
     assert.equal(email.subject, 'Yujee 订单确认');
@@ -38,7 +38,7 @@ describe('email templates', () => {
     const email = renderPasswordResetEmail({
       locale: 'en',
       name: 'Ava',
-      actionUrl: 'https://yujeeai.com/api/auth/reset-password/tok?callbackURL=%2Fen%2Freset-password',
+      actionUrl: 'https://outman.press/api/auth/reset-password/tok?callbackURL=%2Fen%2Freset-password',
     });
 
     assert.equal(email.subject, 'Reset your Yujee password');
@@ -53,7 +53,7 @@ describe('email templates', () => {
     const email = renderPasswordResetEmail({
       locale: 'zh',
       name: null,
-      actionUrl: 'https://yujeeai.com/api/auth/reset-password/tok?callbackURL=%2Fzh%2Freset-password',
+      actionUrl: 'https://outman.press/api/auth/reset-password/tok?callbackURL=%2Fzh%2Freset-password',
     });
 
     assert.equal(email.subject, '重置你的 Yujee 密码');
