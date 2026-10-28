@@ -121,6 +121,9 @@ const EnvSchema = z.object({
   IMAGE_PROVIDER: z.enum(['gemini', 'ark']).default('gemini'),
   GEMINI_API_KEY: z.string().optional(),
   ARK_API_KEY: z.string().optional(),
+  // 生图独立 key:engine 的 ARK_API_KEY 已切中转站(kexiangai),生图仍直连火山
+  // seedream,两把 key 不通用;未配时回落 ARK_API_KEY 兼容旧环境。
+  ARK_IMAGE_API_KEY: z.string().optional(),
   R2_PUBLIC_BASE_URL: z.string().url().default('https://cdn.yujeeai.com'),
 });
 

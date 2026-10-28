@@ -10,7 +10,7 @@
 ```
 用户浏览器 ──HTTP──▶ 49.232.156.221:8080（speakup 生产同机，80/443 归 speakup 不动）
    ┌─ yujee-web-1        Next.js :8080
-   ├─ yujee-design-agent-1  容器内网 :8787（对话改书，火山 Ark）
+   ├─ yujee-design-agent-1  容器内网 :8787（对话改书，kexiangai 中转站）
    ├─ yujee-agent-1      容器内网 :8001（生成主链路；调试口 127.0.0.1:8002）
    ├─ yujee-clip-1       CLIP+isnet（调试口 127.0.0.1:8001）
    ├─ yujee-postgres-1   PG16 + 自签 TLS（web 的 db 客户端对非 localhost 强制 ssl require）
@@ -40,7 +40,7 @@ uptime-kuma 监控 + 异地备份接收端）。
 
 | 项 | 状态 |
 |---|---|
-| P2.1 engine compose→Ark（`COMPOSE_PROVIDER=ark`） | ✅ 已合入主仓（`engine/tests/test_compose_provider_ark.py`），生产 single.env 配 `COMPOSE_ARK_MODEL=doubao-seed-2-0-pro-260215` |
+| P2.1 engine compose→Ark（`COMPOSE_PROVIDER=ark`） | ✅ 已合入主仓（`engine/tests/test_compose_provider_ark.py`）；2026-10-28 起成稿/改书切 kexiangai 中转站（OpenAI 兼容，`ARK_BASE_URL` 指向 `https://kexiangai.com/api/v1`，成稿 `doubao-seed-2-1-pro-260628`、改书走 design-agent 新 `openai-compat` provider） |
 | P2.2 web 存储 env 化（COS endpoint/path-style） | ✅ 已合入主仓；桶 CORS + `analyze-uploads/` 生命周期已配好并实测 |
 | P2.3 三个 Dockerfile（web/design/clip） | ✅ 已跑通，镜像 `yujee/{web,design,clip}:china` |
 | 单机五容器部署 + 34 迁移 + crontab | ✅ 2026-10-25 全部上线健康（0034 手机号 +86 前缀收敛随 2026-10-28 短信 OTP 批） |
@@ -49,11 +49,13 @@ uptime-kuma 监控 + 异地备份接收端）。
 | 短信 OTP（阿里云，登录/注册/找回） | ✅ 代码已合（2026-10-28 批）；上线待服务器配 `SMS_DELIVERY=aliyun` 四件套（见密钥清单与「短信 OTP」节） |
 | 域名 / HTTPS / 备案 / 支付 | ⬜ 未做（见「域名后补」与 plans §3.4） |
 
-⚠️ photo-profile 的视觉模型走 settings 默认 `doubao-seed-1-6-vision-250815`
-（方舟已停开独立 vision 系，seed 系原生多模态）——photo-profile 现默认关着无害，
-开启 `AGENT_ENABLE_PHOTO_PROFILE` 前必须先换模型。compose 里的显式死配置已随
-2026-10-25 批次清理（`DEEPSEEK_MODEL` 零消费方删除；`DEEPSEEK_API_KEY` 仍是
-engine 启动必检项，由 env_file 供给）。
+⚠️ photo-profile 的视觉模型走 settings 默认 `doubao-seed-1-6-vision-250815`，
+**该名不在中转站模型列表**（2026-10-28 起 ARK_* 槽指向 kexiangai；站内模型列表
+`GET /api/v1/models` 免鉴权可查）——photo-profile 现默认关着无害，开启
+`AGENT_ENABLE_PHOTO_PROFILE` 前必须先按站内列表换模型。另：中转站实测吞掉
+thinking 类参数（thinking / reasoning_effort 均无效），思考关不掉，成稿与改书
+每轮必然先思考（pi-ai 与 engine 的解析都兼容 reasoning_content）。
+`DEEPSEEK_API_KEY` 仍是 engine 启动必检项（零消费方），由 env_file 供给。
 
 ## 自动部署（2026-10-26 起：merge 即上线）
 
@@ -96,7 +98,9 @@ merge 到 main → CI 五门全绿 → `deploy` job 用**专用 restricted key**
 | `AGENT_SHARED_SECRET` | web+agent 容器（同值） | 已生成（服务器 single.env） |
 | `DESIGN_AGENT_SHARED_SECRET` | web+design-agent 容器（同值） | 已生成 |
 | `GROUPING_CLIP_SECRET` | agent→clip 本机回落链 | 已生成（clip.env） |
-| `ARK_API_KEY` | agent(compose 成稿)+web(AI 生图)+design-agent | 用户主账号 key（待换 CAM 子账号） |
+| `ARK_API_KEY` | agent（compose 成稿 + photo-profile 视觉槽） | kexiangai 中转站 key（`sk-`+控制台 x-api-key；2026-10-28 起） |
+| `DESIGN_AGENT_API_KEY` | design-agent（openai-compat provider） | 与 `ARK_API_KEY` 同值 |
+| `ARK_IMAGE_API_KEY` | web AI 生图（仍直连火山 seedream，待第二批迁中转） | 火山方舟 key |
 | `BETTER_AUTH_SECRET` | web | 已生成 |
 | `CRON_SECRET` | web crontab | 已生成（曾泄露轮换过一次） |
 | `PG_PASSWORD` | web+postgres | 已生成 |

@@ -405,9 +405,10 @@ Defaults live in `src/lib/env.ts`. Common fields:
 | `WAFFO_*` | Billing(主通道,2026-08 起) |
 | `CREEM_*` | Billing(仅在途订单 webhook 兜底) |
 | `R2_*` | PDF/thumbnail storage,以及 AI 生图产出的原图 |
-| `IMAGE_PROVIDER` | AI 生图走哪家:`gemini`(默认,生产)/ `ark`(本地开发更快) |
+| `IMAGE_PROVIDER` | AI 生图走哪家:`gemini`(海外默认)/ `ark`(国内生产与本地开发) |
 | `GEMINI_API_KEY` | 生图 provider = gemini 时必需;缺则生图入口返回 501 |
-| `ARK_API_KEY` | 生图 provider = ark 时必需;同时给 `scripts/gen-board-bg.ts` 用 |
+| `ARK_IMAGE_API_KEY` | 生图 provider = ark 时必需(2026-10-28 起,优先于 `ARK_API_KEY`);同时给 `scripts/gen-board-bg.ts` 用。生图仍直连火山 seedream |
+| `ARK_API_KEY` | 仅作 `ARK_IMAGE_API_KEY` 未配时的回落。注意 engine 的 `ARK_API_KEY` 已指向 kexiangai 中转站,与火山 key 不通用 |
 
 **真生产**下,这七个变量必须显式提供,缺任何一个当场抛(一次报全):
 `DATABASE_URL` · `WEB_BASE_URL` · `BETTER_AUTH_SECRET` · `AGENT_BASE_URL` ·
