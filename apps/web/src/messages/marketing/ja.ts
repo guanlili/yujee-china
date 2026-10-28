@@ -88,7 +88,7 @@ export const ja: MarketingMessages = {
         body: '',
       },
     ],
-    contactLine: 'ご不明な点は privacy@outman.press までメールでお問い合わせください。',
+    contactLine: 'ご不明な点は privacy@yujeeai.com までメールでお問い合わせください。',
   },
   terms: {
     metaTitle: 'Yujee — 利用規約',
@@ -166,7 +166,7 @@ export const ja: MarketingMessages = {
         body: '',
       },
     ],
-    contactLine: 'ご不明な点は support@outman.press までメールでお問い合わせください。',
+    contactLine: 'ご不明な点は support@yujeeai.com までメールでお問い合わせください。',
   },
   story: {
     metaTitle: '創業ストーリー — わたしが Yujee をつくった理由',

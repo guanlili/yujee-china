@@ -89,7 +89,7 @@ export const es: MarketingMessages = {
         body: '',
       },
     ],
-    contactLine: '¿Tienes dudas? Escribe a privacy@outman.press.',
+    contactLine: '¿Tienes dudas? Escribe a privacy@yujeeai.com.',
   },
   terms: {
     metaTitle: 'Yujee — Términos del servicio',
@@ -167,7 +167,7 @@ export const es: MarketingMessages = {
         body: '',
       },
     ],
-    contactLine: '¿Tienes dudas? Escribe a support@outman.press.',
+    contactLine: '¿Tienes dudas? Escribe a support@yujeeai.com.',
   },
   story: {
     metaTitle: 'Nuestra historia — Por qué hice Yujee',

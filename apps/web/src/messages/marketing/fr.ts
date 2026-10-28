@@ -89,7 +89,7 @@ export const fr: MarketingMessages = {
         body: '',
       },
     ],
-    contactLine: 'Une question ? Écrivez-nous à privacy@outman.press.',
+    contactLine: 'Une question ? Écrivez-nous à privacy@yujeeai.com.',
   },
   terms: {
     metaTitle: 'Yujee — Conditions d’utilisation',
@@ -167,7 +167,7 @@ export const fr: MarketingMessages = {
         body: '',
       },
     ],
-    contactLine: 'Une question ? Écrivez-nous à support@outman.press.',
+    contactLine: 'Une question ? Écrivez-nous à support@yujeeai.com.',
   },
   story: {
     metaTitle: 'Notre histoire — pourquoi j’ai créé Yujee',
