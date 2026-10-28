@@ -1,7 +1,7 @@
 // 垫底背景素材:离线批量出图 → 人工筛 → 手动入库。
 //
 // 跑法:
-//   cd apps/web && ARK_API_KEY=<key> npx tsx scripts/gen-board-bg.ts [--out <dir>]
+//   cd apps/web && ARK_IMAGE_API_KEY=<火山key> npx tsx scripts/gen-board-bg.ts [--out <dir>]
 //
 // 这个脚本**不会**往 public/board-bg/ 写任何东西。产物落在 --out 指定的目录(默认
 // 系统临时目录)并附一张 contact-sheet.html,你自己挑完再把选中的图拷进
@@ -110,8 +110,10 @@ figcaption span{width:12px;height:12px;border-radius:3px;display:inline-block}</
 }
 
 async function main(): Promise<void> {
-  const apiKey = process.env.ARK_API_KEY;
-  if (!apiKey) throw new Error('ARK_API_KEY is required');
+  // 走火山 seedream,所以读生图专用的 ARK_IMAGE_API_KEY;ARK_API_KEY 自 2026-10-28
+  // 起是 kexiang 中转站 key,对火山无效,仅作旧环境回落。
+  const apiKey = process.env.ARK_IMAGE_API_KEY ?? process.env.ARK_API_KEY;
+  if (!apiKey) throw new Error('ARK_IMAGE_API_KEY (or ARK_API_KEY) is required');
 
   const outDir = parseOutDir(process.argv) ?? join(tmpdir(), `board-bg-${process.pid}`);
   mkdirSync(outDir, { recursive: true });

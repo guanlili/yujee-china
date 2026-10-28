@@ -405,10 +405,11 @@ Defaults live in `src/lib/env.ts`. Common fields:
 | `WAFFO_*` | Billing(主通道,2026-08 起) |
 | `CREEM_*` | Billing(仅在途订单 webhook 兜底) |
 | `R2_*` | PDF/thumbnail storage,以及 AI 生图产出的原图 |
-| `IMAGE_PROVIDER` | AI 生图走哪家:`gemini`(海外默认)/ `ark`(国内生产与本地开发) |
+| `IMAGE_PROVIDER` | AI 生图走哪家:`gemini`(海外默认)/ `kexiang`(国内生产,2026-10-28 起的中转站 SeeDream4.5 异步任务 API)/ `ark`(火山直连,遗留回退) |
 | `GEMINI_API_KEY` | 生图 provider = gemini 时必需;缺则生图入口返回 501 |
-| `ARK_IMAGE_API_KEY` | 生图 provider = ark 时必需(2026-10-28 起,优先于 `ARK_API_KEY`);同时给 `scripts/gen-board-bg.ts` 用。生图仍直连火山 seedream |
-| `ARK_API_KEY` | 仅作 `ARK_IMAGE_API_KEY` 未配时的回落。注意 engine 的 `ARK_API_KEY` 已指向 kexiangai 中转站,与火山 key 不通用 |
+| `KEXIANG_API_KEY` | 生图 provider = kexiang 时可省:缺省复用 `ARK_API_KEY` 并自动剥 `sk-` 前缀(任务 API 用 x-api-key 原始 key) |
+| `ARK_IMAGE_API_KEY` | 生图 provider = ark(遗留回退)时必需,优先于 `ARK_API_KEY`;也是 `scripts/gen-board-bg.ts` 的 key |
+| `ARK_API_KEY` | kexiang 生图的缺省 key 来源(剥 sk- 后用);ark 的回落。engine 侧同用此变量(中转站 key) |
 
 **真生产**下,这七个变量必须显式提供,缺任何一个当场抛(一次报全):
 `DATABASE_URL` · `WEB_BASE_URL` · `BETTER_AUTH_SECRET` · `AGENT_BASE_URL` ·
@@ -459,5 +460,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**
-checked-at: 1439d006
+checked-at: 5d9c2d66
 -->
