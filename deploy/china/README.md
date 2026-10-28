@@ -40,7 +40,7 @@ uptime-kuma 监控 + 异地备份接收端）。
 
 | 项 | 状态 |
 |---|---|
-| P2.1 engine compose→Ark（`COMPOSE_PROVIDER=ark`） | ✅ 已合入主仓（`engine/tests/test_compose_provider_ark.py`）；2026-10-28 起成稿/改书切 kexiangai 中转站（OpenAI 兼容，`ARK_BASE_URL` 指向 `https://kexiangai.com/api/v1`，成稿 `doubao-seed-2-1-pro-260628`、改书走 design-agent 新 `openai-compat` provider） |
+| P2.1 engine compose→Ark（`COMPOSE_PROVIDER=ark`） | ✅ 已合入主仓（`engine/tests/test_compose_provider_ark.py`）；2026-10-28 起成稿/改书切 kexiangai 中转站（OpenAI 兼容，`ARK_BASE_URL` 指向 `https://kexiangai.com/api/v1`，成稿 `doubao-seed-2-1-turbo-260628`、改书走 design-agent 新 `openai-compat` provider + `kimi-k2.6`） |
 | P2.2 web 存储 env 化（COS endpoint/path-style） | ✅ 已合入主仓；桶 CORS + `analyze-uploads/` 生命周期已配好并实测 |
 | P2.3 三个 Dockerfile（web/design/clip） | ✅ 已跑通，镜像 `yujee/{web,design,clip}:china` |
 | 单机五容器部署 + 34 迁移 + crontab | ✅ 2026-10-25 全部上线健康（0034 手机号 +86 前缀收敛随 2026-10-28 短信 OTP 批） |
