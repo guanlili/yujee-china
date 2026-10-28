@@ -1,44 +1,74 @@
 #!/usr/bin/env tsx
-// sitemap <lastmod> 时效校验。
+// sitemap <lastmod> 时效校验（squash-friendly）。
 //
 // src/lib/seo/freshness.ts 为每个可收录路由声明:
 //
-//   '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedAt: 'c99f0b01' }
+//   '/privacy': { sources: [MARKETING], updatedAt: '2026-07-12', reviewedSources: 'a84144e97509' }
 //
-// 规则:某路由的 sources 自它的 reviewedAt 以来有新提交,而 reviewedAt 没跟上
+// 规则:某路由 sources 在 HEAD 上的内容指纹 ≠ 声明的 reviewedSources
 // => 判定这条 lastmod 未经核对,退出码 1。
+//
+// 指纹算法(稳定、与提交 SHA / squash 无关):
+//   sha256( git ls-tree -r HEAD -- <sources> ).hex[:12]
+// 只用 tree 元数据(blob OID + path),不读文件内容;同一棵内容树无论经
+// squash / rebase / merge-commit 落地,指纹不变。
+// 声明文件 freshness.ts / guides.ts 在哈希前从 listing 里剔除,避免「只 stamp
+// 自己」自触发。(git ls-tree 不支持 :(exclude) pathspec magic。)
 //
 // 修复方式(两条路,必须先想清楚是哪一条):
 //   - 这个页面读者能看到的内容**真的变了** → 同时更新 updatedAt(改成内容变更那
-//     天)和 reviewedAt(改成当前提交)。
-//   - 只是共享的源文件被别的页面的改动碰到了,这页没变 → **只**推进 reviewedAt,
+//     天)和 reviewedSources(改成 `pnpm --filter @yujee/web sitemap:stamp` 打印的值)。
+//   - 只是共享的源文件被别的页面的改动碰到了,这页没变 → **只**推进 reviewedSources,
 //     updatedAt 不动。
 //
-// 第二条是这个脚本存在的全部意义。messages/marketing.ts 同时支撑首页和法务页,
-// 改一句首页文案就会碰到它。如果没有这道闸门,最省事的做法是把所有日期一起刷新,
-// 于是每次改文案都在告诉 Google「隐私政策也改了」—— 那正是让 lastmod 失去可信度、
-// 进而被整站忽略的行为。宁可报错逼人做判断,也不要一个会撒谎的信号。
-//
-// 和 docs-check.mjs 是同一套思路(声明覆盖范围 + 锚定提交),两处不同:
-//   1. 多了 updatedAt 这个会真正发给搜索引擎的字段,所以「已核对」和「已变更」分开记。
-//   2. 直接 import 声明而不是正则解析。第一版用正则,`[^\]]*` 撞上源文件路径里的
-//      `[locale]` 提前截断,静默漏掉了 /about/story —— 一个漏页面还报绿的闸门比没有
-//      更糟。
+// 为什么不用 commit SHA 作锚(旧 reviewedAt):
+//   squash-merge 会丢掉 PR 分支 tip SHA → main 上 `rev-parse` 失败或 range 失真,
+//   逼人要么改用 merge-commit、要么合完立刻开跟进 PR 刷 SHA(#58→#59 模式)。
+//   内容指纹绑定的是「看过的那份源码」,不是「某一个会消失的提交」。
 
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { FRESHNESS_DECLARATIONS } from '../src/lib/seo/freshness';
 
 const REPO_ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
 const FRESHNESS = 'apps/web/src/lib/seo/freshness.ts';
-// guides.ts 持有每篇的 updatedAt/reviewedAt,和 freshness.ts 同理:改日期这个动作
+// guides.ts 持有每篇的 updatedAt/reviewedSources,和 freshness.ts 同理:改指纹这个动作
 // 本身不能触发它自己的闸门。文章正文在 lib/guides/content 下,那才是 sources。
 const GUIDES_DECL = 'apps/web/src/lib/guides/guides.ts';
+const FINGERPRINT_LEN = 12;
+const EXCLUDED_PATHS = new Set([FRESHNESS, GUIDES_DECL]);
 
 function git(args: string[]): string {
   return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
 }
 
-const stale: { route: string; updatedAt: string; reviewedAt: string; commits: string[] }[] = [];
+/** Content fingerprint of a pathspec at HEAD (or another tree-ish). */
+export function sourcesFingerprint(sources: readonly string[], treeIsh = 'HEAD'): string {
+  let listing = '';
+  try {
+    // Keep git's trailing newline — hashing the raw ls-tree stdout is what the
+    // gate and sitemap:stamp both promise. Do not .trim() here.
+    listing = execFileSync('git', ['ls-tree', '-r', treeIsh, '--', ...sources], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+    });
+  } catch {
+    // pathspec 匹配不到已跟踪文件时 git 报错,视为空树。
+    listing = '';
+  }
+  const filtered = listing
+    .split('\n')
+    .filter((line) => {
+      if (!line) return false;
+      const path = line.split('\t')[1] ?? '';
+      return !EXCLUDED_PATHS.has(path);
+    })
+    .join('\n');
+  const normalized = filtered.length ? `${filtered}\n` : '';
+  return createHash('sha256').update(normalized).digest('hex').slice(0, FINGERPRINT_LEN);
+}
+
+const stale: { route: string; updatedAt: string; reviewedSources: string; actual: string }[] = [];
 const pending: { route: string; dirty: string[] }[] = [];
 const broken: string[] = [];
 
@@ -48,34 +78,41 @@ if (!routes.length) {
   process.exit(1);
 }
 
-for (const [route, { sources, updatedAt, reviewedAt }] of routes) {
+for (const [route, decl] of routes) {
+  const { sources, updatedAt } = decl;
+  const reviewedSources =
+    'reviewedSources' in decl && typeof decl.reviewedSources === 'string'
+      ? decl.reviewedSources
+      : // 迁移窗口:旧字段 reviewedAt(commit SHA)一律视为失效声明,逼一次重 stamp。
+        '';
+
   if (!sources.length) {
     broken.push(`${route}: sources 为空,这条 lastmod 永远不会被校验到`);
     continue;
   }
-  try {
-    git(['rev-parse', '--verify', `${reviewedAt}^{commit}`]);
-  } catch {
-    broken.push(`${route}: reviewedAt "${reviewedAt}" 不是有效提交`);
+  if (!/^[0-9a-f]{12}$/.test(reviewedSources)) {
+    broken.push(
+      `${route}: reviewedSources "${reviewedSources || '(missing)'}" 不是 12 位 hex 内容指纹(跑 pnpm --filter @yujee/web sitemap:stamp)`,
+    );
     continue;
   }
 
-  // 声明文件自身排除在外,否则改日期这个动作会触发它自己。
+  const actual = sourcesFingerprint(sources);
+  // status 支持 :(exclude);ls-tree 不支持,所以 dirty 仍用 pathspec magic。
   const pathspec = [...sources, `:(exclude)${FRESHNESS}`, `:(exclude)${GUIDES_DECL}`];
 
-  let commits = '';
   let dirty = '';
   try {
-    commits = git(['log', '--format=%h %s', `${reviewedAt}..HEAD`, '--', ...pathspec]);
     dirty = git(['status', '--porcelain', '--', ...pathspec]);
   } catch {
-    // pathspec 匹配不到已跟踪文件时 git 报错,视为无变更。
+    // ignore
   }
 
-  // 和 docs-check 一致:硬失败只看已提交历史,工作区脏只提示 —— 否则改代码过程中
-  // 永远跑不绿 typecheck。
-  if (commits) stale.push({ route, updatedAt, reviewedAt, commits: commits.split('\n') });
-  else if (dirty) pending.push({ route, dirty: dirty.split('\n') });
+  if (actual !== reviewedSources) {
+    stale.push({ route, updatedAt, reviewedSources, actual });
+  } else if (dirty) {
+    pending.push({ route, dirty: dirty.split('\n') });
+  }
 }
 
 if (broken.length) {
@@ -85,16 +122,17 @@ if (broken.length) {
 }
 
 if (stale.length) {
-  console.error('以下路由的 lastmod 未经核对 —— 支撑它的源文件变了,reviewedAt 没跟上:\n');
+  console.error('以下路由的 lastmod 未经核对 —— 支撑它的源文件内容指纹变了,reviewedSources 没跟上:\n');
   for (const s of stale) {
-    console.error(`  ✖ ${s.route}  (updatedAt: ${s.updatedAt}, reviewedAt: ${s.reviewedAt})`);
-    for (const c of s.commits.slice(0, 5)) console.error(`      · ${c}`);
-    if (s.commits.length > 5) console.error(`      · …还有 ${s.commits.length - 5} 个提交`);
+    console.error(`  ✖ ${s.route}  (updatedAt: ${s.updatedAt})`);
+    console.error(`      declared: ${s.reviewedSources}`);
+    console.error(`      at HEAD:  ${s.actual}`);
     console.error('');
   }
   console.error('修复:打开这个页面看一眼读者能看到的内容到底变没变。');
-  console.error('  变了   → updatedAt 改成内容变更那天,reviewedAt 改成当前提交。');
-  console.error('  没变   → 只推进 reviewedAt,updatedAt 不要动。');
+  console.error('  变了   → updatedAt 改成内容变更那天,reviewedSources 改成 stamp 输出。');
+  console.error('  没变   → 只推进 reviewedSources,updatedAt 不要动。');
+  console.error('跑: pnpm --filter @yujee/web sitemap:stamp');
   console.error('不要图省事把所有日期一起刷新 —— 那等于告诉 Google 每个页面都改了,');
   console.error('lastmod 会因此被整站忽略。\n');
 }

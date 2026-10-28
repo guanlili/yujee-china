@@ -37,13 +37,13 @@ export interface Guide {
   /** YYYY-MM-DD. Last real content change; feeds both the sitemap and schema. */
   updatedAt: string;
   /**
-   * The commit at which a human last confirmed `updatedAt` is still true.
-   * Same contract as RouteFreshness.reviewedAt: bump it freely, it never
-   * reaches Google. sitemap-freshness-check.ts fails when this article's prose
-   * moved after this commit — that is what stops an edited paragraph from
-   * shipping with a frozen date.
+   * 12-hex content fingerprint of this article's sources when `updatedAt` was
+   * last confirmed. Same contract as RouteFreshness.reviewedSources: bump it
+   * freely, it never reaches Google. sitemap-freshness-check.ts fails when the
+   * sources fingerprint at HEAD does not match — that is what stops an edited
+   * paragraph from shipping with a frozen date. Not a commit SHA (squash-safe).
    */
-  reviewedAt: string;
+  reviewedSources: string;
   /**
    * OG / Twitter card and `Article.image`. NEVER rendered on the page — this
    * field's entire job is the social preview, so it must be an OPAQUE image at
@@ -78,7 +78,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-16',
-    reviewedAt: '83b929f6',
+    reviewedSources: 'c7df4a29401f',
     heroImage: '/examples/life-story/spread-01.jpg',
     related: [
       'write-a-memoir-about-a-parent',
@@ -91,7 +91,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-17',
-    reviewedAt: '83b929f6',
+    reviewedSources: 'c7df4a29401f',
     heroImage: '/examples/travel-journal/spread-03.jpg',
     related: [
       'what-to-write-in-a-photo-book',
@@ -104,7 +104,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-17',
-    reviewedAt: '83b929f6',
+    reviewedSources: 'c7df4a29401f',
     heroImage: '/examples/life-story/spread-02.jpg',
     related: [
       'write-a-memoir-about-a-parent',
@@ -117,7 +117,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-17',
-    reviewedAt: '83b929f6',
+    reviewedSources: 'c7df4a29401f',
     heroImage: '/examples/life-story/spread-03.jpg',
     related: [
       'turn-old-family-photos-into-a-book',
@@ -129,7 +129,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-16',
-    reviewedAt: '83b929f6',
+    reviewedSources: 'c7df4a29401f',
     heroImage: '/examples/travel-journal/spread-01.jpg',
     related: [
       'how-much-does-a-photo-book-cost',
@@ -142,7 +142,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-17',
-    reviewedAt: '83b929f6',
+    reviewedSources: 'c7df4a29401f',
     heroImage: '/examples/travel-journal/spread-02.jpg',
     related: [
       'photo-book-vs-photo-album-vs-scrapbook',
@@ -154,7 +154,7 @@ export const GUIDES: readonly Guide[] = [
     availableLocales: ['en'],
     publishedAt: '2026-08-16',
     updatedAt: '2026-08-17',
-    reviewedAt: '83b929f6',
+    reviewedSources: 'c7df4a29401f',
     heroImage: '/examples/life-story/spread-04.jpg',
     related: [
       'how-much-does-a-photo-book-cost',

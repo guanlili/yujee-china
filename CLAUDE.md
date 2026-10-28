@@ -172,7 +172,7 @@ Postgres + Cloudflare R2
 - `pnpm typecheck` **不含 engine**。改 Python 要单独跑 pytest。
 - `pnpm typecheck` 里挂着两道时效闸门:`docs:check`(文档)和 `sitemap:check`
   (sitemap 的 `<lastmod>`)。后者报错时别把所有日期一起刷新 —— `updatedAt` 是
-  发给 Google 的,只有页面内容真变了才动;没变就只推进 `reviewedAt`。
+  发给 Google 的,只有页面内容真变了才动;没变就只推进 `reviewedSources`（内容指纹,见 `sitemap:stamp`）。
   理由写在 `apps/web/src/lib/seo/freshness.ts` 顶部。
 - Web 测试单跑:`cd apps/web && pnpm test`(或 `pnpm --filter @yujee/web test`)。
   **admin 集成测试不在其中**:它对全库用户集合敏感(并行必竞态),常规批整文件

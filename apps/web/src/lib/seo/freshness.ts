@@ -11,31 +11,42 @@ import { GUIDES, getGuide } from '@/lib/guides/guides';
  * right, and then discounts the field for the whole site. A wrong signal is
  * worse than no signal, which is why the sitemap shipped without one until now.
  *
- * TWO DATES, ON PURPOSE — do not collapse them:
+ * TWO FIELDS, ON PURPOSE — do not collapse them:
  *
- *   updatedAt  — the day this page's prose actually moved. It goes to Google.
- *                Bump it ONLY when a reader would see something different.
- *   reviewedAt — the commit at which a human last confirmed `updatedAt` is
- *                still correct. Bump it freely; it never reaches Google.
+ *   updatedAt        — the day this page's prose actually moved. It goes to Google.
+ *                      Bump it ONLY when a reader would see something different.
+ *   reviewedSources  — 12-hex content fingerprint of `sources` at HEAD when a
+ *                      human last confirmed `updatedAt` is still correct.
+ *                      Bump it freely; it never reaches Google. Computed as
+ *                      sha256(git ls-tree -r HEAD -- <sources>).hex[:12] — see
+ *                      `pnpm --filter @yujee/web sitemap:stamp`.
  *
- * The split matters because `sources` are shared: messages/marketing.ts backs
- * the landing AND the legal pages. Editing landing copy touches that file, so
+ * The split matters because `sources` are shared: messages/marketing backs
+ * the landing AND the legal pages. Editing landing copy touches that tree, so
  * the checker will flag /privacy too — and the right answer there is "looked,
- * the privacy prose did not change" (bump reviewedAt, leave updatedAt). Using
- * one field would force you to tell Google the privacy policy changed every
- * time you reworded the homepage.
+ * the privacy prose did not change" (bump reviewedSources, leave updatedAt).
+ * Using one field would force you to tell Google the privacy policy changed
+ * every time you reworded the homepage.
  *
- * `scripts/sitemap-freshness-check.mjs` enforces this and runs inside
- * `pnpm typecheck`. It fails when a route's `sources` picked up commits after
- * its `reviewedAt`, so the judgement call gets made instead of skipped.
+ * Why a fingerprint and not a commit SHA: squash-merge drops PR tip SHAs, so a
+ * reviewedAt tip-SHA either fails rev-parse on main or forces a follow-up "刷
+ * SHA" PR (#58→#59). The fingerprint binds the source *tree*, which survives
+ * squash / rebase / merge-commit unchanged.
+ *
+ * `scripts/sitemap-freshness-check.ts` enforces this and runs inside
+ * `pnpm typecheck`. It fails when a route's sources fingerprint at HEAD does
+ * not match `reviewedSources`, so the judgement call gets made instead of skipped.
  */
 export interface RouteFreshness {
   /** Files whose content this page renders. A change here needs a decision. */
   sources: readonly string[];
   /** YYYY-MM-DD. The day the visible content last changed. Emitted as lastmod. */
   updatedAt: string;
-  /** Commit at which `updatedAt` was last confirmed correct. Never published. */
-  reviewedAt: string;
+  /**
+   * 12-hex content fingerprint of `sources` when `updatedAt` was last confirmed.
+   * Never published. Not a commit SHA — squash-safe.
+   */
+  reviewedSources: string;
 }
 
 // 五语拆分后营销/示例文案按语言一文件放在目录里;目录整个作 pathspec,
@@ -43,15 +54,17 @@ export interface RouteFreshness {
 const MARKETING = 'apps/web/src/messages/marketing';
 const EXAMPLE_SOURCES = ['apps/web/src/lib/examples/examples.ts', 'apps/web/src/lib/examples/content'] as const;
 /**
- * One anchor for every /examples row. Each example carries its own `updatedAt`
- * (the day its page last changed) but they share sources, so a single review
- * commit covers them all — same shape as GUIDES_HUB_REVIEWED_AT.
+ * One fingerprint for every /examples row. Each example carries its own `updatedAt`
+ * (the day its page last changed) but they share sources, so a single stamp
+ * covers them all — same shape as GUIDES_HUB_REVIEWED_SOURCES.
  */
-const EXAMPLES_REVIEWED_AT = '26420977';
+const EXAMPLES_REVIEWED_SOURCES = '2d037cc766bf';
+/** Hub also reads marketing chrome, so its fingerprint differs from detail rows. */
+const EXAMPLES_HUB_REVIEWED_SOURCES = '408ca3fb74bc';
 /** Guide prose only. guides.ts is excluded on purpose — see FRESHNESS_DECLARATIONS. */
 const GUIDES_CONTENT = 'apps/web/src/lib/guides/content';
-/** The hub has no article of its own to carry a reviewedAt, so it lives here. */
-const GUIDES_HUB_REVIEWED_AT = '26420977';
+/** The hub has no article of its own to carry a reviewedSources, so it lives here. */
+const GUIDES_HUB_REVIEWED_SOURCES = '837a8668b7ec';
 
 /**
  * Every example detail page is one row of the same array, so they share sources.
@@ -63,7 +76,7 @@ const GUIDES_HUB_REVIEWED_AT = '26420977';
 const exampleDetailFreshness: Record<string, RouteFreshness> = Object.fromEntries(
   EXAMPLES.map((example) => [
     `/examples/${example.slug}`,
-    { sources: [...EXAMPLE_SOURCES], updatedAt: example.updatedAt, reviewedAt: EXAMPLES_REVIEWED_AT },
+    { sources: [...EXAMPLE_SOURCES], updatedAt: example.updatedAt, reviewedSources: EXAMPLES_REVIEWED_SOURCES },
   ]),
 );
 
@@ -80,7 +93,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/': {
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
     updatedAt: '2026-10-28',
-    reviewedAt: '26420977',
+    reviewedSources: 'dbd0fb078981',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback
@@ -88,12 +101,12 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/about/story': {
     sources: [MARKETING, 'apps/web/src/app/[locale]/about/story/page.tsx'],
     updatedAt: '2026-08-10',
-    reviewedAt: '26420977',
+    reviewedSources: '79dfadf380e6',
   },
   // Privacy prose last moved in the pre-launch pass that aligned it with what the
   // product actually does (b69eb438). marketing.ts has moved several times since —
   // including b3d095bc, which rewrote the TERMS sections next door and left this
-  // page untouched. That is exactly the case the reviewedAt/updatedAt split exists
+  // page untouched. That is exactly the case the reviewedSources/updatedAt split exists
   // for: reviewed again, still 2026-07-12.
   // config/pricing.ts is a source because a repricing IS a content change here:
   // every figure on the page is interpolated from ADDON_PACKS and the credit
@@ -105,26 +118,24 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/pricing': {
     sources: [MARKETING, 'apps/web/src/config/pricing.ts', 'apps/web/src/app/[locale]/pricing/page.tsx'],
     updatedAt: '2026-09-21',
-    reviewedAt: '26420977',
+    reviewedSources: '4c116eefa4e1',
   },
   // messages/marketing 这轮被 74c590db(首页 en meta)、d2bca297(共用导航多一项
   // Guides)、c4148143(共用页脚 Pricing 改指 /pricing)和 2026-09-21 的
   // examples.moreComing 一行碰到。对隐私页而言全是 chrome 或别页的文案,正文
-  // 一个字没动 —— 这正是 reviewedAt/updatedAt 分开的意义:只推 reviewedAt。
+  // 一个字没动 —— 这正是 reviewedSources/updatedAt 分开的意义:只推 reviewedSources。
   // 刷 updatedAt 等于告诉 Google 隐私政策也改了。
-  '/privacy': { sources: [MARKETING], updatedAt: '2026-10-28', reviewedAt: '26420977' },
+  '/privacy': { sources: [MARKETING], updatedAt: '2026-10-28', reviewedSources: 'cfa69fff4fa2' },
   // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
   // refund rule) in both locales — a genuine content change, so this one moves.
-  '/terms': { sources: [MARKETING], updatedAt: '2026-10-28', reviewedAt: '26420977' },
-  // 改 SHA 时上面的审计话必须跟着核对,而且只能引用 main 上存在的提交:上一轮
-  // 留着一段引用 19093baf / 9c34faea 的旧句子,两个 SHA 都是 squash 前的、不在
-  // main 上,其中一个还没干过它被记的那件事。写错的审计记录比没有更糟。
+  '/terms': { sources: [MARKETING], updatedAt: '2026-10-28', reviewedSources: 'cfa69fff4fa2' },
+  // reviewedSources 是内容指纹,不是 commit SHA —— squash/rebase 后不必重刷。
   // The hub renders one card per example, so it changes whenever the newest
   // example does — derived, like the guides hub, instead of hand-dated.
   '/examples': {
     sources: [...EXAMPLE_SOURCES, MARKETING],
     updatedAt: EXAMPLES.map((e) => e.updatedAt).sort().at(-1) ?? '',
-    reviewedAt: EXAMPLES_REVIEWED_AT,
+    reviewedSources: EXAMPLES_HUB_REVIEWED_SOURCES,
   },
   ...exampleDetailFreshness,
 };
@@ -151,12 +162,12 @@ export const FRESHNESS_DECLARATIONS: Record<string, RouteFreshness> = {
     // from the marketing messages — so both can change what a reader sees.
     sources: [GUIDES_CONTENT, MARKETING],
     updatedAt: GUIDES.map((g) => g.updatedAt).sort().at(-1) ?? '',
-    reviewedAt: GUIDES_HUB_REVIEWED_AT,
+    reviewedSources: GUIDES_HUB_REVIEWED_SOURCES,
   },
   ...Object.fromEntries(
     GUIDES.map((guide) => [
       `/guides/${guide.slug}`,
-      { sources: [GUIDES_CONTENT], updatedAt: guide.updatedAt, reviewedAt: guide.reviewedAt },
+      { sources: [GUIDES_CONTENT], updatedAt: guide.updatedAt, reviewedSources: guide.reviewedSources },
     ]),
   ),
 };
