@@ -1,4 +1,4 @@
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, sql } from 'drizzle-orm';
 import type { Page } from '@yujee/contracts';
 import { db, type DbOrTx } from '../client';
 import { draftPages, type DraftPage } from '../schema';
@@ -14,6 +14,20 @@ export const draftPageRepo = {
       .select()
       .from(draftPages)
       .where(eq(draftPages.albumId, albumId))
+      .orderBy(asc(draftPages.pageIndex)),
+
+  // 增量轮询(collab §7.4 getChanges)专用:version>since 下推到 SQL。此前
+  // getChanges 用 findByAlbum 全量拉回再 JS 过滤,大书每 2.5s 轮询白搬全部
+  // 行(2026-10-29 修复,行为等价:同样的行集合,只是过滤发生在库里)。
+  findByAlbumSince: async (
+    albumId: string,
+    since: number,
+    tx: DbOrTx = db,
+  ): Promise<DraftPage[]> =>
+    tx
+      .select()
+      .from(draftPages)
+      .where(and(eq(draftPages.albumId, albumId), gt(draftPages.version, since)))
       .orderBy(asc(draftPages.pageIndex)),
 
   countByAlbum: async (albumId: string, tx: DbOrTx = db): Promise<number> => {

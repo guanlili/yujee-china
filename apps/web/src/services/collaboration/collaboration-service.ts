@@ -231,9 +231,9 @@ export const collaborationService = {
       };
     }
 
-    const rows = (await draftPageRepo.findByAlbum(albumId))
-      .filter((row) => row.version > since)
-      .sort((a, b) => a.pageIndex - b.pageIndex);
+    // version>since 下推进 SQL(2026-10-29):此前全量拉回再 JS 过滤,大书
+    // 每 2.5s 一次增量轮询都要搬整书行。行集合与排序和旧实现等价。
+    const rows = await draftPageRepo.findByAlbumSince(albumId, since);
 
     if (rows.length > DRAFT_CHANGES_MAX_PAGES) {
       return {

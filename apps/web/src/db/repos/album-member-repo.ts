@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import { db, type DbOrTx } from '../client';
 import { albumMembers, type AlbumMember } from '../schema';
 
@@ -39,6 +39,21 @@ export const albumMemberRepo = {
   },
 
   // 成员列表 UI(Task 8):按加入时间正序。join users 由服务层做(保持 repo 单表)。
+  // 批量存在性(my-albums 列表用,2026-10-29):一次 IN 查询替代逐本 exists
+  // 的 N+1;语义与循环调用 exists 相同(读到什么就是什么,不加事务)。
+  albumIdsForUser: async (
+    albumIds: string[],
+    userId: string,
+    tx: DbOrTx = db,
+  ): Promise<Set<string>> => {
+    if (albumIds.length === 0) return new Set();
+    const rows = await tx
+      .select({ albumId: albumMembers.albumId })
+      .from(albumMembers)
+      .where(and(eq(albumMembers.userId, userId), inArray(albumMembers.albumId, albumIds)));
+    return new Set(rows.map((row) => row.albumId));
+  },
+
   listByAlbum: async (albumId: string, tx: DbOrTx = db): Promise<AlbumMember[]> =>
     tx
       .select()

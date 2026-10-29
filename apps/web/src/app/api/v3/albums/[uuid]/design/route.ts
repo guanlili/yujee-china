@@ -46,6 +46,10 @@ export async function GET(req: Request, ctx: { params: Promise<{ uuid: string }>
   try {
     const user = await requireAuth(req);
     const { uuid } = await ctx.params;
+    // 成稿轮询专用轻通道:只查 job 状态,跳过整书加载(见 getDesignState)。
+    if (new URL(req.url).searchParams.get('light') === '1') {
+      return ok(await albumService.getDesignState(user.id, uuid));
+    }
     return ok(await albumService.listCoverSets(user.id, uuid));
   } catch (e) {
     return fromException(e);

@@ -135,7 +135,8 @@ story 环节:用户逐章讲故事 -> chapter.chapterContext
 `agent_jobs.meta.composeAppend.writtenPages`,`stage`/封面/字体/其余页一律不动。
 `GET /api/v3/albums/[uuid]/design` 新增 `lastComposeStatus`(job 状态)与
 `lastComposeWrote`(是否真写出了页,`writtenPages>0`;非追加单/未完成 → `null`)供前端
-轮询区分「COMPLETED 但整章掉队」与「真写好了」。`composeAppend` 撞在途唯一索引时只有
+轮询区分「COMPLETED 但整章掉队」与「真写好了」。轮询走 `?light=1` 轻通道
+(2026-10-29:只查 job 派生态四字段,不做整书加载;首次弹卡/全量仍走无参版)。`composeAppend` 撞在途唯一索引时只有
 在途单确实是同 scope(或范围更宽)的追加成稿才当幂等重入,否则 `VALIDATION_FAILED`
 (不会把撞上全书成稿/别的追加范围的本批章无声吞掉)。书未设计(没有封面/封尾 carrier)
 时 `composeAppend` 直接返回 `composed:false`,不建 job、不调 Agent —— 新页文案维持等选
@@ -460,5 +461,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**
-checked-at: 5d9c2d66
+checked-at: 8e191ecb
 -->
