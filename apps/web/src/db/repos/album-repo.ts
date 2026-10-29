@@ -20,8 +20,9 @@ export type AlbumListRow = Pick<
 >;
 
 export const albumRepo = {
-  findById: async (id: string): Promise<Album | undefined> => {
-    const rows = await db.select().from(albums).where(eq(albums.id, id)).limit(1);
+  findById: async (id: string, tx: DbOrTx = db): Promise<Album | undefined> => {
+    // tx 可选:读路径需要与同事务其他读同一快照时传(如 compose 回调 Phase A 预检)。
+    const rows = await tx.select().from(albums).where(eq(albums.id, id)).limit(1);
     return rows[0];
   },
 

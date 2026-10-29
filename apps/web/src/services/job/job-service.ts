@@ -877,6 +877,16 @@ export const jobService = {
 
   // ④ 成稿完成:全书文案一次性回来 → 组页落库 + 推 stage='ready'。
   // 这里是唯一把 stage 推到 'ready' 的地方(导出闸门钥匙)。
+  // ④ 成稿完成:全书文案一次性回来 → 组页落库 + 推 stage='ready'。
+  // 这里是唯一把 stage 推到 'ready' 的地方(导出闸门钥匙)。
+  //
+  // 三段式(2026-10-29 重构,出自「compose 回调锁内烘 HTML」优化):拆表 Phase 1a
+  // 曾把整段计算挪进相册行锁内,堵的是当时「锁外算 + 锁内原样写、无重验」的窗口;
+  // 现在改为 A(无锁快照读 + baseline 预检早失败)→ B(锁外计算:merge 纯函数内部
+  // 会把全书页 HTML 烘一遍,CPU 重活)→ C(短写事务:锁内 baseline **重验** + CAS +
+  // 落库)。安全性由 C 的重验兜底(AGENTS「AI 基线重验」模式):B 期间任何人工改动
+  // 使重验失配 → AI_RESULT_STALE 零写入,人工编辑永远优先;行锁只在 C 的秒级窗口
+  // 内持有,并发编辑与成稿落库不再互相排队。
   async handleV3ComposeCompleted(
     requestId: string,
     payload: ComposeCompletedPayload,
@@ -886,22 +896,151 @@ export const jobService = {
     if (!job) return;
     if (job.status === 'COMPLETED' || job.status === 'FAILED') return;
 
-    // draft_pages 拆表(Phase 1a)固定写事务次序:album 行锁在前(收口第三个无锁读改写
-    // 窗口 —— 这条分支此前在事务外无锁读 album、在事务外算好 mergeComposeIntoDraft 的
-    // 结果,再在事务内原样写入,中间那段计算完全没锁)。meta 缺失/合并失败仍在事务内
-    // 判定,失败原因带出事务后再调 handleV3Failed(与今天一致,不在事务里嵌套第二个
-    // CAS)。
-    let failure: { code: string; message: string } | null = null;
+    // ── Phase A:短读事务(无锁)——预检 + 组页输入快照 ──────────────────
+    const snap = await db.transaction(async (tx) => {
+      const album = await albumRepo.findById(job.albumId, tx);
+      if (!album) {
+        logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 compose completed');
+        return { kind: 'missing' } as const;
+      }
+      const staleReason = findBaselineStaleReason(
+        { album, pages: await draftPageRepo.listVersions(job.albumId, tx) },
+        readJobBaseline(job.meta),
+      );
+      if (staleReason) return { kind: 'stale', staleReason } as const;
+      return {
+        kind: 'ok' as const,
+        // album.title 是 merge 的封面标题最后兜底(锁内重验保证写入时它没变)。
+        title: album.title,
+        loaded: await loadStoryDraft(album, { tx, bake: false }),
+      };
+    });
+    if (snap.kind === 'missing') return;
+    if (snap.kind === 'stale') {
+      // 早失败:还没花 CPU 烘全书就把 job 判 stale,语义与 C 内重验失败完全一致。
+      await db.transaction((tx) => failStaleJob(tx, job, snap.staleReason));
+      return;
+    }
 
+    // ── Phase B:锁外计算(重活:merge 内部全书烘 HTML)────────────────
+    // 失败原因带出后走 handleV3Failed(与旧版一致,不在写事务里嵌套第二个 CAS)。
+    let failure: { code: string; message: string } | null = null;
+    type Computed = {
+      kind: 'append' | 'full';
+      draft: V3StoryDraft & { pages: Page[] };
+      writtenPages?: number;
+      reply: string;
+    };
+    let computed: Computed | null = null;
+
+    const appendMeta = readComposeAppendMeta(job.meta);
+    if (appendMeta) {
+      // 追加范围成稿:只合并目标页文案 + 重烘,其余(设计三件套/封面封尾/progress/
+      // stage)一概不动。页源从 loadStoryDraft 行读拼 draftJson 形状喂纯函数
+      // (main 线原实现直接读 album.draftJson,对已播种行的相册那是陈旧快照)。
+      const appendDraftLike = snap.loaded
+        ? {
+            version: 'v3-story' as const,
+            tree: snap.loaded.tree,
+            progress: snap.loaded.progress,
+            pages: snap.loaded.pages,
+            ...(snap.loaded.design ? { design: snap.loaded.design } : {}),
+          }
+        : null;
+      // 章归属守卫(防误写老页):派发之后到回调之前页序可能被重排,按**当前**draft
+      // 核对每个 pageIndex 是否仍属于本次范围,不属于的一律跳过不写。
+      const { pagesTexts: guardedPagesTexts, skippedPageIndexes } = filterAppendComposePagesTexts(
+        appendDraftLike,
+        appendMeta.chapterIds,
+        payload.pagesTexts,
+      );
+      for (const pageIndex of skippedPageIndexes) {
+        logger.warn(
+          { requestId, albumId: job.albumId, pageIndex },
+          'append compose completed but page no longer belongs to the dispatched chapters (reordered mid-flight) — skipped to avoid clobbering',
+        );
+      }
+      try {
+        const mergedAppend = mergeAppendComposeTexts(appendDraftLike, guardedPagesTexts);
+        // 真写了几页(守卫过滤后的实际合并数)进 job meta:listCoverSets 靠它派生
+        // lastComposeWrote,轮询侧区分「COMPLETED 但整章掉队」与「真写好了」。
+        computed = {
+          kind: 'append',
+          draft: mergedAppend.draftJson as unknown as V3StoryDraft & { pages: Page[] },
+          writtenPages: mergedAppend.writtenPageIndexes.length,
+          reply:
+            mergedAppend.writtenPageIndexes.length > 0
+              ? (appendMeta.language === 'zh'
+                  ? '新照片的文案写好了,和全书一个声音。不合口味随时在对话里改。'
+                  : 'The new pages now have their copy, in the same voice as the rest of the book. Ask me here to tweak anything.')
+              : (appendMeta.language === 'zh'
+                  ? '新照片排进书里了,但这次文案没写出来。在对话里跟我说「给新页写文案」,我来补。'
+                  : "The new photos are in, but their copy didn't come through this time. Tell me here to write it and I'll fill them in."),
+        };
+      } catch (e) {
+        logger.error(
+          { err: String(e), requestId, albumId: job.albumId },
+          'append compose completed but merge failed',
+        );
+        failure = {
+          code: 'AGENT_INVALID_OUTPUT',
+          message: 'append compose result could not be applied to the draft',
+        };
+      }
+    } else {
+      const meta = readComposeMeta(job.meta);
+      if (!meta) {
+        logger.warn({ requestId, albumId: job.albumId }, 'compose job has no cover-set meta');
+        failure = { code: 'AGENT_INVALID_OUTPUT', message: 'compose job lost its cover-set meta' };
+      } else {
+        // 页源同 select-layout:从 loadStoryDraft 行读取 existing pages(bake:false ——
+        // mergeComposeIntoDraft 内部组页时反正全书重烘,这里不用重复现场烘)。
+        const draftJsonLike = snap.loaded
+          ? {
+              version: 'v3-story' as const,
+              tree: snap.loaded.tree,
+              progress: snap.loaded.progress,
+              pages: snap.loaded.pages,
+              ...(snap.loaded.design ? { design: snap.loaded.design } : {}),
+            }
+          : null;
+        try {
+          const merged = mergeComposeIntoDraft(draftJsonLike, meta, payload, snap.title);
+          computed = {
+            kind: 'full',
+            draft: merged.draftJson as unknown as V3StoryDraft & { pages: Page[] },
+            reply:
+              meta.language === 'zh'
+                ? '写好了:封面封底就位,全书文案、字体和配色也一起刷上了。不满意随时在对话里改。'
+                : 'All set — cover & back cover are in, and the whole book now has its copy, fonts and colors. Ask me here to tweak anything.',
+          };
+        } catch (e) {
+          logger.error(
+            { err: String(e), requestId, albumId: job.albumId },
+            'compose completed but draft assembly failed',
+          );
+          failure = {
+            code: 'AGENT_INVALID_OUTPUT',
+            message: 'compose result could not be applied to the draft',
+          };
+        }
+      }
+    }
+
+    if (failure || !computed) {
+      if (failure) await this.handleV3Failed(requestId, failure);
+      return;
+    }
+    const result = computed;
+
+    // ── Phase C:短写事务(锁内)——重验 baseline → CAS → 落库 ──────────
     await db.transaction(async (tx) => {
       const album = await albumRepo.findByIdForUpdate(tx, job.albumId);
       if (!album) {
-        logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 compose completed');
+        logger.warn({ requestId, albumId: job.albumId }, 'album missing on v3 compose write-back');
         return;
       }
-
-      // AI 基线重验(Phase 4):文案基于派发时的页快照,期间的人工修改(结构/设置/
-      // 页内容)优先 —— 零写入,AI_RESULT_STALE。append 与全书两个分支共用此闸。
+      // 锁内重验(A→C 窗口内的人工改动在此拦截;与 A 的预检同一把尺子)。
       const staleReason = findBaselineStaleReason(
         { album, pages: await draftPageRepo.listVersions(job.albumId, tx) },
         readJobBaseline(job.meta),
@@ -911,135 +1050,46 @@ export const jobService = {
         return;
       }
 
-      // 追加范围成稿(meta.composeAppend):只合并目标页文案 + 重烘,其余(设计三件套/
-      // 封面封尾/progress/stage)一概不动。拆表适配(合并 origin/main 的 append-compose
-      // 时改写):页源从 loadStoryDraft 行读拼 draftJson 形状喂纯函数 —— main 线原实现
-      // 直接读 album.draftJson,对已播种行的相册那是陈旧快照;落库走 replaceAll 行级写,
-      // 与全书成稿同一口径。
-      const appendMeta = readComposeAppendMeta(job.meta);
-      if (appendMeta) {
-        const loadedAppend = await loadStoryDraft(album, { tx, bake: false });
-        const appendDraftLike = loadedAppend
-          ? {
-              version: 'v3-story' as const,
-              tree: loadedAppend.tree,
-              progress: loadedAppend.progress,
-              pages: loadedAppend.pages,
-              ...(loadedAppend.design ? { design: loadedAppend.design } : {}),
-            }
-          : null;
-        // 章归属守卫(防误写老页):派发之后到回调之前这段窗口里页序可能被重排,先按
-        // **当前**draft 核对每个 pageIndex 是否仍属于本次范围,不属于的一律跳过不写。
-        const { pagesTexts: guardedPagesTexts, skippedPageIndexes } = filterAppendComposePagesTexts(
-          appendDraftLike,
-          appendMeta.chapterIds,
-          payload.pagesTexts,
-        );
-        for (const pageIndex of skippedPageIndexes) {
-          logger.warn(
-            { requestId, albumId: job.albumId, pageIndex },
-            'append compose completed but page no longer belongs to the dispatched chapters (reordered mid-flight) — skipped to avoid clobbering',
-          );
-        }
-
-        let mergedAppend: ReturnType<typeof mergeAppendComposeTexts>;
-        try {
-          mergedAppend = mergeAppendComposeTexts(appendDraftLike, guardedPagesTexts);
-        } catch (e) {
-          logger.error(
-            { err: String(e), requestId, albumId: job.albumId },
-            'append compose completed but merge failed',
-          );
-          failure = {
-            code: 'AGENT_INVALID_OUTPUT',
-            message: 'append compose result could not be applied to the draft',
-          };
-          return;
-        }
-
-        // 真写了几页(守卫过滤后的实际合并数)回填进 job 行 meta:listCoverSets 靠它
-        // 派生 lastComposeWrote,让轮询侧能区分「COMPLETED 但整章掉队」与「真写好了」。
+      if (result.kind === 'append') {
         const jobMeta = recordOrEmpty(job.meta);
         const composeAppendMeta = recordOrEmpty(jobMeta.composeAppend);
-        const won = await agentJobRepo.transitionStatus(tx, job.id, 'COMPLETED', ['QUEUED', 'RUNNING'], {
-          progress: 100,
-          stage: 'wrap',
-          usage: (usage as Record<string, unknown> | null) ?? null,
-          completedAt: new Date(),
-          meta: {
-            ...jobMeta,
-            composeAppend: { ...composeAppendMeta, writtenPages: mergedAppend.writtenPageIndexes.length },
+        const won = await agentJobRepo.transitionStatus(
+          tx,
+          job.id,
+          'COMPLETED',
+          ['QUEUED', 'RUNNING'],
+          {
+            progress: 100,
+            stage: 'wrap',
+            usage: (usage as Record<string, unknown> | null) ?? null,
+            completedAt: new Date(),
+            meta: {
+              ...jobMeta,
+              composeAppend: { ...composeAppendMeta, writtenPages: result.writtenPages ?? 0 },
+            },
           },
-        });
+        );
         if (!won) return;
 
-        const appendDraft = mergedAppend.draftJson as unknown as V3StoryDraft & { pages: Page[] };
         const seededRevision = await ensureDraftPagesSeeded(tx, album);
         const rev = await bumpDraftRevision(tx, job.albumId, seededRevision, { structural: true });
         // AI 继承发起者身份(§2.2),同 layout 分支。
-        await draftPageRepo.replaceAll(tx, job.albumId, appendDraft.pages, rev, job.userId);
+        await draftPageRepo.replaceAll(tx, job.albumId, result.draft.pages, rev, job.userId);
         await albumRepo.update(tx, job.albumId, {
           draftJson: envelopeJson({
-            tree: appendDraft.tree,
-            progress: appendDraft.progress,
-            design: appendDraft.design,
+            tree: result.draft.tree,
+            progress: result.draft.progress,
+            design: result.draft.design,
           }),
-          pageCount: appendDraft.pages.length,
+          pageCount: result.draft.pages.length,
         });
         // 回执只在真处理后写;文案没写出来也要诚实说(设计对话可补写,不留假成功)。
         await albumMessageRepo.create(tx, {
           albumId: job.albumId,
           userId: job.userId,
           role: 'assistant',
-          content:
-            mergedAppend.writtenPageIndexes.length > 0
-              ? (appendMeta.language === 'zh'
-                  ? '新照片的文案写好了,和全书一个声音。不合口味随时在对话里改。'
-                  : 'The new pages now have their copy, in the same voice as the rest of the book. Ask me here to tweak anything.')
-              : (appendMeta.language === 'zh'
-                  ? '新照片排进书里了,但这次文案没写出来。在对话里跟我说「给新页写文案」,我来补。'
-                  : "The new photos are in, but their copy didn't come through this time. Tell me here to write it and I'll fill them in."),
+          content: result.reply,
         });
-        return;
-      }
-
-      const meta = readComposeMeta(job.meta);
-      if (!meta) {
-        logger.warn({ requestId, albumId: job.albumId }, 'compose job has no cover-set meta');
-        failure = { code: 'AGENT_INVALID_OUTPUT', message: 'compose job lost its cover-set meta' };
-        return;
-      }
-
-      // 页源同 select-layout:从 loadStoryDraft 的行读取 existing pages(bake:false ——
-      // assembleDesignedPages 反正会把全书重烘一遍,这里不用重复现场烘),拼一个
-      // draftJson 形状喂给 mergeComposeIntoDraft(该函数内部组页逻辑原样不动;
-      // design.pageBackground 已在 Task 6 进契约,mergeComposeIntoDraft 内部改
-      // 为直写契约字段,不再靠 spread 绕开 zod strip)。
-      const loaded = await loadStoryDraft(album, { tx, bake: false });
-      const draftJsonLike = loaded
-        ? {
-            version: 'v3-story' as const,
-            tree: loaded.tree,
-            progress: loaded.progress,
-            pages: loaded.pages,
-            ...(loaded.design ? { design: loaded.design } : {}),
-          }
-        : null;
-
-      let merged: ReturnType<typeof mergeComposeIntoDraft>;
-      try {
-        // album.title 是锁内读到的最新标题:AI 没写出封面标题时的最后兜底
-        // (哪怕它还是系统默认名,也好过印模板 sample 的 "NORWAY")。
-        merged = mergeComposeIntoDraft(draftJsonLike, meta, payload, album.title);
-      } catch (e) {
-        logger.error(
-          { err: String(e), requestId, albumId: job.albumId },
-          'compose completed but draft assembly failed',
-        );
-        failure = {
-          code: 'AGENT_INVALID_OUTPUT',
-          message: 'compose result could not be applied to the draft',
-        };
         return;
       }
 
@@ -1053,43 +1103,33 @@ export const jobService = {
 
       const seededRevision = await ensureDraftPagesSeeded(tx, album);
       const rev = await bumpDraftRevision(tx, job.albumId, seededRevision, { structural: true });
-      // AI 继承发起者身份(§2.2),同 layout 分支。
-      await draftPageRepo.replaceAll(tx, job.albumId, merged.pages, rev, job.userId);
-
+      await draftPageRepo.replaceAll(tx, job.albumId, result.draft.pages, rev, job.userId);
       await albumRepo.update(tx, job.albumId, {
         draftJson: envelopeJson({
-          tree: merged.draftJson.tree,
-          progress: merged.draftJson.progress,
-          design: merged.draftJson.design,
+          tree: result.draft.tree,
+          progress: result.draft.progress,
+          design: result.draft.design,
         }),
-        pageCount: merged.pages.length,
+        pageCount: result.draft.pages.length,
         // 真 compose 落地:文案来源升为 'ai'(游客期的 'placeholder' 到此被覆盖)。
         copySource: 'ai',
         // 设计完成 → 待导出(导出闸门的唯一开门钥匙);幂等重设计时已是 ready 则维持不动。
         ...(album.stage !== 'ready' ? { stage: 'ready' as const } : {}),
       });
-
       // 成稿回执进会话历史(用户消息在派发时已落库,这里补 assistant 回复,只在真成稿后写)。
       await albumMessageRepo.create(tx, {
         albumId: job.albumId,
         userId: job.userId,
         role: 'assistant',
-        content:
-          meta.language === 'zh'
-            ? '写好了:封面封底就位,全书文案、字体和配色也一起刷上了。不满意随时在对话里改。'
-            : 'All set — cover & back cover are in, and the whole book now has its copy, fonts and colors. Ask me here to tweak anything.',
+        content: result.reply,
       });
       // 普通相册:积分在 analyze 完成时已结算,compose 不挂 hold,这里 settle 是幂等
       // 空转。游客升级路径:applyDesign 对 copySource='placeholder' 的相册重新挂了
-      // hold(登录后真文案首跑才计费),在此结算 —— hold/settle 的条件迁移保证并发安全。
+      // hold(登录后真文案首跑才计费),在此结算 —— 用**锁内新鲜行**的 holdId。
       if (album.creditHoldId) {
         await creditService.settle(tx, job.userId, album.creditHoldId);
       }
     });
-
-    if (failure) {
-      await this.handleV3Failed(requestId, failure);
-    }
   },
 
   async handleV3Failed(requestId: string, error: { code: string; message: string }) {
