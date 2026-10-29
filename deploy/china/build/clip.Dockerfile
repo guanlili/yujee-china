@@ -19,10 +19,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# 依赖层只用 pyproject(2026-10-29 分层收尾):engine 源码/模板/价格表变动
+# 不再触发下面的 pip 层重跑(此前 COPY src 在 pip 之前,改一行代码重装全部)。
 COPY engine/pyproject.toml ./
-COPY engine/src ./src
-COPY packages/contracts/templates ./packages/contracts/templates
-COPY packages/contracts/pricing ./packages/contracts/pricing
 
 # 权重 COPY 必须放在 pip 层之后：权重文件 ~540MB 常变（增删/校验），放前面会让
 # 每次换权重都重跑下面的 pip 层（torch 190MB 重新下载，2026-10-25 实测多花 5 分钟）。
@@ -43,6 +42,13 @@ RUN pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
  && pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
       "onnxruntime==1.20.1" "numpy>=1.26" \
  && pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple .
+
+# 源码层在 pip 之后:装的是本包自身,用 --no-deps 免得再解析一遍依赖
+# (依赖已在上面装好;src 变动只重跑这一层,秒级)。
+COPY engine/src ./src
+COPY packages/contracts/templates ./packages/contracts/templates
+COPY packages/contracts/pricing ./packages/contracts/pricing
+RUN pip install --no-deps --index-url https://pypi.tuna.tsinghua.edu.cn/simple .
 
 COPY weights/u2netp.onnx weights/isnet-general-use.onnx weights/ViT-B-32.pt /app/models/
 
