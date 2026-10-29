@@ -341,7 +341,8 @@
       "invites": "Invite codes",
       "analytics": "Analytics",
       "settings": "Settings",
-      "backToApp": "Back to app"
+      "backToApp": "Back to app",
+      "changelog": "Changelog"
     },
     "forbidden": {
       "title": "Admin only",

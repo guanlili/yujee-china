@@ -119,6 +119,8 @@ export const users = pgTable('users', {
   creditBalance: integer('credit_balance').notNull().default(20),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  // 更新日志已读水位(2026-10-30):晚于此时间戳的 published 条目算未读。
+  changelogLastSeenAt: timestamp('changelog_last_seen_at', { withTimezone: true }),
 });
 
 export const sessions = pgTable(
@@ -762,4 +764,21 @@ export const modelConfig = pgTable('model_config', {
   value: text('value').notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+});
+
+// 更新日志(2026-10-30,需求池「产品更新日志系统」):面向用户的产品变更记录。
+// 管理员手动编辑发布(不做自动从 git 发布);中英文各存一份。
+export const changelogEntries = pgTable('changelog_entries', {
+  id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+  category: text('category').notNull(), // feature / improvement / notice / fix
+  titleZh: text('title_zh').notNull(),
+  titleEn: text('title_en').notNull(),
+  bodyZh: text('body_zh').notNull(),
+  bodyEn: text('body_en').notNull(),
+  imageUrl: text('image_url'),
+  publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+  isPublished: boolean('is_published').notNull().default(false),
+  createdBy: text('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

@@ -341,7 +341,8 @@
       "invites": "招待コード",
       "analytics": "分析",
       "settings": "設定",
-      "backToApp": "アプリに戻る"
+      "backToApp": "アプリに戻る",
+      "changelog": "更新ログ"
     },
     "forbidden": {
       "title": "管理者専用",

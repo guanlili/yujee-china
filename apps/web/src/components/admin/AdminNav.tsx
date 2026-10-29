@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 
-type Tab = 'overview' | 'users' | 'invites' | 'analytics' | 'settings';
+type Tab = 'overview' | 'users' | 'invites' | 'analytics' | 'settings' | 'changelog';
 
 const TABS: { key: Tab; href: string }[] = [
   { key: 'overview', href: '' },
@@ -10,6 +10,7 @@ const TABS: { key: Tab; href: string }[] = [
   { key: 'invites', href: '/invite-codes' },
   { key: 'analytics', href: '/analytics' },
   { key: 'settings', href: '/settings' },
+  { key: 'changelog', href: '/changelog' },
 ];
 
 interface Props {

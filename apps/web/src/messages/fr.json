@@ -341,7 +341,8 @@
       "invites": "Codes d'invitation",
       "analytics": "Statistiques",
       "settings": "Paramètres",
-      "backToApp": "Retour à l'application"
+      "backToApp": "Retour à l'application",
+      "changelog": "Journal des modifications"
     },
     "forbidden": {
       "title": "Réservé aux administrateurs",

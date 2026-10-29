@@ -341,7 +341,8 @@
       "invites": "Códigos de invitación",
       "analytics": "Analíticas",
       "settings": "Ajustes",
-      "backToApp": "Volver a la app"
+      "backToApp": "Volver a la app",
+      "changelog": "Registro de cambios"
     },
     "forbidden": {
       "title": "Solo administradores",
