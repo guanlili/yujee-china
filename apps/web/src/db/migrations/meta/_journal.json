@@ -246,6 +246,13 @@
       "when": 1793156788186,
       "tag": "0034_strip_plus86_phone",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1793286100558,
+      "tag": "0035_aberrant_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

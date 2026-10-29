@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import ChangelogBadge from '@/components/changelog/ChangelogBadge';
 import type { Locale } from '@/lib/i18n/routing';
 import { getMessages } from '@/lib/i18n/messages';
 
@@ -59,6 +60,7 @@ export function Sidebar({ locale, activeNav }: Props) {
           </Link>
         );
       })}
+      <div className="px-1 py-1"><ChangelogBadge /></div>
     </aside>
   );
 }

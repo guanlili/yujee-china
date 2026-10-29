@@ -341,7 +341,8 @@
       "invites": "邀请码",
       "analytics": "数据",
       "settings": "设置",
-      "backToApp": "返回应用"
+      "backToApp": "返回应用",
+      "changelog": "更新日志"
     },
     "forbidden": {
       "title": "仅限管理员",
