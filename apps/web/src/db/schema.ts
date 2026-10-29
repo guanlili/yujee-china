@@ -483,16 +483,20 @@ export const albumEditLinks = pgTable(
 
 // 用户反馈(用户菜单"反馈与问题"表单):落库存档 + 转发邮件到运营收件箱。
 // 限频依据:同一 user 最近一小时的行数。
-export const feedback = pgTable('feedback', {
-  id: text('id').primaryKey().default(sql`gen_random_uuid()`),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  message: text('message').notNull(),
-  // 提交时用户所在页面路径(前端带上,便于定位问题;可空)。
-  page: text('page'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const feedback = pgTable(
+  'feedback',
+  {
+    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    message: text('message').notNull(),
+    // 提交时用户所在页面路径(前端带上,便于定位问题;可空)。
+    page: text('page'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('idx_feedback_user_id').on(t.userId)],
+);
 
 export const albumMessages = pgTable(
   'album_messages',

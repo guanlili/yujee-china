@@ -91,6 +91,15 @@ export async function getAgentPhotoBytes(
   const skipped: AgentPhotoBytesResult['skipped'] = [];
   let spent = 0;
 
+  // 并发预读(2026-10-29):R2 get 是网络 IO,此前 for-of 里逐张串行等,20 张
+  // 照片 = 20×RTT;先按归属/状态闸筛出候选,并发拉完字节再串行做大小判定/编码。
+  const candidates = wanted.filter((photoId) => statusById.get(photoId) === 'uploaded');
+  const bytesByPhoto = new Map(
+    await Promise.all(
+      candidates.map(async (photoId) => [photoId, await readObject(photoOriginalKey(albumId, photoId))] as const),
+    ),
+  );
+
   for (const photoId of wanted) {
     const status = statusById.get(photoId);
     // 归属闸:不在这本相册的照片账本里 = 越权,连 R2 都不碰。
@@ -103,7 +112,7 @@ export async function getAgentPhotoBytes(
       continue;
     }
 
-    const bytes = await readObject(photoOriginalKey(albumId, photoId));
+    const bytes = bytesByPhoto.get(photoId) ?? null;
     if (!bytes) {
       skipped.push({ photoId, reason: 'missing-object' });
       continue;
