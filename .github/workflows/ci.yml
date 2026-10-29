@@ -42,6 +42,14 @@ jobs:
           install -m 600 /dev/stdin ~/.ssh/id_ed25519 <<< "$DEPLOY_SSH_KEY"
           echo "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
           ssh -i ~/.ssh/id_ed25519 -o ServerAliveInterval=30 ubuntu@$DEPLOY_HOST deploy
+      - name: Alert on deploy failure
+        if: failure()
+        env:
+          ALERT_URL: ${{ secrets.UPTIME_ALERT_URL }}
+        run: |
+          if [ -n "$ALERT_URL" ]; then
+            curl -fsS -m 10 "$ALERT_URL?status=down&msg=DEPLOY+failed:+${GITHUB_SHA::8}" || true
+          fi
 
   # 依赖漏洞门:只读 lockfile,秒级完成。2026-10-26 迁移批(drizzle 0.45 / zod 4 /
   # vite 8.1.6 override)清掉全部 high 后,收紧到 --audit-level=high —— 今后新 high
@@ -164,3 +172,19 @@ jobs:
       - run: pnpm --filter @earendil-works/pi-ai test
       - run: pnpm --filter @earendil-works/pi-agent-core test
       - run: pnpm --filter @smalldog/design-agent test
+
+  # 2026-10-29:CI 任一门失败或部署失败时打 uptime-kuma 的 push 心跳。
+  # uptime-kuma 在 82.156.14.48:3001,对应 monitor 的 push URL 存在 Secrets。
+  # 只要有一门红了就打(失败侧的 push monitor 在 kuma 里配为「收到心跳=告警」)。
+  notify:
+    needs: [audit, typecheck, engine, web, packages]
+    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Alert uptime-kuma (CI failure)
+        env:
+          ALERT_URL: ${{ secrets.UPTIME_ALERT_URL }}
+        run: |
+          if [ -n "$ALERT_URL" ]; then
+            curl -fsS -m 10 "$ALERT_URL?status=down&msg=CI+failed+on+main:+${GITHUB_SHA::8}" || true
+          fi
