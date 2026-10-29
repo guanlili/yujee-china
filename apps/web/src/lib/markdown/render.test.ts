@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { renderMarkdownSafe } from './render';
+import { renderMarkdownSafe, ensureMarkdownLoaded } from './render';
 
+await ensureMarkdownLoaded();
 test('renders bold / list / heading', () => {
   const html = renderMarkdownSafe('## 标题\n\n**加粗** 内容\n\n- 甲\n- 乙');
   assert.match(html, /<h2>标题<\/h2>/);

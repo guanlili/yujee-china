@@ -21,6 +21,14 @@ function viewFilter(view: UsersView) {
 }
 
 export const userRepo = {
+  // 批量查(listMembers 等用,2026-10-29):一次 IN 替代逐个 findById 的 N 次。
+  findByIds: async (ids: string[]): Promise<Map<string, User>> => {
+    if (ids.length === 0) return new Map();
+    const { inArray } = await import('drizzle-orm');
+    const rows = await db.select().from(users).where(inArray(users.id, ids));
+    return new Map(rows.map((u) => [u.id, u]));
+  },
+
   findById: async (id: string): Promise<User | undefined> => {
     const rows = await db.select().from(users).where(eq(users.id, id)).limit(1);
     return rows[0];

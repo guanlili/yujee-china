@@ -52,14 +52,15 @@ export const photoOriginalService = {
         .map((r) => r.photoId),
     );
 
-    const out: { photoId: string; putUrl: string; r2Key: string }[] = [];
-    for (const e of parsed.data.entries) {
-      if (uploadedIds.has(e.photoId)) continue;
-      const r2Key = photoOriginalKey(albumId, e.photoId);
-      const putUrl = await r2.signPutUrl(r2Key, PHOTO_ORIGINAL_CONTENT_TYPE, 300);
-      out.push({ photoId: e.photoId, putUrl, r2Key });
-    }
-    return out;
+    // 并发签名(2026-10-29):SigV4 是纯 CPU 计算,零网络,逐个 await 纯串行浪费。
+    const toSign = parsed.data.entries.filter((e) => !uploadedIds.has(e.photoId));
+    const signed = await Promise.all(
+      toSign.map(async (e) => {
+        const r2Key = photoOriginalKey(albumId, e.photoId);
+        return { photoId: e.photoId, r2Key, putUrl: await r2.signPutUrl(r2Key, PHOTO_ORIGINAL_CONTENT_TYPE, 300) };
+      }),
+    );
+    return signed;
   },
 
   // Browser reports back which of the presigned PUTs actually succeeded
@@ -149,10 +150,10 @@ export const photoOriginalService = {
     const rows = await albumPhotoRepo.findByAlbum(albumId);
     const uploaded = rows.filter((r) => r.status === 'uploaded' && requested.has(r.photoId));
 
-    const out: Record<string, string> = {};
-    for (const row of uploaded) {
-      out[row.photoId] = await r2.signGetUrl(photoOriginalKey(albumId, row.photoId), 300);
-    }
-    return out;
+    // 并发签名(2026-10-29):同上,SigV4 纯 CPU,逐个串行浪费。
+    const pairs = await Promise.all(
+      uploaded.map(async (row) => [row.photoId, await r2.signGetUrl(photoOriginalKey(albumId, row.photoId), 300)] as const),
+    );
+    return Object.fromEntries(pairs);
   },
 };

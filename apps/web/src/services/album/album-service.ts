@@ -1437,11 +1437,6 @@ export const albumService = {
           const reloaded = await albumRepo.findById(a.id);
           status = reloaded?.status ?? status;
         }
-      } else if (role === 'owner' && status === 'EDITING') {
-        // Read-time draft-expiry sweep (§12): landing on /my-albums is enough to
-        // release an idle draft's hold past 24h. The album stays EDITING (the
-        // draft is kept), so status is unaffected — only the credit hold moves.
-        await draftExpirySweeper.sweepAlbumOnRead(a.id);
       }
       const coverPage = coverByAlbumId.get(a.id) ?? null;
       // 封面兜底 photoIds 只在真需要时(无封面页且无缩略图)单查 draftJson;

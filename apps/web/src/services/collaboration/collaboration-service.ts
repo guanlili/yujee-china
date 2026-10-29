@@ -291,11 +291,12 @@ export const collaborationService = {
   ): Promise<Array<{ userId: string; name: string | null; email: string; createdAt: string }>> {
     await this.requireOwner(userId, albumId);
     const rows = await albumMemberRepo.listByAlbum(albumId);
-    const users = await Promise.all(rows.map((row) => userRepo.findById(row.userId)));
-    return rows.map((row, i) => ({
+    // 批量查(2026-10-29):一次 IN 替代逐个 findById 的 N+1。
+    const users = await userRepo.findByIds(rows.map((row) => row.userId));
+    return rows.map((row) => ({
       userId: row.userId,
-      name: users[i]?.name ?? null,
-      email: users[i]?.email ?? '',
+      name: users.get(row.userId)?.name ?? null,
+      email: users.get(row.userId)?.email ?? '',
       createdAt: row.createdAt.toISOString(),
     }));
   },
