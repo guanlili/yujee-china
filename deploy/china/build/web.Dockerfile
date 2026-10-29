@@ -33,9 +33,28 @@ RUN pnpm install --filter @yujee/web... --frozen-lockfile
 COPY . .
 RUN pnpm --filter @yujee/web build
 
-# ---- runner ----
+# ---- runner(standalone,2026-10-30)----
+# 镜像从 ~2.4GB 减到 ~650MB:只拷 standalone 产物 + public + static。
+# 关键:standalone 的 node_modules 用 pnpm symlink(相对路径),必须保持
+# 原始目录结构(standalone 根 = /app),否则 symlink 断裂 → MODULE_NOT_FOUND。
+# server.js 在 standalone/apps/web/ 下,WORKDIR 切过去运行。
 FROM base AS runner
 ENV NODE_ENV=production
-COPY --from=builder /app /app
+ENV PORT=3000 HOSTNAME=0.0.0.0
+
+WORKDIR /app
+
+# 整体拷贝 standalone 产物(保持目录结构:node_modules 在根,apps/web 在子目录)
+COPY --from=builder /app/apps/web/.next/standalone ./
+
+# 静态资源(CSR/ISR)和 public 文件 standalone 不含,须显式补拷
+COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /app/apps/web/public ./apps/web/public
+
+# contracts 模板/价格表(runtime 加载用)
+COPY --from=builder /app/packages/contracts/templates ./packages/contracts/templates
+COPY --from=builder /app/packages/contracts/pricing ./packages/contracts/pricing
+
 EXPOSE 3000
-CMD ["pnpm", "--filter", "@yujee/web", "start"]
+WORKDIR /app/apps/web
+CMD ["node", "server.js"]
