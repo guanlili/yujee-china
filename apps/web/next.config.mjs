@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // 2026-10-30:standalone 输出(镜像减半)——runner 只拷 .next/standalone + public + static,
+  // 不再拷整个 workspace。Dockerfile 的 CMD 也从 pnpm start 改为 node server.js。
+  output: 'standalone',
   transpilePackages: ['@yujee/contracts'],
   // subset-font ships a harfbuzz .wasm; let Node require it at runtime instead
   // of webpack trying (and failing) to bundle the binary. nft still traces it.
