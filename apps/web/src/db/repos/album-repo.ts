@@ -5,6 +5,20 @@ import { albumMembers, albums, creditHolds, users, type NewAlbum, type Album } f
 type AlbumStatus = Album['status'];
 
 
+export type AlbumListRow = Pick<
+  Album,
+  | 'id'
+  | 'userId'
+  | 'title'
+  | 'status'
+  | 'photoCount'
+  | 'pageCount'
+  | 'pdfUrl'
+  | 'coverThumbnailUrl'
+  | 'photoFilter'
+  | 'createdAt'
+>;
+
 export const albumRepo = {
   findById: async (id: string): Promise<Album | undefined> => {
     const rows = await db.select().from(albums).where(eq(albums.id, id)).limit(1);
@@ -141,6 +155,39 @@ export const albumRepo = {
       .from(albums)
       .where(eq(albums.userId, userId))
       .orderBy(desc(albums.createdAt)),
+
+  // my-albums 列表专用列(2026-10-29):SELECT * 会把 draftJson/envelopeJson
+  // 这类大 jsonb 一并拉回 —— 列表只用到下面这些轻列,封面兜底只在无封面书上
+  // 按需 findById 单查 draftJson(热路径 4s 轮询,省的是每本的整包 jsonb)。
+  listColumns: {
+    id: albums.id,
+    userId: albums.userId,
+    title: albums.title,
+    status: albums.status,
+    photoCount: albums.photoCount,
+    pageCount: albums.pageCount,
+    pdfUrl: albums.pdfUrl,
+    coverThumbnailUrl: albums.coverThumbnailUrl,
+    photoFilter: albums.photoFilter,
+    createdAt: albums.createdAt,
+  },
+
+  findListByUser: async (userId: string): Promise<AlbumListRow[]> =>
+    db
+      .select(albumRepo.listColumns)
+      .from(albums)
+      .where(eq(albums.userId, userId))
+      .orderBy(desc(albums.createdAt)),
+
+  findSharedListWithUser: async (
+    userId: string,
+  ): Promise<Array<{ album: AlbumListRow; joinedAt: Date }>> =>
+    db
+      .select({ album: albumRepo.listColumns, joinedAt: albumMembers.createdAt })
+      .from(albumMembers)
+      .innerJoin(albums, eq(albumMembers.albumId, albums.id))
+      .where(eq(albumMembers.userId, userId))
+      .orderBy(desc(albumMembers.createdAt)),
 
   // 被邀请协作的相册(collab rework §15.2 的"产品要求显示共享相册"扩展):
   // album_members 行 → join 出相册本体。owner 不在 members 表(albums.user_id 是

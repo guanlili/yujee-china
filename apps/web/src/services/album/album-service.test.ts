@@ -3026,16 +3026,19 @@ test('toMyAlbumListItem: role 透传 + 封面兜底规则(纯函数,无库覆盖
     pdfUrl: null, coverThumbnailUrl: null, photoFilter: null,
     draftJson: null, errorMessage: null, createdAt: new Date(), updatedAt: new Date(),
   };
-  const noCover = toMyAlbumListItem(base as never, 'editor', 'EDITING', null);
+  const noCover = toMyAlbumListItem(base as never, 'editor', 'EDITING', null, []);
   assert.equal(noCover.role, 'editor', 'role 必须透传(editor 共享书)');
-  assert.deepEqual(noCover.fallbackPhotoIds, [], 'draftJson 为空时无兜底照片');
+  assert.deepEqual(noCover.fallbackPhotoIds, [], '无兜底入参时为空(兜底改由调用点按需计算)');
 
-  const ownerItem = toMyAlbumListItem(base as never, 'owner', 'COMPLETED', null);
+  const withFallback = toMyAlbumListItem(base as never, 'editor', 'EDITING', null, ['p1', 'p2']);
+  assert.deepEqual(withFallback.fallbackPhotoIds, ['p1', 'p2'], '兜底 photoIds 透传');
+
+  const ownerItem = toMyAlbumListItem(base as never, 'owner', 'COMPLETED', null, []);
   assert.equal(ownerItem.role, 'owner', 'owner 视角透传 owner');
 
   const withThumb = toMyAlbumListItem(
     { ...base, coverThumbnailUrl: 'https://cdn.example/t.jpg' } as never,
-    'owner', 'EDITING', null,
+    'owner', 'EDITING', null, [],
   );
   assert.deepEqual(withThumb.fallbackPhotoIds, [], '已有缩略图不需要兜底');
 
@@ -3088,17 +3091,17 @@ test('listByUser: editor 的 RUNNING 共享书不触发 resolveGeneration(账务
   t.mock.method(draftExpirySweeper, 'sweepAlbumOnRead', async (albumId: string) => {
     calls.sweepAlbumOnRead.push(albumId);
   });
-  t.mock.method(albumRepo, 'findByUser', async () => [] as never);
-  t.mock.method(albumRepo, 'findSharedWithUser', async () => [
+  // 2026-10-29 列表热路径批改造后,列表查询走列裁剪的 findListByUser/
+  // findSharedListWithUser,membership 复核走批量 albumIdsForUser(语义与旧
+  // resolveRole→exists 链相同,见 listByUser 注释)。
+  t.mock.method(albumRepo, 'findListByUser', async () => [] as never);
+  t.mock.method(albumRepo, 'findSharedListWithUser', async () => [
     { album: sharedAlbum, joinedAt: new Date() },
   ] as never);
   t.mock.method(albumPageRepo, 'findFirstByAlbumIds', async () => [] as never);
-  // mock 掉 resolveRole 的依赖,避免 DB 调用
-  // resolveRole 是模块级导出,无法 t.mock.method —— 但它只调 albumMemberRepo.exists,
-  // 把 exists mock 成「userId 匹配 member 关系」即可绕开 DB。
-  t.mock.method(albumMemberRepo, 'exists', async (albumId: string, userId: string) => {
-    return albumId === 'album-shared' && userId === 'editor-me';
-  });
+  t.mock.method(albumMemberRepo, 'albumIdsForUser', async () => new Set(['album-shared']));
+  // 封面兜底的懒查(无封面书才走)也 mock 掉,测试不碰 DB。
+  t.mock.method(albumRepo, 'findById', async () => undefined as never);
 
   const rows = await albumService.listByUser('editor-me');
   assert.equal(rows[0]?.role, 'editor');
@@ -3125,13 +3128,11 @@ test('listByUser: owner 的 RUNNING 书仍触发 resolveGeneration(账务不断)
   t.mock.method(draftExpirySweeper, 'sweepAlbumOnRead', async (albumId: string) => {
     calls.sweepAlbumOnRead.push(albumId);
   });
-  t.mock.method(albumRepo, 'findByUser', async () => [ownAlbum] as never);
-  t.mock.method(albumRepo, 'findSharedWithUser', async () => [] as never);
+  t.mock.method(albumRepo, 'findListByUser', async () => [ownAlbum] as never);
+  t.mock.method(albumRepo, 'findSharedListWithUser', async () => [] as never);
   t.mock.method(albumPageRepo, 'findFirstByAlbumIds', async () => [] as never);
-  // mock 掉 resolveRole 的依赖,避免 DB 调用
-  // resolveRole 是模块级导出,无法 t.mock.method —— 但它只调 albumMemberRepo.exists,
-  // 把 exists mock 成「userId 匹配 member 关系」即可绕开 DB。
-  t.mock.method(albumMemberRepo, 'exists', async () => false);
+  t.mock.method(albumMemberRepo, 'albumIdsForUser', async () => new Set<string>());
+  t.mock.method(albumRepo, 'findById', async () => undefined as never);
 
   const rows = await albumService.listByUser('owner-me');
   assert.equal(rows[0]?.role, 'owner');

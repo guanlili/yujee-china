@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { normalizeBoardBackground, type BoardBackground } from '@/lib/board-bg/presets';
 import { patchHtmlImagePos, patchHtmlPageStyle, patchHtmlText, patchHtmlTextStyle } from '@/components/album/page-html-dom';
 import { db, type DbOrTx } from '@/db/client';
-import { albumRepo } from '@/db/repos/album-repo';
+import { albumRepo, type AlbumListRow } from '@/db/repos/album-repo';
+import { albumMemberRepo } from '@/db/repos/album-member-repo';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
 import { albumPageRepo } from '@/db/repos/album-page-repo';
 import type { Album } from '@/db/schema';
@@ -114,10 +115,15 @@ async function coverThumbnailRevision(
 // 零副作用,抽出是为了在**无库环境**(闸门/CI)也能测 role 透传与封面兜底规则 ——
 // listByUser 的 DB 测试在无库时会静默 skip,新查询否则没有真实覆盖。
 export function toMyAlbumListItem(
-  a: Album,
+  a: Pick<
+    Album,
+    | 'id' | 'title' | 'photoCount' | 'pageCount' | 'pdfUrl'
+    | 'coverThumbnailUrl' | 'photoFilter' | 'createdAt'
+  >,
   role: 'owner' | 'editor',
   status: Album['status'],
   coverPage: AlbumCoverPage | null,
+  fallbackPhotoIds: string[] = [],
 ) {
   return {
     id: a.id,
@@ -137,8 +143,8 @@ export function toMyAlbumListItem(
     // 列表端点不投影 —— 4s 轮询下塞全量 URL 会让 payload 爆炸,且公开 URL 常态化
     // 下发给 editor 无法在踢人后撤销。
     // 已有封面页或已存缩略图就不用兜底,省掉无谓的 draft 解析与线上负载。
-    fallbackPhotoIds:
-      coverPage || a.coverThumbnailUrl ? [] : albumService.fallbackCoverPhotoIds(a.draftJson),
+    // 封面兜底由调用点按需算好传入(列表行不再携带 draftJson;纯函数不查库)。
+    fallbackPhotoIds,
   };
 }
 
@@ -1370,24 +1376,30 @@ export const albumService = {
   },
 
   async listByUser(userId: string) {
-    const rows = await albumRepo.findByUser(userId);
+    // 2026-10-29 热路径修复:SELECT *(含 draftJson/envelopeJson 大 jsonb)改
+    // 列裁剪的 findListByUser;封面兜底只在无封面书上按需单查 draftJson。
+    const rows = await albumRepo.findListByUser(userId);
     // 共享相册(collab rework §15.2):我作为 editor 被邀请的书也进列表。
     // 两查询天然不重叠(owner 不在 members 表);role 供前端区分展示与治理入口
     // (editor 无 deleteAlbum,列表删除按钮须按 role 隐藏)。
     // 排序保持存量行为:自己的书按 createdAt desc(老用户列表顺序不变),
     // 共享书整段追加在尾部(按加入时间 desc)—— 不悄悄改变既有用户的列表顺序。
-    const sharedRows = await albumRepo.findSharedWithUser(userId);
-    // role 不硬编码:共享书同样走 resolveRole 统一判定(与 owner 书同一权限
-    // 真相;members 表行 → editor,若未来 members 语义扩展只改一处)。
-    const shared: Array<{ album: Album; role: 'owner' | 'editor' }> = [];
+    const sharedRows = await albumRepo.findSharedListWithUser(userId);
+    // role 判定与 resolveRole 同源(members 行 → editor;owner 书与 members
+    // 天然不重叠),但把逐本 exists 的 N+1 合成一次 IN 查询(2026-10-29):
+    // 语义同样是「读到什么就是什么」,成员行在读取间隙被移除的书跳过不下发。
+    const stillMember = await albumMemberRepo.albumIdsForUser(
+      sharedRows.map((row) => row.album.id),
+      userId,
+    );
+    const shared: Array<{ album: AlbumListRow; role: 'owner' | 'editor' }> = [];
     for (const { album } of sharedRows) {
-      const sharedRole = await resolveRole(album, userId);
-      if (!sharedRole) continue; // 成员行在读取间隙被移除:跳过,不下发
-      shared.push({ album, role: sharedRole });
+      if (!stillMember.has(album.id)) continue;
+      shared.push({ album, role: 'editor' });
     }
     // 去重防御:按 albumId 归一(own 优先)—— 正常数据两查询不重叠,这里只防脏数据。
     const seen = new Set<string>();
-    const all: Array<{ album: Album; role: 'owner' | 'editor' }> = [];
+    const all: Array<{ album: AlbumListRow; role: 'owner' | 'editor' }> = [];
     for (const entry of [
       ...rows.map((album) => ({ album, role: 'owner' as const })),
       ...shared,
@@ -1432,7 +1444,15 @@ export const albumService = {
         await draftExpirySweeper.sweepAlbumOnRead(a.id);
       }
       const coverPage = coverByAlbumId.get(a.id) ?? null;
-      out.push(toMyAlbumListItem(a, role, status, coverPage));
+      // 封面兜底 photoIds 只在真需要时(无封面页且无缩略图)单查 draftJson;
+      // 有封面的书(绝大多数)不再为大 jsonb 付任何查询成本。
+      const fallbackIds =
+        coverPage || a.coverThumbnailUrl
+          ? []
+          : albumService.fallbackCoverPhotoIds(
+              (await albumRepo.findById(a.id))?.draftJson,
+            );
+      out.push(toMyAlbumListItem(a, role, status, coverPage, fallbackIds));
     }
     return out;
   },
@@ -1476,6 +1496,24 @@ export const albumService = {
       lastComposeWrote,
       // AI 结果过期(collab rework Phase 4):job 因运行期间的人工修改被拦,
       // 前端据此给出「基于最新版本重跑」的明确行动,而非笼统失败。
+      lastComposeStale:
+        latestCompose?.status === 'FAILED'
+        && (latestCompose?.error as { code?: string } | null)?.code === 'AI_RESULT_STALE',
+    };
+  },
+
+  // /design?light=1 轮询专用(2026-10-29):只回 job 派生态四个字段,不做
+  // requireAccess 之外的整书加载 —— 成稿轮询每几秒一次,listCoverSets 的
+  // loadStoryDraft+buildCoverSets 对它全是白干(ChatPanel 的首次弹卡仍走全量)。
+  async getDesignState(userId: string, albumId: string) {
+    await collaborationService.requireAccess(userId, albumId);
+    const latestCompose = await agentJobRepo.findLatestComposeByAlbum(albumId);
+    const meta = readComposeAppendMeta(latestCompose?.meta);
+    return {
+      composing: latestCompose?.status === 'QUEUED' || latestCompose?.status === 'RUNNING',
+      lastComposeStatus: latestCompose?.status ?? null,
+      lastComposeWrote:
+        meta?.writtenPages !== undefined ? meta.writtenPages > 0 : null,
       lastComposeStale:
         latestCompose?.status === 'FAILED'
         && (latestCompose?.error as { code?: string } | null)?.code === 'AI_RESULT_STALE',

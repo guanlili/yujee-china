@@ -491,7 +491,7 @@ export async function fetchDesignState(
   // (AI_RESULT_STALE),前端据此说「基于最新版本重跑」,不伪装成成功也不报笼统失败。
   lastComposeStale: boolean;
 }> {
-  const res = await fetch(`/api/v3/albums/${albumId}/design`);
+  const res = await fetch(`/api/v3/albums/${albumId}/design?light=1`);
   const json = await res.json();
   if (!json.ok) {
     if (res.status === 401 || json.error?.code === 'UNAUTHORIZED') throw new UnauthorizedError();
