@@ -28,7 +28,9 @@ jobs:
     concurrency:
       group: deploy-production
       cancel-in-progress: false
-    timeout-minutes: 30
+    # 2026-10-29 收紧:实测最快 48s、最慢 ~4min(冷构建),10min 足以覆盖
+    # 极端情况(clip 全量重建 ~5min);30min 太宽,卡死的部署要等半小时才红。
+    timeout-minutes: 10
     steps:
       - name: Deploy to production
         env:

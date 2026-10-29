@@ -14,6 +14,18 @@ LOG=logs/deploy.log
 # 输出双写:CI job log(经 ssh stdout 回传)+ 本地留档。
 exec > >(tee -a "$LOG") 2>&1
 
+# ── 自愈(2026-10-29):清理孤儿构建进程 ─────────────────────────────
+# 部署并发组(cancel-in-progress:false)排队不取消,但 GitHub Actions 侧 job
+# 超时或手动取消时,服务器上的 docker compose build 可能已被杀掉客户端但
+# buildkit 守护进程侧还在跑 —— 留下一个占着锁/带宽的孤儿进程,下一轮部署
+# 会撞上或被拖慢。2026-10-28 连环取消踩过三次。
+# 注意 pkill 模式不能用自身命令行匹配(会自杀 SSH 会话,踩过的坑)。
+if pgrep -f "docker[ ]compose.*yujee" >/dev/null 2>&1; then
+  echo "orphan compose detected, killing..."
+  pkill -f "docker[ ]compose.*yujee" || true
+  sleep 2
+fi
+
 echo "=== deploy start $(date '+%F %T') from $(git rev-parse --short HEAD) ==="
 git fetch -q --depth=1 origin main
 git reset -q --hard FETCH_HEAD
@@ -39,4 +51,45 @@ docker compose -f deploy/china/compose.single.yml \
 curl -fsS -m 15 -L --retry 6 --retry-connrefused --retry-delay 3 \
   -o /dev/null -w "home http %{http_code}\n" http://127.0.0.1:8080/
 bash deploy/china/bin/daily-patrol.sh
+
+# ── 冒烟测试(2026-10-29):五容器关键端点逐个验证 ────────────────────
+# daily-patrol 查的是容器层面(healthy);这里补应用层冒烟——每个容器的
+# 核心端点各打一发,确认不是「容器活着但应用挂了」。
+smoke_fail=0
+
+smoke() {
+  local name="$1" url="$2" expect="$3"
+  local code
+  code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "$url" 2>/dev/null) || code="000"
+  if [ "$code" = "$expect" ] || [ "$code" = "308" ]; then
+    echo "smoke ✓ $name ($code)"
+  else
+    echo "smoke ✗ $name: expected $expect got $code"
+    smoke_fail=1
+  fi
+}
+
+smoke web        "http://127.0.0.1:8080/"                                  "200"
+smoke web-api    "http://127.0.0.1:8080/api/v1/health"                      "200"
+smoke agent      "http://127.0.0.1:8002/health"                             "200"
+smoke design     "http://$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' yujee-design-agent-1 2>/dev/null):8787/health" "200"
+smoke postgres   "http://127.0.0.1:5432/"                                   "000"  # PG 不走 HTTP,容器 healthy 即可
+smoke clip       "http://127.0.0.1:8001/health"                             "200"
+
+# postgres/clip 的 HTTP 码不适用,用 docker inspect 兜底:
+for c in yujee-postgres-1 yujee-clip-1; do
+  status=$(docker inspect -f '{{.State.Health.Status}}' "$c" 2>/dev/null) || status="unknown"
+  if [ "$status" = "healthy" ]; then
+    echo "smoke ✓ $c (healthy)"
+  else
+    echo "smoke ✗ $c: $status"
+    smoke_fail=1
+  fi
+done
+
+if [ "$smoke_fail" = "1" ]; then
+  echo "SMOKE TEST FAILED"
+  exit 1
+fi
+
 echo "=== deploy done $(date '+%F %T') ==="
