@@ -116,8 +116,10 @@ analyze 会多一步:把照片委托给 2GB CLIP worker 的 `/internal/photo-pro
 `/v3/compose` 是全流程**唯一**的 AI 成稿调用:一章一次(`_completion` 单一汇聚点,provider 由 `COMPOSE_PROVIDER` 决定:默认 Gemini,`ark` 走 `ai_client.chat_completion`,doubao 侧强制 thinking disabled 且不传 `response_format`;模型可用 `COMPOSE_ARK_MODEL` 单独指定,缺省回落 `ark_vision_model`)(照片以真图进上下文、
 `chapterContext` 是最高优先级素材),外加一次全局调用出封面/封尾文案与字体
 (AI 只输出场景名,字体由代码按 场景×语言 查表填)。失败绝不阻断交付 —— 章/全局批次
-单次失败先原地重试一次(瞬时网络抖动、空正文、JSON 解析不出都在此列;截断/少括号的
-输出会先走 `parse_json_loose` 的修复兜底),仍写不出来该章页面才保留模板 sample 文案,
+解析/空正文类失败先原地重抽一次(模型输出非确定,重抽常能救回;截断/少括号的
+输出会先走 `parse_json_loose` 的修复兜底);网络类(transport/timeout/5xx)由 `ai_client`
+内部重试一次、handler 不再叠加(2026-10-29 修复:旧版任何异常都整体重试,最坏 4 次
+全量调用、图片 token 重复烧),仍写不出来该章页面才保留模板 sample 文案,
 不发 `failed`。**超时同理**:预算是按章的
 (`COMPOSE_CHAPTER_TIMEOUT_SECONDS`,默认 180s),卡住的章按「这一章掉队」处理,已经写完
 的章照常成稿;外层只留一个按「章数 ÷ 并发」摊开的兜底(封顶 11 分钟,压在 Web 侧 compose
@@ -224,5 +226,5 @@ SSH 到 49.232 跑 `deploy/china/bin/deploy-from-git.sh`(reset --hard + 五容�
 
 <!-- doc-scope
 paths: engine/src/**
-checked-at: 844574d3
+checked-at: 7d7d00fe
 -->

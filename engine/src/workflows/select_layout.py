@@ -202,7 +202,8 @@ async def _run_select_layout(job: _Job) -> None:
     await _emit_progress(job, "layout", 0)
 
     # 纯确定性选版,一把出页(旧的候选回调 → 浏览器缩略图 → 视觉评委三段已整条移除)。
-    pages, usage = build_pages(job.req)
+    # 纯 CPU 同步重活下线程池(2026-10-29),别卡事件循环(与 analyze 批同修)。
+    pages, usage = await asyncio.to_thread(build_pages, job.req)
     await callback.post(
         str(job.req.callbackUrl),
         SelectLayoutCompleted(

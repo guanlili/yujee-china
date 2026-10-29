@@ -195,7 +195,9 @@ async def open_clip_embeddings(payload: _EmbeddingsRequest) -> dict:
 
     from ..workflows.core.chaptering import features
 
-    images = [_decode_data_url(url) for url in payload.images]
+    images = await run_in_threadpool(
+        lambda: [_decode_data_url(url) for url in payload.images]
+    )
     # CPU 推理是阻塞的,别占住事件循环;并发要串行,别把 2GB 撑爆。
     embeddings = await run_in_threadpool(_locked(features.clip_embeddings), images)
     log.info("open_clip_embeddings", count=len(images))
@@ -265,13 +267,19 @@ async def photo_profile(payload: _PhotoProfileRequest) -> dict:
     # 坏图在跑任何推理之前就筛掉,别白烧算力 —— 但**逐张筛**,不是整批 400。
     # 三个模块的抬头都写着「一张照片的失败不该打挂整本」,而这里原来是列表推导:
     # 第一张坏图抛 HTTPException,同批另外 7 张全部陪葬。
-    decoded: list[tuple[str, Image.Image]] = []
-    undecodable: list[str] = []
-    for item in payload.images:
-        try:
-            decoded.append((item.photoId, _decode_data_url(item.dataUrl)))
-        except HTTPException:
-            undecodable.append(item.photoId)
+    def _decode_batch() -> tuple[list[tuple[str, Image.Image]], list[str]]:
+        out: list[tuple[str, Image.Image]] = []
+        bad: list[str] = []
+        for item in payload.images:
+            try:
+                out.append((item.photoId, _decode_data_url(item.dataUrl)))
+            except HTTPException:
+                bad.append(item.photoId)
+        return out, bad
+
+    # 同步解码循环下线程池(2026-10-29):此前跑在事件循环上,大书批会卡住
+    # 同容器的其他请求与健康检查。
+    decoded, undecodable = await run_in_threadpool(_decode_batch)
     if undecodable:
         log.warning("photo_profile.undecodable", photo_ids=undecodable, count=len(undecodable))
     if not decoded:
