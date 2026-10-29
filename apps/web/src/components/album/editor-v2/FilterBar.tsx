@@ -75,6 +75,16 @@ export function FilterBar({
   const aT = boundPick(locale);
   const current = currentScopeFilter(state, scope, photoId);
   const strength = current?.strength ?? 100;
+  const [dragStrength, setDragStrength] = useState<number | null>(null);
+  const commitStrength = useCallback(() => {
+    setDragStrength((pending) => {
+      if (pending != null && pending !== strength) {
+        if (current) apply({ ...current, strength: pending });
+      }
+      return null;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, strength]);
   /** 这张图正在跟随全书 = 没有自己的 override(与 override === null 是两回事)。 */
   const following =
     scope === 'photo' && photoId != null && state?.overrides?.[photoId] === undefined;
@@ -313,18 +323,21 @@ export function FilterBar({
           早先用 disabled 灰着占位 —— 一个永远点不动的控件比没有更让人困惑。 */}
       {current && !following && (
         <label className="filter-strength">
-          <span>{aT('强度', 'Strength')} {Math.round(strength)}%</span>
+          <span>{aT('强度', 'Strength')} {Math.round(dragStrength ?? strength)}%</span>
           <input
             type="range"
             min="0"
             max="100"
             step="5"
-            value={strength}
+            value={dragStrength ?? strength}
             aria-label={aT('滤镜强度', 'Filter strength')}
-            onChange={(event) => apply({
-              ...current,
-              strength: Number(event.currentTarget.value),
-            })}
+            /* 松手才提交(2026-10-29):此前 onChange 每档都 apply,全书每档一次
+               LUT 派生 + 变体 LRU 写删抖动(容量 2,拖 20 档写删 40 次)。拖动中
+               只更新本地显示值,pointerup/keyup(键盘无障碍)/blur 落最终档。 */
+            onChange={(event) => setDragStrength(Number(event.currentTarget.value))}
+            onPointerUp={commitStrength}
+            onKeyUp={commitStrength}
+            onBlur={commitStrength}
           />
         </label>
       )}

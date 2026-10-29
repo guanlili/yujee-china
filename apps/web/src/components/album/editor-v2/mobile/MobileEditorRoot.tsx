@@ -283,7 +283,7 @@ export function MobileEditorRoot({
     undefined,
   );
 
-  const photoIds = useMemo(
+  const rawPhotoIds = useMemo(
     () => [
       ...new Set([
         ...extractPhotoIds(detail.album.layoutJson),
@@ -294,6 +294,15 @@ export function MobileEditorRoot({
     ],
     [detail.album.layoutJson, pages],
   );
+  // 签名记忆化(2026-10-29):pages 数组身份随每次文字预览(previewPage)变化,但
+  // 文字编辑不改照片集合;photoIds 身份稳定后,下面的 getTierUrls effect(全书
+  // IndexedDB 读,带滤镜时还有派生管线)不再每个按键重跑一遍。
+  const photoIdsKey = rawPhotoIds.join('\u0000');
+  const photoIdsRef = useRef({ key: '', ids: [] as string[] });
+  if (photoIdsRef.current.key !== photoIdsKey) {
+    photoIdsRef.current = { key: photoIdsKey, ids: rawPhotoIds };
+  }
+  const photoIds = photoIdsRef.current.ids;
 
   /* 屏显两档的 URL。
      提交器**必须在 effect 内部创建**。早先是 useMemo([]) 建一次 + 一个独立 effect 的

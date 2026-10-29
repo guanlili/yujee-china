@@ -2107,6 +2107,13 @@ export function ChatPanel({
         await new Promise((r) => setTimeout(r, 2500));
         if (disposed) return;
         try {
+          // 2026-10-29:每轮先问 /design?light=1 的轻状态(只有 job 四字段),
+          // 成稿 COMPLETED 才拉一次骨架换卡 —— 此前每轮 fetchDraftSkeleton 拉全
+          // 骨架(全部页的 texts/html),大书轮询期每 2.5s 白搬一次整书。
+          const state = await fetchDesignState(albumId);
+          if (state.composing) continue;
+          if (state.lastComposeStatus === 'FAILED') return; // 失败:回执卡留场,封顶路径兜底
+          if (state.lastComposeStatus !== 'COMPLETED') continue; // null/未知:继续等
           const { draft } = await fetchDraftSkeleton(albumId);
           if (draft && draft.pages.some((p) => p.kind === 'cover')) {
             if (disposed) return;
