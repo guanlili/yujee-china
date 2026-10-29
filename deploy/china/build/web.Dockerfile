@@ -55,6 +55,11 @@ COPY --from=builder /app/apps/web/public ./apps/web/public
 COPY --from=builder /app/packages/contracts/templates ./packages/contracts/templates
 COPY --from=builder /app/packages/contracts/pricing ./packages/contracts/pricing
 
+# db:migrate(deploy 脚本在容器内跑 drizzle-kit,standalone 不含 devDeps,
+# 把 drizzle-kit 移到了 production deps;还需 migrations 目录 + 配置)
+COPY --from=builder /app/apps/web/src/db/migrations ./apps/web/src/db/migrations
+COPY --from=builder /app/apps/web/drizzle.config.ts ./apps/web/
+
 EXPOSE 3000
 WORKDIR /app/apps/web
 CMD ["node", "server.js"]
