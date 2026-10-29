@@ -381,10 +381,14 @@ async def compose_chapter(chapter: Any, *, language: str = "zh") -> ComposeChapt
         try:
             raw_text, in_tok, out_tok = await _completion(messages, temperature=0.6)
             pages_texts = _parse_result(raw_text, page_specs)
+        except ai_client.AIRequestError:
+            # 网络类(transport/timeout/5xx)不再整体重试:ai_client 内部已重试过
+            # 一次,handler 再叠加 = 最坏 4 次全量调用、图片 token 重复烧
+            # (2026-10-29 修复)。直接上抛走外层 sample 兜底。
+            raise
         except Exception as exc:  # noqa: BLE001
-            # 一次瞬时失败(网络抖动/空正文/解析不出)不值一整章 sample:重试一次。
-            # 实测 2026-07-31 多个本地单子:章节调用单次失败 → 整章文案静默回退 sample,
-            # 用户看到「没写文案」。第二次仍失败才走外层兜底。
+            # 解析/空正文类保留一次重抽(2026-07-31 的 UX 修复:模型输出非确定,
+            # 重抽常能救回整章;第二次仍失败才走外层兜底)。
             log.warning(
                 "compose.chapter_retry",
                 chapter_id=str(_get(chapter, "chapterId", "") or ""),
@@ -544,7 +548,10 @@ async def compose_global(
         try:
             raw_text, in_tok, out_tok = await _completion(messages, temperature=0.7)
             parsed = ai_client.parse_json_loose(raw_text)
-        except Exception as exc:  # noqa: BLE001 — 与章节批次同款:瞬时失败重试一次
+        except ai_client.AIRequestError:
+            # 与章节批次同款(2026-10-29):网络类交给 ai_client 内部重试,不叠加。
+            raise
+        except Exception as exc:  # noqa: BLE001 — 解析/空正文类:重抽一次
             log.warning("compose.global_retry", error=str(exc))
             calls = 2
             raw_text, in_tok, out_tok = await _completion(messages, temperature=0.7)

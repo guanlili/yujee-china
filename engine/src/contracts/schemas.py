@@ -229,13 +229,10 @@ def _validate_v3_analyze_image_data_url(value: str) -> str:
     decoded_size = (len(payload) // 4) * 3 - padding
     if decoded_size > _V3_ANALYZE_MAX_IMAGE_BYTES:
         raise ValueError("decoded image payload must be <= 800KB")
-
-    try:
-        decoded = base64.b64decode(payload, validate=True)
-    except binascii.Error as exc:
-        raise ValueError("base64 image payload must be valid base64") from exc
-    if len(decoded) > _V3_ANALYZE_MAX_IMAGE_BYTES:
-        raise ValueError("decoded image payload must be <= 800KB")
+    # 字符集/填充/长度已由上面的 data-url 正则与显式分支完全覆盖,旧的
+    # b64decode(validate=True) 整段解码(~800KB/张,校验完即丢)是纯冗余 ——
+    # 2026-10-29 移除:100 张书的 analyze 请求在 pydantic 校验阶段省掉
+    # 一次全量解码的峰值内存与 CPU(与分组/树构建的解码改造同批)。
     return value
 
 

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
 
-from PIL import Image
+import numpy as np
 
 from ....contracts.schemas import V3AnalyzePhoto
 from . import features
@@ -31,7 +31,7 @@ class _Record:
     timestamp: float | None
     gps: tuple[float, float] | None
     cluster: str | None
-    image: Image.Image
+    b64: str
 
 
 def group_photos(
@@ -155,7 +155,7 @@ def _record(photo: V3AnalyzePhoto, index: int) -> _Record:
         timestamp=timestamp,
         gps=gps,
         cluster=photo.clusterId,
-        image=features.image_from_data_url(photo.base64),
+        b64=photo.base64,
     )
 
 
@@ -294,7 +294,10 @@ def _subgroups(
     ):
         return [cell], []
 
-    images = [records[index].image for index in cell]
+    # 惰性解码(2026-10-29):此前 _record 阶段全书每张都解码成 PIL Image 常驻
+    # 记录,100 张书峰值多出整书位图;现在只在进入亚组分裂的 cell 内按需解码,
+    # 不满足分裂条件的 cell 完全不解码,峰值被 cell 尺寸封顶。
+    images = [features.image_from_data_url(records[index].b64) for index in cell]
     with ThreadPoolExecutor(max_workers=2) as executor:
         emb_future = executor.submit(features.clip_embeddings, images)
         pix_future = executor.submit(lambda: [features.pix_feat(image) for image in images])
@@ -316,62 +319,56 @@ def _subgroups(
 
 
 def _make_fused(emb: list[list[float]], pix: list[list[float]]):
-    dclip: list[float] = []
-    dpix: list[float] = []
-    for i in range(len(emb)):
-        for j in range(i + 1, len(emb)):
-            dclip.append(max(1 - _dot(emb[i], emb[j]), 0.0))
-            dpix.append(_euclidean(pix[i], pix[j]))
-    med_clip = _median(dclip) or 1.0
-    med_pix = _median(dpix) or 1.0
+    """预计算全对 fused 距离的 numpy 矩阵,返回与旧版同签名的闭包(行为等价)。
+
+    2026-10-29 向量化:此前逐对纯 Python 点积/欧氏(n² 次 O(d) 循环)且 _agglo
+    每轮全量重算簇间均值,同场景百张照片时是纯 Python O(n³)+;现在全对距离
+    一次矩阵算出,聚合走 Lance-Williams 增量更新。"""
+    E = np.asarray(emb, dtype=np.float64)
+    P = np.asarray(pix, dtype=np.float64)
+    clip = np.maximum(1.0 - E @ E.T, 0.0)
+    diff = P[:, None, :] - P[None, :, :]
+    pixd = np.sqrt(np.einsum("ijk,ijk->ij", diff, diff))
+    iu = np.triu_indices(len(E), k=1)
+    med_clip = float(np.median(clip[iu])) or 1.0
+    med_pix = float(np.median(pixd[iu])) or 1.0
+    C = clip / med_clip
+    Q = pixd / med_pix
 
     def fused(i: int, j: int, alpha: float) -> float:
-        clip_distance = max(1 - _dot(emb[i], emb[j]), 0.0) / med_clip
-        pix_distance = _euclidean(pix[i], pix[j]) / med_pix
-        return alpha * clip_distance + (1 - alpha) * pix_distance
+        return float(alpha * C[i, j] + (1.0 - alpha) * Q[i, j])
 
     return fused
 
 
 def _agglo(idxs: list[int], fused, alpha: float, tau: float) -> list[list[int]]:
-    clusters = [[index] for index in idxs]
-    while len(clusters) > 1:
-        best: float | None = None
-        best_i = best_j = -1
-        for i in range(len(clusters)):
-            for j in range(i + 1, len(clusters)):
-                distances = [
-                    fused(a, b, alpha)
-                    for a in clusters[i]
-                    for b in clusters[j]
-                ]
-                distance = sum(distances) / len(distances)
-                if best is None or distance < best:
-                    best = distance
-                    best_i, best_j = i, j
-        if best is None or best > tau:
+    """平均链接聚合。簇间距离 = 跨簇成员对距离的均值;合并用 Lance-Williams
+    增量式 D_merge_l = (D_a_l·|a| + D_b_l·|b|)/(|a|+|b|),与逐对均值数学等价。
+    平局取 (i,j) 字典序最小者,与旧版首见即留的扫描顺序一致。"""
+    n = len(idxs)
+    if n < 2:
+        return [[index] for index in idxs]
+    D = np.zeros((n, n), dtype=np.float64)
+    for a in range(n):
+        for b in range(a + 1, n):
+            D[a, b] = D[b, a] = fused(a, b, alpha)
+    members: list[list[int]] = [[index] for index in range(n)]
+    while len(members) > 1:
+        np.fill_diagonal(D, np.inf)
+        flat = int(np.argmin(D))
+        a, b = divmod(flat, D.shape[1])  # 对称矩阵行主序首个命中 ⇒ a < b
+        if D[a, b] > tau:
             break
-        clusters[best_i] += clusters[best_j]
-        del clusters[best_j]
-    return clusters
-
-
-def _dot(left: list[float], right: list[float]) -> float:
-    return sum(a * b for a, b in zip(left, right))
-
-
-def _euclidean(left: list[float], right: list[float]) -> float:
-    return math.sqrt(sum((a - b) ** 2 for a, b in zip(left, right)))
-
-
-def _median(values: list[float]) -> float:
-    if not values:
-        return 0.0
-    ordered = sorted(values)
-    middle = len(ordered) // 2
-    if len(ordered) % 2:
-        return ordered[middle]
-    return (ordered[middle - 1] + ordered[middle]) / 2
+        # 就地合并到 a 槽位(旧版 clusters[best_i] += clusters[best_j] 的语义:
+        # 平局扫描序下成员顺序与簇位置都保持不变,行为逐位等价)。
+        na, nb = len(members[a]), len(members[b])
+        row = (D[a] * na + D[b] * nb) / (na + nb)
+        members[a] = members[a] + members[b]
+        D[a] = row
+        D[:, a] = row
+        D = np.delete(np.delete(D, b, axis=0), b, axis=1)
+        del members[b]
+    return [[idxs[local] for local in group] for group in members]
 
 
 def validate_grouping_result(

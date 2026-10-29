@@ -140,8 +140,13 @@ async def _run_analyze(job: _Job) -> None:
     # 散落照片走确定性就近归章(按时间/位置),树里的章标识由时间/地点派生:
     # 分析期不再有任何 AI 调用。
     try:
-        assignments = chapter_unplaced.group_unplaced(grouping, photos_by_id)
-        tree = tree_builder.assemble_stage1_tree(
+        # 重活下线程池(2026-10-29):散章归属与树构建(含主色解码)是纯 CPU 同步
+        # 代码,此前直接跑在事件循环上,大书期间 /health 都会被卡住。
+        assignments = await asyncio.to_thread(
+            chapter_unplaced.group_unplaced, grouping, photos_by_id
+        )
+        tree = await asyncio.to_thread(
+            tree_builder.assemble_stage1_tree,
             grouping, assignments, photos_by_id, profiles=profiles,
             language=req.language,
         )
