@@ -7,6 +7,7 @@ import { AdminNav } from '@/components/admin/AdminNav';
 import { AdminForbidden } from '@/components/admin/AdminForbidden';
 import { resolveImageProvider } from '@/lib/imagegen/provider';
 import { AdminMaintenance } from '@/components/admin/AdminMaintenance';
+import ModelSettings from '@/components/admin/ModelSettings';
 
 export default async function AdminSettingsPage({
   params,
@@ -83,7 +84,8 @@ export default async function AdminSettingsPage({
         </dl>
       </section>
 
-      <AdminMaintenance locale={locale} />
+      <ModelSettings />
+          <AdminMaintenance locale={locale} />
     </main>
   );
 }

@@ -16,7 +16,8 @@ const BASE_URL = 'https://kexiangai.com/api/v1';
 const CREATE_PATH = `${BASE_URL}/user_task/asyncCreateWithCost`;
 const pollPath = (taskId: number | string) => `${BASE_URL}/user_task/get/passAuth/${taskId}`;
 
-const MODEL_NAME = 'SeeDream4.5';
+// 模型名 env 可配(2026-10-30):管理后台可在线切换。
+const MODEL_NAME = process.env.KEXIANG_IMAGE_MODEL ?? 'SeeDream4.5';
 /** 中转站按张计费:2K = 0.2 积分/张(1 积分 = 1 元),与 token 无关,台账的 outputTokens 留空。 */
 const SIZE = '2K';
 
@@ -28,6 +29,8 @@ const POLL_DEADLINE_MS = 50_000;
 
 export interface KexiangProviderOptions {
   apiKey: string;
+  /** 管理后台「模型设置」覆盖;缺省用 env/硬编码默认。 */
+  model?: string;
   fetchImpl?: typeof fetch;
   /** 测试用:缩短轮询死线/间隔。 */
   pollDeadlineMs?: number;
@@ -50,7 +53,7 @@ export function createKexiangProvider(opts: KexiangProviderOptions): ImageProvid
     async generate(input: ImageRequest): Promise<GeneratedImage> {
       const prompt = appendAspectRatio(input.prompt, input.width, input.height);
 
-      const task = await createTask(doFetch, opts.apiKey, prompt);
+      const task = await createTask(doFetch, opts.apiKey, prompt, opts.model);
       const record = await pollTask(doFetch, opts.apiKey, task, deadlineMs, intervalMs);
       const url = extractImageUrl(record);
       const { bytes, mime } = await downloadImage(doFetch, url);
@@ -93,7 +96,7 @@ export function nearestRatio(width: number, height: number): string {
   return `${best[0]}:${best[1]}`;
 }
 
-async function createTask(doFetch: typeof fetch, apiKey: string, prompt: string): Promise<number | string> {
+async function createTask(doFetch: typeof fetch, apiKey: string, prompt: string, model?: string): Promise<number | string> {
   let response: Response;
   try {
     response = await doFetch(CREATE_PATH, {
@@ -101,7 +104,7 @@ async function createTask(doFetch: typeof fetch, apiKey: string, prompt: string)
       headers: { 'x-api-key': apiKey, 'content-type': 'application/json' },
       body: JSON.stringify({
         user_input: {
-          modelName: MODEL_NAME,
+          modelName: model ?? MODEL_NAME,
           modelType: 'text2img',
           prompt,
           watermark: false,

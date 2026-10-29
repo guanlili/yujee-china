@@ -63,7 +63,9 @@ export const imageGenerationService = {
     albumId: string;
     body: GenerateImageBody;
   }): Promise<GenerateImageResult> {
-    const provider = resolveImageProvider(env);
+    // 管理后台「模型设置」的 DB 覆盖值(2026-10-30):只影响生图模型名。
+    const imageModelOverride = await import('@/lib/imagegen/provider').then(m => m.getImageModelOverride());
+    const provider = resolveImageProvider(env, imageModelOverride);
     if (!provider) throw ERRORS.IMAGE_GEN_UNAVAILABLE();
 
     const cleanedPrompt = sanitizeUserPrompt(input.body.prompt);
