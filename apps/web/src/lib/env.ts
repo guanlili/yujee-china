@@ -125,6 +125,9 @@ const EnvSchema = z.object({
   ARK_IMAGE_API_KEY: z.string().optional(),
   // kexiang 生图可省:缺省复用 ARK_API_KEY(自动剥 sk- 前缀,任务 API 用原始 key)。
   KEXIANG_API_KEY: z.string().optional(),
+  // 生图模型名(可选,缺省用各 provider 的硬编码默认值;管理后台可在线覆盖)
+  ARK_IMAGE_MODEL: z.string().optional(),
+  KEXIANG_IMAGE_MODEL: z.string().optional(),
   R2_PUBLIC_BASE_URL: z.string().url().default('https://cdn.yujeeai.com'),
 });
 

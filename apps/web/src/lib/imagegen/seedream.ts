@@ -12,7 +12,8 @@ import { ImageGenError, type GeneratedImage, type ImageProvider, type ImageReque
 const ENDPOINT = 'https://ark.cn-beijing.volces.com/api/v3/images/generations';
 
 /** 这个账号下唯一开通的生图模型(4.5 / 3.0 实测都是 NotFound)。 */
-export const SEEDREAM_MODEL = 'doubao-seedream-4-0-250828';
+// 模型名 env 可配(2026-10-30):管理后台可在线切换;env 是基础设施层默认值。
+export const SEEDREAM_MODEL = process.env.ARK_IMAGE_MODEL ?? 'doubao-seedream-4-0-250828';
 
 /** 实测下限:低于这个像素数直接 InvalidParameter「image size must be at least 921600 pixels」。 */
 export const SEEDREAM_MIN_PIXELS = 921_600;
@@ -36,6 +37,7 @@ type ArkResponse = {
 
 export function createSeedreamProvider(opts: {
   apiKey: string;
+  model?: string;
   fetchImpl?: typeof fetch;
 }): ImageProvider {
   const doFetch = opts.fetchImpl ?? fetch;
@@ -51,7 +53,7 @@ export function createSeedreamProvider(opts: {
           method: 'POST',
           headers: { authorization: `Bearer ${opts.apiKey}`, 'content-type': 'application/json' },
           body: JSON.stringify({
-            model: SEEDREAM_MODEL,
+            model: opts.model ?? SEEDREAM_MODEL,
             prompt: input.prompt,
             size: `${size.width}x${size.height}`,
             response_format: 'url',

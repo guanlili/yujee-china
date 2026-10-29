@@ -753,3 +753,13 @@ export type InviteCode = typeof inviteCodes.$inferSelect;
 export type NewInviteCode = typeof inviteCodes.$inferInsert;
 export type InviteRedemption = typeof inviteRedemptions.$inferSelect;
 export type NewInviteRedemption = typeof inviteRedemptions.$inferInsert;
+
+// 模型配置覆盖(2026-10-30 管理后台模型设置页用):key-value 覆盖 env 默认值。
+// 只存模型名,不存 API key(安全红线:key 留在服务器 env)。
+// key 枚举:compose_model / design_model / image_model。
+export const modelConfig = pgTable('model_config', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text('updated_by').references(() => users.id, { onDelete: 'set null' }),
+});
