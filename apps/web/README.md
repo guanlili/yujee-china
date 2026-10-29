@@ -175,6 +175,13 @@ Key files:
   不进页面 `version`,只调色不改版面的一轮 `committed` 是 false,拿它当闸门会让调色
   永远存不下来。
 
+### compose 回调三段式(2026-10-29)
+
+成稿回调(`job-service.handleV3ComposeCompleted`)分三段:A 短读事务无锁预检 baseline
+(早失败)→ B 锁外计算(merge 纯函数内部全书烘 HTML)→ C 短写事务锁内 baseline **重验**
+(`AI_RESULT_STALE` 零写入)+ CAS + 落库。行锁只在 C 持毫秒级;并发编辑与成稿落库互不
+排队。改这段时守住两条:重验失配必须零写入;CAS(transitionStatus)必须在 C 的锁内。
+
 ## Browser Data Boundary
 
 - **建书照片直传 R2**(照片字节永不进 Vercel 请求体)。曾经 `POST /api/v3/albums` 把每张
@@ -461,5 +468,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**
-checked-at: 8e191ecb
+checked-at: 463b1939
 -->
