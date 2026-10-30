@@ -54,7 +54,7 @@ test('load/save:localStorage 可用时往返一致,坏数据/不可用回空不�
 
 // ── EditorPort 接线(源文本断言,同 design-turn-ui 等惯例) ──
 const here = dirname(fileURLToPath(import.meta.url));
-const port = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const port = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 
 test('打开 Fill 面板默认拾色器模式:三个入口都是 picker,grid 只能手动切', () => {
   const pickerDefaults = port.match(/dataset\.mode = 'picker'/g) ?? [];

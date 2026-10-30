@@ -39,7 +39,8 @@ test('拿不到 closest 的目标(document/window)按「点到别处」算,不�
 });
 
 test('桌面接线:面板开着时挂全局监听,关掉时摘掉', () => {
-  const editor = read('EditorPort.tsx');
+  const editor = read('EditorPort.tsx')
+const editorBook = read('EditorBook.tsx');
   assert.match(editor, /shouldDismissFilterPanel/, '判据走共享纯函数,不在组件里手搓 closest');
   assert.match(
     editor,

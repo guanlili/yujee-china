@@ -15,6 +15,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const read = (...p: string[]) => readFileSync(join(here, ...p), 'utf8');
 
 const editor = read('EditorPort.tsx');
+const editorBook = read('EditorBook.tsx');
 const mobileRoot = read('mobile', 'MobileEditorRoot.tsx');
 const libRead = (...p: string[]) =>
   readFileSync(join(here, '..', '..', '..', 'lib', ...p), 'utf8');
@@ -60,7 +61,7 @@ test('后端契约:baseSettingsRevision 形状仍在;editor 盲写由 service �
 
 test('两端都走共享传输层,不再有裸 PATCH /albums/:id', () => {
   for (const [name, src] of [
-    ['EditorPort', editor],
+    ['EditorPort', editor + '\n' + editorBook],
     ['MobileEditorRoot', mobileRoot],
   ] as const) {
     assert.match(src, /settings-save-transport/, `${name} 引用共享设置传输层`);
@@ -75,9 +76,10 @@ test('两端都走共享传输层,不再有裸 PATCH /albums/:id', () => {
 test('桌面:滤镜/标题/背景提交精确基线,成功读回推进共享 ref', () => {
   assert.match(editor, /const settingsRevisionRef = useRef\(detail\.album\.settingsRevision \?\? 0\)/);
   // 三处写入同一 ref:filterSaver(EditorShell)+ title/boardBackground(EditorBook)。
-  const reads = editor.match(/baseSettingsRevision: settingsRevisionRef\.current/g) ?? [];
+  const combined = editor + '\n' + editorBook;  // EditorBook 2026-10-30 拆分后基线分布在两个文件
+  const reads = combined.match(/baseSettingsRevision: settingsRevisionRef\.current/g) ?? [];
   assert.ok(reads.length >= 3, `桌面应有 ≥3 处基线提交,实际 ${reads.length}`);
-  const writes = editor.match(/settingsRevisionRef\.current = out\.settingsRevision/g) ?? [];
+  const writes = combined.match(/settingsRevisionRef\.current = out\.settingsRevision/g) ?? [];
   assert.equal(writes.length, 3, '三处写入都要读回推进');
   // authoring 的 draft skeleton 比 detail 新,同步 effect 兜住两条来源。
   assert.match(editor, /draftChapters\?\.settingsRevision \?\? detail\.album\.settingsRevision/);
@@ -94,7 +96,7 @@ test('移动端:滤镜/背景提交精确基线,成功读回推进共享 ref', (
 
 test('冲突处置:两端都采纳服务器基线 + 回滚乐观 UI + 可见提示', () => {
   for (const [name, src, rollbacks] of [
-    ['EditorPort', editor, ['boardBg = prev', 'titleEl\\.textContent = prevTitle']],
+    ['EditorPort', editor + '\n' + editorBook, ['boardBg = prev', 'titleEl\\.textContent = prevTitle']],
     ['MobileEditorRoot', mobileRoot, ['setBoardBgOverride\\(prev\\)']],
   ] as const) {
     assert.match(src, /kind === 'conflict'/, `${name} 处理设置冲突`);

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
 const CSS = readFileSync(new URL('./editor-port.css', import.meta.url), 'utf8');
-const PORT = readFileSync(new URL('./EditorPort.tsx', import.meta.url), 'utf8');
+const PORT = readFileSync(new URL('./EditorPort.tsx', import.meta.url), 'utf8') + '\n\n' + readFileSync(new URL('./EditorBook.tsx', import.meta.url), 'utf8');
 
 // 双宽页占满整个跨页:右 cell 退场(左 cell flex:1 自动撑满)。
 // 中缝 2026-08-02 起**保留**:双宽页是装订的两半,书沟与四端一致(反转旧决定)。

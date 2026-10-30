@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const editorPort = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const editorPort = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
 const client = readFileSync(join(here, '..', '..', '..', 'lib', 'album', 'photo-snapshot-client.ts'), 'utf8');
 const albumTypes = readFileSync(join(here, '..', 'types.ts'), 'utf8');

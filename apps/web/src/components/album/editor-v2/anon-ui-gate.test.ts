@@ -21,7 +21,7 @@ test('① HeroComposer:无 session 时 signIn.anonymous 静默建号,不再直�
 });
 
 test('② EditorPort:保存/分享挂 guestGate,PDF 云上传对游客短路', () => {
-  const src = read('./EditorPort.tsx');
+  const src = read('./EditorPort.tsx') + '\n\n' + read('./EditorBook.tsx');
   assert.match(src, /function guestGate\(\)/);
   assert.match(src, /async function backupPhotos\(\) \{\n      if \(guestGate\(\)\) return;/);
   assert.match(src, /function shareLink\(\) \{\n      if \(guestGate\(\)\) return;/);
@@ -45,7 +45,7 @@ test('②③ 移动端:use-export 支持 skipCloudUpload,MobileEditorRoot 游客
 });
 
 test('③ 桌面 EditorPort:原图对账补传只对真实账号开', () => {
-  const src = read('./EditorPort.tsx');
+  const src = read('./EditorPort.tsx') + '\n\n' + read('./EditorBook.tsx');
   assert.match(src, /enabled: Boolean\(viewerSession\.user && !viewerSession\.user\.isAnonymous\)/);
   assert.doesNotMatch(src, /usePhotoOriginalSync\(\{[^}]*enabled: true/s);
 });

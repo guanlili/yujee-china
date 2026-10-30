@@ -12,9 +12,10 @@ import { test } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
 // The capture/act wiring moved out of EditorPort.tsx into ChatPanel.tsx (dialogue)
-// and editor-coordinator.ts (the canvas↔chat bridge). These structural guards don't
-// care which of the three a symbol lives in, so `src` is the three merged.
-const src = ['EditorPort.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts']
+// and editor-coordinator.ts (the canvas↔chat bridge); the canvas half of EditorPort
+// itself moved into EditorBook.tsx (2026-10-30 split). These structural guards don't
+// care which of the four a symbol lives in, so `src` is the four merged.
+const src = ['EditorPort.tsx', 'EditorBook.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts']
   .map((f) => readFileSync(join(here, f), 'utf8'))
   .join('\n\n');
 

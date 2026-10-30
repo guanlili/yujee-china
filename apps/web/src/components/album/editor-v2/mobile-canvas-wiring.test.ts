@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const editorSrc = () => readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const editorSrc = () => readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 
 test('EditorPort 不再直接调 matchMedia(max-width:767px),改走 resolveDeviceMode', () => {
   const s = editorSrc();

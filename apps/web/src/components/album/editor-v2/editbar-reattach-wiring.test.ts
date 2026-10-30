@@ -14,7 +14,7 @@ import { test } from 'node:test';
 // into a node nobody can see.
 
 const here = dirname(fileURLToPath(import.meta.url));
-const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 
 function bodyOf(name: string): string {
   const re = new RegExp(`function ${name}\\([\\s\\S]*?\\n {4}\\}`);

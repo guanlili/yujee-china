@@ -16,7 +16,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 // canvas↔chat bridge editor-coordinator.ts. These structural guards don't care
 // which of the three a symbol lives in, so a request for the editor source returns
 // the three merged; assertions still hit and doesNotMatch guards hold across all three.
-const EDITOR_SOURCES = ['EditorPort.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts'];
+const EDITOR_SOURCES = ['EditorPort.tsx', 'EditorBook.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts'];
 function source(file: string): string {
   if (file === 'EditorPort.tsx') {
     return EDITOR_SOURCES.map((f) => readFileSync(join(here, f), 'utf8')).join('\n\n');
@@ -26,7 +26,7 @@ function source(file: string): string {
 
 // ───────────────────────── ① opener double-fire guard ─────────────────────────
 test('①: the per-chapter opener guard survives effect re-invocation (component-level ref, not effect-local Set)', () => {
-  const src = source('EditorPort.tsx');
+  const src = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   // The dedup set must live at component scope (a useRef) so a StrictMode double-mount
   // (two effect invocations) shares ONE guard — an effect-local `new Set()` gives each
   // invocation its own empty set and fails to dedupe.
@@ -49,7 +49,7 @@ test('①: the per-chapter opener guard survives effect re-invocation (component
 });
 
 test('①: the interview entry guards against re-entry while an interview is pending', () => {
-  const src = source('EditorPort.tsx');
+  const src = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   const fn = /async function runChapterGuideOpener\([^)]*\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(fn, 'runChapterGuideOpener() body must be parseable');
   // 新流程:采访进行中(pendingInterview 已置)时,重复调用直接返回,避免同一 tick 双启采访。
@@ -83,7 +83,7 @@ test('①: stale StrictMode interview effects cannot leave visible chat bound to
 // agent now decides on its own when enough has been said and dispatches kind=write. The
 // manual chip is fully removed — confirmation lives only in the post-write satisfaction card.
 test('④: the manual write-now chip is fully removed (agent self-dispatches kind=write)', () => {
-  const src = source('EditorPort.tsx');
+  const src = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   assert.doesNotMatch(
     src,
     /function appendWriteNowCard\b/,
@@ -104,7 +104,7 @@ test('④: the manual write-now chip is fully removed (agent self-dispatches kin
 // ───────────────────────── ⑥ cover apply/skip not reversed ─────────────────────────
 // ───────────────────────── ⑦ final copy moves into the chat flow ─────────────────────────
 test('⑦: the export-ready line is appended to the chat flow, not pinned as a fixed banner', () => {
-  const src = source('EditorPort.tsx');
+  const src = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   // The fixed top banner JSX must be gone.
   assert.doesNotMatch(src, /export-ready-banner/, 'the pinned export-ready banner JSX must be removed');
   // Instead a helper appends the closing line as the last AI message in the thread.
@@ -113,7 +113,7 @@ test('⑦: the export-ready line is appended to the chat flow, not pinned as a f
 
 // ───────────────────────── ⑧ export button at the bottom of the chat ─────────────────────────
 test('⑧: the closing chat card carries an export entry point that runs the existing export', () => {
-  const src = source('EditorPort.tsx');
+  const src = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   const card = /function appendExportReadyCard\(\)\s*\{[\s\S]*?\n {4}\}/.exec(src);
   assert.ok(card, 'appendExportReadyCard() body must be parseable');
   // The closing card must render an export button wired to the existing exportPdf() path.
@@ -123,7 +123,7 @@ test('⑧: the closing chat card carries an export entry point that runs the exi
 });
 
 test('⑧: the export-ready card is shown once when the export gate opens (guarded against repeats)', () => {
-  const src = source('EditorPort.tsx');
+  const src = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   // DOM-level idempotence(2026-07):closure 标志在 dev 双挂载/效果重跑时两实例各持
   // 一份会重复出卡,改为看 DOM 里有没有 data-export-ready-card。
   assert.match(
@@ -140,7 +140,7 @@ test('⑧: the export-ready card is shown once when the export gate opens (guard
 // 会继续藏住版式书 → 画板空白(排完版加载不出来的真凶)。锁住:每次挂载都在分支前无条件
 // 复位这个类,收集态再由 renderCollectGrid 加回。
 test('collect→layout remount authoritatively clears the stale collect-on class before painting', () => {
-  const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+  const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
   // The unconditional reset must sit before the isCollectMode branch (renderCollectGrid re-adds it).
   assert.match(
     src,

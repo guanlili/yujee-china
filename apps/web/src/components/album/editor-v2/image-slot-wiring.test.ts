@@ -24,7 +24,7 @@ import { test } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (...p: string[]) => readFileSync(join(here, ...p), 'utf8');
-const editorPort = read('EditorPort.tsx');
+const editorPort = read('EditorPort.tsx') + '\n\n' + read('EditorBook.tsx');
 const css = read('editor-port.css');
 const coordinator = read('editor-coordinator.ts');
 

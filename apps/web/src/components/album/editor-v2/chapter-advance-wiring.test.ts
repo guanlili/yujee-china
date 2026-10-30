@@ -16,7 +16,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 // ChatPanel.tsx (dialogue) and editor-coordinator.ts (the canvas↔chat bridge).
 // These structural guards don't care which of the three a symbol lives in, so `src`
 // is the three merged; the doesNotMatch guards still hold across all three.
-const src = ['EditorPort.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts']
+const src = ['EditorPort.tsx', 'EditorBook.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts']
   .map((f) => readFileSync(join(here, f), 'utf8'))
   .join('\n\n');
 

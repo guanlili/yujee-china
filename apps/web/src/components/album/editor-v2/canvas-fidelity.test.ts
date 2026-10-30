@@ -11,7 +11,7 @@ import { test } from 'node:test';
 // 图条上。此前把画板格误降级成 thumb → 画板和书籍预览内容不一致 + 编辑绑定丢失。
 
 const here = dirname(fileURLToPath(import.meta.url));
-const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 
 function fnBody(name: string): string {
   const at = src.indexOf(`function ${name}(`);

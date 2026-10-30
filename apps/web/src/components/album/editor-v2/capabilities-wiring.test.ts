@@ -12,7 +12,8 @@ import { test } from 'node:test';
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (...p: string[]) => readFileSync(join(here, ...p), 'utf8');
 
-const editor = read('EditorPort.tsx');
+const editor = read('EditorPort.tsx') + '\n\n' + read('EditorBook.tsx')
+const editorBook = read('EditorBook.tsx');
 const mobileRoot = read('mobile', 'MobileEditorRoot.tsx');
 const shared = readFileSync(
   join(here, '..', '..', '..', 'lib', 'collaboration', 'capabilities.ts'),

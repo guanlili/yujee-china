@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const editorPort = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const editorPort = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 const chatPanel = readFileSync(join(here, 'ChatPanel.tsx'), 'utf8');
 const coordinator = readFileSync(join(here, 'editor-coordinator.ts'), 'utf8');
 const css = readFileSync(join(here, 'editor-port.css'), 'utf8');

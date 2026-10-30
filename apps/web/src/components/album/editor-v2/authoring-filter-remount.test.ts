@@ -6,6 +6,8 @@ import test from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+// EditorBook 自 EditorPort 拆出后,画布内部(remount/最新提交重载)住在 EditorBook.tsx。
+const editorBook = readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 
 test('authoring draft refresh reads the lifted current filter, never stale album detail state', () => {
   assert.match(source, /function EditorAuthoring\(\{[\s\S]*?photoFilter[\s\S]*?\}\)/);
@@ -18,10 +20,12 @@ test('authoring draft refresh reads the lifted current filter, never stale album
 });
 
 test('every EditorBook remount asks the latest-commit reload for current shell state', () => {
+  // 拆分后:壳层(EditorPort 的 EditorShell)持重载 effect,画布(EditorBook)持
+  // 最新提交通道 —— 两半各就各位,断言分头指向。
   assert.match(source, /useEffect\(\(\) => \{\s*void coordinator\.current\?\.reloadPhotoFilter\(photoFilter\);[\s\S]*?\[photoFilter,\s*canvasEpoch/);
-  assert.match(source, /const displayReload = createLatestCommit/);
-  assert.match(source, /displayReload\.run\(\(\) => photoStore\.getTierUrls\(ids,\s*'display',\s*state\)\)/);
-  assert.match(source, /displayReload\.dispose\(\)/);
+  assert.match(editorBook, /const displayReload = createLatestCommit/);
+  assert.match(editorBook, /displayReload\.run\(\(\) => photoStore\.getTierUrls\(ids,\s*'display',\s*state\)\)/);
+  assert.match(editorBook, /displayReload\.dispose\(\)/);
 });
 
 test('responsive desktop/mobile shell switches keep one lifted filter state', () => {
