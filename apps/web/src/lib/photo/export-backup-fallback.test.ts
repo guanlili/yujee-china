@@ -206,7 +206,7 @@ test('没给备份表时行为与从前完全一致(纯本地)', async () => {
 
 test('移动端与桌面的导出输入都接上了服务器备份回落', () => {
   const mobile = read(srcRoot, 'components/album/editor-v2/mobile/use-export.ts');
-  const desktop = read(srcRoot, 'components/album/editor-v2/EditorPort.tsx');
+  const desktop = read(srcRoot, 'components/album/editor-v2/EditorPort.tsx') + '\n\n' + read(srcRoot, 'components/album/editor-v2/EditorBook.tsx');
 
   for (const [name, src] of [
     ['mobile use-export', mobile],
@@ -249,7 +249,7 @@ test('备份传的是 3400 的上传档,不是 1600 的屏显档', async () => {
   );
 
   for (const [name, src] of [
-    ['EditorPort', read(srcRoot, 'components/album/editor-v2/EditorPort.tsx')],
+    ['EditorPort', read(srcRoot, 'components/album/editor-v2/EditorPort.tsx') + '\n\n' + read(srcRoot, 'components/album/editor-v2/EditorBook.tsx')],
     ['use-photo-backup', read(srcRoot, 'components/album/editor-v2/mobile/use-photo-backup.ts')],
   ] as const) {
     assert.match(src, /getTierBlobStatus\([^)]*'backup'/, `${name} 备份要用上传档`);
@@ -289,7 +289,7 @@ test('升档要靠显式「重新备份」,不能指望自动 —— 版本号�
 });
 
 test('两端导出策略统一:都能导,都如实告知(桌面不再换成「下载 PDF」)', () => {
-  const editor = read(srcRoot, 'components/album/editor-v2/EditorPort.tsx');
+  const editor = read(srcRoot, 'components/album/editor-v2/EditorPort.tsx') + '\n\n' + read(srcRoot, 'components/album/editor-v2/EditorBook.tsx');
   assert.match(editor, /exportSourceNotice/, '桌面导出前要告知有几张走云端备份图');
   assert.match(editor, /export-source-notice/);
   assert.doesNotMatch(

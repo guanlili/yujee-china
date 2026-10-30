@@ -7,7 +7,7 @@ import { test } from 'node:test';
 const here = dirname(fileURLToPath(import.meta.url));
 const desktop = readFileSync(join(here, 'editor-port.css'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
-const desktopComponent = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const desktopComponent = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 const mobile = readFileSync(join(here, 'mobile/mobile-editor.css'), 'utf8')
   .replace(/\/\*[\s\S]*?\*\//g, '');
 

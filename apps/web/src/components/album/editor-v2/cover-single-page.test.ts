@@ -36,7 +36,7 @@ function ruleBody(css: string, selector: string): string {
 // ── Discrimination: solo collapse is driven by isSoloSpread, NOT by "a null half".
 
 test('EditorPort imports isSoloSpread (the category-keyed discriminator) from spreads', () => {
-  const tsx = source('EditorPort.tsx');
+  const tsx = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   assert.match(
     tsx,
     /import\s*\{[^}]*\bisSoloSpread\b[^}]*\}\s*from\s*'\.\.\/spreads'/,
@@ -45,7 +45,7 @@ test('EditorPort imports isSoloSpread (the category-keyed discriminator) from sp
 });
 
 test('paintSpread toggles .book-single off isSoloSpread, never off a raw null half', () => {
-  const tsx = source('EditorPort.tsx');
+  const tsx = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   // The single-width collapse is keyed off isSoloSpread(spreads[i], …).
   assert.match(
     tsx,
@@ -62,7 +62,7 @@ test('paintSpread toggles .book-single off isSoloSpread, never off a raw null ha
 });
 
 test('book-solo / page-empty stay keyed off a null half (unchanged for interior odd-trailing)', () => {
-  const tsx = source('EditorPort.tsx');
+  const tsx = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   // The pre-existing #158 behaviour (transparent blank half + dropped spine) is what an
   // interior odd-trailing page relies on, and it must remain keyed off a null half.
   // #303 added a `fullIdx == null &&` guard so a double-wide spread page (which is
@@ -94,7 +94,7 @@ test('book-solo / page-empty stay keyed off a null half (unchanged for interior 
 // the double-width leaf geometry can't animate across it without tearing).
 
 test('flipTo switches directly when either endpoint is a cover/ending solo', () => {
-  const tsx = source('EditorPort.tsx');
+  const tsx = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   const flip = /function flipTo\([^]*?\n    \}/.exec(tsx);
   assert.ok(flip, 'expected to locate the flipTo function body');
   const body = flip![0];
@@ -115,7 +115,7 @@ test('flipTo switches directly when either endpoint is a cover/ending solo', () 
 });
 
 test('the solo-flip guard sits BEFORE the leaf-animation branches (dir next/prev)', () => {
-  const tsx = source('EditorPort.tsx');
+  const tsx = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   const guardAt = tsx.indexOf('isSoloSpread(spreads[currentCh], pagesState) || isSoloSpread(spreads[nextIdx]');
   const nextLeafAt = tsx.indexOf("leafFront.classList.toggle('leaf-empty', curRight === null)");
   assert.ok(guardAt > -1 && nextLeafAt > -1, 'expected both the guard and the next-leaf branch');
@@ -128,7 +128,7 @@ test('the solo-flip guard sits BEFORE the leaf-animation branches (dir next/prev
 // ── Paint ORDER: layout classes must settle before paintEl (the solo↔double bug).
 
 test('paintSpread toggles container/half classes BEFORE paintEl (no painting a still-hidden half)', () => {
-  const tsx = source('EditorPort.tsx');
+  const tsx = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   // paintEl skips a cell hidden by display:none (offsetParent === null). A solo cover/ending
   // collapses the empty half via `.book-single .page-empty{display:none}`. If paintEl ran
   // before the class toggle, a solo→double switch (flipping off the cover) would paint the

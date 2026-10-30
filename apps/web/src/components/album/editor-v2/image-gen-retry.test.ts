@@ -12,7 +12,11 @@ import { test } from 'node:test';
    仍只在内存里,刷新页面会丢 —— 要彻底得落库,尚未做。 */
 
 const here = dirname(fileURLToPath(import.meta.url));
-const editor = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+// 生图弹窗逻辑随 EditorBook 拆出去了,两个文件拼起来扫(函数名唯一,拼接安全)。
+const editor = [
+  readFileSync(join(here, 'EditorPort.tsx'), 'utf8'),
+  readFileSync(join(here, 'EditorBook.tsx'), 'utf8'),
+].join('\n');
 // 断言只看代码:注释里出现某个标识符不能算它「接线了」(这批测试踩过这个坑)。
 const stripComments = (t: string) =>
   t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');

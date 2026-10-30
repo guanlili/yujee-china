@@ -93,7 +93,9 @@ test('all browser render entrypoints request album fonts before final rendering'
   const sources = {
     PagePreview: readFileSync(new URL('../../components/album/PagePreview.tsx', import.meta.url), 'utf8'),
     FlipBook: readFileSync(new URL('../../components/album/FlipBook.tsx', import.meta.url), 'utf8'),
-    EditorPort: readFileSync(new URL('../../components/album/editor-v2/EditorPort.tsx', import.meta.url), 'utf8'),
+    EditorPort:
+      readFileSync(new URL('../../components/album/editor-v2/EditorPort.tsx', import.meta.url), 'utf8') +
+      readFileSync(new URL('../../components/album/editor-v2/EditorBook.tsx', import.meta.url), 'utf8'),
     raster: readFileSync(new URL('../pdf/render-raster.ts', import.meta.url), 'utf8'),
   };
 

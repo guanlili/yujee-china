@@ -23,10 +23,9 @@ test('PDF export image sizing caps long edge and never upscales', async () => {
 });
 
 test('PDF export uses bounded PDF data URLs, not raw original data URLs', () => {
-  const editorPort = readFileSync(
-    join(srcRoot, 'components/album/editor-v2/EditorPort.tsx'),
-    'utf8',
-  );
+  const editorPort = readFileSync(join(srcRoot, 'components/album/editor-v2/EditorPort.tsx'), 'utf8') +
+    '\n\n' +
+    readFileSync(join(srcRoot, 'components/album/editor-v2/EditorBook.tsx'), 'utf8');
 
   // 栅格导出（html2canvas 高倍截图）需要更高的上限,但仍必须走有界的
   // getPdfDataUrls 通道,绝不直接喂原图 data URL。
@@ -51,19 +50,17 @@ test('photoStore prepares HEIC originals before browser preview and export decod
 });
 
 test('PDF export checks both HTTP and JSON success before accepting cloud confirm', () => {
-  const editorPort = readFileSync(
-    join(srcRoot, 'components/album/editor-v2/EditorPort.tsx'),
-    'utf8',
-  );
+  const editorPort = readFileSync(join(srcRoot, 'components/album/editor-v2/EditorPort.tsx'), 'utf8') +
+    '\n\n' +
+    readFileSync(join(srcRoot, 'components/album/editor-v2/EditorBook.tsx'), 'utf8');
 
   assert.match(editorPort, /if \(!confirmRes\.ok \|\| confirmJson\.ok !== true\)/);
 });
 
 test('PDF export does not trigger cover thumbnail generation from editor flows', () => {
-  const editorPort = readFileSync(
-    join(srcRoot, 'components/album/editor-v2/EditorPort.tsx'),
-    'utf8',
-  );
+  const editorPort = readFileSync(join(srcRoot, 'components/album/editor-v2/EditorPort.tsx'), 'utf8') +
+    '\n\n' +
+    readFileSync(join(srcRoot, 'components/album/editor-v2/EditorBook.tsx'), 'utf8');
 
   assert.doesNotMatch(editorPort, /uploadCoverThumbnail/);
 });

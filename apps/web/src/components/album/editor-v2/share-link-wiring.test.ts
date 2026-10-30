@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const port = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const port = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 const mobile = readFileSync(join(here, 'mobile/use-share-link.ts'), 'utf8');
 
 // 分享链接弹窗的按钮(closeShareLink/confirmShareLink/copyShareLink)曾因为漏进

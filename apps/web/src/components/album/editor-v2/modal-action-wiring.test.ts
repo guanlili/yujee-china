@@ -14,7 +14,7 @@ import { test } from 'node:test';
    两条规则都刻意不依赖属性顺序、缩进和注释文案 —— 守卫自己会漂的话,等于没有守卫。 */
 
 const here = dirname(fileURLToPath(import.meta.url));
-const editor = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const editor = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 const chat = readFileSync(join(here, 'ChatPanel.tsx'), 'utf8');
 
 /** 断言只看代码,不看注释 —— 注释里出现某个标识符不能算它「接线了」。 */

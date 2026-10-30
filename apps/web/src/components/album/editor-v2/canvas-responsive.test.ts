@@ -11,7 +11,7 @@ import { test } from 'node:test';
 // resize/折叠改 --canvas-inset → book 缩)都必须 debounced 重绘当前 spread/总览。
 
 const here = dirname(fileURLToPath(import.meta.url));
-const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const src = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 
 function block(anchor: string): string {
   const at = src.indexOf(anchor);

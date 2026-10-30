@@ -25,7 +25,7 @@ import { test } from 'node:test';
    ════════════════════════════════════════════════════════════════════════════ */
 
 const here = dirname(fileURLToPath(import.meta.url));
-const editorPort = readFileSync(join(here, 'EditorPort.tsx'), 'utf8');
+const editorPort = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 const mobileExport = readFileSync(join(here, 'mobile/use-export.ts'), 'utf8');
 // 交付规则住在共享层:桌面与移动端各自 import 它,两端不许再各写一份。
 const delivery = readFileSync(join(here, '../../../lib/export/live-delivery.ts'), 'utf8');

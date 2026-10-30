@@ -120,7 +120,7 @@ test('paintEl sizes the injected page to the element box, so the box must be flu
   // clientHeight (the padding-inclusive box) and the page is scaled to fill it.
   // If this ever changes (e.g. reads the content box / uses absolute fill), the
   // padding constraint above can be revisited.
-  const tsx = source('EditorPort.tsx');
+  const tsx = source('EditorPort.tsx') + '\n\n' + source('EditorBook.tsx');
   assert.match(
     tsx,
     /el\.clientWidth[\s\S]{0,40}el\.clientHeight/,

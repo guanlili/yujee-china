@@ -6,12 +6,14 @@ import { test } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-// The story-gate / export-ready wiring is split across EditorPort.tsx (render-time
-// export gate) and ChatPanel.tsx (imperative export guard + export-ready card), with
+// The story-gate / export-ready wiring is split across EditorPort.tsx + EditorBook.tsx
+// (render-time export gate in the shell; the imperative canvas logic — exportPdf,
+// exportGateLocked, appendExportReadyCard — moved into EditorBook in the 2026-10-30
+// split) and ChatPanel.tsx (imperative export guard + export-ready card), with
 // editor-coordinator.ts as the bridge. These structural guards don't care which of
-// the three a symbol lives in, so a request for the editor source returns the three
-// merged; assertions still hit and doesNotMatch guards hold across all three.
-const EDITOR_SOURCES = ['EditorPort.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts'];
+// the four a symbol lives in, so a request for the editor source returns the four
+// merged; assertions still hit and doesNotMatch guards hold across all four.
+const EDITOR_SOURCES = ['EditorPort.tsx', 'EditorBook.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts'];
 function source(file: string): string {
   if (file === 'EditorPort.tsx') {
     return EDITOR_SOURCES.map((f) => readFileSync(join(here, f), 'utf8')).join('\n\n');
