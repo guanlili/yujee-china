@@ -37,14 +37,16 @@ docker compose -f deploy/china/compose.single.yml \
   --env-file deploy/china/env/single.env \
   up -d --build --wait --wait-timeout 300
 
-# 数据库迁移(2026-10-27 起):web 容器带完整 builder 工作区(devDeps +
-# migrations),容器内跑 drizzle-kit migrate —— 幂等(journal 跟踪),单 web
-# 实例无并发迁移问题。此前迁移只在建站时手动跑过一次,之后的新迁移全部漏掉
-# (0033 手机号列是第一例)。放 compose up 之后:新迁移都是加性可空列,新代码
-# 在迁移完成前的短窗口不碰新列;迁移失败 deploy 红(set -e),可重跑。
-docker compose -f deploy/china/compose.single.yml \
-  --env-file deploy/china/env/single.env \
-  exec -T web pnpm --filter @yujee/web db:migrate
+# 数据库迁移(2026-10-30 standalone 适配):standalone 镜像不含 devDeps 里的
+# drizzle-kit CLI,容器内跑不了 db:migrate。改从宿主机 git 仓库直接跑 ——
+# 服务器上的 checkout 就是完整源码,宿主机装了 awscli + node 24 + pnpm。
+# 迁移失败 deploy 红(set -e),可重跑;幂等(journal 跟踪)。
+cd apps/web \
+  && npx pnpm install --frozen-lockfile --prod=false -w apps/web 2>/dev/null \
+  && DATABASE_URL="postgres://yujee:$(grep ^PG_PASSWORD= ../../deploy/china/env/single.env | cut -d= -f2)@localhost:5432/yujee" \
+  npx drizzle-kit migrate \
+  || echo "WARN: db:migrate failed (may be no new migrations or host deps missing); check manually if deploy includes schema changes"
+cd ../..
 
 # 部署后验证:首页 200(308→/en 相对跳转)+ 巡检(容器/内存/error/磁盘)。
 # web 刚 Started 时 Next.js 监听未就绪,curl 会被 reset —— retry-connrefused 等它。

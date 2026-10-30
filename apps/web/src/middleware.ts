@@ -1,4 +1,36 @@
 import createMiddleware from 'next-intl/middleware';
+
+// ── IP 级 API 限流(2026-10-30)────────────────────────────────────────
+// 单机生产无 WAF/CDN,公开 API 裸奔。对高频攻击面加内存滑动窗口限流;
+// 单实例部署,不需要 Redis。命中限流返回 429 + Retry-After。
+const RATE_LIMITS: Array<{ prefix: string; limit: number; windowMs: number }> = [
+  { prefix: '/api/auth', limit: 10, windowMs: 60_000 },
+  { prefix: '/api/v1/changelog', limit: 60, windowMs: 60_000 },
+  { prefix: '/api/', limit: 120, windowMs: 60_000 },
+];
+
+const rateStore = new Map<string, number[]>();
+
+function getClientIp(req: NextRequest): string {
+  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+}
+
+function checkRateLimit(pathname: string, ip: string): boolean {
+  const rule = RATE_LIMITS.find((r) => pathname.startsWith(r.prefix));
+  if (!rule) return true;
+  const key = `${ip}:${rule.prefix}`;
+  const now = Date.now();
+  const times = (rateStore.get(key) ?? []).filter((t) => now - t < rule.windowMs);
+  if (times.length >= rule.limit) return false;
+  times.push(now);
+  rateStore.set(key, times);
+  if (rateStore.size > 10_000) {
+    for (const [k, v] of rateStore) {
+      if (v.every((t) => now - t > 120_000)) rateStore.delete(k);
+    }
+  }
+  return true;
+}
 import { type NextRequest, NextResponse } from 'next/server';
 import { detectLocale, localizePath, routing, stripLocale } from '@/lib/i18n/routing';
 
@@ -74,6 +106,15 @@ function withSecurityHeaders(response: NextResponse): NextResponse {
 }
 
 export default function middleware(request: NextRequest) {
+  // API 限流(2026-10-30):登录/注册 10/min、公开读 60/min、其他 API 120/min
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    if (!checkRateLimit(request.nextUrl.pathname, getClientIp(request))) {
+      return new NextResponse(
+        JSON.stringify({ error: { code: 'RATE_LIMITED', message: 'Too many requests' } }),
+        { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '60' } },
+      );
+    }
+  }
   const pathname = request.nextUrl.pathname;
   const chapterPath = stripLocale(pathname);
   if (/^\/(pet|travel|palace)(?:\/|$)/.test(chapterPath)) {
