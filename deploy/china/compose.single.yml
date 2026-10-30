@@ -15,7 +15,7 @@ services:
     # ssl:'require'（Neon 时代遗产），因此本地 PG 也要开 TLS：自签证书即可
     # （postgres.js 的 'require' 只加密不校验）。长期应在 P2 把 ssl 做成 env 可配。
     command: >
-      postgres -c ssl=on
+      postgres -c shared_preload_libraries=pg_stat_statements -c pg_stat_statements.track=all -c ssl=on
                -c ssl_cert_file=/etc/pg-tls/server.crt
                -c ssl_key_file=/etc/pg-tls/server.key
     environment:
