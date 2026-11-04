@@ -19,9 +19,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# 依赖层只用 pyproject(2026-10-29 分层收尾):engine 源码/模板/价格表变动
-# 不再触发下面的 pip 层重跑(此前 COPY src 在 pip 之前,改一行代码重装全部)。
-COPY engine/pyproject.toml ./
+# 依赖层只用 pyproject+uv.lock(2026-11-05 P1 配置漂移修复):engine 源码/模板/
+# 价格表变动不再触发下面的 pip 层重跑(此前 COPY src 在 pip 之前,改一行代码重装全部)。
+COPY engine/pyproject.toml engine/uv.lock ./
 
 # 权重 COPY 必须放在 pip 层之后：权重文件 ~540MB 常变（增删/校验），放前面会让
 # 每次换权重都重跑下面的 pip 层（torch 190MB 重新下载，2026-10-25 实测多花 5 分钟）。
@@ -34,14 +34,23 @@ ADD https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.12.1+cpu-cp312-cp312-m
     https://mirrors.aliyun.com/pytorch-wheels/cpu/torchvision-0.27.1+cpu-cp312-cp312-manylinux_2_28_x86_64.whl \
     /tmp/
 
-RUN pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
+# torch/torchvision 走阿里 pytorch-wheels 固定 URL wheel(见文件头差异 1);
+# 其余 PyPI 依赖(fastapi/uvicorn/httpx/pillow/psycopg/pydantic 及 clip extra 的
+# onnxruntime/numpy,含全部传递依赖)一律由 engine/uv.lock 导出钉版,替换原来的
+# >= 区间/内联钉版——与 CI `uv sync` 同一份 lock,构建可复现。
+# open_clip_torch 不在 engine/pyproject.toml(上游 engine/Dockerfile 单独 pip 装,
+# 属上游分歧,不能进 lockfile),此处显式钉 2.x 末版;升 3.x 前须回归
+# ViT-B-32/openai 权重加载路径。
+RUN pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple uv \
+ && uv export --frozen --no-dev --extra clip --no-emit-project \
+      --format requirements-txt -o /tmp/requirements.lock.txt \
+ && pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
       /tmp/torch-2.12.1+cpu-*.whl /tmp/torchvision-0.27.1+cpu-*.whl \
  && rm -f /tmp/torch-*.whl /tmp/torchvision-*.whl \
  && pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
-      "open_clip_torch>=2.26.0" \
+      -r /tmp/requirements.lock.txt \
  && pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple \
-      "onnxruntime==1.20.1" "numpy>=1.26" \
- && pip install --index-url https://pypi.tuna.tsinghua.edu.cn/simple .
+      "open_clip_torch==2.32.0"
 
 # 源码层在 pip 之后:装的是本包自身,用 --no-deps 免得再解析一遍依赖
 # (依赖已在上面装好;src 变动只重跑这一层,秒级)。
