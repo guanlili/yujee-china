@@ -60,7 +60,7 @@ export function Sidebar({ locale, activeNav }: Props) {
           </Link>
         );
       })}
-      <div className="px-1 py-1"><ChangelogBadge /></div>
+      <div className="px-1 py-1"><ChangelogBadge locale={locale} /></div>
     </aside>
   );
 }
