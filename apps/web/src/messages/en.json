@@ -492,5 +492,16 @@
       "empty": "This book has no pages yet — the user left partway.",
       "photosUnavailable": "{missing} of {total} photos have no server-side copy, so those slots are empty — guests never write to R2; the originals live only in their own browser. The layout and copy are real."
     }
+  },
+  "errorPage": {
+    "title": "Something went wrong",
+    "body": "An unexpected error occurred. You can retry, or head back to the home page.",
+    "retry": "Try again",
+    "backHome": "Back to home"
+  },
+  "notFound": {
+    "title": "Page not found",
+    "body": "The page you're looking for doesn't exist, or it may have moved.",
+    "backHome": "Back to home"
   }
 }
