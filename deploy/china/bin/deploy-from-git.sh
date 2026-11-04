@@ -27,9 +27,34 @@ if pgrep -f "docker[ ]compose.*yujee" >/dev/null 2>&1; then
 fi
 
 echo "=== deploy start $(date '+%F %T') from $(git rev-parse --short HEAD) ==="
+# 部署前的线上版本:必须在 reset/compose up 之前记录,作为回滚目标(见 rollback)。
+PREV_HEAD=$(git rev-parse HEAD)
 git fetch -q --depth=1 origin main
 git reset -q --hard FETCH_HEAD
 echo "now at $(git log -1 --format='%h %s')"
+
+# ── 回滚(2026-11-04 P0):部署验证失败时恢复到部署前的 PREV_HEAD ──────
+# 调用点:migrate 失败 / smoke 失败。此刻新代码已 reset+compose up 上线,
+# 必须 git 回退 + 旧代码重建,否则线上跑「新代码+旧 schema」或坏版本。
+rollback() {
+  local reason="$1"
+  echo "=== ROLLBACK ($reason): restoring $PREV_HEAD ==="
+  cd /home/ubuntu/yujee-clip
+  # git 回退失败(如浅克隆对象被 gc)时工作区仍是新代码,重建无意义 → 停止并人工介入。
+  git reset -q --hard "$PREV_HEAD" || {
+    echo "FATAL: git reset to $PREV_HEAD failed; manual intervention required"
+    exit 1
+  }
+  echo "now at $(git log -1 --format='%h %s') (rollback)"
+  docker compose -f deploy/china/compose.single.yml \
+    --env-file deploy/china/env/single.env \
+    up -d --build --wait --wait-timeout 300 || {
+    echo "FATAL: rollback compose up failed; manual intervention required"
+    exit 1
+  }
+  echo "=== ROLLBACK DONE ==="
+  exit 1
+}
 
 # --wait 等全部服务 healthy/running;--wait-timeout 防个别 healthcheck 卡死拖住整次部署。
 # build 走层缓存:无代码变更的服务秒级跳过重建。
@@ -40,12 +65,12 @@ docker compose -f deploy/china/compose.single.yml \
 # 数据库迁移(2026-10-30 standalone 适配):standalone 镜像不含 devDeps 里的
 # drizzle-kit CLI,容器内跑不了 db:migrate。改从宿主机 git 仓库直接跑 ——
 # 服务器上的 checkout 就是完整源码,宿主机装了 awscli + node 24 + pnpm。
-# 迁移失败 deploy 红(set -e),可重跑;幂等(journal 跟踪)。
+# 迁移失败 → 回滚到部署前版本并 fail-fast(2026-11-04 P0);可重跑;幂等(journal 跟踪)。
 cd apps/web \
   && npx pnpm install --frozen-lockfile --prod=false -w apps/web 2>/dev/null \
   && DATABASE_URL="postgres://yujee:$(grep ^PG_PASSWORD= ../../deploy/china/env/single.env | cut -d= -f2)@localhost:5432/yujee" \
   npx drizzle-kit migrate \
-  || echo "WARN: db:migrate failed (may be no new migrations or host deps missing); check manually if deploy includes schema changes"
+  || rollback "db:migrate failed"
 cd ../..
 
 # 部署后验证:首页 200(308→/en 相对跳转)+ 巡检(容器/内存/error/磁盘)。
@@ -112,8 +137,7 @@ for c in yujee-postgres-1 yujee-clip-1; do
 done
 
 if [ "$smoke_fail" = "1" ]; then
-  echo "SMOKE TEST FAILED"
-  exit 1
+  rollback "SMOKE TEST FAILED"
 fi
 
 echo "=== deploy done $(date '+%F %T') ==="
