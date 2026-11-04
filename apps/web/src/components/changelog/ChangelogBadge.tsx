@@ -1,12 +1,18 @@
 'use client';
 
 // 导航栏的更新日志徽标:有未读时显示红点,点击跳 /changelog。
+// locale 必须走 prop:根布局没有 NextIntlClientProvider,这里的 useLocale()
+// 拿不到 context 会在 SSR 直接抛错 —— Sidebar 又挂在 MarketingChrome 上,
+// 2026-10-29 起曾让 /examples、/guides、/pricing、/privacy、/terms 整面 500。
 import { useEffect, useState } from 'react';
-import { useLocale } from 'next-intl';
 import Link from 'next/link';
+import type { Locale } from '@/lib/i18n/routing';
 
-export default function ChangelogBadge() {
-  const locale = useLocale();
+interface Props {
+  locale: Locale;
+}
+
+export default function ChangelogBadge({ locale }: Props) {
   const [unread, setUnread] = useState(0);
 
   useEffect(() => {
