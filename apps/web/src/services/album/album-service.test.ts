@@ -2062,7 +2062,11 @@ test('saveChapterContexts: 相册的页仍只活在 legacy draftJson.pages(draft
 // (含 html)—— 手工编辑全部进了一张没人读的表,刷新即回退。draft_pages 拆表
 // (Phase 1a)后,草稿页真相从 albums.draft_json.pages 迁到 draft_pages 行,断言
 // 改经 draftPageRepo 读回;html patch 语义本身逐字未变。
-test('updatePage(draft 相册):文本/图位/样式全部落 draft_pages 行,且同步进 html 真相', async () => {
+test('updatePage(draft 相册):文本/图位/样式全部落 draft_pages 行,且同步进 html 真相', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
   const user = await makeUser('wp-updatepage-draft');
   try {
     const album = await makeAlbum(user.id);
@@ -2125,7 +2129,11 @@ test('updatePage(draft 相册):文本/图位/样式全部落 draft_pages 行,且
 // imagePos patch 失配(槽锚点不在 html 里等)不允许触发整页重烘:重烘会把手工
 // 背景/字色和 AI 配色从库里一起抹掉(2026-08-02 用户上报「导出丢手工样式」的根因)。
 // 图片位置是装饰性行内样式,失配只是这一笔不生效,html 真相必须原样保留。
-test('updatePage(draft 相册):imagePos patch 失配保留 html 真相,不整页重烘', async () => {
+test('updatePage(draft 相册):imagePos patch 失配保留 html 真相,不整页重烘', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
   const user = await makeUser('wp-updatepage-imagepos-null');
   try {
     const album = await makeAlbum(user.id);
@@ -2170,7 +2178,11 @@ test('updatePage(draft 相册):imagePos patch 失配保留 html 真相,不整页
   }
 });
 
-test('updatePage(draft 相册):pageStyle 把书页背景色写进页根 html + COMPLETED→EDITING', async () => {
+test('updatePage(draft 相册):pageStyle 把书页背景色写进页根 html + COMPLETED→EDITING', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
   const user = await makeUser('wp-updatepage-pagebg');
   try {
     const album = await makeAlbum(user.id);
@@ -2214,7 +2226,11 @@ test('updatePage(draft 相册):pageStyle 把书页背景色写进页根 html + C
   }
 });
 
-test('updatePage(draft 相册):html 锚点失配 → 整页重烘,新文本仍然可见', async () => {
+test('updatePage(draft 相册):html 锚点失配 → 整页重烘,新文本仍然可见', async (t) => {
+  if (!(await isDbReachable())) {
+    t.skip('DATABASE_URL is not reachable; skipping');
+    return;
+  }
   const user = await makeUser('wp-updatepage-rebake');
   try {
     const album = await makeAlbum(user.id);
