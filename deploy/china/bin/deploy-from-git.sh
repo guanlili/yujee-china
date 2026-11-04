@@ -63,6 +63,16 @@ smoke() {
   local name="$1" url="$2" expect="$3"
   local code
   code=$(curl -s -o /dev/null -w "%{http_code}" -m 10 "$url" 2>/dev/null) || code="000"
+  if [ "$expect" = "no5xx" ]; then
+    # 「非 5xx」模式:登录态/重定向类页面,2xx/3xx/4xx 都算过,唯独 5xx 和不可达要拦。
+    if [ "$code" != "000" ] && [ "${code:0:1}" != "5" ]; then
+      echo "smoke ✓ $name ($code, 非5xx)"
+    else
+      echo "smoke ✗ $name: got $code (5xx 或不可达)"
+      smoke_fail=1
+    fi
+    return
+  fi
   if [ "$code" = "$expect" ] || [ "$code" = "308" ]; then
     echo "smoke ✓ $name ($code)"
   else
@@ -77,6 +87,18 @@ smoke agent      "http://127.0.0.1:8002/health"                             "200
 smoke design     "http://$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' yujee-design-agent-1 2>/dev/null):8787/health" "200"
 smoke postgres   "http://127.0.0.1:5432/"                                   "000"  # PG 不走 HTTP,容器 healthy 即可
 smoke clip       "http://127.0.0.1:8001/health"                             "200"
+
+# ── 层 B(2026-11-04):营销动态路由逐个冒烟 ───────────────────────────
+# 这些页面是动态 SSR,build 期不渲染,CI 四门全绿也拦不住 —— ChangelogBadge 曾用
+# next-intl 客户端 hook 在无 Provider 的子树里把整面打成 500 且线上才爆(#90)。
+# 部署后逐条打一发:营销页必须 200;/zh/my-albums 需登录(未带会话时中间件 307
+# 去登录页),故用 no5xx 断言 —— 2xx/3xx/4xx 均可,唯独 5xx 必须拦。
+# localePrefix=always,默认 zh,故走 /zh/ 前缀 URL。
+for _p in examples guides pricing privacy terms about/story; do
+  smoke "marketing /zh/$_p" "http://127.0.0.1:8080/zh/$_p" "200"
+done
+smoke "marketing /zh/my-albums" "http://127.0.0.1:8080/zh/my-albums" "no5xx"
+
 
 # postgres/clip 的 HTTP 码不适用,用 docker inspect 兜底:
 for c in yujee-postgres-1 yujee-clip-1; do
