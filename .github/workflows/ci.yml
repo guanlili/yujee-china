@@ -28,7 +28,7 @@ jobs:
   # restricted key 见 deploy/china/README「自动部署」)。只在 push main(即 PR 合并)
   # 触发;concurrency 排队不取消,防两次部署并发打架。
   deploy:
-    needs: [audit, typecheck, engine, web, packages]
+    needs: [audit, typecheck, engine, web, packages, chapters]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     concurrency:
@@ -198,10 +198,65 @@ jobs:
       - run: pnpm --filter @earendil-works/pi-agent-core test
       - run: pnpm --filter @smalldog/design-agent test
 
+  # 「三个篇章」= apps/web/chapters-source(独立 npm 小站,package name yujee-pet-space)。
+  # 产物静态提交在 apps/web/public/chapters,由 next rewrites 映射到 /{locale}/pet|travel|palace。
+  # 它不在 pnpm workspace,所以其依赖从来没进 audit 闸门;产物也靠人手复制 => 容易漂移。
+  # 这里只在 chapters-source 有改动时真跑:审计 + 测试 + 重建并比对产物(不一致即红)。
+  chapters:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: 检测 chapters-source 是否有改动
+        id: detect
+        run: |
+          base="${{ github.event.pull_request.base.sha }}"
+          [ -n "$base" ] || base="${{ github.event.before }}"
+          case "$base" in ""|0000000000000000000000000000000000000000) base="origin/main" ;; esac
+          git rev-parse --verify "$base" >/dev/null 2>&1 || base="origin/main"
+          n=$(git diff --name-only "$base" HEAD -- apps/web/chapters-source | wc -l | tr -d ' ')
+          echo "changed=$n" >> "$GITHUB_OUTPUT"
+          echo "chapters-source 改动文件数: $n"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        if: steps.detect.outputs.changed != '0'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/chapters-source/package-lock.json
+      - name: npm ci
+        if: steps.detect.outputs.changed != '0'
+        working-directory: apps/web/chapters-source
+        run: npm ci
+      # 与根 audit 同口径:只审生产依赖、只拦 high(devDeps 的 vite/playwright 噪声大)。
+      # registry 必须显式钉官方:npmmirror 没有 audit 端点,不钉会 NOT_IMPLEMENTED 静默失效。
+      - name: npm audit (prod, high)
+        if: steps.detect.outputs.changed != '0'
+        working-directory: apps/web/chapters-source
+        run: npm audit --omit=dev --audit-level=high --registry=https://registry.npmjs.org/
+      - name: npm test
+        if: steps.detect.outputs.changed != '0'
+        working-directory: apps/web/chapters-source
+        run: npm test
+      # 产物新鲜度闸:重建后覆盖 public/chapters,与仓库里的产物比对;不一致即红。
+      - name: 重建并比对产物
+        if: steps.detect.outputs.changed != '0'
+        working-directory: apps/web/chapters-source
+        run: |
+          npm run build
+          for d in en zh es ja fr pet travel palace; do
+            rm -rf "../public/chapters/$d"
+            cp -a "dist/$d" "../public/chapters/$d"
+          done
+          if ! git -C ../.. diff --exit-code -- apps/web/public/chapters; then
+            echo "::error::apps/web/public/chapters 与 chapters-source 重建结果不一致 —— 请重新构建并提交产物(README 的复制步骤)"
+            exit 1
+          fi
+
   # 2026-10-30:CI 任一门失败或部署失败时发飞书群告警(替代 uptime-kuma push)。
   # 飞书 webhook 存 Secrets(FEISHU_ALERT_WEBHOOK),发交互卡片(红色标题)。
   notify:
-    needs: [audit, typecheck, engine, web, packages]
+    needs: [audit, typecheck, engine, web, packages, chapters]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     steps:
