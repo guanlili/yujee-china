@@ -3,7 +3,9 @@ import type { TemplateDef } from '../templates';
 
 export function lintTemplateHtml(tpl: TemplateDef, html: string): string[] {
   const errors: string[] = [];
-  if (!new RegExp(`data-template="${tpl.id}"`).test(html)) {
+  // 用 includes 而不是 new RegExp:模板 id 由 TEMPLATE_ID_RE 约束为 [a-z0-9-],
+  // 不含正则元字符;动态构造 RegExp 既慢又会被 CodeQL 判为 regex-injection。
+  if (!html.includes(`data-template="${tpl.id}"`)) {
     errors.push(`${tpl.id}: 根节点缺 data-template="${tpl.id}"`);
   }
   if (html.length > 60000) {
