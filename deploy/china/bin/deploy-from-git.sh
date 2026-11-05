@@ -62,16 +62,38 @@ docker compose -f deploy/china/compose.single.yml \
   --env-file deploy/china/env/single.env \
   up -d --build --wait --wait-timeout 300
 
-# 数据库迁移(2026-10-30 standalone 适配):standalone 镜像不含 devDeps 里的
-# drizzle-kit CLI,容器内跑不了 db:migrate。改从宿主机 git 仓库直接跑 ——
-# 服务器上的 checkout 就是完整源码,宿主机装了 awscli + node 24 + pnpm。
-# 迁移失败 → 回滚到部署前版本并 fail-fast(2026-11-04 P0);可重跑;幂等(journal 跟踪)。
-cd apps/web \
-  && npx pnpm install --frozen-lockfile --prod=false -w apps/web 2>/dev/null \
-  && DATABASE_URL="postgres://yujee:$(grep ^PG_PASSWORD= ../../deploy/china/env/single.env | cut -d= -f2)@localhost:5432/yujee" \
-  npx drizzle-kit migrate \
-  || rollback "db:migrate failed"
-cd ../..
+# 数据库迁移(2026-10-30 standalone 适配 / 2026-11-05 P1 修复):standalone 镜像
+# 不含 devDeps 的 drizzle-kit CLI,容器内跑不了 db:migrate,从宿主机 checkout 跑。
+# 旧实现两个坑(2026-11-05 定位):① `npx pnpm install` 在 SSH ForceCommand 的非登录
+# shell 里会去 npm registry 现拉 pnpm,失败;② `2>/dev/null` 吞掉失败原因,配旧版
+# `|| echo WARN` 让这一步从 10-30 起静默坏了(#93/#94 部署日志可见 WARN)。
+# 现在:显式解析 pnpm(pnpm → corepack pnpm 兜底)、打印诊断、保留原始 stderr,
+# 失败仍走 fail-fast + 回滚(2026-11-04 P0);可重跑;幂等(journal 跟踪)。
+NODE_VER=$(node --version 2>/dev/null || echo none)
+echo "MIGRATE diag: node=$NODE_VER pnpm=$(command -v pnpm || echo none) corepack=$(command -v corepack || echo none)"
+PNPM=""
+if command -v pnpm >/dev/null 2>&1; then
+  PNPM="pnpm"
+elif command -v corepack >/dev/null 2>&1; then
+  PNPM="corepack pnpm"
+fi
+MIGRATE_OK=0
+if [ -z "$PNPM" ]; then
+  echo "MIGRATE FATAL: 宿主机既没有 pnpm 也没有 corepack"
+else
+  echo "MIGRATE diag: pnpm_version=$($PNPM --version 2>&1 || echo unknown) cwd=$(pwd)"
+  if $PNPM install --frozen-lockfile --prod=false --filter "@yujee/web..."; then
+    if DATABASE_URL="postgres://yujee:$(grep ^PG_PASSWORD= deploy/china/env/single.env | cut -d= -f2)@localhost:5432/yujee" \
+       $PNPM --filter @yujee/web exec drizzle-kit migrate; then
+      MIGRATE_OK=1
+    else
+      echo "MIGRATE FAILED: drizzle-kit migrate 退出码非 0(上方为原始输出)"
+    fi
+  else
+    echo "MIGRATE FAILED: pnpm install 退出码非 0(上方为原始输出)"
+  fi
+fi
+[ "$MIGRATE_OK" = 1 ] || rollback "db:migrate failed"
 
 # 部署后验证:首页 200(308→/en 相对跳转)+ 巡检(容器/内存/error/磁盘)。
 # web 刚 Started 时 Next.js 监听未就绪,curl 会被 reset —— retry-connrefused 等它。
