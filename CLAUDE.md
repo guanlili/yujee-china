@@ -178,6 +178,8 @@ Postgres + Cloudflare R2
   **admin 集成测试不在其中**:它对全库用户集合敏感(并行必竞态),常规批整文件
   skip,独占跑用 `pnpm --filter @yujee/web test:admin`(CI web 门已挂)。
 - Agent 测试从仓根跑:`PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests`。
+- 本地依赖漏洞 audit:`pnpm audit --prod --audit-level=high --registry=https://registry.npmjs.org/`。
+  npmmirror 镜像没有 audit 端点(ERR_PNPM_AUDIT_ENDPOINT_NOT_EXISTS),用镜像源时 audit 会静默失效。
 - 本地起全流程要**三个**服务:web 3000 / agent 8001 / design-agent 8787。
   漏了第三个,design-chat 直接 502。
 
