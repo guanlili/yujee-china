@@ -36,7 +36,11 @@ dev = [
   # present in dev envs but never pinned; without it those async tests error on a
   # clean install. Pinned in WP0.4 (#179) so `pytest engine/tests/` is green
   # from a fresh `pip install -e .[dev]`.
-  "pytest-asyncio>=0.23.0"
+  "pytest-asyncio>=0.23.0",
+  # P1 质量闸门(2026-11):ruff/mypy 静态检查。ruff 先进 CI(0 违规起步档),
+  # mypy 基线 37 错误跨 11 文件,本轮仅装到 dev 供本地跑,不进 CI(见 ci.yml 注释)。
+  "ruff>=0.7.0",
+  "mypy>=1.13.0"
 ]
 
 [build-system]
@@ -50,3 +54,24 @@ include = ["src*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+# ruff(2026-11 P1):分档起步。选 E9(语法错误)/F821(未定义名)/F841(未用局部变量)/
+# W(警告)——实测在 engine/src 上 0 违规。后续批次计划:
+#   档2(下一轮):先清 3 个 F401 未用 import,再纳入 F;再清 5 个 BLE001 blind-except 后纳入 B。
+#   档3:isort(I)、pyupgrade(UP)、bugbear(B 剩余)逐组清。
+# line-length=100 是声明目标(供未来 format 档),当前未选 E501,不会立即报错。
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E9", "F821", "F841", "W"]
+
+# mypy(2026-11 P1):宽松起步配置,基线 37 错误跨 11 文件,本轮不进 CI。
+# 配置先落地,dev 本地可 `mypy src/` 逐步消化;错误清零后再加进 ci.yml engine job。
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_ignores = false
+# 不开启 strict 家族,避免一次性引爆;先抓最明显的类型错误。
+disable_error_code = "annotation-unchecked"

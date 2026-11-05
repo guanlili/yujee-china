@@ -492,5 +492,16 @@
       "empty": "Ce livre n'a pas encore de pages — l'utilisateur est parti en cours de route.",
       "photosUnavailable": "{missing} des {total} photos n'ont aucune copie côté serveur, d'où les emplacements vides — les invités n'écrivent jamais sur R2 ; les originaux ne vivent que dans leur propre navigateur. La mise en page et les textes sont réels."
     }
+  },
+  "errorPage": {
+    "title": "Une erreur est survenue",
+    "body": "Une erreur inattendue s'est produite. Vous pouvez réessayer ou revenir à l'accueil.",
+    "retry": "Réessayer",
+    "backHome": "Retour à l'accueil"
+  },
+  "notFound": {
+    "title": "Page introuvable",
+    "body": "La page que vous cherchez n'existe pas ou a été déplacée.",
+    "backHome": "Retour à l'accueil"
   }
 }

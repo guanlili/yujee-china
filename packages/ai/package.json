@@ -48,6 +48,7 @@
 		"generate-models": "node scripts/generate-models.ts",
 		"generate-image-models": "node scripts/generate-image-models.ts",
 		"build": "tsgo -p tsconfig.build.json",
+		"typecheck": "tsgo -p tsconfig.build.json --noEmit",
 		"test": "vitest --run",
 		"prepublishOnly": "npm run clean && npm run build"
 	},
