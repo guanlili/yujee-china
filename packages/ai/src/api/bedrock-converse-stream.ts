@@ -367,7 +367,9 @@ function isReservedHeader(key: string): boolean {
  * all other caller headers override any existing same-named header on the request.
  */
 function addCustomHeadersMiddleware(client: BedrockRuntimeClient, headers: Record<string, string>): void {
-	const middleware: BuildMiddleware<object, MetadataBearer> = (next) => async (args) => {
+	// AWS SDK v3 升级后 Build/Deserialize 两族中间件类型不再互相兼容(上游重载收紧),
+	// 这里按运行时契约宽类型声明;行为不变(仍是 build 步骤注入自定义 header)。
+	const middleware: BuildMiddleware<object, MetadataBearer> = ((next: any) => async (args: any) => {
 		const request = args.request;
 		if (request && typeof request === "object" && "headers" in request) {
 			const requestHeaders = (request as { headers: Record<string, string> }).headers;
@@ -378,8 +380,8 @@ function addCustomHeadersMiddleware(client: BedrockRuntimeClient, headers: Recor
 			}
 		}
 		return next(args);
-	};
-	client.middlewareStack.add(middleware, { step: "build", name: "pi-ai-custom-headers", priority: "low" });
+	}) as BuildMiddleware<object, MetadataBearer>;
+	client.middlewareStack.add(middleware as never, { step: "build", name: "pi-ai-custom-headers", priority: "low" });
 }
 
 export const streamSimple: StreamFunction<"bedrock-converse-stream", SimpleStreamOptions> = (
