@@ -119,6 +119,9 @@ jobs:
       - run: uv sync --extra dev
         working-directory: engine
       - run: PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
+      # P1 质量闸门(2026-11):ruff 分档起步,select=E9/F821/F841/W 在 engine/src 上 0 违规。
+      # mypy 基线 37 错误跨 11 文件,本轮不进 CI;配置已落 pyproject,本地 `mypy src/` 逐步消化。
+      - run: engine/.venv/bin/ruff check engine/src
 
   # web 测试分片(2026-10-29):单 job 7m51s 是全流水线长杆,拆 2 片并行
   # 后 ~4m。分片 = 排序后按行号取模,确定性;admin 独占批只在 shard 1 跑。

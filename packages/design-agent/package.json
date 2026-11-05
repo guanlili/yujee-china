@@ -21,6 +21,7 @@
 	"scripts": {
 		"clean": "shx rm -rf dist",
 		"build": "tsgo -p tsconfig.build.json && shx chmod +x dist/cli.js",
+		"typecheck": "tsgo -p tsconfig.build.json --noEmit",
 		"web": "tsx src/web/server.ts --host 127.0.0.1 --port 8787",
 		"web:album": "tsx src/web/album-server.ts --host 127.0.0.1 --port 8787",
 		"test": "tsx --test test/*.test.ts"
