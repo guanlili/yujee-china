@@ -13,6 +13,7 @@ import { useSession } from '@/lib/auth/client';
 import { getMessages } from '@/lib/i18n/messages';
 import { pick } from '@/lib/i18n/pick';
 import { LOCALE_LABELS, localizePath, locales, type Locale } from '@/lib/i18n/routing';
+import { safeFetchJSON } from '@/lib/safe-fetch-json';
 
 // Pricing copy states the rule through {photos}/{pages} tokens so the numbers can
 // only ever come from the constants. Rendering the raw message would ship the
@@ -226,23 +227,26 @@ function LandingPricing({ locale }: { locale: Locale }) {
     }
     setBusy(packId);
     setErr(null);
-    try {
-      const res = await fetch('/api/v1/billing/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packId, locale, from: 'home' }),
-      });
-      const json = await res.json();
-      if (json.ok && json.data?.url) {
-        window.location.href = json.data.url;
-        return;
-      }
-      setErr(json.error?.message ?? tc.error);
-    } catch {
-      setErr(tc.error);
-    } finally {
-      setBusy(null);
+    const result = await safeFetchJSON<{
+      ok: boolean;
+      data?: { url?: string };
+      error?: { message?: string };
+    }>('/api/v1/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packId, locale, from: 'home' }),
+    });
+    setBusy(null);
+    if (!result.ok) {
+      setErr(result.message ?? tc.error);
+      return;
     }
+    const json = result.data;
+    if (json.ok && json.data?.url) {
+      window.location.href = json.data.url;
+      return;
+    }
+    setErr(json.error?.message ?? tc.error);
   };
 
   return (

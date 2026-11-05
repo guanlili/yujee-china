@@ -21,8 +21,13 @@ export class CollabClientError extends Error {
   }
 }
 
-async function responseJson(res: Response): Promise<any> {
-  const json = await res.json().catch(() => null);
+async function responseJson(res: Response): Promise<unknown> {
+  // 内部把 body 收窄成信封形状再取字段;对外只吐 unknown,调用方按自己的 T 断言。
+  const json = (await res.json().catch(() => null)) as {
+    ok?: boolean;
+    data?: unknown;
+    error?: { code?: string; message?: string; details?: unknown };
+  } | null;
   if (!json?.ok) {
     throw new CollabClientError(
       json?.error?.code ?? 'REQUEST_FAILED',

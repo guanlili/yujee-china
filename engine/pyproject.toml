@@ -70,7 +70,7 @@ select = ["E9", "F821", "F841", "W"]
 # mypy(2026-11 P1):宽松起步配置,基线 37 错误跨 11 文件,本轮不进 CI。
 # 配置先落地,dev 本地可 `mypy src/` 逐步消化;错误清零后再加进 ci.yml engine job。
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 ignore_missing_imports = true
 warn_unused_ignores = false
 # 不开启 strict 家族,避免一次性引爆;先抓最明显的类型错误。

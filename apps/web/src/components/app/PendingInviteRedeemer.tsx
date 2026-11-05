@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import { clearPendingInvite, takePendingInvite } from '@/lib/invite/pending-invite';
+import { safeFetchJSON } from '@/lib/safe-fetch-json';
 
 // 一次性错误:码本身没法兑(无效/过期/已兑/用尽/校验失败/无权),清掉别再重试,
 // 也别打扰新用户。UNAUTHORIZED / 网络错误不在此列 → 保留码,下次进 app 再试。
@@ -28,28 +29,30 @@ export function PendingInviteRedeemer({ locale }: { locale: Locale }) {
 
     let active = true;
     (async () => {
-      try {
-        const res = await fetch('/api/v1/invite/redeem', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ code }),
-        });
-        const json = await res.json();
-        if (json.ok) {
-          clearPendingInvite();
-          if (!active) return;
-          setToast(
-            t.inviteSuccess
-              .replace('{credits}', String(json.data.credits))
-              .replace('{balance}', String(json.data.balance)),
-          );
-        } else if (PERMANENT_ERROR_CODES.has(json.error?.code)) {
-          clearPendingInvite();
-        }
-        // 其余(UNAUTHORIZED / 会话未就绪)保留码,下次进 app 再兑。
-      } catch {
-        // 网络异常:保留码,下次重试。
+      const result = await safeFetchJSON<{
+        ok: boolean;
+        data?: { credits: number; balance: number };
+        error?: { code?: string; message?: string };
+      }>('/api/v1/invite/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      // 传输层失败(网络/超时/非 JSON/非 2xx):保留码,下次重试。
+      if (!result.ok) return;
+      const json = result.data;
+      if (json.ok) {
+        clearPendingInvite();
+        if (!active) return;
+        setToast(
+          t.inviteSuccess
+            .replace('{credits}', String(json.data!.credits))
+            .replace('{balance}', String(json.data!.balance)),
+        );
+      } else if (json.error?.code && PERMANENT_ERROR_CODES.has(json.error.code)) {
+        clearPendingInvite();
       }
+      // 其余(UNAUTHORIZED / 会话未就绪)保留码,下次进 app 再兑。
     })();
 
     return () => {

@@ -83,7 +83,7 @@
 		"directory": "packages/ai"
 	},
 	"engines": {
-		"node": ">=22.19.0"
+		"node": ">=24.0.0"
 	},
 	"devDependencies": {
 		"@smithy/types": "4.19.0",

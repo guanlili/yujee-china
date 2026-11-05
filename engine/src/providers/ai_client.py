@@ -3,6 +3,7 @@ vision (Volcano Ark doubao) and planning (DeepSeek). One retry on network /
 non-2xx; the caller does any JSON-parse retry / repair separately so failures
 stay attributable to the right pipeline stage."""
 
+import asyncio
 import json
 import os
 import re
@@ -478,6 +479,10 @@ async def chat_completion(
             last_status_code = None
             last_kind = "transport"
             log.warning("ai.transport_error", model=model, attempt=attempt, error=type(exc).__name__)
+        # 重试前指数退避:首次失败后等 2s(2^1),封顶 8s。4xx 已在上面 raise,
+        # 成功已 return,能走到这里的都是 5xx/超时/传输错误 —— 正是该退避的场景。
+        if attempt == 1:
+            await asyncio.sleep(min(2**attempt, 8))
     raise AIRequestError(
         f"model {model} failed after retry: {last_error}",
         status_code=last_status_code,

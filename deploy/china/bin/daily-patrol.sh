@@ -37,11 +37,20 @@ alert() {
     echo "$LOG_PREFIX [SKIP] alert: FEISHU_ALERT_WEBHOOK 未配置"
     return 0
   fi
-  # 告警失败绝不影响巡检/部署;msg 内用字面 \n,飞书 text 消息会渲染成换行。
-  # WARN 行均为本脚本自产(容器名/整数),不含 " 与反斜杠,直接拼 JSON 安全。
+  # 告警失败绝不影响巡检/部署。JSON 一律由 python3 json.dumps 序列化,不手工拼串:
+  # HOST_TAG(hostname)与 WARN 行里的容器名都可能含双引号/反斜杠,拼串会产出非法 JSON。
+  # 文本内保留字面 \n(飞书 text 消息渲染成换行);三个值经环境变量传入,不进 argv。
+  local payload
+  payload=$(HOST_TAG="$HOST_TAG" TIME_TAG="$TIME_TAG" MSG="$msg" python3 -c '
+import json, os
+text = "[yujee-cn 巡检告警] host=%s time=%s\\n%s" % (
+    os.environ["HOST_TAG"], os.environ["TIME_TAG"], os.environ["MSG"],
+)
+print(json.dumps({"msg_type": "text", "content": {"text": text}}))
+')
   curl -fsS -m 10 -X POST "$webhook" \
     -H 'Content-Type: application/json' \
-    -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"[yujee-cn 巡检告警] host=${HOST_TAG} time=${TIME_TAG}\\n${msg}\"}}" || true
+    -d "$payload" || true
 }
 
 # 打一行 PATROL 日志;tag=WARN 时收集进 WARN_LINES,结尾统一告警。
