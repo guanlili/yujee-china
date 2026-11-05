@@ -83,7 +83,12 @@ if [ -z "$PNPM" ]; then
 else
   echo "MIGRATE diag: pnpm_version=$($PNPM --version 2>&1 || echo unknown) cwd=$(pwd)"
   if $PNPM install --frozen-lockfile --prod=false --filter "@yujee/web..."; then
-    if DATABASE_URL="postgres://yujee:$(grep ^PG_PASSWORD= deploy/china/env/single.env | cut -d= -f2)@localhost:5432/yujee" \
+    # postgres 容器未把 5432 publish 到宿主机(localhost:5432 不可达,2026-11-05 定位),
+    # 改用容器网桥 IP(宿主机可路由;design-agent health 探测同法)。
+    PG_HOST=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' yujee-postgres-1 2>/dev/null)
+    [ -n "$PG_HOST" ] || PG_HOST="127.0.0.1"
+    echo "MIGRATE diag: pg_host=$PG_HOST (宿主机无 5432 publish,走容器网桥 IP)"
+    if DATABASE_URL="postgres://yujee:$(grep ^PG_PASSWORD= deploy/china/env/single.env | cut -d= -f2)@${PG_HOST}:5432/yujee" \
        $PNPM --filter @yujee/web exec drizzle-kit migrate; then
       MIGRATE_OK=1
     else
