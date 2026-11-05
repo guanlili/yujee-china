@@ -31,6 +31,8 @@ jobs:
     needs: [audit, typecheck, engine, web, packages, chapters]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    # 记录部署历史(不挂审批规则时不影响流程)
+    environment: production
     concurrency:
       group: deploy-production
       cancel-in-progress: false
@@ -72,8 +74,11 @@ jobs:
   # 直接红门。advisory 库动态更新,moderate/low 仍放行(靠周批 dependabot 消化)。
   audit:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
       # advisory 端点必须显式钉官方 registry:npmmirror 镜像没有 audit 端点,不显式指定会
       # ERR_PNPM_AUDIT_ENDPOINT_NOT_EXISTS 静默失效(等于这道门不存在)。
@@ -83,6 +88,7 @@ jobs:
   # CRON_SECRET 泄露进会话输出的先例。占位/example 由 .gitleaks.toml 放行。
   secrets-scan:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     # gitleaks-action@v3 上传 SARIF 需要 security-events: write,仅此 job 提权。
     permissions:
       contents: read
@@ -90,6 +96,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3
         env:
@@ -97,9 +104,11 @@ jobs:
 
   typecheck:
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           # docs:check 按提交历史比对 doc-scope 的 checked-at,浅克隆会误报
           fetch-depth: 0
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
@@ -113,8 +122,11 @@ jobs:
 
   engine:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
@@ -137,6 +149,7 @@ jobs:
       matrix:
         shard: [1, 2]
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16-alpine
@@ -156,6 +169,8 @@ jobs:
       DATABASE_URL: postgres://yujee:yujee@localhost:5432/yujee
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -179,13 +194,17 @@ jobs:
   web:
     needs: [web-tests]
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - run: echo "web 两个分片全部通过"
 
   packages:
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
@@ -204,9 +223,11 @@ jobs:
   # 这里只在 chapters-source 有改动时真跑:审计 + 测试 + 重建并比对产物(不一致即红)。
   chapters:
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: 检测 chapters-source 是否有改动
         id: detect
@@ -259,6 +280,7 @@ jobs:
     needs: [audit, typecheck, engine, web, packages, chapters]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Alert Feishu (CI failure)
         env:
