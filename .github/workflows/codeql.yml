@@ -38,6 +38,16 @@ jobs:
       - uses: github/codeql-action/init@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
         with:
           language: ${{ matrix.language }}
+          # 首扫 55 条里有 12 条是噪音,直接排除掉,让 Security 页只留真实代码问题:
+          #  - apps/web/public/**:chapters 小站的 vite 打包产物(静态提交进仓库),
+          #    扫它等于扫 minified bundle —— 6 条 Math.random、1 条 XSS 都出自这里。
+          #  - **/*.test.ts / **/test/**:测试里的断言用正则/字符串拼 HTML,
+          #    不参与生产运行时。
+          config: |
+            paths-ignore:
+              - apps/web/public/**
+              - "**/*.test.ts"
+              - "**/test/**"
       - uses: github/codeql-action/analyze@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
         with:
           category: "/language:${{ matrix.language }}"
