@@ -88,8 +88,10 @@ else
     PG_HOST=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' yujee-postgres-1 2>/dev/null)
     [ -n "$PG_HOST" ] || PG_HOST="127.0.0.1"
     echo "MIGRATE diag: pg_host=$PG_HOST (宿主机无 5432 publish,走容器网桥 IP)"
-    if DATABASE_URL="postgres://yujee:$(grep ^PG_PASSWORD= deploy/china/env/single.env | cut -d= -f2)@${PG_HOST}:5432/yujee" \
-       $PNPM --filter @yujee/web exec drizzle-kit migrate; then
+    # 密码不走命令行 env 前缀(会随命令行/排障日志外泄),先 export 再调用;
+    # fail-fast + 回滚语义不变(下方 if 仍只看 drizzle-kit 退出码)。
+    export DATABASE_URL="postgres://yujee:$(grep ^PG_PASSWORD= deploy/china/env/single.env | cut -d= -f2)@${PG_HOST}:5432/yujee"
+    if $PNPM --filter @yujee/web exec drizzle-kit migrate; then
       MIGRATE_OK=1
     else
       echo "MIGRATE FAILED: drizzle-kit migrate 退出码非 0(上方为原始输出)"

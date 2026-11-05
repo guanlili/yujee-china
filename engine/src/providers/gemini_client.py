@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from collections.abc import Mapping
 from typing import Any
@@ -256,6 +257,10 @@ async def generate_content(
                 attempt=attempt,
                 error=type(exc).__name__,
             )
+        # 重试前指数退避:首次失败后等 2s(2^1),封顶 8s。4xx 已在上面 raise,
+        # 成功已 return,能走到这里的都是 5xx/超时/传输错误。
+        if attempt == 1:
+            await asyncio.sleep(min(2**attempt, 8))
 
     raise ai_client.AIRequestError(
         f"model {model} failed after retry: {last_error}",

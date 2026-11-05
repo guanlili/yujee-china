@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { getMessages } from '@/lib/i18n/messages';
 import type { Locale } from '@/lib/i18n/routing';
 import { useAnonymousRedirect } from '@/components/app/useAnonymousRedirect';
+import { safeFetchJSON } from '@/lib/safe-fetch-json';
 import {
   ADDON_PACKS,
   type CheckoutSource,
@@ -95,23 +96,26 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
   const buy = async (packId: string) => {
     setBuying(packId);
     setErr(null);
-    try {
-      const res = await fetch('/api/v1/billing/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packId, locale, from }),
-      });
-      const json = await res.json();
-      if (json.ok && json.data?.url) {
-        window.location.href = json.data.url;
-        return;
-      }
-      setErr(json.error?.message ?? tc.error);
-    } catch {
-      setErr(tc.error);
-    } finally {
-      setBuying(null);
+    const result = await safeFetchJSON<{
+      ok: boolean;
+      data?: { url?: string };
+      error?: { message?: string };
+    }>('/api/v1/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packId, locale, from }),
+    });
+    setBuying(null);
+    if (!result.ok) {
+      setErr(result.message ?? tc.error);
+      return;
     }
+    const env = result.data;
+    if (env.ok && env.data?.url) {
+      window.location.href = env.data.url;
+      return;
+    }
+    setErr(env.error?.message ?? tc.error);
   };
 
   return (

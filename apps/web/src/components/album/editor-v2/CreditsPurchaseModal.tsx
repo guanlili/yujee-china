@@ -23,6 +23,7 @@ import { createPortal } from 'react-dom';
 import { ADDON_PACKS, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { boundPick } from '@/lib/i18n/pick';
 import type { Locale } from '@/lib/i18n/routing';
+import { safeFetchJSON } from '@/lib/safe-fetch-json';
 
 // Poll cadence + hard cap for the "waiting for payment" balance watcher.
 const BALANCE_POLL_MS = 3000;
@@ -137,28 +138,34 @@ export function CreditsPurchaseModal({
     setCheckingOut(true);
     setError(null);
     setManualPayUrl(null);
-    try {
-      const res = await fetch('/api/v1/billing/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packId: selectedId, locale, from: 'album' }),
-      });
-      const json = (await res.json()) as { ok?: boolean; data?: { url?: string }; error?: { message?: string } };
-      if (json?.ok && json.data?.url) {
-        const url = json.data.url;
-        // Payment opens in a NEW tab — the editor tab must never navigate away. If the
-        // popup is blocked (window.open → null), fall back to a manual link (still no nav).
-        const win = window.open(url, '_blank');
-        if (!win) setManualPayUrl(url);
-        setPhase('waiting');
-        return;
-      }
-      setError(json?.error?.message ?? (aT('发起支付失败，请重试。', 'Couldn’t start checkout — please try again.')));
-    } catch {
-      setError(aT('发起支付失败，请重试。', 'Couldn’t start checkout — please try again.'));
-    } finally {
+    const result = await safeFetchJSON<{
+      ok?: boolean;
+      data?: { url?: string };
+      error?: { message?: string };
+    }>('/api/v1/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ packId: selectedId, locale, from: 'album' }),
+    });
+    if (!result.ok) {
+      setError(
+        result.message ?? aT('发起支付失败，请重试。', 'Couldn’t start checkout — please try again.'),
+      );
       setCheckingOut(false);
+      return;
     }
+    const json = result.data;
+    setCheckingOut(false);
+    if (json?.ok && json.data?.url) {
+      const url = json.data.url;
+      // Payment opens in a NEW tab — the editor tab must never navigate away. If the
+      // popup is blocked (window.open → null), fall back to a manual link (still no nav).
+      const win = window.open(url, '_blank');
+      if (!win) setManualPayUrl(url);
+      setPhase('waiting');
+      return;
+    }
+    setError(json?.error?.message ?? aT('发起支付失败，请重试。', 'Couldn’t start checkout — please try again.'));
   }, [checkingOut, selectedId, locale, aT]);
 
   // "I've paid — refresh": one immediate balance check; hands off if credited, else nudges.

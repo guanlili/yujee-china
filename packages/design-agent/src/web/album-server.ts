@@ -761,7 +761,9 @@ async function handleStatic(pathname: string, response: ServerResponse): Promise
 }
 
 function isAuthorized(request: IncomingMessage, sharedSecret: string | undefined): boolean {
-	if (!sharedSecret) return true;
+	// fail-closed:secret 未配置时一律拒绝(此前是 fail-open,未配 secret 时 /api/* 裸奔)。
+	// 运维必须显式注入 DESIGN_AGENT_SHARED_SECRET 才放行 /api/*;健康探针 /health 不在此门内。
+	if (!sharedSecret) return false;
 	const header = request.headers.authorization ?? "";
 	return header === `Bearer ${sharedSecret}`;
 }
@@ -769,6 +771,13 @@ function isAuthorized(request: IncomingMessage, sharedSecret: string | undefined
 export async function createAlbumAgentWebServer(options: AlbumAgentWebServerOptions = {}): Promise<Server> {
 	const env = options.env ?? process.env;
 	const sharedSecret = options.sharedSecret ?? env.DESIGN_AGENT_SHARED_SECRET ?? undefined;
+	// 初始化时只 warn 一次:fail-closed 下未配 secret 会导致 /api/* 全部 401,这是运维必须
+	// 显式感知的部署错误,不能静默挂起。
+	if (!sharedSecret) {
+		console.warn(
+			"[design-agent] DESIGN_AGENT_SHARED_SECRET not set: /api/* will be rejected (fail-closed). Set the env var to enable API access.",
+		);
+	}
 	const deps = await createSharedDeps(options);
 
 	let defaultBook: AlbumBookState | undefined;

@@ -89,7 +89,7 @@ test('packs + "≈ N photos" derive from ADDON_PACKS / PHOTOS_PER_CREDIT — nev
 test('checkout opens a NEW tab (spec) and matches credits/page.tsx contract', () => {
   assert.match(
     modal,
-    /fetch\('\/api\/v1\/billing\/checkout',/,
+    /safeFetchJSON(<[^>]*>)?\('\/api\/v1\/billing\/checkout',/,
     'modal must POST the same checkout endpoint as the credits page',
   );
   assert.match(modal, /from:\s*'album'/, "checkout must tag the source as 'album'");

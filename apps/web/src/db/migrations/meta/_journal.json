@@ -253,6 +253,20 @@
       "when": 1793286100558,
       "tag": "0035_aberrant_shinko_yamashiro",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1793849529917,
+      "tag": "0036_backfill_enum",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1793849529918,
+      "tag": "0037_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,6 @@
 import { env } from '@/lib/env';
 import { requireAdmin } from './require-admin';
+import { timingSafeEqualString } from './timing-safe-equal';
 
 // Pure matcher (env-free for testability). A request is cron-authorized when it
 // carries the shared secret as `Authorization: Bearer <secret>` (what Vercel
@@ -7,8 +8,11 @@ import { requireAdmin } from './require-admin';
 // never authorizes, so dev — where CRON_SECRET is absent — keeps requiring admin.
 export function matchesCronSecret(req: Request, secret: string | undefined): boolean {
   if (!secret) return false;
-  if (req.headers.get('authorization') === `Bearer ${secret}`) return true;
-  return new URL(req.url).searchParams.get('secret') === secret;
+  const header = req.headers.get('authorization') ?? '';
+  if (timingSafeEqualString(header, `Bearer ${secret}`)) return true;
+  const querySecret = new URL(req.url).searchParams.get('secret');
+  if (querySecret === null) return false;
+  return timingSafeEqualString(querySecret, secret);
 }
 
 export function isCronAuthorized(req: Request): boolean {

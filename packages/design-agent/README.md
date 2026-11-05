@@ -206,7 +206,7 @@ renderVersion 一变,已发布的分享快照当场失配。
 daily-patrol 盯 design-agent 内存正是为此)。
 
 密钥不入库:国内在服务器 `deploy/china/env/single.env`(`DESIGN_AGENT_SHARED_SECRET`,
-以及 `look_at_photos` 需要的 `WEB_BASE_URL` + `AGENT_SHARED_SECRET`)。模型走
+以及 `look_at_photos` 需要的 `WEB_BASE_URL` + `AGENT_SHARED_SECRET`)。**未配置 `DESIGN_AGENT_SHARED_SECRET` 时 `/api/*` 一律 401(fail-closed,启动时打一条 warn)**—— 健康探针 `/health` 不受此门约束。此前是 fail-open,现改为必须显式注入密钥。模型走
 kexiangai 中转站(2026-10-28 起):`DESIGN_AGENT_PROVIDER=openai-compat` +
 `DESIGN_AGENT_API_KEY`(sk- 前缀),base URL 可用 `DESIGN_AGENT_API_BASE_URL` 覆盖,
 见 `src/core/models.ts`;中转站吞掉 thinking 参数,模型每轮先思考(pi-ai 原生解析
@@ -229,5 +229,5 @@ print/RPC/interactive 三种模式。**通用 agent loop 在 `packages/agent`**,
 
 <!-- doc-scope
 paths: packages/design-agent/src/**, apps/web/src/lib/agent/design-agent-client.ts
-checked-at: 83e0db16
+checked-at: a6ddab65
 -->

@@ -9,8 +9,14 @@ import { createAlbumAgentWebServer } from "../src/web/album-server.ts";
 // validateAlbumBook 硬拒,设计对话对这些册子永久 400。结构体检结果降级进 warnings,
 // 严格校验只留在写工具层(AI 写错槽仍会被拦、可自我纠正)。
 
+/** P2-2(2026-11):album server 鉴权已改 fail-closed —— 测试必须带 Bearer,否则一律 401。 */
+const TEST_SHARED_SECRET = "test-secret";
+const AUTH_HEADER = { authorization: `Bearer ${TEST_SHARED_SECRET}` };
+
 async function withAlbumServer<T>(run: (baseUrl: string) => Promise<T>): Promise<T> {
-	const server = await createAlbumAgentWebServer({ env: {} });
+	const server = await createAlbumAgentWebServer({
+		env: { DESIGN_AGENT_SHARED_SECRET: TEST_SHARED_SECRET },
+	});
 	await new Promise<void>((resolve) => {
 		server.listen(0, "127.0.0.1", resolve);
 	});
@@ -50,7 +56,7 @@ test("装书:存量书带过期文字键/退役模板 → 200 + warnings,不再 
 		};
 		const response = await fetch(`${baseUrl}/api/book`, {
 			method: "POST",
-			headers: { "content-type": "application/json" },
+			headers: { "content-type": "application/json", ...AUTH_HEADER },
 			body: JSON.stringify({ albumId: "legacy-album", book: legacyBook }),
 		});
 		assert.equal(response.status, 200);
@@ -63,7 +69,7 @@ test("装书:存量书带过期文字键/退役模板 → 200 + warnings,不再 
 		);
 
 		// 书确实装进画布了:state 可读、页数一致。
-		const state = await fetch(`${baseUrl}/api/state?albumId=legacy-album`);
+		const state = await fetch(`${baseUrl}/api/state?albumId=legacy-album`, { headers: AUTH_HEADER });
 		assert.equal(state.status, 200);
 		const stateJson = (await state.json()) as { book?: { pages?: unknown[] } };
 		assert.equal(stateJson.book?.pages?.length, 2);
@@ -74,7 +80,7 @@ test("装书:结构性损坏(pages 不是数组)仍然 400 硬失败", async () 
 	await withAlbumServer(async (baseUrl) => {
 		const response = await fetch(`${baseUrl}/api/book`, {
 			method: "POST",
-			headers: { "content-type": "application/json" },
+			headers: { "content-type": "application/json", ...AUTH_HEADER },
 			body: JSON.stringify({ albumId: "broken", book: { chapters: [], pages: "not-an-array" } }),
 		});
 		assert.equal(response.status, 400);

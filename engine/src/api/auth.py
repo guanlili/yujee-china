@@ -1,3 +1,5 @@
+import hmac
+
 from fastapi import Header, HTTPException, status
 
 from ..settings import get_settings
@@ -16,7 +18,8 @@ async def require_clip_bearer(authorization: str | None = Header(default=None)) 
 
 def _require_exact_bearer(authorization: str | None, secret: str) -> None:
     expected = f"Bearer {secret}"
-    if not authorization or authorization != expected:
+    # 常量时间比较,避免对 Bearer 串做字典序短路而泄漏逐字符匹配的侧信道。
+    if not authorization or not hmac.compare_digest(str(authorization), expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"ok": False, "error": {"code": "AGENT_UNAUTHORIZED", "message": "invalid bearer"}},

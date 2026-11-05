@@ -6,6 +6,7 @@ import type { Locale } from '@/lib/i18n/routing';
 import { useAnonymousRedirect } from '@/components/app/useAnonymousRedirect';
 import { authClient, signOut } from '@/lib/auth/client';
 import { AppChrome } from '@/components/app/AppChrome';
+import { safeFetchJSON } from '@/lib/safe-fetch-json';
 
 const DELETION_EMAIL = 'privacy@yujeeai.com';
 
@@ -68,28 +69,31 @@ export default function SettingsPage({ params }: { params: Promise<{ locale: Loc
     setInviteBusy(true);
     setInviteMsg(null);
     setInviteErr(null);
-    try {
-      const res = await fetch('/api/v1/invite/redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
-      });
-      const json = await res.json();
-      if (json.ok) {
-        setInviteMsg(
-          t.inviteSuccess
-            .replace('{credits}', String(json.data.credits))
-            .replace('{balance}', String(json.data.balance)),
-        );
-        setInviteCode('');
-        setMe((prev) => (prev ? { ...prev, creditBalance: json.data.balance } : prev));
-      } else {
-        setInviteErr(inviteErrorText(json.error?.code));
-      }
-    } catch {
+    const result = await safeFetchJSON<{
+      ok: boolean;
+      data?: { credits: number; balance: number };
+      error?: { code?: string; message?: string };
+    }>('/api/v1/invite/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    });
+    setInviteBusy(false);
+    if (!result.ok) {
       setInviteErr(t.inviteErrGeneric);
-    } finally {
-      setInviteBusy(false);
+      return;
+    }
+    const json = result.data;
+    if (json.ok) {
+      setInviteMsg(
+        t.inviteSuccess
+          .replace('{credits}', String(json.data!.credits))
+          .replace('{balance}', String(json.data!.balance)),
+      );
+      setInviteCode('');
+      setMe((prev) => (prev ? { ...prev, creditBalance: json.data!.balance } : prev));
+    } else {
+      setInviteErr(inviteErrorText(json.error?.code));
     }
   };
 

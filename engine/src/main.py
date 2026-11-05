@@ -82,14 +82,59 @@ async def http_exc_handler(_: Request, exc: StarletteHTTPException):
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exc_handler(_: Request, exc: RequestValidationError):
+async def validation_exc_handler(request: Request, exc: RequestValidationError):
+    errors = exc.errors() or []
+    # 只取每条 error 的 msg;loc 可保留,input(用户原始输入)一律不回。
+    messages = [str(e.get("msg", "invalid input")) for e in errors] or ["invalid input"]
+    # 运行时取最新 settings(测试会 reset 缓存切换 dev/prod);模块级 settings 是启动快照。
+    if get_settings().agent_env == "development":
+        # dev 才回完整结构化错误,但仍剥掉 input(可能含敏感原始载荷)。
+        safe_errors = []
+        for e in errors:
+            safe = {k: v for k, v in e.items() if k != "input"}
+            safe_errors.append(safe)
+        return JSONResponse(
+            status_code=400,
+            content={
+                "ok": False,
+                "error": {
+                    "code": "AGENT_INVALID_INPUT",
+                    "message": messages[0],
+                    "messages": messages,
+                    "errors": safe_errors,
+                },
+            },
+        )
     return JSONResponse(
         status_code=400,
         content={
             "ok": False,
             "error": {
                 "code": "AGENT_INVALID_INPUT",
-                "message": str(exc.errors()[0] if exc.errors() else "invalid input"),
+                "message": messages[0],
+                "messages": messages,
+            },
+        },
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exc_handler(request: Request, exc: Exception):
+    # 兜底:任何没被上面 HTTPException / RequestValidationError 接住的异常。
+    # 用 structlog log.exception 自动带上 traceback(只进日志,不回客户端)。
+    log.exception(
+        "agent.unhandled_exception",
+        method=request.method,
+        path=request.url.path,
+        error_type=type(exc).__name__,
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "ok": False,
+            "error": {
+                "code": "AGENT_INTERNAL_ERROR",
+                "message": "internal server error",
             },
         },
     )

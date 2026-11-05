@@ -12,11 +12,16 @@ import { stripComments } from "./helpers/source-comments.ts";
  * 接线不通 = 三个工具在线上根本不注册,功能等于没通电 —— 单测全绿也照样是死的。
  */
 
+/** P2-2(2026-11):album server 的鉴权已改 fail-closed —— 测试必须带上 Bearer,否则一律 401。 */
+const TEST_SHARED_SECRET = "test-secret";
+
 async function withAlbumServer<T>(
 	run: (baseUrl: string) => Promise<T>,
 	env: Record<string, string | undefined> = {},
 ): Promise<T> {
-	const server = await createAlbumAgentWebServer({ env });
+	const server = await createAlbumAgentWebServer({
+		env: { DESIGN_AGENT_SHARED_SECRET: TEST_SHARED_SECRET, ...env },
+	});
 	await new Promise<void>((resolve) => {
 		server.listen(0, "127.0.0.1", resolve);
 	});
@@ -40,13 +45,18 @@ const BOOK = {
 async function loadBook(baseUrl: string, body: Record<string, unknown>): Promise<Response> {
 	return fetch(`${baseUrl}/api/book`, {
 		method: "POST",
-		headers: { "content-type": "application/json" },
+		headers: {
+			"content-type": "application/json",
+			authorization: `Bearer ${TEST_SHARED_SECRET}`,
+		},
 		body: JSON.stringify(body),
 	});
 }
 
 async function readState(baseUrl: string, albumId: string): Promise<Record<string, any>> {
-	const response = await fetch(`${baseUrl}/api/state?albumId=${albumId}`);
+	const response = await fetch(`${baseUrl}/api/state?albumId=${albumId}`, {
+		headers: { authorization: `Bearer ${TEST_SHARED_SECRET}` },
+	});
 	return (await response.json()) as Record<string, any>;
 }
 

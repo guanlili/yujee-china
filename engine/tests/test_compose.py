@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from typing import Any
 
 from src.workflows.core.compose import handler as compose_handler
 

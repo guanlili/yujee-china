@@ -91,9 +91,11 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   // 一整排图,读者看得见,updatedAt 落在这天。
   // 2026-10-28: landing + shared footers show MIIT ICP filing link (reader-visible chrome).
   '/': {
+    // 2026-11-05: YujeeLandingHomeClient 改用 safeFetchJSON(传输层容错收口),
+    // 读者可见内容没变 —— 只推进 reviewedSources,updatedAt 保持不动。
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
     updatedAt: '2026-10-28',
-    reviewedSources: 'dbd0fb078981',
+    reviewedSources: '99fdb943386f',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback
