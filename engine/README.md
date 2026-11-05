@@ -118,7 +118,7 @@ analyze 会多一步:把照片委托给 2GB CLIP worker 的 `/internal/photo-pro
 (AI 只输出场景名,字体由代码按 场景×语言 查表填)。失败绝不阻断交付 —— 章/全局批次
 解析/空正文类失败先原地重抽一次(模型输出非确定,重抽常能救回;截断/少括号的
 输出会先走 `parse_json_loose` 的修复兜底);网络类(transport/timeout/5xx)由 `ai_client`
-内部重试一次、handler 不再叠加(2026-10-29 修复:旧版任何异常都整体重试,最坏 4 次
+内部重试一次(重试前指数退避,首次失败后退 2s、封顶 8s)、handler 不再叠加(2026-10-29 修复:旧版任何异常都整体重试,最坏 4 次
 全量调用、图片 token 重复烧),仍写不出来该章页面才保留模板 sample 文案,
 不发 `failed`。**超时同理**:预算是按章的
 (`COMPOSE_CHAPTER_TIMEOUT_SECONDS`,默认 180s),卡住的章按「这一章掉队」处理,已经写完
@@ -154,6 +154,9 @@ Important local `.env` fields:
 | Name | Note |
 |---|---|
 | `AGENT_SHARED_SECRET` | Bearer secret shared with Web |
+
+未捕获异常由全局 `Exception` handler 兜底:客户端只拿到 `500 AGENT_INTERNAL_ERROR`,
+traceback 只进 structlog(`agent.unhandled_exception`),不回响应体。
 | `WEB_BASE_URL` | Web origin for callbacks |
 | `AGENT_PIPELINE_MODE` | `mock` or `real` |
 | `ARK_API_KEY` / `DEEPSEEK_API_KEY` | 砍掉识图后的残留槽:`mode=real` 启动仍必检,但当前没有 workflow 调用它们 |
@@ -226,5 +229,5 @@ SSH 到 49.232 跑 `deploy/china/bin/deploy-from-git.sh`(reset --hard + 五容�
 
 <!-- doc-scope
 paths: engine/src/**
-checked-at: 7d7d00fe
+checked-at: a6ddab65
 -->
