@@ -8,7 +8,9 @@
 **/.turbo
 **/*.tsbuildinfo
 .git
-engine
+engine/*
+!engine/pyproject.toml
+!engine/uv.lock
 apps/web/public
 **/.env.local
 *.log
