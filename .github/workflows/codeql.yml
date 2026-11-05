@@ -1,0 +1,43 @@
+# 静态代码分析(2026-11):此前安全防线只有「依赖有漏洞(audit)」与「密钥泄露(gitleaks)」,
+# 没有对代码本身的检查。CodeQL 补上注入 / SSRF / 路径穿越 / 不安全反序列化这类模式。
+#
+# 只跑 push main + 每周一次,不挂 PR:扫描耗时 20-40min,挂 PR 会显著拖长合并等待,
+# 而它也不是「改一行就必须验证」的类型。结果落在仓库 Security 标签页,按周清理。
+name: CodeQL
+
+permissions:
+  contents: read
+  security-events: write
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 周一 10:17(北京) —— 与 dependabot 的周一批错开一小时,避免同时抢 runner
+    - cron: '17 2 * * 1'
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # Python 在 engine/,TS 在 apps/ 与 packages/。JS 的 CodeQL 不需要编译,
+        # 因此两个语言都跳过 autobuild(它反而会触发无谓的构建)。
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
+        with:
+          language: ${{ matrix.language }}
+      - uses: github/codeql-action/analyze@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
+        with:
+          category: "/language:${{ matrix.language }}"
