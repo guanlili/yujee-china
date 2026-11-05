@@ -36,7 +36,7 @@ dev = [
   # present in dev envs but never pinned; without it those async tests error on a
   # clean install. Pinned in WP0.4 (#179) so `pytest engine/tests/` is green
   # from a fresh `pip install -e .[dev]`.
-  "pytest-asyncio>=0.23.0",
+  "pytest-asyncio>=1.4.1.post1",
   # P1 质量闸门(2026-11):ruff/mypy 静态检查。ruff 先进 CI(0 违规起步档),
   # mypy 基线 37 错误跨 11 文件,本轮仅装到 dev 供本地跑,不进 CI(见 ci.yml 注释)。
   "ruff>=0.7.0",
