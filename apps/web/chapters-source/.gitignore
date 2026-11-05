@@ -1,2 +1,5 @@
 # build.mjs 会把 public/shared 拷进每个 module 供 vite 打包，跑完构建工作区就是脏的
 modules/*/public/shared/
+# dist 是构建中间产物，真源是源码 + 提交后的 ../public/chapters
+dist/
+node_modules/
