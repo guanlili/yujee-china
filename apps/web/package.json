@@ -37,7 +37,7 @@
     "mp4-muxer": "^5.2.2",
     "next": "15.5.28",
     "next-intl": "4.14.9",
-    "postgres": "^4.0.0",
+    "postgres": "^3.4.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "subset-font": "^2.9.0",
