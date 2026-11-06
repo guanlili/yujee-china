@@ -40,7 +40,8 @@ function mockCheckoutDependencies(t: any) {
   useEnvPatch(t, {
     WAFFO_MERCHANT_ID: 'MER_test123456789012345678',
     WAFFO_PRIVATE_KEY: TEST_KEYS.privateKey,
-    WAFFO_PRODUCT_ID_PACK_1: 'prod_waffo_pack_1',
+    // 用真实的 PROD_xxx 短 ID 格式(Waffo 控制台下发形态),而非全小写占位。
+    WAFFO_PRODUCT_ID_PACK_1: 'PROD_waffo_pack_1',
     WEB_BASE_URL: 'https://app.yujee.test',
   });
   t.mock.method(userRepo, 'findById', async (userId: string) => ({ id: userId, email: 'buyer@yujee.test' }) as any);
@@ -68,7 +69,7 @@ test('waffo createPackCheckout: 请求携带 productId/buyerEmail/metadata/succe
   assert.equal(requests.length, 1);
   assert.ok(requests[0].url.startsWith('https://api.waffo.ai/'));
   const body = JSON.parse(String(requests[0].init.body));
-  assert.equal(body.productId, 'prod_waffo_pack_1');
+  assert.equal(body.productId, 'PROD_waffo_pack_1');
   assert.equal(body.buyerEmail, 'buyer@yujee.test');
   assert.equal(body.currency, 'USD');
   assert.deepEqual(body.metadata, { userId: 'user_w_1', kind: 'pack', packId: 'pack-1' });
