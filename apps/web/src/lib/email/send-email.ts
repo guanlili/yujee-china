@@ -33,6 +33,7 @@ async function sendViaResend(input: SendEmailInput): Promise<void> {
     throw new Error('RESEND_API_KEY is required when EMAIL_DELIVERY=resend');
   }
 
+  // 出站超时:邮件服务挂起时,注册/找回密码请求会一直挂着等回包。
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -46,6 +47,7 @@ async function sendViaResend(input: SendEmailInput): Promise<void> {
       html: input.html,
       text: input.text,
     }),
+    signal: AbortSignal.timeout(15_000),
   });
 
   if (!res.ok) {

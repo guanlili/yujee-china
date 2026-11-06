@@ -131,8 +131,10 @@ export function getWatchaOAuthConfig(source: WatchaOAuthEnvSource = env): Generi
       }
       let response: Response;
       try {
+        // 出站超时:userinfo 卡住会把整个登录回调挂住(用户停在"登录中"不动)。
         response = await fetch(userInfoUrl, {
           headers: { Authorization: `Bearer ${tokens.accessToken}`, Accept: 'application/json' },
+          signal: AbortSignal.timeout(10_000),
         });
       } catch (error) {
         logger.error({ error }, 'watcha oauth: userinfo fetch failed');
