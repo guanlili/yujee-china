@@ -27,12 +27,14 @@ export function LoginForm({
   locale,
   from,
   appleEnabled = false,
+  watchaEnabled = false,
   initialMode = 'none',
 }: {
   messages: AuthMessages;
   locale: string;
   from?: string;
   appleEnabled?: boolean;
+  watchaEnabled?: boolean;
   initialMode?: 'none' | 'phone' | 'email';
 }) {
   const router = useRouter();
@@ -61,8 +63,9 @@ export function LoginForm({
     return () => clearTimeout(timer);
   }, [otpCooldown]);
 
-  // 国内版只保留邮箱 + 手机号登录(2026-10-27 起);Google 入口已随 provider
-  // 一起移除,Apple 维持「配了才显示」,别在它前面再补别的社交按钮。
+  // 国内版登录方式:手机号(主)+ 邮箱(存量)+ Apple(四件套配了才显示)
+  // + 观猹(WATCHA_OAUTH_* 五件套配了才显示,2026-11 接入生态统一登录)。
+  // Google 已移除;除 Apple/观猹 外别再补其他社交按钮。
   const onApple = async () => {
     setBusy(true);
     setError(null);
@@ -72,6 +75,21 @@ export function LoginForm({
     });
     if (socialError) {
       setError(messages.appleError);
+      setBusy(false);
+    }
+  };
+
+  // 观猹与 Apple 同一条 signIn.social 通道:genericOAuth 插件把它注册成
+  // 一等 social provider(服务端),client 侧只是普通的 provider 字符串透传。
+  const onWatcha = async () => {
+    setBusy(true);
+    setError(null);
+    const { error: socialError } = await authClient.signIn.social({
+      provider: 'watcha',
+      callbackURL: dest,
+    });
+    if (socialError) {
+      setError(messages.watchaError);
       setBusy(false);
     }
   };
@@ -170,17 +188,35 @@ export function LoginForm({
 
   return (
     <div className="flex flex-col">
-      {appleEnabled && (
+      {(appleEnabled || watchaEnabled) && (
         <>
-          <button
-            type="button"
-            onClick={onApple}
-            disabled={busy}
-            className="flex w-full items-center justify-center gap-3 rounded-full border border-[var(--border)] bg-[var(--surface)] px-5 py-3.5 text-[15px] font-semibold text-[var(--fg)] shadow-[var(--shadow-card)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[var(--shadow-card-hover)] disabled:opacity-50"
-          >
-            <AppleIcon />
-            <span>{messages.continueWithApple}</span>
-          </button>
+          {appleEnabled && (
+            <button
+              type="button"
+              onClick={onApple}
+              disabled={busy}
+              className="flex w-full items-center justify-center gap-3 rounded-full border border-[var(--border)] bg-[var(--surface)] px-5 py-3.5 text-[15px] font-semibold text-[var(--fg)] shadow-[var(--shadow-card)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[var(--shadow-card-hover)] disabled:opacity-50"
+            >
+              <AppleIcon />
+              <span>{messages.continueWithApple}</span>
+            </button>
+          )}
+
+          {watchaEnabled && (
+            <button
+              type="button"
+              onClick={onWatcha}
+              disabled={busy}
+              className={
+                appleEnabled
+                  ? 'mt-2.5 flex w-full items-center justify-center gap-3 rounded-full border border-[var(--border)] bg-[var(--surface)] px-5 py-3.5 text-[15px] font-semibold text-[var(--fg)] shadow-[var(--shadow-card)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[var(--shadow-card-hover)] disabled:opacity-50'
+                  : 'flex w-full items-center justify-center gap-3 rounded-full border border-transparent bg-[#3AAF78] px-5 py-3.5 text-[15px] font-semibold text-white shadow-[var(--shadow-card)] transition-[transform,box-shadow] duration-[var(--motion-fast)] hover:-translate-y-px hover:shadow-[var(--shadow-card-hover)] disabled:opacity-50'
+              }
+            >
+              <WatchaIcon />
+              <span>{messages.continueWithWatcha}</span>
+            </button>
+          )}
 
           <div className="my-[22px] flex items-center gap-3.5 text-[12px] text-[var(--meta)] before:h-px before:flex-1 before:bg-[var(--border-soft)] after:h-px after:flex-1 after:bg-[var(--border-soft)]">
             <span>{messages.or}</span>
@@ -423,6 +459,19 @@ function AppleIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" fill="currentColor" aria-hidden="true">
       <path d="M17.05 12.54c-.03-2.6 2.12-3.85 2.22-3.91-1.21-1.77-3.09-2.01-3.76-2.04-1.6-.16-3.12.94-3.93.94-.81 0-2.06-.92-3.39-.9-1.74.03-3.35 1.01-4.25 2.57-1.81 3.14-.46 7.79 1.3 10.34.86 1.25 1.89 2.65 3.24 2.6 1.3-.05 1.79-.84 3.36-.84 1.57 0 2.01.84 3.39.81 1.4-.02 2.29-1.27 3.14-2.53.99-1.45 1.4-2.85 1.42-2.93-.03-.01-2.73-1.05-2.76-4.16zM14.6 4.98c.71-.87 1.2-2.07 1.06-3.28-1.03.04-2.28.69-3.02 1.55-.66.76-1.24 1.99-1.09 3.16 1.15.09 2.33-.58 3.05-1.43z" />
+    </svg>
+  );
+}
+
+// 观猹品牌标(官网 theme-color #3AAF78):官方 icon 资产未提供,先用品牌色
+// 圆底 + 「猹」字,拿到正式素材后替换。
+function WatchaIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" fill="#3AAF78" />
+      <text x="12" y="15.5" textAnchor="middle" fontSize="9.5" fontWeight="700" fill="#fff">
+        猹
+      </text>
     </svg>
   );
 }

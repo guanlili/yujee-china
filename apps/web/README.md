@@ -46,6 +46,15 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
   (`/{locale}/admin/albums/[uuid]`,`adminService.previewAlbum`,照片走 photo-originals
   私有桶预签名,不依赖用户主动保存的分享快照)。
 - Album/job persistence in Postgres via Drizzle.
+- 第三方登录(都是 env 门控,配了才显示):Apple(`APPLE_*` 四件套,client secret 从
+  .p8 动态签发,`lib/auth/apple-client-secret.ts`);观猹统一登录(watcha.cn
+  OAuth2.0 生态登录,2026-11 骨架就位:`WATCHA_OAUTH_*` 五件套配齐才挂载,
+  genericOAuth 插件把它注册成一等 social provider —— 走标准 `signIn.social` +
+  `/api/auth/callback/watcha`,回调需在观猹侧注册;观猹技术文档不公开(商务通道
+  support@watcha.cn),userinfo 字段名未知,`lib/auth/watcha-oauth.ts` 做矩阵式
+  宽容映射 + 无邮箱时 `watcha_{id}@watcha.yujee.local` 占位;拿到资料填 env 即
+  启用)。两者的游客并号都由 anonymous 插件 `onLinkAccount` 自动覆盖(`/callback`
+  在其 matcher 名单内),无需显式 after-hook。
 - Album-level default and per-photo override filter persistence in `albums.photo_filter`.
 - Browser -> Web -> Agent orchestration for V3 generation.
 - Callback handling from Agent.
@@ -468,5 +477,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**
-checked-at: 13c62dad
+checked-at: ee0b48f1
 -->

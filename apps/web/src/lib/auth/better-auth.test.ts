@@ -393,3 +393,34 @@ describe('social providers(国内版无 Google)', () => {
     assert.ok(!social || !('google' in social), 'socialProviders must not include google');
   });
 });
+
+describe('watcha generic-oauth 插件(env 门控挂载)', () => {
+  const emptySchema = {
+    users: {},
+    sessions: {},
+    accounts: {},
+    verifications: {},
+  };
+
+  it('WATCHA_OAUTH_* 未配齐时不挂载 generic-oauth 插件(登录入口不存在)', () => {
+    // 测试进程/CI 不带 WATCHA_* 环境变量;配齐时的门控矩阵在 watcha-oauth.test.ts
+    // 以显式 env 切片钉住(那里的 getWatchaOAuthConfig 不读进程 env)。
+    const options = createAuthOptions(emptySchema);
+    const pluginIds = (options.plugins ?? []).map((p) => (p as { id?: string }).id);
+    assert.ok(
+      !pluginIds.includes('generic-oauth'),
+      `generic-oauth must not mount when WATCHA_OAUTH_* incomplete: ${pluginIds.join(',')}`,
+    );
+    // 挂载点接线的存在性钉住(与 google 反向断言同款思路):条件展开必须引用
+    // getWatchaOAuthConfig(),防止后人把这条链改没了。
+    const src = readFileSync(join(process.cwd(), 'src/lib/auth/better-auth.ts'), 'utf8');
+    assert.match(src, /getWatchaOAuthConfig\(\)/, 'watcha config must come from getWatchaOAuthConfig()');
+    assert.match(src, /genericOAuth\(\{ config: \[watchaOAuthConfig\] \}\)/, 'watcha must mount via genericOAuth plugin');
+  });
+
+  it('nextCookies 仍收尾(set-cookie 终段契约,观猹插件插在它之前)', () => {
+    const options = createAuthOptions(emptySchema);
+    const pluginIds = (options.plugins ?? []).map((p) => (p as { id?: string }).id);
+    assert.equal(pluginIds[pluginIds.length - 1], 'next-cookies');
+  });
+});
