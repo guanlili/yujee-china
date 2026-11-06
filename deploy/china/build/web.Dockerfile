@@ -31,6 +31,11 @@ COPY apps/web/package.json ./apps/web/
 COPY packages/contracts/package.json ./packages/contracts/
 RUN pnpm install --filter @yujee/web... --frozen-lockfile
 COPY . .
+# COPY . . 会把构建上下文里的 node_modules 一并带进来(宿主残留/半装目录),
+# 覆盖掉上一步刚装好的依赖并打断 pnpm 的 symlink —— 表现为构建时报
+# `Cannot find module '/app/apps/web/node_modules/next/dist/bin/next'`。
+# 这里再按 lockfile 复装一次,保证镜像里的依赖只以 lockfile 为准。
+RUN pnpm install --filter @yujee/web... --frozen-lockfile
 RUN pnpm --filter @yujee/web build
 
 # ---- runner(standalone,2026-10-30)----
