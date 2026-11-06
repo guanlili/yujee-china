@@ -21,6 +21,10 @@ COPY packages/design-agent/package.json ./packages/design-agent/
 # tsgo 构建 pi 包），随后构建两个 pi 包到 dist/。
 RUN pnpm install --filter @smalldog/design-agent... --frozen-lockfile
 COPY . .
+# COPY . . 会带入上下文里的 packages/*/node_modules 与 dist(宿主残留),
+# 覆盖掉上一步的依赖并打断 symlink,表现为构建 pi-ai 时报
+# `Cannot find module '@anthropic-ai/sdk'`。再按 lockfile 复装一次。
+RUN pnpm install --filter @smalldog/design-agent... --frozen-lockfile
 RUN pnpm --filter @earendil-works/pi-ai build \
  && pnpm --filter @earendil-works/pi-agent-core build
 

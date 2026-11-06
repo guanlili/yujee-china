@@ -6,3 +6,7 @@
 !tsconfig.base.json
 !tsconfig.pi.base.json
 !packages
+# 白名单 !packages 会连带放行 packages/*/node_modules 与 dist(宿主残留),
+# 被 COPY . . 覆盖进镜像后打断 symlink → pi-ai 构建时找不到 SDK。
+packages/*/node_modules
+packages/*/dist
