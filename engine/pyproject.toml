@@ -4,15 +4,15 @@ version = "0.0.1"
 requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.162.0",
-  "uvicorn[standard]>=0.30.0",
+  "uvicorn[standard]>=0.54.0",
   "httpx>=0.28.1",
   # certifi 是 httpx 的传递依赖;显式钉地板是因为 2026-10 的 emSign 根证书
   # 撤销事件(GHSA:中介 CA 私钥泄露),2026.10.19 之前的 bundle 带污染根。
   "certifi>=2026.10.23",
-  "pydantic>=2.7.0",
+  "pydantic>=2.14.2",
   "pydantic-settings>=2.16.1",
   "structlog>=26.1.0",
-  "python-multipart>=0.0.9",
+  "python-multipart>=0.0.33",
   # 13.0.0 之前有 JPEG 解码堆溢出等一批已披露 CVE(<=12.3.0 一档含 critical),
   # engine 直接解码用户上传的照片,必须钉在修复线之上。
   "pillow>=13.0.0",
@@ -23,7 +23,7 @@ dependencies = [
 # 只有专用的 CLIP worker 装(Dockerfile 的 INSTALL_CLIP 段)。普通 1GB Agent 不装 ——
 # 照片档案的分割推理和 CLIP embedding 都只在那台机器上跑。
 clip = [
-  "onnxruntime>=1.20.1",
+  "onnxruntime>=1.31.1",
   "numpy>=2.4.6",
 ]
 dev = [
@@ -39,7 +39,7 @@ dev = [
   "pytest-asyncio>=1.4.1.post1",
   # P1 质量闸门(2026-11):ruff/mypy 静态检查。ruff 先进 CI(0 违规起步档),
   # mypy 基线 37 错误跨 11 文件,本轮仅装到 dev 供本地跑,不进 CI(见 ci.yml 注释)。
-  "ruff>=0.7.0",
+  "ruff>=0.17.3",
   "mypy>=1.13.0"
 ]
 
