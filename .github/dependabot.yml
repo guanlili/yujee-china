@@ -26,6 +26,8 @@ updates:
       - dependency-name: "drizzle-kit"        # 同上
       - dependency-name: "@typescript/native-preview"  # tsgo dev 预发布,按需手动(#10)
       - dependency-name: "next"                # 16 是大版本迁移(#25),major 队列
+      - dependency-name: "typescript"          # 7.0 移除 baseUrl(TS5102),Next 15 webpack 别名解析仍依赖它,#89 已回滚,等 Next 适配
+      - dependency-name: "postgres"            # 4.0 的 lock 解析破坏 Docker 构建 pi-ai 的 openai 依赖,#88 已回滚,待单独研究
   - package-ecosystem: github-actions
     directory: /
     schedule:
