@@ -1,4 +1,7 @@
 node_modules/
+# 不带斜杠:node_modules 以 symlink 形式存在时(本地 worktree 共享依赖),
+# 带斜杠的规则只匹配目录,匹配不到符号链接,会被误提交进仓库。
+node_modules
 .next/
 .turbo/
 .vercel/
