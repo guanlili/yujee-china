@@ -46,6 +46,20 @@ const EnvSchema = z.object({
   APPLE_TEAM_ID: z.string().optional(),
   APPLE_KEY_ID: z.string().optional(),
   APPLE_PRIVATE_KEY: z.string().optional(),
+
+  // 观猹统一登录(watcha.cn OAuth2.0,2026-11 起)。技术文档不公开,走商务通道
+  // (support@watcha.cn / 微信 yunyingxiaowanzi)申请;五件套配齐才启用,缺一即整条
+  // 关闭(登录页无按钮、插件不挂载),与 Apple 四件套同款门控 —— 拿到资料后填 env
+  // 即上线,代码不用再动。端点 URL 也走 env:观猹的授权/token/userinfo 地址以
+  // 对方文档为准。回调固定 ${WEB_BASE_URL}/api/auth/callback/watcha(需在观猹
+  // 侧注册)。不进 PRODUCTION_REQUIRED:没配 = 能力不存在,不是故障。
+  WATCHA_OAUTH_CLIENT_ID: z.string().optional(),
+  WATCHA_OAUTH_CLIENT_SECRET: z.string().optional(),
+  WATCHA_OAUTH_AUTHORIZATION_URL: z.string().url().optional(),
+  WATCHA_OAUTH_TOKEN_URL: z.string().url().optional(),
+  WATCHA_OAUTH_USER_INFO_URL: z.string().url().optional(),
+  // scope 列表(空格分隔,如 "openid profile");对方文档没写就留空,插件按空 scope 发起。
+  WATCHA_OAUTH_SCOPES: z.string().optional(),
   AUTH_EMAIL_FROM: z.string().min(1).default('Yujee <noreply@yujeeai.com>'),
   // 用户反馈转发收件箱(运营者私人邮箱;发件人复用 AUTH_EMAIL_FROM)。
   FEEDBACK_INBOX: z.string().min(3).default('1658152285@qq.com'),

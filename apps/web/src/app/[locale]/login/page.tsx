@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Brand, BrandMark } from '@/components/app/Brand';
 import { LanguageSwitcher } from '@/components/app/LanguageSwitcher';
 import { getAppleCredentials } from '@/lib/auth/apple-client-secret';
+import { getWatchaOAuthConfig } from '@/lib/auth/watcha-oauth';
 import { authHrefWithFrom } from '@/lib/auth/redirect';
 import { getMessages } from '@/lib/i18n/messages';
 import { type Locale } from '@/lib/i18n/routing';
@@ -38,6 +39,8 @@ export default async function LoginPage({
   const registerHref = authHrefWithFrom(`/${locale}/register`, from);
   // Apple button only renders once all four APPLE_* env vars are configured.
   const appleEnabled = getAppleCredentials() !== null;
+  // 观猹登录同款门控:WATCHA_OAUTH_* 五件套配齐才显示(见 watcha-oauth.ts)。
+  const watchaEnabled = getWatchaOAuthConfig() !== null;
 
   return (
     <div
@@ -67,6 +70,7 @@ export default async function LoginPage({
             locale={locale}
             from={from}
             appleEnabled={appleEnabled}
+            watchaEnabled={watchaEnabled}
             initialMode={initialMode}
           />
 

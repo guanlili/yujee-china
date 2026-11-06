@@ -2,6 +2,7 @@ import { betterAuth, type BetterAuthOptions } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { nextCookies } from 'better-auth/next-js';
 import { anonymous } from 'better-auth/plugins/anonymous';
+import { genericOAuth } from 'better-auth/plugins/generic-oauth';
 import { phoneNumber as phoneNumberPlugin } from 'better-auth/plugins/phone-number';
 import { APIError, createAuthEndpoint, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api';
 import { parseSetCookieHeader, setSessionCookie } from 'better-auth/cookies';
@@ -22,6 +23,7 @@ import { env } from '@/lib/env';
 import { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '@/config/auth';
 import { FREE_PLAN_CREDITS } from '@/config/pricing';
 import { generateAppleClientSecret, getAppleCredentials } from './apple-client-secret';
+import { getWatchaOAuthConfig } from './watcha-oauth';
 import { normalizePhoneNumber } from './phone';
 
 // re-export:归一的唯一真相在 ./phone(前后端共用),旧导入路径保持可用。
@@ -262,9 +264,11 @@ const yujeePhoneSignup = {
 export function buildSocialProviders(): BetterAuthOptions['socialProviders'] {
   const providers: NonNullable<BetterAuthOptions['socialProviders']> = {};
 
-  // 国内版不提供 Google 登录(2026-10-27 起):登录方式只有邮箱 + 手机号。
-  // 即使 env 里残留 GOOGLE_*(字段为兼容存量环境保留一迭代),这里也不再挂载
-  // google provider —— 配了也无效,存量 accounts 行不受影响。
+  // 国内版不提供 Google 登录(2026-10-27 起)。即使 env 里残留 GOOGLE_*(字段为
+  // 兼容存量环境保留一迭代),这里也不再挂载 google provider —— 配了也无效,
+  // 存量 accounts 行不受影响。
+  // 注意:观猹登录(2026-11 起)不走 socialProviders —— 它挂在下面的 genericOAuth
+  // 插件里(plugins 数组),对前端仍是同一个 signIn.social({ provider: 'watcha' })。
 
   const appleCreds = getAppleCredentials();
   if (appleCreds) {
@@ -533,6 +537,7 @@ export function buildPasswordResetEmail(
 }
 
 export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAuthOptions {
+  const watchaOAuthConfig = getWatchaOAuthConfig();
   return {
     baseURL: env.WEB_BASE_URL,
     // Apple posts its callback from appleid.apple.com (response_mode=form_post);
@@ -574,6 +579,12 @@ export function createAuthOptions(schemaModule: SchemaModule = schema): BetterAu
         },
       }),
       yujeePhoneSignup,
+      // 观猹统一登录(watcha.cn,2026-11):WATCHA_OAUTH_* 五件套配齐才挂载,
+      // 缺一即整条关闭(登录页无按钮)。genericOAuth 把观猹注册成一等 social
+      // provider —— 走标准 /sign-in/social + /api/auth/callback/watcha,匿名游客
+      // 并号由上面的 anonymous 插件 onLinkAccount 自动覆盖。字段映射与门控见
+      // watcha-oauth.ts。位置在 nextCookies() 之前(set-cookie 终段契约,见上)。
+      ...(watchaOAuthConfig ? [genericOAuth({ config: [watchaOAuthConfig] })] : []),
       nextCookies(),
     ],
     hooks: {

@@ -134,7 +134,9 @@ async function fetchAvailableGitHubCopilotModelIds(copilotToken: string, enterpr
 }
 
 async function fetchJson(url: string, init: RequestInit): Promise<unknown> {
-	const response = await fetch(url, init);
+	// 出站超时:默认 30s,调用方自带 signal 时尊重它。
+	const withTimeout = init.signal ? init : { ...init, signal: AbortSignal.timeout(30_000) };
+	const response = await fetch(url, withTimeout);
 	if (!response.ok) {
 		const text = await response.text();
 		throw new Error(`${response.status} ${response.statusText}: ${text}`);
@@ -314,6 +316,7 @@ async function enableGitHubCopilotModel(token: string, modelId: string, enterpri
 				"x-interaction-type": "chat-policy",
 			},
 			body: JSON.stringify({ state: "enabled" }),
+			signal: AbortSignal.timeout(15_000),
 		});
 		return response.ok;
 	} catch {
