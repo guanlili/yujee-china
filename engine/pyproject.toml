@@ -16,7 +16,7 @@ dependencies = [
   # 13.0.0 之前有 JPEG 解码堆溢出等一批已披露 CVE(<=12.3.0 一档含 critical),
   # engine 直接解码用户上传的照片,必须钉在修复线之上。
   "pillow>=13.0.0",
-  "psycopg[binary]>=3.2.0"
+  "psycopg[binary]>=3.3.7"
 ]
 
 [project.optional-dependencies]
