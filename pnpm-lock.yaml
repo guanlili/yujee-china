@@ -40,8 +40,8 @@ importers:
         specifier: ^3.1161.0
         version: 3.1161.0
       '@waffo/pancake-ts':
-        specifier: 0.27.0
-        version: 0.27.0
+        specifier: 0.26.0
+        version: 0.26.0
       '@yujee/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -1630,8 +1630,8 @@ packages:
   '@vitest/spy@5.1.0':
     resolution: {integrity: sha512-2DPO5OMHWKrBngC+fCmTQqemNF0gidRhp3lxbBmRhW+M1XJrfgPpqNqWVevXtn2f2ufD5ZaR1B6B641aAlcX5A==}
 
-  '@waffo/pancake-ts@0.27.0':
-    resolution: {integrity: sha512-aw9NOEhjwzjzkKmR/JNLTftFZiJDD5puCMACZCVeh/N6CYk3IHsYpMSKA3iK10coF88SgmTDPpF07Gk/Tw6llw==}
+  '@waffo/pancake-ts@0.26.0':
+    resolution: {integrity: sha512-3exK093SGBYmbhEF40jRF+BiCQZRLLThxsADZ3s3vJs/JPDqRSICAmUiIUhu0/gtDe1hB0VzrduLSYRS9YAMhg==}
     engines: {node: '>=20.0.0'}
 
   accepts@2.0.0:
@@ -4450,7 +4450,7 @@ snapshots:
 
   '@vitest/spy@5.1.0': {}
 
-  '@waffo/pancake-ts@0.27.0': {}
+  '@waffo/pancake-ts@0.26.0': {}
 
   accepts@2.0.0:
     dependencies:

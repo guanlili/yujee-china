@@ -379,7 +379,17 @@ function addCustomHeadersMiddleware(client: BedrockRuntimeClient, headers: Recor
 		}
 		return next(args);
 	};
-	client.middlewareStack.add(middleware, { step: "build", name: "pi-ai-custom-headers", priority: "low" });
+	// 新版 @smithy/middleware-stack 收紧了 add() 的重载:宽泛的
+	// BuildMiddleware<object, MetadataBearer> 会被匹配到 DeserializeMiddleware 分支,
+	// 报 TS2769(output 可能是 undefined)。这里只在栈的类型边界做一次结构断言,
+	// middleware 自身仍保留 BuildMiddleware 的类型。
+	const stack = client.middlewareStack as unknown as {
+		add: (
+			middleware: BuildMiddleware<object, MetadataBearer>,
+			options: { step: "build"; name: string; priority: "low" },
+		) => void;
+	};
+	stack.add(middleware, { step: "build", name: "pi-ai-custom-headers", priority: "low" });
 }
 
 export const streamSimple: StreamFunction<"bedrock-converse-stream", SimpleStreamOptions> = (
