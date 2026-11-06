@@ -10,7 +10,7 @@ dependencies = [
   # 撤销事件(GHSA:中介 CA 私钥泄露),2026.10.19 之前的 bundle 带污染根。
   "certifi>=2026.10.23",
   "pydantic>=2.14.2",
-  "pydantic-settings>=2.16.1",
+  "pydantic-settings>=2.16.2",
   "structlog>=26.1.0",
   "python-multipart>=0.0.33",
   # 13.0.0 之前有 JPEG 解码堆溢出等一批已披露 CVE(<=12.3.0 一档含 critical),
