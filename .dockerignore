@@ -3,6 +3,10 @@
 # artifacts, the Python engine, and web assets are not needed to run the design
 # agent — its deps are installed fresh and the pi packages are built in-image.
 **/node_modules
+**/node_modules/**
+node_modules
+apps/web/node_modules
+packages/*/node_modules
 **/dist
 **/.next
 **/.turbo
@@ -11,7 +15,8 @@
 engine/*
 !engine/pyproject.toml
 !engine/uv.lock
-apps/web/public
+# apps/web/public 不能排除:web 镜像 runner 阶段要 COPY 它(33MB),
+# 排除后 builder 里就没有该目录,构建直接报 "/app/apps/web/public: not found"。
 **/.env.local
 *.log
 .DS_Store
