@@ -23,7 +23,7 @@ dependencies = [
 # 只有专用的 CLIP worker 装(Dockerfile 的 INSTALL_CLIP 段)。普通 1GB Agent 不装 ——
 # 照片档案的分割推理和 CLIP embedding 都只在那台机器上跑。
 clip = [
-  "onnxruntime>=1.20.1",
+  "onnxruntime>=1.31.1",
   "numpy>=2.4.6",
 ]
 dev = [
