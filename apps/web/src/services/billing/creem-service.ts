@@ -45,6 +45,8 @@ function creemUrl(path: string): string {
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   if (!env.CREEM_API_KEY) throw ERRORS.BILLING_NOT_CONFIGURED();
+  // 出站超时:上游挂起时无上限的 fetch 会把结账请求连同连接一起占死。
+  // 20s 覆盖 Creem 正常响应(实测 <3s)。
   const res = await fetch(creemUrl(path), {
     method: 'POST',
     headers: {
@@ -52,6 +54,7 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) {
     const text = await res.text();

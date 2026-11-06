@@ -121,7 +121,10 @@ function decodeJwt(token: string): JwtPayload | null {
 
 async function fetchWithLoginCancellation(input: string, init: RequestInit): Promise<Response> {
 	try {
-		return await fetch(input, init);
+		// 出站超时:调用方自带 signal(用户取消)时尊重它,否则兜一个 30s 上限,
+		// 避免 token 端点无响应时登录流程永久挂起。
+		const withTimeout = init.signal ? init : { ...init, signal: AbortSignal.timeout(30_000) };
+		return await fetch(input, withTimeout);
 	} catch (error) {
 		if (init.signal?.aborted) {
 			throw new Error("Login cancelled");
@@ -186,6 +189,7 @@ async function refreshAccessToken(refreshToken: string): Promise<OAuthToken> {
 				refresh_token: refreshToken,
 				client_id: CLIENT_ID,
 			}),
+			signal: AbortSignal.timeout(30_000),
 		});
 	} catch (error) {
 		throw new Error(`OpenAI Codex token refresh error: ${error instanceof Error ? error.message : String(error)}`);
