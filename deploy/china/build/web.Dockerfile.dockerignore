@@ -7,3 +7,8 @@
 !tsconfig.pi.base.json
 !packages/contracts
 !apps/web
+# 白名单 !apps/web 会连带放行 apps/web/node_modules(宿主残留/半装目录),
+# 被 COPY . . 覆盖进镜像后打断 pnpm symlink → next 找不到。
+apps/web/node_modules
+apps/web/.next
+packages/contracts/node_modules
