@@ -1,13 +1,13 @@
 
 /* studio-fonts: 开源(OFL)字体，工具与 Yujee web 共用 */
-@font-face { font-family: 'EB Garamond'; src: url('/fonts/EBGaramond.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Playfair Display'; src: url('/fonts/PlayfairDisplay.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Lora'; src: url('/fonts/Lora.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Inter'; src: url('/fonts/Inter.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Montserrat'; src: url('/fonts/Montserrat.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Poppins'; src: url('/fonts/Poppins.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Work Sans'; src: url('/fonts/WorkSans.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: 'JetBrains Mono'; src: url('/fonts/JetBrainsMono.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Bebas Neue'; src: url('/fonts/BebasNeue.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Abril Fatface'; src: url('/fonts/AbrilFatface.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Raleway'; src: url('/fonts/Raleway.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'EB Garamond'; src: url('/fonts/EBGaramond.woff2') format('woff2'), url('/fonts/EBGaramond.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Playfair Display'; src: url('/fonts/PlayfairDisplay.woff2') format('woff2'), url('/fonts/PlayfairDisplay.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Lora'; src: url('/fonts/Lora.woff2') format('woff2'), url('/fonts/Lora.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('/fonts/Inter.woff2') format('woff2'), url('/fonts/Inter.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Montserrat'; src: url('/fonts/Montserrat.woff2') format('woff2'), url('/fonts/Montserrat.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Poppins'; src: url('/fonts/Poppins.woff2') format('woff2'), url('/fonts/Poppins.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Work Sans'; src: url('/fonts/WorkSans.woff2') format('woff2'), url('/fonts/WorkSans.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/fonts/JetBrainsMono.woff2') format('woff2'), url('/fonts/JetBrainsMono.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Bebas Neue'; src: url('/fonts/BebasNeue.woff2') format('woff2'), url('/fonts/BebasNeue.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Abril Fatface'; src: url('/fonts/AbrilFatface.woff2') format('woff2'), url('/fonts/AbrilFatface.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Raleway'; src: url('/fonts/Raleway.woff2') format('woff2'), url('/fonts/Raleway.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
