@@ -8,10 +8,9 @@ import { YujeeLandingHomeClient } from './YujeeLandingHomeClient';
 
 type Props = {
   locale: Locale;
-  resumeGeneration?: boolean;
 };
 
-export function YujeeLandingHome({ locale, resumeGeneration = false }: Props) {
+export function YujeeLandingHome({ locale }: Props) {
   const marketing = getMarketingMessages(locale);
   const createMessages = getMessages(locale).dashboard.create;
   const composerCopy = {
@@ -26,7 +25,6 @@ export function YujeeLandingHome({ locale, resumeGeneration = false }: Props) {
       uploadLabel={marketing.landing.composerUploadLabel}
       hints={marketing.landing.composerHints}
       createMessages={createMessages}
-      resumeGeneration={resumeGeneration}
       variant="redesign"
       submitLabel={composerCopy.submit}
     />

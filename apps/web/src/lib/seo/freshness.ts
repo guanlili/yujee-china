@@ -93,9 +93,12 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/': {
     // 2026-11-05: YujeeLandingHomeClient 改用 safeFetchJSON(传输层容错收口),
     // 读者可见内容没变 —— 只推进 reviewedSources,updatedAt 保持不动。
+    // 2026-11-07: page.tsx 去掉 searchParams 改静态生成、resumeGeneration 交给
+    // HeroComposer 在浏览器读。渲染方式变了,读者看到的内容一个字没变 ——
+    // 同样只推进 reviewedSources,updatedAt 不动。
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
     updatedAt: '2026-10-28',
-    reviewedSources: '99fdb943386f',
+    reviewedSources: '813970689d1c',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback

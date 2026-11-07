@@ -139,7 +139,9 @@ export function HeroComposer({
   uploadLabel,
   hints,
   createMessages: t,
-  resumeGeneration = false,
+  // 兼容外部显式传入;着陆页已改为自己从 query 读(见下方 resolveResume),
+  // 这样 page.tsx 不必读 searchParams —— 读 searchParams 会让整页退回动态渲染。
+  resumeGeneration,
   variant = 'home1',
   submitLabel = t.send,
 }: Props) {
@@ -150,6 +152,16 @@ export function HeroComposer({
   const [err, setErr] = useState<string | null>(null);
   const [uploadStage, setUploadStage] = useState<UploadStage | null>(null);
   const resumeAttempted = useRef(false);
+  // 外部传了就用外部值,没传就从 URL 读一次(mount 时)。
+  // 只在浏览器算:首屏是静态 HTML,水合后再决定要不要恢复草稿。
+  const [resolveResume, setResolveResume] = useState(resumeGeneration === true);
+  useEffect(() => {
+    if (resumeGeneration !== undefined) return;
+    if (typeof window === 'undefined') return;
+    if (new URLSearchParams(window.location.search).get('resumeGeneration') === '1') {
+      setResolveResume(true);
+    }
+  }, [resumeGeneration]);
 
   const loginResumePath = `/${locale}?resumeGeneration=1`;
   const loginPath = `/${locale}/login?from=${encodeURIComponent(loginResumePath)}`;
@@ -233,7 +245,7 @@ export function HeroComposer({
   };
 
   useEffect(() => {
-    if (!resumeGeneration || resumeAttempted.current) return;
+    if (!resolveResume || resumeAttempted.current) return;
     resumeAttempted.current = true;
     const draft = generationDraft.load();
     if (!draft) return;
@@ -289,7 +301,7 @@ export function HeroComposer({
     return () => {
       cancelled = true;
     };
-  }, [locale, resumeGeneration, router, t.errPhotosUnavailable, t.errPhotosUploadFailed]);
+  }, [locale, resolveResume, router, t.errPhotosUnavailable, t.errPhotosUploadFailed]);
 
   const onFiles = async (files: FileList | null) => {
     if (!files) return;
