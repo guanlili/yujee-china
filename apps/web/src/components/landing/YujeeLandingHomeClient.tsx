@@ -760,7 +760,7 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
                     </div>
                   </div>
                   <div className="float-card floaty absolute -right-3 top-6 hidden items-center gap-2.5 rounded-full bg-white py-2 pl-2 pr-4 sm:flex md:-right-8" style={{ animationDelay: '-2.5s' }}>
-                    <img src="/landing-redesign/jellyfish-loop.png" alt="" className="h-7 w-7 object-contain" />
+                    <img src="/landing-redesign/jellyfish-loop.webp" alt="" className="h-7 w-7 object-contain" />
                     <span className="text-[12px] font-medium text-[var(--fg-2)]">{c.polish}</span>
                   </div>
                 </div>

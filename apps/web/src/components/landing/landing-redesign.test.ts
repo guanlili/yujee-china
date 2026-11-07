@@ -35,7 +35,7 @@ const landingAssets = [
   '/landing-redesign/photos/riverside-walk.webp',
   '/landing-redesign/photos/riverside-before-fireworks.webp',
   '/landing-redesign/photos/rainy-kyoto-lane.webp',
-  '/landing-redesign/jellyfish-loop.png',
+  '/landing-redesign/jellyfish-loop.webp',
 ];
 
 test('locale homepage is replaced by the supplied landing redesign component', () => {
