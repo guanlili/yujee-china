@@ -40,7 +40,7 @@ dev = [
   # P1 质量闸门(2026-11):ruff/mypy 静态检查。ruff 先进 CI(0 违规起步档),
   # mypy 基线 37 错误跨 11 文件,本轮仅装到 dev 供本地跑,不进 CI(见 ci.yml 注释)。
   "ruff>=0.17.3",
-  "mypy>=1.13.0"
+  "mypy>=2.4.1"
 ]
 
 [build-system]
