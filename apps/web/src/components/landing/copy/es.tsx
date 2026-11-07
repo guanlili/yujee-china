@@ -88,7 +88,7 @@ export const es: Copy = {
       body:
         'Mete un año entero en un solo libro. Las fiestas, los viajes y los momentos de siempre se maquetan por meses y siguen año tras año.',
       bullets: ['Agrupado por mes o por evento', 'Un clic para el libro de fin de año', 'Mismo estilo, una colección que hace juego cada año'],
-      image: '/landing-redesign/cards/03-year-record.png',
+      image: '/landing-redesign/cards/03-year-record.webp',
       video: '/landing-redesign/cards/03-year-record.mp4',
     },
     {
@@ -98,7 +98,7 @@ export const es: Copy = {
       body:
         'Coloca los momentos clave sobre una línea de tiempo: el nacimiento, los estudios, la gente y los viajes. Cada grupo lleva textos breves editables, encuadernados como una biografía.',
       bullets: ['Agrupación automática por etapa de la vida', 'Texto largo y citas destacadas en cada grupo', 'Un gran regalo de cumpleaños o de recuerdo'],
-      image: '/landing-redesign/cards/02-life-story.png',
+      image: '/landing-redesign/cards/02-life-story.webp',
       video: '/landing-redesign/cards/02-life-story.mp4',
     },
     {
@@ -108,7 +108,7 @@ export const es: Copy = {
       body:
         'Se agrupa por sí solo según la fecha, con los lugares y el orden ya resueltos. Una página doble por día, con aire entre las fotos.',
       bullets: ['División automática por línea de tiempo', 'Añade páginas de mapa y notas de ruta', 'Exporta un PDF para compartir con tus compañeros de viaje'],
-      image: '/landing-redesign/cards/01-travel.png',
+      image: '/landing-redesign/cards/01-travel.webp',
       video: '/landing-redesign/cards/01-travel.mp4',
     },
     {
@@ -118,7 +118,7 @@ export const es: Copy = {
       body:
         'Fotografía, ilustración, diseño: todo alineado a una retícula con márgenes constantes para que el protagonista siga siendo el trabajo.',
       bullets: ['Retícula estricta y márgenes uniformes', 'Título, técnica y año en cada página', 'Exporta un PDF de portafolio listo para enviar'],
-      image: '/landing-redesign/cards/06-portfolio.png',
+      image: '/landing-redesign/cards/06-portfolio.webp',
       video: '/landing-redesign/cards/06-portfolio.mp4',
     },
     {
@@ -128,7 +128,7 @@ export const es: Copy = {
       body:
         'Más que un álbum: portada, sumario, reportajes y citas destacadas sobre el esqueleto de una revista. Convierte tu vida en un número.',
       bullets: ['Plantillas de portada, sumario y reportaje', 'Maquetación editorial con titulares y citas', 'Exportación lista para imprimir un número físico'],
-      image: '/landing-redesign/cards/05-magazine.png',
+      image: '/landing-redesign/cards/05-magazine.webp',
       video: '/landing-redesign/cards/05-magazine.mp4',
     },
     {
@@ -138,25 +138,25 @@ export const es: Copy = {
       body:
         'Se archiva por meses en una línea de tiempo del crecimiento. Los apuntes rápidos, como la altura, el peso y las primeras veces, caen en la página que les toca.',
       bullets: ['Agrupación automática por mes o por hito', 'Añade pequeñas fichas de datos', 'Sigue añadiendo: el álbum crece con el tiempo'],
-      image: '/landing-redesign/cards/04-growth-story.png',
+      image: '/landing-redesign/cards/04-growth-story.webp',
       video: '/landing-redesign/cards/04-growth-story.mp4',
     },
   ],
   previewChapters: [
     {
       title: 'La mañana de la salida',
-      left: '/landing-redesign/photos/bamboo-grove-path.jpg',
-      right: '/landing-redesign/photos/riverside-walk.jpg',
+      left: '/landing-redesign/photos/bamboo-grove-path.webp',
+      right: '/landing-redesign/photos/riverside-walk.webp',
     },
     {
       title: 'La costa en verano',
-      left: '/landing-redesign/photos/kamakura-coastal-street.jpg',
-      right: '/landing-redesign/photos/seto-inland-sea-pier.jpg',
+      left: '/landing-redesign/photos/kamakura-coastal-street.webp',
+      right: '/landing-redesign/photos/seto-inland-sea-pier.webp',
     },
     {
       title: 'La vuelta a casa',
-      left: '/landing-redesign/photos/rainy-kyoto-lane.jpg',
-      right: '/landing-redesign/photos/riverside-before-fireworks.jpg',
+      left: '/landing-redesign/photos/rainy-kyoto-lane.webp',
+      right: '/landing-redesign/photos/riverside-before-fireworks.webp',
     },
   ],
 };

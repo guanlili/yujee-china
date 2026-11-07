@@ -58,9 +58,9 @@ const EXAMPLE_SOURCES = ['apps/web/src/lib/examples/examples.ts', 'apps/web/src/
  * (the day its page last changed) but they share sources, so a single stamp
  * covers them all — same shape as GUIDES_HUB_REVIEWED_SOURCES.
  */
-const EXAMPLES_REVIEWED_SOURCES = '2d037cc766bf';
+const EXAMPLES_REVIEWED_SOURCES = '867d0470b278';
 /** Hub also reads marketing chrome, so its fingerprint differs from detail rows. */
-const EXAMPLES_HUB_REVIEWED_SOURCES = '408ca3fb74bc';
+const EXAMPLES_HUB_REVIEWED_SOURCES = 'f898c8fa5cd9';
 /** Guide prose only. guides.ts is excluded on purpose — see FRESHNESS_DECLARATIONS. */
 const GUIDES_CONTENT = 'apps/web/src/lib/guides/content';
 /** The hub has no article of its own to carry a reviewedSources, so it lives here. */
@@ -98,7 +98,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     // 同样只推进 reviewedSources,updatedAt 不动。
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
     updatedAt: '2026-10-28',
-    reviewedSources: '813970689d1c',
+    reviewedSources: '2b3c23908c94',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback

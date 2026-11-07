@@ -84,7 +84,7 @@ export const zh: Copy = {
       brief: '一年一本，年底自动成册',
       body: '把一整年塞进一本。节日、出游、日常按月铺开，年底一键成册，年年续上一本。',
       bullets: ['按月 / 按事件自动归类', '年底一键生成年度册', '风格沿用，逐年成套'],
-      image: '/landing-redesign/cards/03-year-record.png',
+      image: '/landing-redesign/cards/03-year-record.webp',
       video: '/landing-redesign/cards/03-year-record.mp4',
     },
     {
@@ -93,7 +93,7 @@ export const zh: Copy = {
       brief: '把人生节点，排成一本传记',
       body: '按时间轴铺开重要节点：出生、求学、相遇、远行。每段配一篇可编辑短文，做成传记式相册。',
       bullets: ['按人生阶段自动分组', '每组可配长文与引言', '适合做生日 / 纪念礼物'],
-      image: '/landing-redesign/cards/02-life-story.png',
+      image: '/landing-redesign/cards/02-life-story.webp',
       video: '/landing-redesign/cards/02-life-story.mp4',
     },
     {
@@ -102,7 +102,7 @@ export const zh: Copy = {
       brief: '一趟旅行，自动收成一本游记',
       body: '按日期自动分组，地点、天气、行程顺序都帮你理好。每一天一个跨页，照片之间留出呼吸。',
       bullets: ['按时间线自动分日分组', '可加地图页与路线标注', '导出 PDF，和旅伴一起翻看'],
-      image: '/landing-redesign/cards/01-travel.png',
+      image: '/landing-redesign/cards/01-travel.webp',
       video: '/landing-redesign/cards/01-travel.mp4',
     },
     {
@@ -111,7 +111,7 @@ export const zh: Copy = {
       brief: '让作品安静地排成一册',
       body: '摄影、插画、设计：网格对齐、统一留白，弱化装饰，让作品本身是主角。',
       bullets: ['严格网格与统一边距', '每页可附标题 / 媒介 / 年份', '导出可直接投递的 PDF 作品集'],
-      image: '/landing-redesign/cards/06-portfolio.png',
+      image: '/landing-redesign/cards/06-portfolio.webp',
       video: '/landing-redesign/cards/06-portfolio.mp4',
     },
     {
@@ -120,7 +120,7 @@ export const zh: Copy = {
       brief: '把内容排成一本杂志感的刊物',
       body: '不只是相册：封面、目录、专题、引言，按真正的杂志骨架排版，把生活做成一期刊物。',
       bullets: ['封面 / 目录 / 专题模板', '大标题 + 引言的编辑式排版', '导出印刷级，可做成实体刊'],
-      image: '/landing-redesign/cards/05-magazine.png',
+      image: '/landing-redesign/cards/05-magazine.webp',
       video: '/landing-redesign/cards/05-magazine.mp4',
     },
     {
@@ -129,25 +129,25 @@ export const zh: Copy = {
       brief: '一月一页，记下 TA 的变化',
       body: '按月份归档，自动生成成长时间线。身高体重、第一次的瞬间，都能落在对应的页上。',
       bullets: ['按月 / 按里程碑自动归组', '可加身高体重等小数据卡', '持续添加，相册随时间长大'],
-      image: '/landing-redesign/cards/04-growth-story.png',
+      image: '/landing-redesign/cards/04-growth-story.webp',
       video: '/landing-redesign/cards/04-growth-story.mp4',
     },
   ],
   previewChapters: [
     {
       title: '出发的清晨',
-      left: '/landing-redesign/photos/bamboo-grove-path.jpg',
-      right: '/landing-redesign/photos/riverside-walk.jpg',
+      left: '/landing-redesign/photos/bamboo-grove-path.webp',
+      right: '/landing-redesign/photos/riverside-walk.webp',
     },
     {
       title: '夏天的海岸线',
-      left: '/landing-redesign/photos/kamakura-coastal-street.jpg',
-      right: '/landing-redesign/photos/seto-inland-sea-pier.jpg',
+      left: '/landing-redesign/photos/kamakura-coastal-street.webp',
+      right: '/landing-redesign/photos/seto-inland-sea-pier.webp',
     },
     {
       title: '回程',
-      left: '/landing-redesign/photos/rainy-kyoto-lane.jpg',
-      right: '/landing-redesign/photos/riverside-before-fireworks.jpg',
+      left: '/landing-redesign/photos/rainy-kyoto-lane.webp',
+      right: '/landing-redesign/photos/riverside-before-fireworks.webp',
     },
   ],
 };

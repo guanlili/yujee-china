@@ -88,7 +88,7 @@ export const ja: Copy = {
       body:
         '一年まるごとを一冊に。祝日も、旅行も、何気ない一日も、月ごとに並べて、毎年つづけていけます。',
       bullets: ['月ごと・出来事ごとに自動でまとめ', '年末の一冊はワンクリック', '同じ体裁で、年ごとに揃うシリーズに'],
-      image: '/landing-redesign/cards/03-year-record.png',
+      image: '/landing-redesign/cards/03-year-record.webp',
       video: '/landing-redesign/cards/03-year-record.mp4',
     },
     {
@@ -98,7 +98,7 @@ export const ja: Copy = {
       body:
         '誕生、学び、出会い、旅。人生の節目を時間軸に沿って並べます。グループごとに編集できるエッセイがつき、伝記のように仕上がります。',
       bullets: ['人生の段階ごとに自動でグループ分け', 'グループごとに長文と引用を添えられる', '誕生日や記念日の贈り物にも'],
-      image: '/landing-redesign/cards/02-life-story.png',
+      image: '/landing-redesign/cards/02-life-story.webp',
       video: '/landing-redesign/cards/02-life-story.mp4',
     },
     {
@@ -108,7 +108,7 @@ export const ja: Copy = {
       body:
         '日付ごとに自動でまとめ、場所も順序も整えます。一日ひと見開き、写真のあいだにはゆとりを残して。',
       bullets: ['時間軸に沿って日ごとに自動分割', '地図ページやルートのメモも追加できる', 'PDF に書き出して旅の仲間と共有'],
-      image: '/landing-redesign/cards/01-travel.png',
+      image: '/landing-redesign/cards/01-travel.webp',
       video: '/landing-redesign/cards/01-travel.mp4',
     },
     {
@@ -118,7 +118,7 @@ export const ja: Copy = {
       body:
         '写真、イラスト、デザイン。グリッドに揃え、余白をそろえて、主役はあくまで作品のままに。',
       bullets: ['厳密なグリッドと統一された余白', 'ページごとにタイトル・技法・制作年', '提出できる PDF ポートフォリオを書き出し'],
-      image: '/landing-redesign/cards/06-portfolio.png',
+      image: '/landing-redesign/cards/06-portfolio.webp',
       video: '/landing-redesign/cards/06-portfolio.mp4',
     },
     {
@@ -128,7 +128,7 @@ export const ja: Copy = {
       body:
         'アルバムの一歩先へ。表紙、目次、特集、引用まで、雑誌の骨組みで組みます。暮らしを一冊の号に。',
       bullets: ['表紙・目次・特集のテンプレート', '大見出しと引用を効かせた編集的レイアウト', '印刷用に書き出して実物の一冊に'],
-      image: '/landing-redesign/cards/05-magazine.png',
+      image: '/landing-redesign/cards/05-magazine.webp',
       video: '/landing-redesign/cards/05-magazine.mp4',
     },
     {
@@ -138,25 +138,25 @@ export const ja: Copy = {
       body:
         '月ごとに整理して、成長の時間軸を自動でつくります。身長や体重、はじめての瞬間も、ぴったりのページに収まります。',
       bullets: ['月ごと・節目ごとに自動でグループ分け', '身長や体重の小さなデータカードも追加', '足していくほど、アルバムも育っていく'],
-      image: '/landing-redesign/cards/04-growth-story.png',
+      image: '/landing-redesign/cards/04-growth-story.webp',
       video: '/landing-redesign/cards/04-growth-story.mp4',
     },
   ],
   previewChapters: [
     {
       title: '出発の朝',
-      left: '/landing-redesign/photos/bamboo-grove-path.jpg',
-      right: '/landing-redesign/photos/riverside-walk.jpg',
+      left: '/landing-redesign/photos/bamboo-grove-path.webp',
+      right: '/landing-redesign/photos/riverside-walk.webp',
     },
     {
       title: '夏の海岸線',
-      left: '/landing-redesign/photos/kamakura-coastal-street.jpg',
-      right: '/landing-redesign/photos/seto-inland-sea-pier.jpg',
+      left: '/landing-redesign/photos/kamakura-coastal-street.webp',
+      right: '/landing-redesign/photos/seto-inland-sea-pier.webp',
     },
     {
       title: '帰り道',
-      left: '/landing-redesign/photos/rainy-kyoto-lane.jpg',
-      right: '/landing-redesign/photos/riverside-before-fireworks.jpg',
+      left: '/landing-redesign/photos/rainy-kyoto-lane.webp',
+      right: '/landing-redesign/photos/riverside-before-fireworks.webp',
     },
   ],
 };
