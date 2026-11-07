@@ -88,7 +88,7 @@ export const en: Copy = {
       body:
         'Pack a whole year into one book. Holidays, trips, and everyday moments are laid out by month and continued year after year.',
       bullets: ['Grouped by month or event', 'One click for the year-end book', 'Same style, a matching set each year'],
-      image: '/landing-redesign/cards/03-year-record.png',
+      image: '/landing-redesign/cards/03-year-record.webp',
       video: '/landing-redesign/cards/03-year-record.mp4',
     },
     {
@@ -98,7 +98,7 @@ export const en: Copy = {
       body:
         'Lay milestones along a timeline: birth, school, people, and journeys. Each group gets editable short essays, bound like a biography.',
       bullets: ['Auto-grouped by life stage', 'Long-form text and pull quotes per group', 'Great as a birthday or memorial gift'],
-      image: '/landing-redesign/cards/02-life-story.png',
+      image: '/landing-redesign/cards/02-life-story.webp',
       video: '/landing-redesign/cards/02-life-story.mp4',
     },
     {
@@ -108,7 +108,7 @@ export const en: Copy = {
       body:
         'Auto-grouped by date, with places and order sorted for you. One spread per day, with room to breathe between photos.',
       bullets: ['Auto-split by timeline', 'Add map pages and route notes', 'Export a PDF to share with travel mates'],
-      image: '/landing-redesign/cards/01-travel.png',
+      image: '/landing-redesign/cards/01-travel.webp',
       video: '/landing-redesign/cards/01-travel.mp4',
     },
     {
@@ -118,7 +118,7 @@ export const en: Copy = {
       body:
         'Photography, illustration, design: aligned to a grid with consistent margins so the work stays the star.',
       bullets: ['Strict grid and uniform margins', 'Title, medium, and year per page', 'Export a submittable PDF portfolio'],
-      image: '/landing-redesign/cards/06-portfolio.png',
+      image: '/landing-redesign/cards/06-portfolio.webp',
       video: '/landing-redesign/cards/06-portfolio.mp4',
     },
     {
@@ -128,7 +128,7 @@ export const en: Copy = {
       body:
         'More than an album: cover, contents, features, and pull quotes on a magazine skeleton. Turn life into an issue.',
       bullets: ['Cover, contents, and feature templates', 'Editorial layout with headlines and quotes', 'Print-ready export for a physical issue'],
-      image: '/landing-redesign/cards/05-magazine.png',
+      image: '/landing-redesign/cards/05-magazine.webp',
       video: '/landing-redesign/cards/05-magazine.mp4',
     },
     {
@@ -138,25 +138,25 @@ export const en: Copy = {
       body:
         'Filed by month into a growth timeline. Quick notes like height, weight, and firsts land on the right page.',
       bullets: ['Auto-grouped by month or milestone', 'Add little data cards', 'Keep adding; the album grows over time'],
-      image: '/landing-redesign/cards/04-growth-story.png',
+      image: '/landing-redesign/cards/04-growth-story.webp',
       video: '/landing-redesign/cards/04-growth-story.mp4',
     },
   ],
   previewChapters: [
     {
       title: 'Morning departure',
-      left: '/landing-redesign/photos/bamboo-grove-path.jpg',
-      right: '/landing-redesign/photos/riverside-walk.jpg',
+      left: '/landing-redesign/photos/bamboo-grove-path.webp',
+      right: '/landing-redesign/photos/riverside-walk.webp',
     },
     {
       title: 'Summer Coastline',
-      left: '/landing-redesign/photos/kamakura-coastal-street.jpg',
-      right: '/landing-redesign/photos/seto-inland-sea-pier.jpg',
+      left: '/landing-redesign/photos/kamakura-coastal-street.webp',
+      right: '/landing-redesign/photos/seto-inland-sea-pier.webp',
     },
     {
       title: 'The way back',
-      left: '/landing-redesign/photos/rainy-kyoto-lane.jpg',
-      right: '/landing-redesign/photos/riverside-before-fireworks.jpg',
+      left: '/landing-redesign/photos/rainy-kyoto-lane.webp',
+      right: '/landing-redesign/photos/riverside-before-fireworks.webp',
     },
   ],
 };

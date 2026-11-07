@@ -46,7 +46,7 @@ export interface Example {
 export const EXAMPLES: readonly Example[] = [
   {
     slug: 'travel-journal',
-    cardImage: '/landing-redesign/cards/01-travel.png',
+    cardImage: '/landing-redesign/cards/01-travel.webp',
     video: '/landing-redesign/cards/01-travel.mp4',
     poster: '/examples/travel-journal/spread-01.jpg',
     gallery: [
@@ -64,7 +64,7 @@ export const EXAMPLES: readonly Example[] = [
   },
   {
     slug: 'life-story',
-    cardImage: '/landing-redesign/cards/02-life-story.png',
+    cardImage: '/landing-redesign/cards/02-life-story.webp',
     video: '/landing-redesign/cards/02-life-story.mp4',
     poster: '/examples/life-story/spread-01.jpg',
     gallery: [
@@ -84,7 +84,7 @@ export const EXAMPLES: readonly Example[] = [
   // them; do not treat them as evidence that the formats look alike.
   {
     slug: 'year-in-review',
-    cardImage: '/landing-redesign/cards/03-year-record.png',
+    cardImage: '/landing-redesign/cards/03-year-record.webp',
     video: '/landing-redesign/cards/03-year-record.mp4',
     poster: '/examples/year-in-review/spread-01.jpg',
     gallery: [
@@ -97,7 +97,7 @@ export const EXAMPLES: readonly Example[] = [
   },
   {
     slug: 'growth-story',
-    cardImage: '/landing-redesign/cards/04-growth-story.png',
+    cardImage: '/landing-redesign/cards/04-growth-story.webp',
     video: '/landing-redesign/cards/04-growth-story.mp4',
     poster: '/examples/growth-story/spread-01.jpg',
     gallery: [
@@ -110,7 +110,7 @@ export const EXAMPLES: readonly Example[] = [
   },
   {
     slug: 'photo-magazine',
-    cardImage: '/landing-redesign/cards/05-magazine.png',
+    cardImage: '/landing-redesign/cards/05-magazine.webp',
     video: '/landing-redesign/cards/05-magazine.mp4',
     poster: '/examples/photo-magazine/spread-01.jpg',
     gallery: [
@@ -123,7 +123,7 @@ export const EXAMPLES: readonly Example[] = [
   },
   {
     slug: 'portfolio-book',
-    cardImage: '/landing-redesign/cards/06-portfolio.png',
+    cardImage: '/landing-redesign/cards/06-portfolio.webp',
     video: '/landing-redesign/cards/06-portfolio.mp4',
     poster: '/examples/portfolio-book/spread-01.jpg',
     gallery: [
