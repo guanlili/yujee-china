@@ -26,6 +26,8 @@ export type PhotoPickerSheetProps = {
   onClose: () => void;
   /** 从手机相册选一张**新**照片。调用方负责压缩入库 → 备份上云 → 换图。 */
   onUpload?: (file: File) => void;
+  /** 打开 AI 生图(写一句描述现生成一张)。 */
+  onGenerate?: () => void;
 };
 
 export function PhotoPickerSheet({
@@ -37,6 +39,7 @@ export function PhotoPickerSheet({
   onPick,
   onClose,
   onUpload,
+  onGenerate,
 }: PhotoPickerSheetProps): ReactNode {
   if (!open) return null;
   return (
@@ -58,7 +61,7 @@ export function PhotoPickerSheet({
             <span className="mes-hbtn" aria-hidden="true" />
           </div>
           <div className="mes-body">
-            {photoIds.length === 0 && !onUpload ? (
+            {photoIds.length === 0 && !onUpload && !onGenerate ? (
               <div className="mpick-empty">
                 {aT('这本相册还没有照片', 'No photos in this album yet')}
               </div>
@@ -91,6 +94,22 @@ export function PhotoPickerSheet({
                     </svg>
                     <span>{aT('从相册选一张', 'From your album')}</span>
                   </label>
+                )}
+                {onGenerate && (
+                  <button type="button" className="mpick-cell mpick-gen" onClick={onGenerate}>
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z" />
+                    </svg>
+                    <span>{aT('AI 生成一张', 'Generate with AI')}</span>
+                  </button>
                 )}
                 {photoIds.map((id) => (
                   <button
