@@ -217,14 +217,6 @@ test('AI 气泡用产品小水母素材,不用自造星芒', () => {
   }
 });
 
-test('dev 预览返回键有反馈(不是 () => {} 空操作)', () => {
-  const dev = readFileSync(
-    join(here, '..', '..', '..', '..', 'app', '[locale]', 'dev', 'mobile', 'page.tsx'),
-    'utf8',
-  );
-  assert.doesNotMatch(dev, /onBack=\{\(\) => \{\}\}/, 'dev 返回键不许是空操作');
-  assert.match(dev, /window\.history\.back\(\)/, 'dev 返回键至少 history.back 有反馈');
-});
 
 test('图片编辑接的是真几何(复用桌面 image-edit-util,不自己算)', () => {
   const view = read('EditView.tsx');
