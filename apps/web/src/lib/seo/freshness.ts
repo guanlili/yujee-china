@@ -98,7 +98,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     // 同样只推进 reviewedSources,updatedAt 不动。
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
     updatedAt: '2026-10-28',
-    reviewedSources: '2b3c23908c94',
+    reviewedSources: 'e774e17ffbcd',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback
