@@ -15,6 +15,7 @@
    Styling lives in ./editor-port.css (the HTML <style> block, values unchanged).
    ════════════════════════════════════════════════════════════════════════════ */
 
+import dynamic from 'next/dynamic';
 import {
   useCallback,
   useEffect,
@@ -1582,4 +1583,9 @@ function ErrorShell({
 }
 
 // EditorBook 已拆分至 ./EditorBook.tsx(2026-10-30 拆分)
-import { EditorBook } from './EditorBook';
+// 2026-11-08: 改为按需加载 —— 移动端走 MobileEditorRoot、永远不渲染 EditorBook
+// (5500 行画布 + ChatPanel 那套依赖),但静态 import 会把它们一并打进同批 chunk,
+// 手机上打开一本相册要先下桌面编辑器的全部代码。dynamic 后移动端只加载自己那棵树。
+const EditorBook = dynamic(() => import('./EditorBook').then((m) => m.EditorBook), {
+  ssr: false,
+});
