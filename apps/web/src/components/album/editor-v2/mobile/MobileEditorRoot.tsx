@@ -96,6 +96,9 @@ import {
 import { DEFAULT_IMAGE_POS, type ImagePosValue } from '../image-edit-util';
 import { swapImageSlots, type SwapSlotRef } from '../image-swap';
 import { compressFile } from '@/lib/photo/compress';
+import { generateImageIntoSlot } from '@/lib/imagegen/generate-client';
+import { fetchPhotoOriginalUrls } from '@/lib/album/photo-original-client';
+import { ImageGenSheet } from './modals/ImageGenSheet';
 import { PhotoPickerSheet } from './modals/PhotoPickerSheet';
 import { ReorderSheet } from './modals/ReorderSheet';
 import { ModalHost } from './modals/ModalHost';
@@ -234,6 +237,14 @@ export function MobileEditorRoot({
   // 换图:本册照片选择器。点一张即换即关,不做「选中+完成」两步。
   const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
 
+  // AI 生图(2026-11-08):桌面 imageGenModal 的对等实现。
+  const [genOpen, setGenOpen] = useState(false);
+  const [genBusy, setGenBusy] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+  // 免费重来权益:只在内存,刷新即丢 —— 与桌面同一取舍(桌面也没落库)。
+  const [genState, setGenState] = useState<{ generationId: string; freeRetriesLeft: number } | null>(
+    null,
+  );
   // ── 编辑焦点 ──────────────────────────────────────────────────────────────
   const [editPage, setEditPage] = useState<number | null>(null);
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -928,6 +939,63 @@ export function MobileEditorRoot({
     },
     [aT, backup, onPickPhoto, say],
   );
+
+  /** 写一句描述现生成一张图换到当前槽位(桌面 imageGenModal 的对等实现)。
+      尺寸取 1024 方图:移动端拿不到槽位的像素尺寸(架构守卫禁止移动端源码碰 DOM),
+      让服务端按上限夹一次;PDF 栅格导出够用。
+      成功即换图 —— 图 URL 由 photoIds 变化触发的 effect 自己重取,不需要手动维护表。 */
+  const submitImageGen = useCallback(
+    async (prompt: string) => {
+      if (selection?.kind !== 'image' || editPage == null) return;
+      setGenBusy(true);
+      setGenError(null);
+      try {
+        const result = await generateImageIntoSlot(
+          {
+            albumId: detail.album.id,
+            prompt,
+            width: 1024,
+            height: 1024,
+            ...(genState && genState.freeRetriesLeft > 0 ? { retryOf: genState.generationId } : {}),
+          },
+          {
+            postGenerate: async (body) => {
+              const res = await fetch(`/api/v1/albums/${detail.album.id}/generate-image`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(body),
+              });
+              const json = (await res.json().catch(() => null)) as
+                | { ok?: boolean; data?: unknown; error?: { message?: string } }
+                | null;
+              if (!res.ok || !json?.ok) {
+                throw new Error(json?.error?.message ?? `request failed (${res.status})`);
+              }
+              return json.data as Awaited<ReturnType<typeof generateImageIntoSlot>>;
+            },
+            fetchUrls: (ids) => fetchPhotoOriginalUrls(detail.album.id, ids),
+            fetchBlob: async (url) => {
+              const res = await fetch(url);
+              if (!res.ok) throw new Error(`download failed (${res.status})`);
+              return res.blob();
+            },
+            storeBlob: (photoId, blob) => photoStore.put(photoId, blob),
+          },
+        );
+        setGenState({
+          generationId: result.generationId,
+          freeRetriesLeft: result.freeRetriesLeft,
+        });
+        onPickPhoto(result.photoId); // 换图并关掉换图面板
+        setGenOpen(false);
+      } catch (e) {
+        setGenError(e instanceof Error ? e.message : aT('生成失败，稍后再试', 'Generation failed, try again'));
+      } finally {
+        setGenBusy(false);
+      }
+    },
+    [aT, detail.album.id, editPage, genState, onPickPhoto, selection],
+  );
   // Task 8(照片真相迁 R2 Phase 0):对账补传 + 远端原图 fetcher,复用上面已算好
   // 的 photoIds(与展示/导出同一份去重来源)。
   usePhotoOriginalSync({
@@ -1452,7 +1520,23 @@ export function MobileEditorRoot({
       }
       onPick={onPickPhoto}
       onUpload={(f) => void uploadAndSwapPhoto(f)}
+      onGenerate={() => {
+        // 先收换图面板再开生图抽屉:两个 sheet 不叠着,视觉上是一次「换一种方式」。
+        setPhotoPickerOpen(false);
+        setGenOpen(true);
+      }}
       onClose={() => setPhotoPickerOpen(false)}
+    />
+    <ImageGenSheet
+      open={genOpen}
+      aT={aT}
+      busy={genBusy}
+      error={genError}
+      freeRetriesLeft={genState?.freeRetriesLeft ?? 0}
+      onSubmit={(p) => void submitImageGen(p)}
+      onClose={() => {
+        if (!genBusy) setGenOpen(false);
+      }}
     />
     {/* AI 对话:桌面同一份 ChatPanel(完整弹窗 —— 对话/历史回放/采访/加照片/发送),
         以左右、底边贴屏的抽屉呈现。生成阶段与成书之后从此是同一个弹窗,不再有第二套

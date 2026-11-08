@@ -29,6 +29,7 @@ import {
 import { MoreSheet, NoticeModal } from './MoreSheet';
 import { FilterSheet } from './FilterSheet';
 import { ReorderSheet } from './ReorderSheet';
+import { ImageGenSheet } from './ImageGenSheet';
 
 /* ════════════════════════════════════════════════════════════════════════════
    移动端弹窗的完整性守卫。
@@ -234,6 +235,23 @@ const CASES: { name: string; render: (open: boolean) => string; closeHint: RegEx
         }),
       ),
     closeHint: /mes-cancel/,
+  },
+
+  {
+    name: 'ImageGenSheet AI 生图',
+    render: (open) =>
+      renderToStaticMarkup(
+        createElement(ImageGenSheet, {
+          open,
+          aT: zhAT,
+          busy: false,
+          error: null,
+          freeRetriesLeft: 0,
+          onSubmit: noop,
+          onClose: noop,
+        }),
+      ),
+    closeHint: /取消/,
   },
 ];
 
