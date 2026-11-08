@@ -209,6 +209,14 @@ test('漏法三:传下去的 handler 不许是空函数(等于没接)', () => {
   );
 });
 
+test('换图存的是可解码的 JPEG,不是原始文件(HEIC 会把图槽变透明)', () => {
+  const root = read('MobileEditorRoot.tsx');
+  // 原始 File 直接 put:iPhone 的 HEIC 在部分浏览器解不开,派生 display 档时失败,
+  // 整本书图槽会渲染成透明占位。必须用 compressFile 产出的 JPEG。
+  assert.doesNotMatch(root, /photoStore\.put\(photoId, file\)/, '不许把原始文件写进照片库');
+  assert.match(root, /compressFile\(file, photoId, \{ maxLen: 3000/, '存库前要压到 3000px 长边');
+});
+
 test('AI 气泡用产品小水母素材,不用自造星芒', () => {
   for (const f of ['MobileEditor.tsx', 'EditView.tsx']) {
     const src = read(f);

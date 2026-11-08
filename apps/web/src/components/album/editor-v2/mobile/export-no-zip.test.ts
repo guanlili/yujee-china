@@ -79,3 +79,22 @@ test('逐张保存的每一次下载都由一记真实点击触发,不在渲染�
   );
   assert.doesNotMatch(body, /for\s*\(|\.forEach\(|\.map\(/, '不许在一次点击里遍历下载');
 });
+
+test('微信内置浏览器:导出必须回 wechat 而不是假装下载成功', async () => {
+  const { deliverMobileExportAssets, isWeChatBrowser } = await import('@/lib/export/mobile-delivery');
+  assert.equal(isWeChatBrowser('Mozilla/5.0 (iPhone) MicroMessenger/8.0.47'), true);
+  assert.equal(isWeChatBrowser('Mozilla/5.0 (iPhone) Safari/604.1'), false);
+  // 微信里没有 navigator.share、a.download 也不落地:返回 wechat 让 UI 改口
+  // 提示「在浏览器打开」,而不是走 downloadBlob 让用户点了没反应。
+  const prev = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: { userAgent: 'Mozilla/5.0 MicroMessenger/8.0.47', share: undefined },
+  });
+  try {
+    const files = [{ name: 'a.pdf', blob: new Blob(['x']) }];
+    assert.equal(await deliverMobileExportAssets(files), 'wechat');
+  } finally {
+    if (prev) Object.defineProperty(globalThis, 'navigator', prev);
+  }
+});

@@ -1,7 +1,18 @@
 import { downloadBlob, type NamedBlob } from './download';
 
-/** 'manual' = 分享走不通且不止一个文件 → 交给 UI 列出来,让用户逐张点着存。 */
-export type MobileDeliveryResult = 'shared' | 'downloaded' | 'cancelled' | 'manual';
+/**
+ * 'manual' = 分享走不通且不止一个文件 → 交给 UI 列出来,让用户逐张点着存。
+ * 'wechat' = 微信内置浏览器:它没有 Web Share,`<a download>` 也不落地 ——
+ * 再往下载里走就是"点了没反应",必须让 UI 改口叫用户去浏览器打开。
+ */
+export type MobileDeliveryResult = 'shared' | 'downloaded' | 'cancelled' | 'manual' | 'wechat';
+
+/** 微信/企业微信内置浏览器(国内用户的主力入口,链接多从聊天里点开)。 */
+export function isWeChatBrowser(
+  ua: string | undefined = typeof navigator !== 'undefined' ? navigator.userAgent : undefined,
+): boolean {
+  return !!ua && /MicroMessenger/i.test(ua);
+}
 
 /**
  * 移动端导出的最后一步必须由「保存 / 分享」按钮直接调用。
@@ -37,6 +48,10 @@ export async function deliverMobileExportAssets(
       // 分享能力被系统临时拒绝 → 落到下面的手动路径。
     }
   }
+
+  // 微信里既没有分享面板、`a.download` 也不落地:直接回去让 UI 说清怎么在浏览器里导出,
+  // 不然用户点完「保存」看到的是"什么都没发生",会以为导出坏了。
+  if (isWeChatBrowser()) return 'wechat';
 
   const only = files.length === 1 ? files[0] : undefined;
   if (!only) return 'manual';

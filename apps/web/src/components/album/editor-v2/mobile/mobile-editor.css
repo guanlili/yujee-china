@@ -1143,3 +1143,13 @@
   font-weight: 600;
 }
 .mgen-submit:disabled { opacity: 0.45; }
+
+/* iOS Safari 聚焦 <16px 的输入框会把**整页放大**,输入完还得手动缩回去 ——
+   手机上最典型的"不丝滑"就是这一下。AI 对话复用的是桌面 ChatPanel,它的 textarea
+   是 13.5px;这里用 .mobile-editor + 类型选择器把特异性抬到 0,1,1,压过 tailwind 的
+   text-[13.5px](0,1,0),全树兜底,以后新加的输入框也不会漏。 */
+.mobile-editor input:not([type='checkbox']):not([type='radio']),
+.mobile-editor textarea,
+.mobile-editor select {
+  font-size: 16px;
+}
