@@ -82,6 +82,16 @@ test('换图选择器挂进了弹窗层、扫描域和关闭出口', () => {
   assert.doesNotMatch(funcBody('buildSwapGrid'), /createChBtn|updatePickCount/, '换图选择器不该沾上分组选择器的确认流程');
 });
 
+test('换图面板有本地上传格(与手机端同一入口)', () => {
+  const grid = funcBody('buildSwapGrid');
+  assert.match(grid, /pick-upload/, '换图网格第一格要能上传');
+  assert.match(editorPort, /data-swap-upload-input/, '弹窗里要有配套的 file input');
+  // 上传函数是 async,funcBody 只认同步 `function x(` —— 直接对全文取片段。
+  const fn = editorPort.slice(editorPort.indexOf('async function uploadAndSwapImage'));
+  assert.match(fn, /compressFile\(file, photoId, \{ maxLen: 3000/, '存库前压成可解码 JPEG');
+  assert.match(fn, /imageUrls = \{ \...imageUrls, \...fresh \}/, '先并进 URL 表再换图,否则槽位是空框');
+});
+
 test('换图选择器的文案两种语言都有(缺了会把 i18n key 直接显示出来)', () => {
   for (const key of ['swapTitle', 'swapSub', 'swapCancel', 'swapEmpty']) {
     const hits = coordinator.match(new RegExp(`\\n\\s*${key}:`, 'g')) ?? [];

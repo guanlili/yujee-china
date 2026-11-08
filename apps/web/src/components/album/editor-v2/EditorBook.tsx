@@ -33,6 +33,7 @@ import { boundPick, pick, type AT } from '@/lib/i18n/pick';
 import { localizePath, type Locale } from '@/lib/i18n/routing';
 import { signOut } from '@/lib/auth/client';
 import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
+import { compressFile } from '@/lib/photo/compress';
 import { fetchPhotoOriginalUrls } from '@/lib/album/photo-original-client';
 import { generateImageIntoSlot } from '@/lib/imagegen/generate-client';
 import { lutEngine } from '@/lib/photo/lut/engine';
@@ -1423,6 +1424,26 @@ export function EditorBook({
       const page = pageByIndex(imgEdit.pageIndex);
       const currentId = page?.imagesJson[imgEdit.slotId];
       const ids = albumPhotoIds();
+      // 上传格永远排第一(2026-11-08 与手机端对齐:手机端换图面板第一格也是它)。
+      // 桌面原来只能在本册已有照片里挑;想换成本地新拍的一张,得先走 AI 对话框加图、
+      // 再回来选 —— 两步。这里是第 0 步就能到的地方。
+      const uploadCell = document.createElement('div');
+      uploadCell.className = 'pick-upload pick-photo-upload';
+      uploadCell.setAttribute('role', 'button');
+      uploadCell.setAttribute('tabindex', '0');
+      uploadCell.innerHTML =
+        '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+        `<span style="font-size:12px">${t('swapUpload')}</span>`;
+      const openPicker = () => (byId('swapUploadInput') as HTMLInputElement | null)?.click();
+      uploadCell.addEventListener('click', openPicker);
+      uploadCell.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openPicker();
+        }
+      });
+      grid.appendChild(uploadCell);
+
       if (ids.length === 0) {
         const empty = document.createElement('p');
         empty.className = 'text-[13px] text-muted';
@@ -1465,6 +1486,30 @@ export function EditorBook({
       repaintPages([pageIndex]); // reattachImgEdit 会把浮层接到重绘出来的新 <img> 上
       // 落库走与改字/改样式同一条单页 PATCH(images 整体替换,服务端 updatePage 同口径)。
       persistPagePatch(page);
+    }
+    /** 本地选一张新照片换掉当前槽位(与手机端 uploadAndSwapPhoto 同一套处理)。
+        存进照片库的必须是**浏览器解得开的 JPEG** —— iOS 直出的 HEIC 在派生 display
+        档时解不开,图槽会变成透明占位;3000px 长边够 PDF 栅格导出,也压得住 IndexedDB。 */
+    async function uploadAndSwapImage(file: File) {
+      const errorEl = byId('swapUploadError');
+      if (errorEl) {
+        errorEl.textContent = '';
+        errorEl.style.display = 'none';
+      }
+      const photoId = crypto.randomUUID();
+      try {
+        const compressed = await compressFile(file, photoId, { maxLen: 3000, quality: 0.82 });
+        await photoStore.put(photoId, await (await fetch(compressed.base64)).blob());
+        // 先并进 imageUrls 再换图:resolveImage 读的是这张表,表里缺这个 id 槽位就是空框。
+        const fresh = await photoStore.getTierUrls([photoId], 'display', currentPhotoFilter);
+        imageUrls = { ...imageUrls, ...fresh };
+        swapImage(photoId);
+      } catch {
+        if (errorEl) {
+          errorEl.textContent = t('swapUploadError');
+          errorEl.style.display = 'block';
+        }
+      }
     }
     // ── AI 生图 ────────────────────────────────────────────────────────────
     // 生成成功后走 swapImage,与「换图」同一条只动数据层的路。
@@ -5096,6 +5141,16 @@ export function EditorBook({
       const fn = () => closeBoardColorView();
       boardBackBtn.addEventListener('click', fn);
       actionHandlers.push({ el: boardBackBtn, fn });
+    }
+    const swapUploadInput = $('[data-swap-upload-input]') as HTMLInputElement | null;
+    if (swapUploadInput) {
+      const fn = () => {
+        const file = swapUploadInput.files?.[0];
+        swapUploadInput.value = ''; // 允许再次选同一文件
+        if (file) void uploadAndSwapImage(file);
+      };
+      swapUploadInput.addEventListener('change', fn);
+      actionHandlers.push({ el: swapUploadInput, fn });
     }
     const boardUploadInput = $('[data-board-upload-input]') as HTMLInputElement | null;
     if (boardUploadInput) {

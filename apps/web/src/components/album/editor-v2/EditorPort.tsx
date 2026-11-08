@@ -1023,6 +1023,8 @@ function EditorModals({ locale }: { locale: Locale }) {
               </button>
             </div>
             <p className="text-[12.5px] text-muted mt-1" data-i18n="swapSub">点一张照片换掉这个位置上的图。位置和缩放会保留。</p>
+            <p id="swapUploadError" className="text-[12.5px] mt-1" style={{ display: 'none', color: '#c44' }} />
+            <input type="file" accept={IMAGE_INPUT_ACCEPT} className="hidden" data-swap-upload-input aria-label="上传一张照片" />
           </div>
           <div className="px-6 py-5 overflow-y-auto flex-1">
             <div className="pick-grid" id="swapGrid" />
