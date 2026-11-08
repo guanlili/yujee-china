@@ -95,6 +95,7 @@ import {
 } from './page-edit';
 import { DEFAULT_IMAGE_POS, type ImagePosValue } from '../image-edit-util';
 import { swapImageSlots, type SwapSlotRef } from '../image-swap';
+import { compressFile } from '@/lib/photo/compress';
 import { PhotoPickerSheet } from './modals/PhotoPickerSheet';
 import { ReorderSheet } from './modals/ReorderSheet';
 import { ModalHost } from './modals/ModalHost';
@@ -903,6 +904,30 @@ export function MobileEditorRoot({
     photoFilter,
     detail.album.photoSnapshotRenderVersions ?? {},
   );
+
+  /** 从手机相册选一张**新**照片换到当前图槽(2026-11-08)。
+      链路:压缩入库(本地档) → 换图 PATCH → 备份档上云。
+      备份放最后且不阻断:换图完成用户就能看到;上云那份是「换设备/导出时还在」的保险,
+      失败(游客态 403、断网)只影响跨设备一致性,不该让本地这次换图白做。 */
+  const uploadAndSwapPhoto = useCallback(
+    async (file: File) => {
+      const photoId = crypto.randomUUID();
+      try {
+        await compressFile(file, photoId);
+        await photoStore.put(photoId, file);
+      } catch {
+        say(aT('这张照片读不出来，换一张试试', "Couldn't read that photo — try another"));
+        return;
+      }
+      onPickPhoto(photoId);
+      try {
+        await backup.backup([photoId], true);
+      } catch {
+        // 静默:本地已生效,下次整本备份会补上。
+      }
+    },
+    [aT, backup, onPickPhoto, say],
+  );
   // Task 8(照片真相迁 R2 Phase 0):对账补传 + 远端原图 fetcher,复用上面已算好
   // 的 photoIds(与展示/导出同一份去重来源)。
   usePhotoOriginalSync({
@@ -1426,6 +1451,7 @@ export function MobileEditorRoot({
           : null
       }
       onPick={onPickPhoto}
+      onUpload={(f) => void uploadAndSwapPhoto(f)}
       onClose={() => setPhotoPickerOpen(false)}
     />
     {/* AI 对话:桌面同一份 ChatPanel(完整弹窗 —— 对话/历史回放/采访/加照片/发送),
