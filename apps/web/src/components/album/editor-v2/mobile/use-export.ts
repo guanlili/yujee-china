@@ -283,6 +283,8 @@ export function useExport({
     return delivery.then((result) => {
       // 用户取消系统分享时保留弹窗,方便再次点击;真正交付后才释放大 Blob。
       if (result === 'cancelled') return result;
+      // 微信里既没有分享也没有下载:弹窗和 Blob 都留着,用户换到浏览器还能接着导。
+      if (result === 'wechat') return result;
       // 分享不可用的多文件导出:不打包、不连发,改成列出来让用户逐张点着存。
       // 弹窗留着(列表就长在它上面),Blob 也必须留着 —— 用户还没拿到东西。
       if (result === 'manual' && files) {

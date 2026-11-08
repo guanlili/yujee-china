@@ -924,8 +924,13 @@ export function MobileEditorRoot({
     async (file: File) => {
       const photoId = crypto.randomUUID();
       try {
-        await compressFile(file, photoId);
-        await photoStore.put(photoId, file);
+        // 落库的必须是**浏览器解得开的 JPEG**,不能是原始文件:
+        // iPhone 直出的 HEIC 在部分浏览器(以及 getTierUrls 的派生管线)里解不开,
+        // 存原图会让整本书的图槽变透明 —— 那正是 photoIds effect 那条注释里描述过的
+        // 灾难形态。顺带把 48MP 原图压到 3000px 长边,移动端 IndexedDB 也放得下;
+        // PDF 单页栅格宽约 1800px,3000 够用。compressFile 的 base64 就是这份 JPEG。
+        const compressed = await compressFile(file, photoId, { maxLen: 3000, quality: 0.82 });
+        await photoStore.put(photoId, await (await fetch(compressed.base64)).blob());
       } catch {
         say(aT('这张照片读不出来，换一张试试', "Couldn't read that photo — try another"));
         return;
@@ -1334,6 +1339,13 @@ export function MobileEditorRoot({
             say(aT('文件已开始下载', 'File download started'));
           else if (result === 'manual')
             say(aT('这台手机打不开系统分享，改成逐张保存', 'No share sheet here — save them one by one'));
+          else if (result === 'wechat')
+            say(
+              aT(
+                '微信里存不了文件：点右上角「···」→ 在浏览器打开，再导出一次',
+                'WeChat cannot save files — open this page in your browser (···  → Open in browser), then export again',
+              ),
+            );
         });
       }}
       onSaveFile={(i) => exporter.saveExportFile(i)}
