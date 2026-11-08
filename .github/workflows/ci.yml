@@ -45,7 +45,7 @@ jobs:
     # 2026-11-04 P0 放宽到 15min:正常部署 48s~4min、冷构建 clip ~5min 可覆盖;
     # 但回滚(P0 自动回滚)需要二次 build+up 重建旧代码,10min 会被掐断,
     # 15min 兜底正常部署 + 回滚重建两段。
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Deploy to production
         env:
