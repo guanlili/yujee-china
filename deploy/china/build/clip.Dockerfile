@@ -30,9 +30,17 @@ COPY engine/pyproject.toml engine/uv.lock ./
 # sha256 = 40d36571…eba950af 即校验值）：open_clip 3.x 的 pretrained="openai" 走
 # HuggingFace Hub，国内不通，因此烤进镜像并用 GROUPING_CLIP_MODEL_PATH 本地加载。
 
-ADD https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.12.1+cpu-cp312-cp312-manylinux_2_28_x86_64.whl \
-    https://mirrors.aliyun.com/pytorch-wheels/cpu/torchvision-0.27.1+cpu-cp312-cp312-manylinux_2_28_x86_64.whl \
-    /tmp/
+# 2026-11-08: 远程 ADD 已不可用 —— BuildKit 走阿里 CDN 会挂死(两次部署各 15/30
+# 分钟零进度后超时),同期服务器 curl --http2 实测 13MB/s。改为容器内 curl 下载:
+# 仍然走 HTTP/2(避开 HTTP/1.1 的 ~80KB/s 限速),带重试;apt 源换清华以求 curl 装得快。
+# pip 层引用 /tmp/torch-*.whl 的文件名保持不变。
+RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list.d/debian.sources \
+ && apt-get update -qq && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -fsSL --http2 --retry 5 --retry-delay 3 -o /tmp/torch-2.12.1+cpu-cp312-cp312-manylinux_2_28_x86_64.whl \
+      https://mirrors.aliyun.com/pytorch-wheels/cpu/torch-2.12.1+cpu-cp312-cp312-manylinux_2_28_x86_64.whl \
+ && curl -fsSL --http2 --retry 5 --retry-delay 3 -o /tmp/torchvision-0.27.1+cpu-cp312-cp312-manylinux_2_28_x86_64.whl \
+      https://mirrors.aliyun.com/pytorch-wheels/cpu/torchvision-0.27.1+cpu-cp312-cp312-manylinux_2_28_x86_64.whl
 
 # torch/torchvision 走阿里 pytorch-wheels 固定 URL wheel(见文件头差异 1);
 # 其余 PyPI 依赖(fastapi/uvicorn/httpx/pillow/psycopg/pydantic 及 clip extra 的
