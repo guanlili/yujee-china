@@ -377,6 +377,23 @@
 .mpick-ph { display: block; width: 100%; height: 100%; }
 /* 当前这张:描边标出来,点它等于不换 */
 .mpick-cell[data-active='1'] { box-shadow: inset 0 0 0 4px var(--accent); }
+/* 从相册选新图:与照片格同尺寸的虚线格,放第一位。
+   手机用户想换一张新照片时,第一眼就该看到它是可点的 —— 不要藏在角落。 */
+.mpick-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1.5px dashed var(--line, rgba(0, 0, 0, 0.16));
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: center;
+  padding: 0 8px;
+}
+.mpick-upload svg { width: 22px; height: 22px; flex: 0 0 auto; }
 .mpick-empty {
   padding: 28px 8px;
   text-align: center;

@@ -4,10 +4,14 @@
    为一个可逆动作加一道确认只是多一次点击。所以这里不复用 ElementSheet(那是带
    取消/完成语义的宿主)。
 
-   照片来源是本册已传的那些(photoStore 本地已有缩略图,不走上传链路)。 */
+   照片来源是本册已传的那些(photoStore 本地已有缩略图,不走上传链路)。
+   2026-11-08: 补了「从手机相册选一张」—— 手机用户的照片本来就在相册里,
+   只能从「本册已有」里挑的话,想换一张新图就无路可走。上传链路(压缩入库 →
+   备份档上云 → 换图 PATCH)由调用方负责,这里只负责把文件交出去。 */
 
 import type { ReactNode } from 'react';
 import type { AT } from '@/lib/i18n/pick';
+import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
 
 export type PhotoPickerSheetProps = {
   open: boolean;
@@ -20,6 +24,8 @@ export type PhotoPickerSheetProps = {
   currentPhotoId?: string | null;
   onPick: (photoId: string) => void;
   onClose: () => void;
+  /** 从手机相册选一张**新**照片。调用方负责压缩入库 → 备份上云 → 换图。 */
+  onUpload?: (file: File) => void;
 };
 
 export function PhotoPickerSheet({
@@ -30,6 +36,7 @@ export function PhotoPickerSheet({
   currentPhotoId,
   onPick,
   onClose,
+  onUpload,
 }: PhotoPickerSheetProps): ReactNode {
   if (!open) return null;
   return (
@@ -51,12 +58,40 @@ export function PhotoPickerSheet({
             <span className="mes-hbtn" aria-hidden="true" />
           </div>
           <div className="mes-body">
-            {photoIds.length === 0 ? (
+            {photoIds.length === 0 && !onUpload ? (
               <div className="mpick-empty">
                 {aT('这本相册还没有照片', 'No photos in this album yet')}
               </div>
             ) : (
               <div className="mpick-grid">
+                {/* 从相册选新图放第一位:手机用户最先要的是「用我手机里的照片」 */}
+                {onUpload && (
+                  <label className="mpick-cell mpick-upload">
+                    <input
+                      type="file"
+                      accept={IMAGE_INPUT_ACCEPT}
+                      className="hidden"
+                      aria-label={aT('从相册选一张', 'Choose from your album')}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) onUpload(f);
+                        e.target.value = ''; // 同一张图可以再选一次
+                      }}
+                    />
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.9"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M12 5v14M5 12h14" />
+                    </svg>
+                    <span>{aT('从相册选一张', 'From your album')}</span>
+                  </label>
+                )}
                 {photoIds.map((id) => (
                   <button
                     key={id}
