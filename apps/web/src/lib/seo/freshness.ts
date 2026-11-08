@@ -123,7 +123,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/pricing': {
     sources: [MARKETING, 'apps/web/src/config/pricing.ts', 'apps/web/src/app/[locale]/pricing/page.tsx'],
     updatedAt: '2026-09-21',
-    reviewedSources: '4c116eefa4e1',
+    reviewedSources: '5ab740e5b685',
   },
   // messages/marketing 这轮被 74c590db(首页 en meta)、d2bca297(共用导航多一项
   // Guides)、c4148143(共用页脚 Pricing 改指 /pricing)和 2026-09-21 的
