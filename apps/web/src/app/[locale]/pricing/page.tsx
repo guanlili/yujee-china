@@ -122,12 +122,12 @@ export default async function PricingPage({ params }: Props) {
           pricingAppJsonLd(loc, m.packsCreditsLabel),
         ]}
       />
-      <div className="mx-auto max-w-[720px] px-6 pb-24 pt-16 md:px-8">
-        <header className="mb-12">
-          <h1 className="text-4xl font-bold leading-tight tracking-tight text-[var(--fg)] md:text-5xl">
+      <div className="mx-auto max-w-[720px] px-5 pb-20 pt-10 md:px-8 md:pb-24 md:pt-16">
+        <header className="mb-8 md:mb-12">
+          <h1 className="text-3xl font-bold leading-tight tracking-tight text-[var(--fg)] md:text-5xl">
             {m.title}
           </h1>
-          <p className="mt-6 text-lg leading-relaxed text-[var(--muted)]">{fill(m.lede)}</p>
+          <p className="mt-4 text-base leading-relaxed text-[var(--muted)] md:mt-6 md:text-lg">{fill(m.lede)}</p>
           <p className="mt-3 text-lg leading-relaxed text-[var(--fg-2)]">{fill(m.freeLine)}</p>
         </header>
 
