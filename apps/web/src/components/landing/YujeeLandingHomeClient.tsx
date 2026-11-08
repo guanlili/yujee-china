@@ -729,14 +729,14 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
                   <div className="book-mock overflow-hidden rounded-2xl bg-gradient-to-b from-white to-[#fafafa]" style={{ transform: 'perspective(1600px) rotateY(-14deg) rotateX(3deg)' }}>
                     <div className="grid grid-cols-2">
                       <div className="border-r border-black/5 p-4">
-                        <img src={preview.left} alt="" className="aspect-[3/4] w-full rounded-xl object-cover transition-opacity duration-500" />
+                        <img src={preview.left} alt="" loading="lazy" decoding="async" className="aspect-[3/4] w-full rounded-xl object-cover transition-opacity duration-500" />
                         <div className="mt-3 h-2.5 w-3/4 rounded-full bg-black/10" />
                         <div className="mt-2 h-2 w-1/2 rounded-full bg-black/5" />
                       </div>
                       <div className="p-4">
                         <div className="marquee mb-2 text-[11px]">Group 0{activePreview + 1}</div>
                         <div className="preview-title mb-2 text-lg font-bold leading-tight">{preview.title}</div>
-                        <img src={preview.right} alt="" className="mb-3 aspect-[4/3] w-full rounded-xl object-cover transition-opacity duration-500" />
+                        <img src={preview.right} alt="" loading="lazy" decoding="async" className="mb-3 aspect-[4/3] w-full rounded-xl object-cover transition-opacity duration-500" />
                         <div className="space-y-1.5">
                           <div className="h-2 w-full rounded-full bg-black/10" />
                           <div className="h-2 w-5/6 rounded-full bg-black/10" />
