@@ -4644,12 +4644,20 @@ export function EditorBook({
         // C 方案:PDF 导出 = 栅格截屏幕渲染(存库 html 优先,与画布像素级一致)。
         // 矢量导出路径已退役(消费不了自由 HTML)。喂高分辨率原图,防放大糊。
         // bleedMm:印刷版传 3(2026-08-03 出血设计),默认 0 走原路径。
-        const { adaptable, resolveImage } = await buildExportInput();
-        const { renderAlbumPdfRaster, RASTER_PDF_RENDER_DEADLINE_MS } = await import('@/lib/pdf/render-raster');
-        // 渲染整体也要有上限:字体子集/备份图任一环节挂住,进度条会永远停在 0%,
-        // 用户既拿不到文件也没有失败提示。到点按 render 失败处理(可重试、有文案)。
+        // 渲染整体(含取图 buildExportInput)要有上限:任意一环挂住,进度条会永远停在
+        // 0%,用户既拿不到文件也没有失败提示(2026-11-09 实测:正是取图/编码那段挂住)。
+        // 到点按 render 失败处理 —— 走既有的重试 + 安抚框,有界、可重试、说得清。
+        const { RASTER_PDF_RENDER_DEADLINE_MS } = await import('@/lib/pdf/render-raster');
         return await withDeadline(
-          renderAlbumPdfRaster(adaptable, resolveImage, { scale: 3, onProgress: setExportProgress, bleedMm }),
+          (async () => {
+            const { adaptable, resolveImage } = await buildExportInput();
+            const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
+            return await renderAlbumPdfRaster(adaptable, resolveImage, {
+              scale: 3,
+              onProgress: setExportProgress,
+              bleedMm,
+            });
+          })(),
           RASTER_PDF_RENDER_DEADLINE_MS,
           'pdfRender',
         );
