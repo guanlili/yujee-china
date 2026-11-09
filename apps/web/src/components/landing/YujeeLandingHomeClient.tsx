@@ -547,11 +547,11 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
       </svg>
 
       <aside className="glass-dock fixed z-[70] flex items-center gap-1 rounded-full p-1.5 bottom-4 left-1/2 -translate-x-1/2 md:bottom-auto md:left-4 md:top-1/2 md:translate-x-0 md:-translate-y-1/2 md:flex-col">
-        <Link href={home} aria-label={c.sideHome} className="group relative grid h-9 w-9 place-items-center rounded-full bg-black/[.08] text-[var(--fg)]">
+        <Link href={home} aria-label={c.sideHome} className="group relative grid h-11 w-11 lg:h-9 lg:w-9 place-items-center rounded-full bg-black/[.08] text-[var(--fg)]">
           <Icon name="home" />
           <span className="pointer-events-none absolute left-[calc(100%+10px)] hidden whitespace-nowrap rounded-full bg-[var(--fg)] px-2.5 py-1 text-xs font-medium text-white opacity-0 transition-all group-hover:opacity-100 md:block">{c.sideHome}</span>
         </Link>
-        <Link href={`/${locale}/my-albums`} aria-label={c.sideProjects} className="group relative grid h-9 w-9 place-items-center rounded-full text-[var(--muted)] transition-colors hover:bg-black/[.06] hover:text-[var(--fg)]">
+        <Link href={`/${locale}/my-albums`} aria-label={c.sideProjects} className="group relative grid h-11 w-11 lg:h-9 lg:w-9 place-items-center rounded-full text-[var(--muted)] transition-colors hover:bg-black/[.06] hover:text-[var(--fg)]">
           <Icon name="folder" />
           <span className="pointer-events-none absolute left-[calc(100%+10px)] hidden whitespace-nowrap rounded-full bg-[var(--fg)] px-2.5 py-1 text-xs font-medium text-white opacity-0 transition-all group-hover:opacity-100 md:block">{c.sideProjects}</span>
         </Link>
@@ -603,7 +603,7 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
                 <ArrowIcon className="h-[15px] w-[15px]" />
               </Link>
             )}
-            <button type="button" aria-label={c.menu} aria-expanded={mobileOpen} onClick={() => setMobileOpen((open) => !open)} className="grid h-10 w-10 place-items-center rounded-full transition hover:bg-black/5 lg:hidden">
+            <button type="button" aria-label={c.menu} aria-expanded={mobileOpen} onClick={() => setMobileOpen((open) => !open)} className="grid h-11 w-11 place-items-center rounded-full transition hover:bg-black/5 lg:hidden">
               <Icon name={mobileOpen ? 'x' : 'menu'} />
             </button>
           </div>
@@ -888,14 +888,14 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
                     target="_blank"
                     rel="noreferrer"
                     aria-label={s.label}
-                    className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[var(--muted)] shadow-[var(--shadow-card)] transition hover:text-[var(--fg)]"
+                    className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[var(--muted)] shadow-[var(--shadow-card)] transition hover:text-[var(--fg)]"
                   >
                     <svg aria-hidden width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
                       <path d={s.path} />
                     </svg>
                   </a>
                 ))}
-                <a href={`mailto:${SUPPORT_EMAIL}`} aria-label="Email" className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-[var(--muted)] shadow-[var(--shadow-card)] transition hover:text-[var(--fg)]">
+                <a href={`mailto:${SUPPORT_EMAIL}`} aria-label="Email" className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-[var(--muted)] shadow-[var(--shadow-card)] transition hover:text-[var(--fg)]">
                   <svg aria-hidden width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="5" width="18" height="14" rx="2" />
                     <path d="m3 7 9 6 9-6" />
