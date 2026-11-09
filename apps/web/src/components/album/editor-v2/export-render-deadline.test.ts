@@ -59,6 +59,10 @@ test('两端整本渲染都有 watchdog,超时按 render 失败处理', () => {
   for (const file of ['components/album/editor-v2/EditorBook.tsx', 'components/album/editor-v2/mobile/use-export.ts']) {
     const src = source(file);
     assert.match(src, /RASTER_PDF_RENDER_DEADLINE_MS/, `${file} 必须引用渲染期限`);
-    assert.match(src, /withDeadline\(\s*renderAlbumPdfRaster/, `${file} 的渲染必须包在 watchdog 里`);
+    assert.match(
+      src,
+      /withDeadline\(\s*\(async \(\) => \{[\s\S]{0,260}renderAlbumPdfRaster/,
+      `${file} 的渲染(含取图)必须整段包在 watchdog 里`,
+    );
   }
 });
