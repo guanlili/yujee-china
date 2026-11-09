@@ -134,7 +134,9 @@ import {
 } from '@/lib/album/authoring-client';
 import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
 import { coverOptionImages } from './cover-option-slots';
-import { ChatPanel, type ChatMode } from './ChatPanel';
+// ChatPanel 只在桌面右侧对话栏渲染(移动端那棵树自带聊天),3000 行的对话系统 + 导出
+// 协调逻辑没有理由让手机先下一遍。改成按需加载(见文件末尾 dynamic 定义),这里只留类型。
+import type { ChatMode } from './ChatPanel';
 import { FilterBar } from './FilterBar';
 import {
   collectSnapshotEntries,
@@ -1589,5 +1591,11 @@ function ErrorShell({
 // (5500 行画布 + ChatPanel 那套依赖),但静态 import 会把它们一并打进同批 chunk,
 // 手机上打开一本相册要先下桌面编辑器的全部代码。dynamic 后移动端只加载自己那棵树。
 const EditorBook = dynamic(() => import('./EditorBook').then((m) => m.EditorBook), {
+  ssr: false,
+});
+
+// 2026-11-10: ChatPanel 同样按需加载。它只挂桌面右侧对话栏,移动端永远不渲染;
+// 静态 import 时它和 EditorPort 同批下发,手机白下一份 3000 行的对话/导出子系统。
+const ChatPanel = dynamic(() => import('./ChatPanel').then((m) => m.ChatPanel), {
   ssr: false,
 });
