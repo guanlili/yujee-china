@@ -54,7 +54,8 @@ test('直传有明确截止时间 —— 否则挂住的请求会让重试永远
   // 2026-11-09 起两端共用 export-retry-util 里同一份实现,不再各写一套。
   const util = source('../export-retry-util.ts');
   assert.match(util, /PDF_UPLOAD_TIMEOUT_MS\s*=\s*\d/, '必须定义上传截止时间');
-  assert.match(util, /setTimeout\(\(\) => ctrl\.abort\(\)/, '到点必须 abort');
+  const net = source('../../../../lib/net/fetch-timeout.ts');
+  assert.match(net, /setTimeout\(\(\) => ctrl\.abort\(\)/, '到点必须 abort');
   const useExport = source('use-export.ts');
   assert.match(
     useExport,
@@ -64,7 +65,7 @@ test('直传有明确截止时间 —— 否则挂住的请求会让重试永远
   const book = source('../EditorBook.tsx');
   assert.match(
     book,
-    /putRes = await fetchWithTimeout\(putUrl/,
+    /putRes = await fetchWithTimeout\(\s*putUrl/,
     '桌面端:同一条直传也必须有截止时间',
   );
 });

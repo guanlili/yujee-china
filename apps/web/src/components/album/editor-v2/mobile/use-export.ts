@@ -28,10 +28,12 @@ import type { EditorPage } from '../../types';
 import {
   runExportWithRetry,
   buildExportFailureLog,
+  PDF_UPLOAD_TIMEOUT_MS,
   fetchWithTimeout,
   normalizeUploadError,
   ExportError,
 } from '../export-retry-util';
+import { withDeadline } from '@/lib/net/fetch-timeout';
 import { logger } from '@/lib/log/logger';
 import type { PhotoFilterState } from '@/lib/photo/filter-state';
 import { deliverLiveAssets } from '@/lib/export/live-delivery';
@@ -332,14 +334,19 @@ export function useExport({
       const rendered = await runExportWithRetry(
         async () => {
           const { adaptable, resolveImage } = await buildInput();
-          const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
+          const { renderAlbumPdfRaster, RASTER_PDF_RENDER_DEADLINE_MS } = await import('@/lib/pdf/render-raster');
           let b: Blob;
           try {
-            b = await renderAlbumPdfRaster(adaptable, resolveImage, {
-              scale: 3,
-              onProgress,
-              bleedMm: opts?.bleedMm ?? 0,
-            });
+            // 渲染整体设上限:字体子集/备份图挂住时进度条永远停在 0%(2026-11-09 实测)。
+            b = await withDeadline(
+              renderAlbumPdfRaster(adaptable, resolveImage, {
+                scale: 3,
+                onProgress,
+                bleedMm: opts?.bleedMm ?? 0,
+              }),
+              RASTER_PDF_RENDER_DEADLINE_MS,
+              'pdfRender',
+            );
           } catch (e) {
             throw new ExportError('render', e instanceof Error ? e.message : String(e));
           }
@@ -420,11 +427,11 @@ async function uploadPdf(albumId: string, blob: Blob): Promise<void> {
   const { putUrl, r2Key } = signJson.data;
   let putRes: Response;
   try {
-    putRes = await fetchWithTimeout(putUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/pdf' },
-      body: blob,
-    });
+    putRes = await fetchWithTimeout(
+      putUrl,
+      { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: blob },
+      PDF_UPLOAD_TIMEOUT_MS,
+    );
   } catch (e) {
     // 超时 / 连接被掐:统一成可重试的 upload 失败,别让调用方卡在 await 上。
     throw normalizeUploadError(e);

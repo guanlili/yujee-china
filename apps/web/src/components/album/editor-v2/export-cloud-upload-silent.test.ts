@@ -50,7 +50,7 @@ test('云端上传失败:不弹安抚框、不进消息流,但必须亮非阻断
   );
   // 直传必须带截止时间:挂住的 PUT 会让「3 次耗尽」永远不到,提示也就永不触发。
   // (uploadPdfOnce 定义在 exportPdf 之外,所以按整份源码断言)
-  assert.match(source('EditorBook.tsx'), /putRes = await fetchWithTimeout\(putUrl/, '直传必须走带截止时间的 fetch');
+  assert.match(source('EditorBook.tsx'), /putRes = await fetchWithTimeout\(\s*putUrl/, '直传必须走带截止时间的 fetch');
   assert.doesNotMatch(
     uploadSeg,
     /openExportFailModal\(\)/,
