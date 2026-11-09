@@ -404,6 +404,7 @@ export function ExportReadyModal({
   aT,
   label,
   manualFiles,
+  cloudNotice,
   onClose,
   onSave,
   onSaveFile,
@@ -413,6 +414,8 @@ export function ExportReadyModal({
   label: string;
   /** 文件名列表;null = 还没进入逐张保存模式。 */
   manualFiles: string[] | null;
+  /** 非空 = 云端没存成。本地文件已经在手,所以不挡保存,只把实话说清楚。 */
+  cloudNotice?: string | null;
   onClose: () => void;
   onSave: () => void;
   /** 逐张保存必填 —— 可选 + 父层漏传 = 用户永远拿不到文件(同 CollageModal 那条)。 */
@@ -432,6 +435,14 @@ export function ExportReadyModal({
             ? aT(`这台手机打不开系统分享面板，点每一行的“保存”逐张存下来，共 ${manualFiles.length} 个文件。`, `This phone can't open the system share sheet — tap “Save” on each row (${manualFiles.length} files).`)
             : aT('点击“保存 / 分享”完成保存，手机会打开系统分享面板。', 'Tap “Save / Share” to finish. Your phone will open the system share sheet.')}
         </p>
+        {cloudNotice != null && cloudNotice !== '' && (
+          <p
+            className="text-[12px] text-fg2 mt-3 leading-relaxed rounded-xl border border-bd bg-bg px-3 py-2"
+            data-testid="export-cloud-notice"
+          >
+            {cloudNotice}
+          </p>
+        )}
       </div>
       {manual && (
         <div className="px-6 pb-2 min-h-0 overflow-y-auto flex flex-col gap-1.5" data-testid="export-manual-list">

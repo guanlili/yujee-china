@@ -86,6 +86,9 @@ export function useExport({
   const [progress, setProgress] = useState<ExportProgress>(null);
   const [failed, setFailed] = useState(false);
   const [exportReady, setExportReady] = useState<ExportReadyAsset | null>(null);
+  /** 非空 = 云端备份没做成。本地文件已经在手,所以不弹错误框,只在完成弹窗里加一行
+   *  实话 —— 否则用户去点分享链接、换设备打开时会以为云上已经有成品。 */
+  const [cloudNotice, setCloudNotice] = useState<string | null>(null);
   /** 非空 = 已确认这台设备打不开系统分享,弹窗切成「逐张保存」列表(见 deliverExport)。
    *  新一轮导出必须先清掉,否则新产物的弹窗会挂着上一轮的旧文件名。 */
   const [manualFiles, setManualFiles] = useState<NamedBlob[] | null>(null);
@@ -315,6 +318,7 @@ export function useExport({
     if (busy.current) return;
     busy.current = true;
     setManualFiles(null); // 同 runImageExport:新一轮导出作废上一轮的逐张保存列表
+    setCloudNotice(null); // 上一轮的云备份结论不带到这一轮
     setProgress({ label: t('正在导出 PDF…', 'Exporting PDF…'), done: 0, total: 0, percent: 0 });
     try {
       let blob: Blob | null = null;
@@ -354,7 +358,15 @@ export function useExport({
           onExhausted: (lastError, attempts) => {
             logger.error(
               buildExportFailureLog(lastError, { albumId, attempts }),
-              'mobile pdf cloud upload failed (silent — local download already succeeded)',
+              'mobile pdf cloud upload failed (local download already succeeded)',
+            );
+            // 本地已成功、云端没成:不弹错误框,只在完成弹窗里加一行实话。
+            // 日志仍是 §4.5d 的封闭词表(failureCode 分类),不带头信息与原文。
+            setCloudNotice(
+              t(
+                '云端备份没成功：这次的文件已在你手上，但相册里还没有可分享的成品，换设备打开也看不到。',
+                'Cloud backup failed — this copy is on your device, but the album still has no shareable PDF, and other devices won’t see it.',
+              ),
             );
           },
         });
@@ -373,6 +385,8 @@ export function useExport({
     dismissLiveUnsupported: () => setLiveUnsupported(null),
     exportReady: exportReady != null,
     exportReadyLabel: exportReady?.label ?? '',
+    /** 非空 = 云端备份失败;完成弹窗里如实说一句,别让用户以为云上已有成品。 */
+    exportCloudNotice: cloudNotice,
     /** 非空 = 弹窗切到「逐张保存」列表(分享走不通的多文件导出)。 */
     exportManualFiles: manualFiles?.map((f) => f.name) ?? null,
     dismissExportReady,
