@@ -47,3 +47,17 @@ test('移动端根组件把云备份提示接到弹窗上', () => {
   const root = source('MobileEditorRoot.tsx');
   assert.match(root, /cloudNotice=\{exporter\.exportCloudNotice\}/, '提示必须在真实挂载处透传');
 });
+
+test('直传有明确截止时间 —— 否则挂住的请求会让重试永远停在第 1 次', () => {
+  // 线上实测:PUT 一直 inflight(既不 200 也不报错),runExportWithRetry 卡在第 1 次,
+  // 「3 次耗尽」永远不到,云备份提示因此永远不出现。超时是这条修复成立的前提。
+  const useExport = source('use-export.ts');
+  assert.match(useExport, /PDF_UPLOAD_TIMEOUT_MS\s*=\s*\d/, '必须定义上传截止时间');
+  assert.match(useExport, /setTimeout\(\(\) => ctrl\.abort\(\)/, '到点必须 abort');
+  assert.match(useExport, /fetchWithTimeout\(/, 'PUT 必须走带超时的 fetch');
+  assert.match(
+    useExport,
+    /putRes\s*=\s*await fetchWithTimeout\(/,
+    '超时必须包在真正上传那一次调用上,不能只包签名',
+  );
+});
