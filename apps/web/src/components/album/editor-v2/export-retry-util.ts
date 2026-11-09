@@ -113,6 +113,9 @@ export const PDF_UPLOAD_TIMEOUT_MS = 60_000;
 // 实现放在 lib/net/fetch-timeout(字体加载、备份图拉取也共用同一套)。
 export { fetchWithTimeout } from '@/lib/net/fetch-timeout';
 
+// 整本渲染的兜底期限:必须静态可达,否则挂住的动态 import 跑在 watchdog 之外。
+export { RASTER_PDF_RENDER_DEADLINE_MS } from '@/lib/pdf/render-deadline';
+
 /** 把 abort/中断归一成可重试的 upload 失败,别让调用方卡在 await 上。 */
 export function normalizeUploadError(e: unknown): ExportError {
   return new ExportError(

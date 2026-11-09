@@ -288,7 +288,9 @@ export async function renderFaceToCanvas(
 // 但导出这一步最怕「永远不动」——字体子集、备份图拉取都挂住时,进度条会一直停在
 // 0%,用户既拿不到文件也收不到失败提示(2026-11-09 实测)。到点按 render 失败处理,
 // 走既有的 openExportFailModal + 重试,至少是有界的、可重试的、说得清的。
-export const RASTER_PDF_RENDER_DEADLINE_MS = 180_000;
+// 期限常量单独成文件(render-deadline.ts),好让导出入口静态 import 到手里,
+// 连动态 import 本模块这一步也能一起被 watchdog 兜住。
+export { RASTER_PDF_RENDER_DEADLINE_MS } from './render-deadline';
 
 export async function renderAlbumPdfRaster(
   pages: (AdaptablePage & { html?: string })[],

@@ -122,6 +122,7 @@ import {
   fetchWithTimeout,
   normalizeUploadError,
   ExportError,
+  RASTER_PDF_RENDER_DEADLINE_MS,
 } from './export-retry-util';
 import { withDeadline } from '@/lib/net/fetch-timeout';
 import { logger } from '@/lib/log/logger';
@@ -4644,14 +4645,15 @@ export function EditorBook({
         // C 方案:PDF 导出 = 栅格截屏幕渲染(存库 html 优先,与画布像素级一致)。
         // 矢量导出路径已退役(消费不了自由 HTML)。喂高分辨率原图,防放大糊。
         // bleedMm:印刷版传 3(2026-08-03 出血设计),默认 0 走原路径。
-        // 渲染整体(含取图 buildExportInput)要有上限:任意一环挂住,进度条会永远停在
-        // 0%,用户既拿不到文件也没有失败提示(2026-11-09 实测:正是取图/编码那段挂住)。
+        // 渲染整体(含动态 import、取图 buildExportInput、栅格化)要有上限:任意一环挂住,
+        // 进度条会永远停在 0%,用户既拿不到文件也没有失败提示(2026-11-09 两次实测:
+        // 先是取图/编码那段挂住,后是 render-raster 这个 chunk 的请求挂住)。
+        // 期限常量走静态 import —— 否则连 withDeadline 那行都执行不到。
         // 到点按 render 失败处理 —— 走既有的重试 + 安抚框,有界、可重试、说得清。
-        const { RASTER_PDF_RENDER_DEADLINE_MS } = await import('@/lib/pdf/render-raster');
         return await withDeadline(
           (async () => {
-            const { adaptable, resolveImage } = await buildExportInput();
             const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
+            const { adaptable, resolveImage } = await buildExportInput();
             return await renderAlbumPdfRaster(adaptable, resolveImage, {
               scale: 3,
               onProgress: setExportProgress,
