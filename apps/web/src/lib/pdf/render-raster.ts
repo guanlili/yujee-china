@@ -284,6 +284,12 @@ export async function renderFaceToCanvas(
   }
 }
 
+// 整本栅格化的兜底期限。正常情况下 4 页 ≈ 60–120s(scale 3),180s 留足余量;
+// 但导出这一步最怕「永远不动」——字体子集、备份图拉取都挂住时,进度条会一直停在
+// 0%,用户既拿不到文件也收不到失败提示(2026-11-09 实测)。到点按 render 失败处理,
+// 走既有的 openExportFailModal + 重试,至少是有界的、可重试的、说得清的。
+export const RASTER_PDF_RENDER_DEADLINE_MS = 180_000;
+
 export async function renderAlbumPdfRaster(
   pages: (AdaptablePage & { html?: string })[],
   resolveImage: ResolveImage,

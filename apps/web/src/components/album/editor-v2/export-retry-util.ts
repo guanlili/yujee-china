@@ -110,20 +110,8 @@ export type RetryResult =
 // (实测 10MB 上传 17s)。桌面与移动共用这一份,别各写一套。
 export const PDF_UPLOAD_TIMEOUT_MS = 60_000;
 
-/** 带截止时间的 fetch:到点 abort,把「挂住」变成一个真实的失败。 */
-export async function fetchWithTimeout(
-  input: string,
-  init: RequestInit,
-  ms: number = PDF_UPLOAD_TIMEOUT_MS,
-): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  try {
-    return await fetch(input, { ...init, signal: ctrl.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
+// 实现放在 lib/net/fetch-timeout(字体加载、备份图拉取也共用同一套)。
+export { fetchWithTimeout } from '@/lib/net/fetch-timeout';
 
 /** 把 abort/中断归一成可重试的 upload 失败,别让调用方卡在 await 上。 */
 export function normalizeUploadError(e: unknown): ExportError {
