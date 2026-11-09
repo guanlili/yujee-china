@@ -47,7 +47,7 @@ export function Sidebar({ locale, activeNav }: Props) {
             href={item.href(locale)}
             aria-label={c[item.labelKey]}
             aria-current={active ? 'page' : undefined}
-            className={`group relative flex items-center justify-center w-[38px] h-[38px] rounded-full transition-colors ${
+            className={`group relative flex items-center justify-center w-[44px] h-[44px] md:w-[38px] md:h-[38px] rounded-full transition-colors ${
               active ? 'bg-black/[0.08] text-[var(--fg)]' : 'text-[var(--muted)] hover:bg-black/[0.06] hover:text-[var(--fg)]'
             }`}
           >

@@ -18,7 +18,7 @@ export function MarketingSocials() {
           target="_blank"
           rel="noreferrer"
           aria-label={s.label}
-          className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--meta)] hover:text-[var(--fg)] hover:bg-black/[0.04] transition-colors"
+          className="w-11 h-11 rounded-full flex items-center justify-center text-[var(--meta)] hover:text-[var(--fg)] hover:bg-black/[0.04] transition-colors"
         >
           <svg viewBox="0 0 24 24" fill="currentColor" className="w-[18px] h-[18px]">
             <path d={s.path} />
