@@ -651,7 +651,7 @@ export function HeroComposer({
                 disabled={busy}
                 aria-label={t.send}
                 title={t.send}
-                className="grid h-10 w-10 place-items-center rounded-full bg-[var(--fg)] text-white transition-transform duration-200 disabled:cursor-not-allowed disabled:opacity-40"
+                className="relative grid h-10 w-10 place-items-center rounded-full bg-[var(--fg)] text-white after:absolute after:-inset-0.5 after:content-[''] transition-transform duration-200 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {busy ? (
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
