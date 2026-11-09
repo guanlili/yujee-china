@@ -1331,6 +1331,7 @@ export function MobileEditorRoot({
       aT={aT}
       label={exporter.exportReadyLabel}
       manualFiles={exporter.exportManualFiles}
+      cloudNotice={exporter.exportCloudNotice}
       onClose={exporter.dismissExportReady}
       onSave={() => {
         void exporter.deliverExport().then((result) => {
