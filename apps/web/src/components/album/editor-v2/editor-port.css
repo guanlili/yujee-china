@@ -2331,6 +2331,8 @@
   border-radius:8px; transition:background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease);
 }
 .credits-modal-close:hover{ background:rgba(0,0,0,.05); color:var(--fg); }
+/* 触控热区:视觉仍 30px,手指可点范围扩到 44px */
+.credits-modal-close::after{ content:''; position:absolute; inset:-7px; border-radius:10px; }
 .credits-modal-title{
   margin:2px 0 12px; font-size:30px; font-weight:700; line-height:1.1; letter-spacing:.01em;
   color:var(--fg); font-family:'Playfair Display','Noto Serif SC Landing',Georgia,serif;
