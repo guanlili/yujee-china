@@ -981,7 +981,7 @@ function EditorModals({ locale }: { locale: Locale }) {
           <div className="px-6 pt-5 pb-4 border-b border-bdsoft shrink-0">
             <div className="flex items-center justify-between">
               <h3 className="font-display text-[17px] font-bold" data-i18n="modalTitle">选择照片</h3>
-              <button className="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg transition-colors" data-action="closePhotoPicker" aria-label="close">
+              <button className="relative w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg transition-colors after:absolute after:-inset-1.5 after:content-['']" data-action="closePhotoPicker" aria-label="close">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
@@ -1018,7 +1018,7 @@ function EditorModals({ locale }: { locale: Locale }) {
           <div className="px-6 pt-5 pb-4 border-b border-bdsoft shrink-0">
             <div className="flex items-center justify-between">
               <h3 id="photoSwapTitle" className="font-display text-[17px] font-bold" data-i18n="swapTitle">换一张</h3>
-              <button className="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg transition-colors" data-action="closePhotoSwap" aria-label="close">
+              <button className="relative w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg transition-colors after:absolute after:-inset-1.5 after:content-['']" data-action="closePhotoSwap" aria-label="close">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
@@ -1044,7 +1044,7 @@ function EditorModals({ locale }: { locale: Locale }) {
           <div className="px-6 pt-5 pb-4 border-b border-bdsoft shrink-0">
             <div className="flex items-center justify-between">
               <h3 id="imageGenTitle" className="font-display text-[17px] font-bold">{aT('AI 生成一张图', 'Generate an image')}</h3>
-              <button className="w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg transition-colors" data-action="closeImageGen" aria-label="close">
+              <button className="relative w-8 h-8 rounded-full flex items-center justify-center text-muted hover:bg-bg hover:text-fg transition-colors after:absolute after:-inset-1.5 after:content-['']" data-action="closeImageGen" aria-label="close">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>
@@ -1438,12 +1438,12 @@ function StaticEditorShell({
               <div className="chat-input shrink-0 bg-surface border border-bdsoft flex flex-col transition-all" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.04)', opacity: 0.6 }}>
                 <textarea className="w-full outline-none resize-none bg-transparent text-fg text-[13.5px] leading-relaxed border-none px-4 pt-3.5 pb-1 disabled:cursor-not-allowed" style={{ fontFamily: 'var(--font-body)' }} placeholder="" rows={1} disabled />
                 <div className="flex items-center gap-1 px-2.5 pb-2.5 pt-0.5">
-                  <button className="add-ch-btn w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-muted disabled:cursor-not-allowed disabled:opacity-40" title={pick(locale, { zh: '添加图片', en: 'Add photos' })} aria-label={pick(locale, { zh: '添加图片', en: 'Add photos' })} disabled>
+                  <button className="add-ch-btn relative w-8 h-8 shrink-0 rounded-full after:absolute after:-inset-1.5 after:content-[''] flex items-center justify-center text-muted disabled:cursor-not-allowed disabled:opacity-40" title={pick(locale, { zh: '添加图片', en: 'Add photos' })} aria-label={pick(locale, { zh: '添加图片', en: 'Add photos' })} disabled>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
                   </button>
                   <span className="flex-1" />
                   <span className="btn-glow btn-glow-round shrink-0">
-                    <button className="send-btn w-8 h-8 rounded-full bg-fg text-white flex items-center justify-center transition-transform disabled:cursor-not-allowed disabled:opacity-40" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} title={pick(locale, { zh: '发送', en: 'Send' })} disabled>
+                    <button className="send-btn relative w-8 h-8 rounded-full bg-fg text-white after:absolute after:-inset-1.5 after:content-[''] flex items-center justify-center transition-transform disabled:cursor-not-allowed disabled:opacity-40" style={{ boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }} title={pick(locale, { zh: '发送', en: 'Send' })} disabled>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-[17px] h-[17px]"><line x1="12" y1="19" x2="12" y2="5" /><polyline points="5 12 12 5 19 12" /></svg>
                     </button>
                   </span>

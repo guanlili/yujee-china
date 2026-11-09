@@ -123,7 +123,7 @@ export function CollabPanel({
             ref={closeRef}
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full text-muted hover:bg-black/[.05]"
+            className="relative flex h-8 w-8 items-center justify-center rounded-full text-muted hover:bg-black/[.05] after:absolute after:-inset-1.5 after:content-['']"
             aria-label={aT('关闭', 'Close')}
           >
             ✕
