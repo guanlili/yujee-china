@@ -51,13 +51,20 @@ test('移动端根组件把云备份提示接到弹窗上', () => {
 test('直传有明确截止时间 —— 否则挂住的请求会让重试永远停在第 1 次', () => {
   // 线上实测:PUT 一直 inflight(既不 200 也不报错),runExportWithRetry 卡在第 1 次,
   // 「3 次耗尽」永远不到,云备份提示因此永远不出现。超时是这条修复成立的前提。
+  // 2026-11-09 起两端共用 export-retry-util 里同一份实现,不再各写一套。
+  const util = source('../export-retry-util.ts');
+  assert.match(util, /PDF_UPLOAD_TIMEOUT_MS\s*=\s*\d/, '必须定义上传截止时间');
+  assert.match(util, /setTimeout\(\(\) => ctrl\.abort\(\)/, '到点必须 abort');
   const useExport = source('use-export.ts');
-  assert.match(useExport, /PDF_UPLOAD_TIMEOUT_MS\s*=\s*\d/, '必须定义上传截止时间');
-  assert.match(useExport, /setTimeout\(\(\) => ctrl\.abort\(\)/, '到点必须 abort');
-  assert.match(useExport, /fetchWithTimeout\(/, 'PUT 必须走带超时的 fetch');
   assert.match(
     useExport,
     /putRes\s*=\s*await fetchWithTimeout\(/,
-    '超时必须包在真正上传那一次调用上,不能只包签名',
+    '移动端:超时必须包在真正上传那一次调用上,不能只包签名',
+  );
+  const book = source('../EditorBook.tsx');
+  assert.match(
+    book,
+    /putRes = await fetchWithTimeout\(putUrl/,
+    '桌面端:同一条直传也必须有截止时间',
   );
 });

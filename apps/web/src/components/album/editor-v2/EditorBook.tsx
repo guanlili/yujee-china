@@ -115,7 +115,13 @@ import {
   type EditAnchorId,
 } from './edit-anchor-util';
 import { computeExportUnlocked } from './export-gate-util';
-import { runExportWithRetry, buildExportFailureLog, ExportError } from './export-retry-util';
+import {
+  runExportWithRetry,
+  buildExportFailureLog,
+  fetchWithTimeout,
+  normalizeUploadError,
+  ExportError,
+} from './export-retry-util';
 import { logger } from '@/lib/log/logger';
 import { loadAlbumFonts, loadFontSubset, useAlbumFonts } from '@/lib/font/album-font-loader';
 import { isCjkFontId, type CjkFontId } from '@/services/font/font-manifest';
@@ -4670,11 +4676,19 @@ export function EditorBook({
         throw new ExportError('upload', signJson.error?.message ?? 'sign failed', signRes.status);
       }
       const { putUrl, r2Key } = signJson.data;
-      const putRes = await fetch(putUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/pdf' },
-        body: blob,
-      });
+      // 直传必须带截止时间:这条链路实测会**挂住**(既不 200 也不报错,一直 inflight),
+      // 没有截止时间的话 runExportWithRetry 永远停在第 1 次,「3 次耗尽」永远不到,
+      // 用户既没云端备份也没提示(2026-11-09,与移动端同源,共用同一份实现)。
+      let putRes: Response;
+      try {
+        putRes = await fetchWithTimeout(putUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/pdf' },
+          body: blob,
+        });
+      } catch (e) {
+        throw normalizeUploadError(e);
+      }
       if (!putRes.ok) throw new ExportError('upload', `R2 PUT ${putRes.status}`, putRes.status);
       const confirmRes = await fetch(`/api/v1/albums/${albumId}/pdf`, {
         method: 'PUT',
@@ -4716,19 +4730,18 @@ export function EditorBook({
         // render 失败:安抚框已弹,到此为止(用户确实没拿到文件)。
         if (!rendered.ok || blob == null) return;
 
-        // 到这里用户已拿到 PDF = 导出成功。云端上传(R2 + 落库)解耦,失败【完全静默】:
-        // 后台自动重试 ≤3 次,耗尽也只落日志——不弹框、不提示(用户诉求)。飞书推送后置
-        // (§4.5d):此处只 logger.error,不调任何飞书端点。
-        // 游客:只本地下载,跳过云上传(零 R2/零 DB;服务端 pdf 路由对游客也是 403)。
+        // 用户已拿到 PDF = 导出成功。云端上传解耦:失败不弹失败框,重试耗尽亮横幅。
+        // 飞书推送仍后置(§4.5d);游客只本地下载;出血版跳过上传(保持标准版)。
         if (viewerAnonRef.current === true) return;
-        // 出血版跳过上传:云端 PDF 保持标准版(分享/完成态语义不变,2026-08-03 出血设计)。
         if (bleedMm === 0) {
           await runExportWithRetry(() => uploadPdfOnce(blob!), {
             onExhausted: (lastError, attempts) => {
               logger.error(
                 buildExportFailureLog(lastError, { albumId, attempts }),
-                'pdf cloud upload failed (silent — local download already succeeded)',
+                'pdf cloud upload failed (local download already succeeded)',
               );
+              const card = byId('pdfCloudAlert');
+              if (card) card.style.display = '';
             },
           });
         }

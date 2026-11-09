@@ -2536,6 +2536,11 @@ export function ChatPanel({
         if (alert) alert.style.display = 'none';
         guestNudgeDismissed = true;
       },
+      // 云备份失败横幅:用户看过就关掉,别一直占着输入框上方的位置。
+      dismissPdfCloudAlert: () => {
+        const alert = byId('pdfCloudAlert');
+        if (alert) alert.style.display = 'none';
+      },
       // 中途加图(spec §1):排版完成后可用;采访/发送/追加进行中不响应。
       pickAddPhotos: () => {
         // 加图现在只「暂存」不立即提交(先攒后发),所以 AI 思考 / 排版中(sending /
@@ -2936,6 +2941,22 @@ export function ChatPanel({
               </div>
               <button className="buy-banner-btn" data-action="guestLogin">{pick(locale, { zh: '登录', en: 'Sign in' })}</button>
               <button className="buy-close" type="button" data-action="dismissGuestAlert" aria-label={pick(locale, { zh: '关闭', en: 'Close' })}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+              </button>
+            </div>
+          </div>
+          {/* 导出 PDF 的云备份失败横幅:本地文件已下载成功,但相册里没有可分享的成品。
+              只在「后台重试耗尽」时由 EditorBook 亮起,不进消息流、不锁输入;样式复用
+              buy-banner(与积分/游客横幅同款),移动端完成弹窗里是同一句文案。 */}
+          <div className="buy-banner" id="pdfCloudAlert" style={{ display: 'none' }}>
+            <div className="buy-banner-row">
+              <div className="buy-banner-title flex-1 min-w-0">
+                {pick(locale, {
+                  zh: '云端备份没成功：这次的文件已在你手上，但相册里还没有可分享的成品，换设备打开也看不到。',
+                  en: "Cloud backup didn't go through — the file is already downloaded, but the album has no shareable copy yet, so it won't show up on other devices.",
+                })}
+              </div>
+              <button className="buy-close" type="button" data-action="dismissPdfCloudAlert" aria-label={pick(locale, { zh: '关闭', en: 'Close' })}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
               </button>
             </div>

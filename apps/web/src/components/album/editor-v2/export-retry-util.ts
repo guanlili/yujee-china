@@ -103,6 +103,37 @@ export type RetryResult =
   | { ok: true; attempts: number }
   | { ok: false; attempts: number; lastError: unknown };
 
+// PDF 直传对象存储的单次上限。线上实测(2026-11-09):跨域/跨境链路上 PUT 会**挂住**
+// ——既不返回 200 也不报错,浏览器一直 inflight。runExportWithRetry 要求「连续 3 次
+// 失败」才收尾,卡在第 1 次就永远到不了耗尽,于是提示/重试/日志全都不会被触发。
+// 给它一个明确截止时间,失败才变成有界的、可重试的、可见的。60s 是 50MB 上限的余量
+// (实测 10MB 上传 17s)。桌面与移动共用这一份,别各写一套。
+export const PDF_UPLOAD_TIMEOUT_MS = 60_000;
+
+/** 带截止时间的 fetch:到点 abort,把「挂住」变成一个真实的失败。 */
+export async function fetchWithTimeout(
+  input: string,
+  init: RequestInit,
+  ms: number = PDF_UPLOAD_TIMEOUT_MS,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** 把 abort/中断归一成可重试的 upload 失败,别让调用方卡在 await 上。 */
+export function normalizeUploadError(e: unknown): ExportError {
+  return new ExportError(
+    'upload',
+    e instanceof Error && e.name === 'AbortError' ? 'R2 PUT timeout' : 'R2 PUT interrupted',
+  );
+}
+
+
 // 自动重试 ≤ MAX_EXPORT_ATTEMPTS 次的纯逻辑。
 //   • attempt() 成功(resolve)→ 立即停,返回 { ok:true, attempts: 该次次数 }。
 //   • attempt() 抛错 → 计数 +1,未满上限则再试;满上限(连续 maxAttempts 次失败)→

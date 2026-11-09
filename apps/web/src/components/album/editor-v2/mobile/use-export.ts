@@ -25,7 +25,13 @@ import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
 import { collectPhotoIds } from '../../adapt-layout';
 import type { BoardBackground } from '@/lib/board-bg/presets';
 import type { EditorPage } from '../../types';
-import { runExportWithRetry, buildExportFailureLog, ExportError } from '../export-retry-util';
+import {
+  runExportWithRetry,
+  buildExportFailureLog,
+  fetchWithTimeout,
+  normalizeUploadError,
+  ExportError,
+} from '../export-retry-util';
 import { logger } from '@/lib/log/logger';
 import type { PhotoFilterState } from '@/lib/photo/filter-state';
 import { deliverLiveAssets } from '@/lib/export/live-delivery';
@@ -400,27 +406,6 @@ export function useExport({
   };
 }
 
-/** 直传 COS 的单次上限。线上实测:跨境链路上 PUT 会**挂住**——既不成功也不报错,
- *  浏览器一直 inflight,于是 runExportWithRetry 永远停在第 1 次,「3 次耗尽」永远
- *  不到,用户既拿不到云端备份、也收不到任何提示(2026-11-09)。给它一个明确的
- *  截止时间,失败才变成有界的、可重试的、可见的。60s 是 50MB 上限的宽裕量。 */
-const PDF_UPLOAD_TIMEOUT_MS = 60_000;
-
-/** 带截止时间的 fetch:到点 abort,把「挂住」变成一个真实的失败。 */
-async function fetchWithTimeout(
-  input: string,
-  init: RequestInit,
-  ms: number,
-): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  try {
-    return await fetch(input, { ...init, signal: ctrl.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 /** 签名 → 直传 R2 → confirm 落库。与桌面 uploadPdfOnce 同一条。 */
 async function uploadPdf(albumId: string, blob: Blob): Promise<void> {
   const signRes = await fetch(`/api/v1/albums/${albumId}/pdf-upload-url`, {
@@ -435,17 +420,14 @@ async function uploadPdf(albumId: string, blob: Blob): Promise<void> {
   const { putUrl, r2Key } = signJson.data;
   let putRes: Response;
   try {
-    putRes = await fetchWithTimeout(
-      putUrl,
-      { method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: blob },
-      PDF_UPLOAD_TIMEOUT_MS,
-    );
+    putRes = await fetchWithTimeout(putUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/pdf' },
+      body: blob,
+    });
   } catch (e) {
     // 超时 / 连接被掐:统一成可重试的 upload 失败,别让调用方卡在 await 上。
-    throw new ExportError(
-      'upload',
-      e instanceof Error && e.name === 'AbortError' ? 'R2 PUT timeout' : 'R2 PUT interrupted',
-    );
+    throw normalizeUploadError(e);
   }
   if (!putRes.ok) throw new ExportError('upload', `R2 PUT ${putRes.status}`, putRes.status);
   const confirmRes = await fetch(`/api/v1/albums/${albumId}/pdf`, {
