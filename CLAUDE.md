@@ -225,8 +225,10 @@ dependabot 不会推 `checked-at`,盖住它们会把对应生态的每个依赖 
 
 1. 当轮 commits 聚类成可交付单元（用户可感知的主题，一次 commit 不等于一条）；
    commit 末尾尽量带 issue 号 `(#N)` 自动关联
-2. 按模板建 issue（`.github/ISSUE_TEMPLATE/需求.md`：来源/描述/交付物/工时四段，
-   label=类型），关闭之，`gh project item-add 9 --owner "@me" --url <issue url>`
+2. 按模板建 issue（`.github/ISSUE_TEMPLATE/需求.md`：来源/描述/交付物/验收/工时五段，
+   label=类型），关闭之，`gh project item-add 9 --owner "@me" --url <issue url>`。
+   **描述段必须写全四小节**：需求原话/触发、为什么现在做、考虑过但没选的方案、
+   具体做了什么——后三项只有在事情刚做完时还能写准，事后补不出来
 3. 设 5 字段：类型（需求/缺陷/优化/交付线/文档，与 label 同名）、来源（甲方/内部）、
    工时(h)（人类等价工作量，从宽宁多勿漏，依据写进 issue）、开始、结束；Status=已完成
 
