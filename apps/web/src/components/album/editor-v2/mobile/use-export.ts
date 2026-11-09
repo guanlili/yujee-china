@@ -32,6 +32,7 @@ import {
   fetchWithTimeout,
   normalizeUploadError,
   ExportError,
+  RASTER_PDF_RENDER_DEADLINE_MS,
 } from '../export-retry-util';
 import { withDeadline } from '@/lib/net/fetch-timeout';
 import { logger } from '@/lib/log/logger';
@@ -333,15 +334,15 @@ export function useExport({
       // render 段:生成 PDF,自动重试 ≤3 次。连续 3 次失败才是真·导出失败。
       const rendered = await runExportWithRetry(
         async () => {
-          const { RASTER_PDF_RENDER_DEADLINE_MS } = await import('@/lib/pdf/render-raster');
           let b: Blob;
           try {
-            // 整段(取图 buildInput + 栅格化)都要有上限:任一环挂住,进度条会永远停在
-            // 0%,用户既拿不到文件也没有失败提示(2026-11-09 实测)。
+            // 整段(动态 import + 取图 buildInput + 栅格化)都要有上限:任一环挂住,
+            // 进度条会永远停在 0%(2026-11-09 实测)。期限常量必须静态取,否则挂住的
+            // 动态 import 会跑在 watchdog 之外。
             b = await withDeadline(
               (async () => {
-                const { adaptable, resolveImage } = await buildInput();
                 const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
+                const { adaptable, resolveImage } = await buildInput();
                 return await renderAlbumPdfRaster(adaptable, resolveImage, {
                   scale: 3,
                   onProgress,
