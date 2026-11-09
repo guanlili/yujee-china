@@ -102,7 +102,7 @@ export function MarketingNav({ locale, m }: Props) {
             aria-label={m.nav.menuToggle}
             aria-expanded={mobileOpen}
             onClick={() => setMobileOpen((open) => !open)}
-            className="grid h-9 w-9 place-items-center rounded-lg text-[var(--fg)] transition-colors hover:bg-black/5 md:hidden"
+            className="grid h-11 w-11 place-items-center rounded-lg text-[var(--fg)] transition-colors hover:bg-black/5 md:hidden"
           >
             <svg
               aria-hidden
