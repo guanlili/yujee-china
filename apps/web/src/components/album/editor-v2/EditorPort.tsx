@@ -134,9 +134,7 @@ import {
 } from '@/lib/album/authoring-client';
 import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
 import { coverOptionImages } from './cover-option-slots';
-// ChatPanel 只在桌面右侧对话栏渲染(移动端那棵树自带聊天),3000 行的对话系统 + 导出
-// 协调逻辑没有理由让手机先下一遍。改成按需加载(见文件末尾 dynamic 定义),这里只留类型。
-import type { ChatMode } from './ChatPanel';
+import { ChatPanel, type ChatMode } from './ChatPanel';
 import { FilterBar } from './FilterBar';
 import {
   collectSnapshotEntries,
@@ -1594,8 +1592,6 @@ const EditorBook = dynamic(() => import('./EditorBook').then((m) => m.EditorBook
   ssr: false,
 });
 
-// 2026-11-10: ChatPanel 同样按需加载。它只挂桌面右侧对话栏,移动端永远不渲染;
-// 静态 import 时它和 EditorPort 同批下发,手机白下一份 3000 行的对话/导出子系统。
-const ChatPanel = dynamic(() => import('./ChatPanel').then((m) => m.ChatPanel), {
-  ssr: false,
-});
+// ChatPanel **不能**按需加载(MobileEditorRoot 也渲染同一份,移动端必须拿到它) ——
+// 2026-11-10 试过 dynamic + 断开 EditorBook 的值导入,产物核对显示它仍留在 page chunk,
+// 因为没有拆分的收益:两端共用的模块本来就只有一份。
