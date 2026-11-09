@@ -213,10 +213,10 @@ dependabot 不会推 `checked-at`,盖住它们会把对应生态的每个依赖 
 时效闸上(2026-10-26 两轮教训:npm 批 #21-#24、pip 批 #35-#37/#43)。manifest 的
 **人工改动**(加脚本、换 extras)想留闸的话,靠 code review,不靠时效闸。
 
-## 项目管理（gh-pm，记账硬性规范）
+## 项目管理（devledger，记账硬性规范）
 
 本仓库由人类 + 多个 AI 协作开发，项目管理主账本是 GitHub Project
-[#9](https://github.com/users/guanlili/projects/9)（gh-pm skill：https://github.com/guanlili/gh-pm）。
+[#9](https://github.com/users/guanlili/projects/9)（devledger skill：https://github.com/guanlili/devledger）。
 
 **硬性纪律：任何 AI 会话完成了一个可交付单元（需求/缺陷/修复/交付线/文档），
 结束会话前必须完成记账三步。不可跳过、不可「下次一起补」——没记账的工作等于没做。**
@@ -225,15 +225,15 @@ dependabot 不会推 `checked-at`,盖住它们会把对应生态的每个依赖 
 
 1. 当轮 commits 聚类成可交付单元（用户可感知的主题，一次 commit 不等于一条）；
    commit 末尾尽量带 issue 号 `(#N)` 自动关联
-2. 按模板建 issue（`.github/ISSUE_TEMPLATE/需求.md`：来源/描述/交付物/验收/工时五段，
-   label=类型），关闭之，`gh project item-add 9 --owner "@me" --url <issue url>`。
-   **描述段必须写全四小节**：需求原话/触发、为什么现在做、考虑过但没选的方案、
-   具体做了什么——后三项只有在事情刚做完时还能写准，事后补不出来
+2. 按模板建 issue（`.github/ISSUE_TEMPLATE/需求.md`：来源[含原话] /
+   描述[为什么现在做·否决方案·做了什么] / 交付物 / 验证 / 工时，label=类型；
+   **决策上下文记录时写全，事后不可补**），关闭之，
+   `gh project item-add 9 --owner "@me" --url <issue url>`
 3. 设 5 字段：类型（需求/缺陷/优化/交付线/文档，与 label 同名）、来源（甲方/内部）、
    工时(h)（人类等价工作量，从宽宁多勿漏，依据写进 issue）、开始、结束；Status=已完成
 
 **issue 是唯一工作真相源**：字段与任何汇总（含验收 xlsx）均为派生视图。
-已知坑见 gh-pm 仓库 `references/pitfalls.md`——读数据一律走 GraphQL 直查
+已知坑见 devledger 仓库 `references/pitfalls.md`——读数据一律走 GraphQL 直查
 （`gh project item-list` 会损坏中文自定义字段名），`item-edit` 会静默失败，写后必须读回对账。
 
 <!-- doc-scope
