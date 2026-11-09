@@ -146,7 +146,10 @@ import {
 } from '@/lib/album/authoring-client';
 import { getTemplate, TEMPLATE_IDS } from '@yujee/contracts/templates';
 import { coverOptionImages } from './cover-option-slots';
-import { ChatPanel, type ChatMode } from './ChatPanel';
+// 只借 ChatMode 的类型:ChatPanel 实体由 EditorPort 按需加载。这里若写成值导入,
+// webpack 会因为「两个 chunk 共享同一模块」把 ChatPanel 提回 page chunk,
+// 移动端又白下一遍(2026-11-10 实测确认过这一点)。
+import type { ChatMode } from './ChatPanel';
 import { FilterBar } from './FilterBar';
 import {
   collectSnapshotEntries,
