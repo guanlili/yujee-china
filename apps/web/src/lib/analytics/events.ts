@@ -11,6 +11,9 @@ export const ANALYTICS_EVENT_NAMES = [
   'landing_view', // 首页打开
   'book_start', // 点「开始做一本书」/进入编辑器
   'checkout_click', // 点购买/兑换入口
+  // 相册与分享(「书有没有人看、有没有被分享出去」)
+  'album_open', // 打开一本相册:owner 进编辑器 or visitor 走只读链接
+  'share_click', // 点分享并生成只读链接(result 反映成败)
   // 导出(最能反映「卡不卡」的地方)
   'export_start',
   'export_ok', // value = 耗时 ms

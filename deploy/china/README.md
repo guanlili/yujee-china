@@ -24,6 +24,7 @@
    ├─ yujee-clip-1       CLIP+isnet（调试口 127.0.0.1:8001）
    ├─ yujee-postgres-1   PG16 + 自签 TLS（web 的 db 客户端对非 localhost 强制 ssl require）
    └─ ubuntu crontab      5 个定时任务（PG 每日备份 4:00 / 埋点表 90 天清理 4:30 / 资源巡检 / speakup×2）
+                             脚本与备份产物在 ~/yujee-ops/，不在业务目录
 编排：compose.single.yml（五服务同一网络，agent→clip / web→agent 全走容器名）
 ```
 
@@ -182,6 +183,10 @@ deploy/china/
 ├── build/{web,design,clip}.Dockerfile  # 三镜像构建
 ├── bin/renew-pg-cert.sh      # PG 自签证书 ≤30 天零停机自续(cron 每日)
 ├── bin/daily-patrol.sh       # 每日只读巡检:容器/内存/error 计数/磁盘(cron 05:10)
+├── bin/{pg-backup-cos,resource-check,analytics-prune,feishu-alert}.sh
+│                             # 运维脚本的版本源。部署时 install 到 ~/yujee-ops/bin,
+│                             # cron 跑的是那一份 —— 备份产物和告警脚本不进业务目录,
+│                             # 清理/重装 yujee-clip 不会把备份链一起带走
 ├── crontab.web.example       # 6 个 cron + PG 备份
 └── pgssl/（服务器上生成，不进仓）       # PG 自签证书
 ```

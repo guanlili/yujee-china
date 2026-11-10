@@ -6,7 +6,7 @@
 # 这个数字平时应该一直是 0,突然变大说明有人在刷接口。
 #
 # 装在服务器 ubuntu 用户的 crontab(每天 4:30,排在 PG 备份 4:00 之后):
-#   30 4 * * * bash ~/yujee-clip/deploy/china/bin/analytics-prune.sh >> ~/yujee-clip/backups/analytics-prune.log 2>&1
+#   30 4 * * * bash ~/yujee-ops/bin/analytics-prune.sh >> ~/yujee-ops/backups/analytics-prune.log 2>&1
 set -euo pipefail
 
 deleted=$(sudo docker exec yujee-postgres-1 psql -U yujee -d yujee -tA -c \
