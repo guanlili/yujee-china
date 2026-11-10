@@ -328,8 +328,23 @@ export const adminService = {
   async getProductInsights(days: number, now: Date = new Date()) {
     const windowDays = [7, 30, 90].includes(days) ? days : 7;
     const since = new Date(now.getTime() - windowDays * DAY_MS);
+    // 环比窗口:紧挨着的上一个等长区间。和本期同一套口径(都按「人」算),
+    // 否则「本期 5 人 / 上期 20 次」这种比较毫无意义。
+    const prevSince = new Date(since.getTime() - windowDays * DAY_MS);
 
-    const [byName, subjects, exportOutcomes, uploads, errors, daily, duration] = await Promise.all([
+    const [
+      byName,
+      subjects,
+      exportOutcomes,
+      uploads,
+      errors,
+      daily,
+      duration,
+      prevSubjects,
+      subjectDays,
+      albumShare,
+      failures,
+    ] = await Promise.all([
       analyticsRepo.countByNameSince(since),
       analyticsRepo.distinctSubjectsByNameSince(since),
       analyticsRepo.exportOutcomesSince(since),
@@ -337,10 +352,23 @@ export const adminService = {
       analyticsRepo.errorTopSince(since, 10),
       analyticsRepo.dailyCountsSince(since),
       analyticsRepo.durationPercentilesSince('export_ok', since),
+      analyticsRepo.distinctSubjectsByNameBetween(prevSince, since),
+      analyticsRepo.subjectDayCountsSince(since),
+      analyticsRepo.albumShareSince(since),
+      analyticsRepo.failureCodesSince(since, 10),
     ]);
 
     const successRate =
       exportOutcomes.starts > 0 ? Math.round((exportOutcomes.oks / exportOutcomes.starts) * 100) : null;
+
+    // 回访率:窗口内出现在 ≥2 个不同自然日的主体 / 窗口内所有主体。
+    // 分母为 0 时返回 null 而不是 0 —— 「没人来」和「没人回访」是两件事。
+    const visitors = subjectDays.length;
+    const returning = subjectDays.filter((row) => row.days >= 2).length;
+
+    // 环比:上期为 0 时不给百分比。凭空出现 100% 增长比「没有上期数据」更误导。
+    const delta = (cur: number, prev: number): number | null =>
+      prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null;
 
     return {
       windowDays,
@@ -351,6 +379,19 @@ export const adminService = {
         exporters: subjects.export_ok ?? 0,
         buyers: subjects.checkout_click ?? 0,
       },
+      compare: {
+        landingVisitors: delta(subjects.landing_view ?? 0, prevSubjects.landing_view ?? 0),
+        bookStarters: delta(subjects.book_start ?? 0, prevSubjects.book_start ?? 0),
+        exporters: delta(subjects.export_ok ?? 0, prevSubjects.export_ok ?? 0),
+        albumOpens: delta(subjects.album_open ?? 0, prevSubjects.album_open ?? 0),
+      },
+      retention: {
+        visitors,
+        returning,
+        rate: visitors > 0 ? Math.round((returning / visitors) * 100) : null,
+      },
+      albumShare,
+      failures,
       export: {
         ...exportOutcomes,
         successRate,

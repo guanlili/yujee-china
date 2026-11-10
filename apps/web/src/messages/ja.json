@@ -503,7 +503,21 @@
         "errorKind": "種類",
         "errorMessage": "メッセージ",
         "errorLast": "最終発生",
-        "noData": "この期間のデータはありません"
+        "noData": "この期間のデータはありません",
+        "kpiRetention": "再訪率",
+        "kpiShares": "共有リンク",
+        "compareHint": "同じ長さの直前の期間との比較(訪問者単位で重複排除)",
+        "albumShare": "アルバムと共有",
+        "openOwner": "本人が開いた",
+        "openVisitor": "訪問者が開いた",
+        "shareOk": "共有の作成",
+        "shareFail": "共有の失敗",
+        "shareToOpen": "共有後に開かれた",
+        "failureCodes": "失敗の理由",
+        "failEvent": "イベント",
+        "failStep": "段階",
+        "failCode": "理由コード",
+        "failHits": "回数"
       }
     },
     "settings": {

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import { db } from '../client';
 import { analyticsEvents, type NewAnalyticsEvent } from '../schema';
 
@@ -207,6 +207,111 @@ export const analyticsRepo = {
       )
       .groupBy(sql`1, 2`)
       .orderBy(sql`1`);
+    return rows;
+  },
+
+  // 回访率的基础数据:每个主体在这个窗口里出现在几个不同的自然日。
+  // 不在 SQL 里直接算比率:主体数很小(当前十几个),拉回来用 JS 算更好读,
+  // 而且「出现在几个不同日子」这件事在 SQL 里容易把分母写错。
+  async subjectDayCountsSince(since: Date): Promise<Array<{ days: number }>> {
+    const rows = await db
+      .select({
+        days: sql<number>`count(distinct date_trunc('day', ${analyticsEvents.createdAt}))::int`,
+      })
+      .from(analyticsEvents)
+      .where(and(gte(analyticsEvents.createdAt, since), sql`${analyticsEvents.subjectId} is not null`))
+      .groupBy(analyticsEvents.subjectId);
+    return rows;
+  },
+
+  // 环比:上一个等长窗口的相同统计。单独一个方法,而不是给 countByNameSince
+  // 加个 until 参数 —— 读代码的人不该为了拿上期先理解一个三参签名。
+  async countByNameBetween(from: Date, to: Date): Promise<Record<string, number>> {
+    const rows = await db
+      .select({ name: analyticsEvents.name, n: sql<number>`count(*)::int` })
+      .from(analyticsEvents)
+      .where(and(gte(analyticsEvents.createdAt, from), lt(analyticsEvents.createdAt, to)))
+      .groupBy(analyticsEvents.name);
+    return Object.fromEntries(rows.map((r) => [r.name, r.n]));
+  },
+
+  // 环比用「人」口径,和漏斗同一套:用次数比会让「一个人刷五次」看起来像增长。
+  async distinctSubjectsByNameBetween(from: Date, to: Date): Promise<Record<string, number>> {
+    const rows = await db
+      .select({
+        name: analyticsEvents.name,
+        n: sql<number>`count(distinct ${analyticsEvents.subjectId})::int`,
+      })
+      .from(analyticsEvents)
+      .where(and(gte(analyticsEvents.createdAt, from), lt(analyticsEvents.createdAt, to)))
+      .groupBy(analyticsEvents.name);
+    return Object.fromEntries(rows.map((r) => [r.name, r.n]));
+  },
+
+  // 相册打开与分享:album_open 按 source(owner/visitor) 分,share_click 按 result 分。
+  // 「分享出去 → 有人真的打开」是这个产品唯一的外部增长路径,分子分母必须分开算。
+  async albumShareSince(since: Date): Promise<{
+    openOwner: number;
+    openVisitor: number;
+    shareOk: number;
+    shareFail: number;
+  }> {
+    const rows = await db
+      .select({
+        name: analyticsEvents.name,
+        source: sql<string | null>`${analyticsEvents.meta}->>'source'`,
+        result: analyticsEvents.result,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(analyticsEvents)
+      .where(
+        and(
+          gte(analyticsEvents.createdAt, since),
+          sql`${analyticsEvents.name} in ('album_open','share_click')`,
+        ),
+      )
+      .groupBy(analyticsEvents.name, sql`${analyticsEvents.meta}->>'source'`, analyticsEvents.result);
+
+    let openOwner = 0;
+    let openVisitor = 0;
+    let shareOk = 0;
+    let shareFail = 0;
+    for (const row of rows) {
+      if (row.name === 'album_open') {
+        if (row.source === 'visitor') openVisitor += row.n;
+        else openOwner += row.n;
+      } else if (row.result === 'ok') {
+        shareOk += row.n;
+      } else {
+        shareFail += row.n;
+      }
+    }
+    return { openOwner, openVisitor, shareOk, shareFail };
+  },
+
+  // 失败原因 Top:export_fail / upload_fail 的 meta.code 分布。
+  // 有了这张表,"失败了几次"才变成"该修什么" —— code 来自封闭词表,不含原文。
+  async failureCodesSince(
+    since: Date,
+    limit = 10,
+  ): Promise<Array<{ name: string; code: string; step: string; hits: number }>> {
+    const rows = await db
+      .select({
+        name: analyticsEvents.name,
+        code: sql<string>`coalesce(${analyticsEvents.meta}->>'code', '(none)')`,
+        step: sql<string>`coalesce(${analyticsEvents.meta}->>'step', '-')`,
+        hits: sql<number>`count(*)::int`,
+      })
+      .from(analyticsEvents)
+      .where(
+        and(
+          gte(analyticsEvents.createdAt, since),
+          sql`${analyticsEvents.name} in ('export_fail','upload_fail')`,
+        ),
+      )
+      .groupBy(analyticsEvents.name, sql`${analyticsEvents.meta}->>'code'`, sql`${analyticsEvents.meta}->>'step'`)
+      .orderBy(sql`count(*) desc`)
+      .limit(limit);
     return rows;
   },
 };
