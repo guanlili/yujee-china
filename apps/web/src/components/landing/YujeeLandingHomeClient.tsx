@@ -652,7 +652,12 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
             <div className="hero-samples relative mx-auto mt-12 max-w-5xl px-5 md:mt-16 md:px-8">
               <div className="mb-3 flex items-baseline justify-between gap-4">
                 <p className="text-sm font-semibold text-[var(--fg-2)]">{c.heroSamplesTitle}</p>
-                <Link href={`/${locale}/examples`} className="shrink-0 text-sm text-[var(--muted)] transition hover:text-[var(--fg)]">
+                {/* 移动端把热区撑到 44px:19px 高的文字链接在手机上几乎点不中。
+                    -my-3 抵消 padding,桌面布局不受影响。 */}
+                <Link
+                  href={`/${locale}/examples`}
+                  className="-my-3 inline-flex min-h-[44px] shrink-0 items-center py-3 text-sm text-[var(--muted)] transition hover:text-[var(--fg)] md:my-0 md:min-h-0 md:py-0"
+                >
                   {c.heroSamplesMore} →
                 </Link>
               </div>
