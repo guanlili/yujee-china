@@ -8,6 +8,7 @@ import { userRepo, type UsersView } from '@/db/repos/user-repo';
 import { albumRepo } from '@/db/repos/album-repo';
 import { agentJobRepo } from '@/db/repos/agent-job-repo';
 import { creditLedgerRepo } from '@/db/repos/credit-ledger-repo';
+import { analyticsRepo } from '@/db/repos/analytics-repo';
 import { creditService } from '@/services/credit/credit-service';
 import { zombieSweeper } from '@/services/job/zombie-sweeper';
 import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
@@ -312,6 +313,56 @@ export const adminService = {
         purchased30d: creditsPurchased30d,
         // settle deltas are negative; report consumption as a positive number
         consumed30d: -creditsSettled30d,
+      },
+    };
+  },
+
+  // 产品行为看板(2026-11-10):埋点数据的读出方。
+  //
+  // 口径三条,写在代码里免得下一个人重算:
+  //  1. 漏斗用「独立主体」而不是次数 —— 一个人反复导出不该让转化率虚高。
+  //  2. 导出成功率 = export_ok / export_start(次数口径)。云端上传失败单独列,
+  //     因为它发生时用户已经拿到文件,不算「导出失败」。
+  //  3. 天数窗口按自然日从服务器当前时间往回推,不做时区换算 —— 管理员看趋势
+  //     够用,精确到小时的需求留给 SQL。
+  async getProductInsights(days: number, now: Date = new Date()) {
+    const windowDays = [7, 30, 90].includes(days) ? days : 7;
+    const since = new Date(now.getTime() - windowDays * DAY_MS);
+
+    const [byName, subjects, exportOutcomes, uploads, errors, daily, duration] = await Promise.all([
+      analyticsRepo.countByNameSince(since),
+      analyticsRepo.distinctSubjectsByNameSince(since),
+      analyticsRepo.exportOutcomesSince(since),
+      analyticsRepo.uploadTotalsSince(since),
+      analyticsRepo.errorTopSince(since, 10),
+      analyticsRepo.dailyCountsSince(since),
+      analyticsRepo.durationPercentilesSince('export_ok', since),
+    ]);
+
+    const successRate =
+      exportOutcomes.starts > 0 ? Math.round((exportOutcomes.oks / exportOutcomes.starts) * 100) : null;
+
+    return {
+      windowDays,
+      byName,
+      funnel: {
+        landingVisitors: subjects.landing_view ?? 0,
+        bookStarters: subjects.book_start ?? 0,
+        exporters: subjects.export_ok ?? 0,
+        buyers: subjects.checkout_click ?? 0,
+      },
+      export: {
+        ...exportOutcomes,
+        successRate,
+        p50: duration.p50,
+        p95: duration.p95,
+      },
+      upload: uploads,
+      errors,
+      daily,
+      totals: {
+        events: Object.values(byName).reduce((sum, n) => sum + n, 0),
+        errors: byName.client_error ?? 0,
       },
     };
   },
