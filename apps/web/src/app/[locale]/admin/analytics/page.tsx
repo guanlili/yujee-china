@@ -212,7 +212,7 @@ export default async function AdminAnalyticsPage({
                 style={{ minWidth: 2 }}
                 title={`${row.day} · ${p.trendLanding} ${row.values.landing_view ?? 0} · ${p.trendExport} ${row.values.export_ok ?? 0} · ${p.trendErrors} ${row.values.client_error ?? 0}`}
               >
-                <div className="flex-1 bg-[var(--muted)]/40" style={h('landing_view')} />
+                <div className="flex-1 bg-[var(--muted)]" style={h('landing_view')} />
                 <div className="flex-1 bg-[var(--ink)]" style={h('export_ok')} />
                 <div className="flex-1 bg-red-600" style={h('client_error')} />
               </div>
