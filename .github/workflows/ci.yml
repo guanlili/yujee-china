@@ -123,8 +123,31 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # = docs:check + sitemap:check + templates:check + contracts/web tsc
+      # = sitemap:check + contracts/web tsc + pi/design-agent tsc
+      # docs:check 已拆成独立 job(见下)—— 它 gate 不了部署
       - run: pnpm typecheck
+
+  # 文档时效闸门,与代码闸门分开跑,也**不进 deploy 的 needs**(2026-11)。
+  # 原因:squash 合并后 checked-at 指向的分支提交不在 main 历史里,这个检查
+  # 在同一次合并里必然先红一次 —— 必须先合并、才拿到 squash hash,天生两跳。
+  # 拿它 gate 部署,红的就是部署本身,而且没人能从"部署失败"看出是文档过期。
+  # 它仍然会红:该补 docs PR 时照补,只是不再把代码拦在门外。
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # docs:check 按提交历史比对 doc-scope 的 checked-at,浅克隆会误报
+          fetch-depth: 0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm docs:check
 
   engine:
     runs-on: ubuntu-24.04
