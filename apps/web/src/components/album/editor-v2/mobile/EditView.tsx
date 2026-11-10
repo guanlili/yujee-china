@@ -44,7 +44,7 @@ import {
 } from '@/lib/photo/filter-state';
 
 /** 图片工具栏的高度与离图的间距 —— 用来判断挂图下方还是翻到上方(与 CSS 保持一致)。 */
-const IMG_BAR_H = 40;
+const IMG_BAR_H = 44;
 const IMG_BAR_GAP = 8;
 import type { ComputedProbe, SelRect } from './page-edit';
 import { clampImagePos, dragToImagePos, type ImagePosValue } from '../image-edit-util';

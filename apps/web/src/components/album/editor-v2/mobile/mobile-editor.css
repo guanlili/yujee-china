@@ -302,7 +302,8 @@
 /* 图片工具栏:贴着选中框的一小条,只有换图/复位/删除。缩放平移走手势,不占这里的位置。
    z-index 要压过 .msel(2),否则选中框的描边会盖在按钮上;它自己要能点,所以
    pointer-events 必须是 auto —— .msel 是 none,别跟着抄。
-   高度与 EditView 的 IMG_BAR_H 保持一致(那边靠它算挂上方还是下方)。 */
+   高度与 EditView 的 IMG_BAR_H 保持一致(那边靠它算挂上方还是下方)。
+   44px 是触控下限:条内按钮撑满是 40,原来整条只有 40 高,换图/删除在手机上偏窄。 */
 .mobile-editor .mimg-bar {
   position: absolute;
   z-index: 3;
@@ -311,7 +312,7 @@
   /* 保留四个操作的完整宽度;极窄屏时把外框限制在画布内并横向滚动。 */
   width: max-content;
   max-width: calc(100% - 16px);
-  height: 40px;
+  height: 44px;
   display: flex;
   align-items: stretch;
   overflow-x: auto;
@@ -334,6 +335,7 @@
 
 .mobile-editor .mimg-btn {
   flex: 0 0 auto;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -350,6 +352,13 @@
 }
 
 .mobile-editor .mimg-btn:active { background: var(--surface-2, rgba(0, 0, 0, 0.05)); }
+/* 伪元素把热区补满整条 44px(按钮自身 36),视觉尺寸不变。
+   纵向 -4 由条内 padding 吃掉,不再往外溢出;横向 -2 只补到相邻按钮的 gap 处。 */
+.mobile-editor .mimg-btn::after {
+  content: '';
+  position: absolute;
+  inset: -4px -2px;
+}
 .mobile-editor .mimg-btn[data-danger='1'] { color: #c44; }
 .mobile-editor .mimg-ic { width: 15px; height: 15px; flex-shrink: 0; }
 
@@ -919,7 +928,7 @@
 }
 
 .mobile-modal-host .mes-reset {
-  height: 38px;
+  height: 44px;
   padding: 0 18px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
