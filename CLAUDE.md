@@ -205,7 +205,13 @@ Postgres + Cloudflare R2
 不是「已改写」。
 
 `pnpm docs:check` 会校验这件事:覆盖路径自 `checked-at` 以来有新提交、而 `checked-at`
-没跟上,就报错。它已挂进 `pnpm typecheck`。不要靠自觉,靠这个脚本。
+没跟上,就报错。不要靠自觉,靠这个脚本。
+
+**它在 CI 里是独立 job `docs`,不进 `deploy` 的 `needs`(2026-11-11)。** 原因:
+squash 合并后 `checked-at` 指向的分支提交不在 main 历史里,这个检查在同一次合并里
+必然先红一次 —— 必须先合并、才拿到 squash hash,天生两跳。拿它 gate 部署,红的是
+部署本身,而"部署失败"看不出是文档过期。它仍然会红,该补 `checked-at` 时照补;
+被移出 `pnpm typecheck` 后,本地跑 `pnpm typecheck` 也不再用它挡 tsc。
 
 机器改动的依赖清单不进 doc-scope:`pnpm-lock.yaml`(机器生成)、以及 dependabot
 会直接编辑地板的 manifest(`engine/pyproject.toml`、`apps/web/package.json`)。

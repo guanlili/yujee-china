@@ -27,7 +27,7 @@
     "docs:check": "node scripts/docs-check.mjs",
     "sitemap:check": "pnpm --filter @yujee/web sitemap:check",
     "test": "pnpm -r --no-bail test",
-    "typecheck": "pnpm docs:check && pnpm sitemap:check && pnpm --filter @yujee/contracts typecheck && pnpm --filter @yujee/web typecheck && pnpm --filter @earendil-works/pi-ai build && pnpm --filter @earendil-works/pi-agent-core build && pnpm --filter @earendil-works/pi-ai typecheck && pnpm --filter @earendil-works/pi-agent-core typecheck && pnpm --filter @smalldog/design-agent typecheck"
+    "typecheck": "pnpm sitemap:check && pnpm --filter @yujee/contracts typecheck && pnpm --filter @yujee/web typecheck && pnpm --filter @earendil-works/pi-ai build && pnpm --filter @earendil-works/pi-agent-core build && pnpm --filter @earendil-works/pi-ai typecheck && pnpm --filter @earendil-works/pi-agent-core typecheck && pnpm --filter @smalldog/design-agent typecheck"
   },
   "devDependencies": {
     "tsx": "^4.23.15",
