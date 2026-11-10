@@ -109,6 +109,8 @@ test('web keeps the v1 infrastructure route whitelist used by V3', () => {
     'apps/web/src/app/api/v1/albums/[uuid]/pdf/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/route.ts',
     'apps/web/src/app/api/v1/albums/route.ts',
+    // 资源出口代理(私有桶 → 302 预签名):图片/PDF 全靠它,属基础设施路由
+    'apps/web/src/app/api/v1/assets/[...key]/route.ts',
     // 协同编辑邀请(2026-08-27):
     // edit-link 创建/旋转(owner),token redeem(真实账号),draft-changes 增量轮询。
     // 成员授权与页面 OCC 都复用 v1/v3 现有路由,不另起 v4。

@@ -172,7 +172,8 @@ test('cover thumbnail confirmation is bound to an immutable album revision', asy
       r2Key: replacement.r2Key,
       coverRevision: replacement.coverRevision,
     });
-    assert.equal(coverThumbnailUrl, `https://cdn.yujeeai.test/${replacement.r2Key}`);
+    // 桶是私有的:对外地址是应用代理,不是存储直链(见 lib/r2/asset-url.ts)
+    assert.equal(coverThumbnailUrl, `/api/v1/assets/${replacement.r2Key}`);
 
     const finalAlbum = await albumRepo.findById(album.id);
     assert.equal(finalAlbum?.coverThumbnailR2Key, replacement.r2Key);
@@ -294,7 +295,7 @@ test('pdf export (collab rework §3.2): editor exports into album namespace; str
 
     // editor confirm 自己的 key:相册指针挪到最新一份。
     const confirmed = await albumService.confirmPdf(editor.id, album.id, editorSign.r2Key);
-    assert.equal(confirmed.pdfUrl, `https://cdn.yujeeai.test/${editorSign.r2Key}`);
+    assert.equal(confirmed.pdfUrl, `/api/v1/assets/${editorSign.r2Key}`);
 
     // 伪造 key(别的 album 段 / 非 UUID 尾段)被拒。
     await assert.rejects(
