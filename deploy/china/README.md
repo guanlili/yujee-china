@@ -23,7 +23,7 @@
    ├─ yujee-agent-1      容器内网 :8001（生成主链路；调试口 127.0.0.1:8002）
    ├─ yujee-clip-1       CLIP+isnet（调试口 127.0.0.1:8001）
    ├─ yujee-postgres-1   PG16 + 自签 TLS（web 的 db 客户端对非 localhost 强制 ssl require）
-   └─ root crontab        3 个 cron + PG 每日备份（4 行已装）
+   └─ ubuntu crontab      5 个定时任务（PG 每日备份 4:00 / 埋点表 90 天清理 4:30 / 资源巡检 / speakup×2）
 编排：compose.single.yml（五服务同一网络，agent→clip / web→agent 全走容器名）
 ```
 
