@@ -11,6 +11,7 @@ import {
   signPhotoSnapshotUpload,
   type SnapshotEntry,
 } from '@/lib/album/photo-snapshot-client';
+import { track } from '@/lib/analytics/track-client';
 
 // Browser-side client for the generation endpoints. Owns the two billing-aware
 // flows BILL-1 defines so /create (UI-2) and /my-albums + /album (UI-4) consume
@@ -315,6 +316,7 @@ async function backupGenerationPreviews(
   }
 
   const uploaded: SnapshotEntry[] = [];
+  const failed: SnapshotEntry[] = [];
   const queue = [...entries];
   const worker = async () => {
     for (;;) {
@@ -327,10 +329,19 @@ async function backupGenerationPreviews(
         uploaded.push(entry);
       } catch {
         // Partial cloud backup is still useful; confirm only successful PUTs.
+        failed.push(entry);
       }
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, entries.length) }, worker));
+  // 埋点:这张表的意义就在于「备份到底成不成」——以前只能靠用户说「卡住了」。
+  // 失败张数单独记一条,避免部分成功把成功率算成 100%。
+  if (uploaded.length > 0) {
+    track('upload_ok', { albumId, value: uploaded.length, result: 'ok', meta: { photos: entries.length } });
+  }
+  if (failed.length > 0) {
+    track('upload_fail', { albumId, value: failed.length, result: 'fail', meta: { photos: entries.length, step: 'put' } });
+  }
   if (uploaded.length > 0) await confirmPhotoSnapshot(albumId, uploaded);
 }
 

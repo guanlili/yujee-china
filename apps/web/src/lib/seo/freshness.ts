@@ -105,7 +105,9 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     updatedAt: '2026-11-10',
     // 2026-11-10(第二轮): 首页底部第二处「全部示例」补 44px 触控热区。
     // 只改可点范围,文案与图像没动 —— 只推进 reviewedSources。
-    reviewedSources: '5db889786da4',
+    // 2026-11-10(第三轮): 首页挂产品埋点(landing_view 曝光)。纯观测代码,
+    // 读者看到的一个字、一张图都没变 —— 仍只推进 reviewedSources。
+    reviewedSources: '0a42bb40a83b',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback

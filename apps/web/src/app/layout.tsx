@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { getRequestLocale } from '@/lib/i18n/server-locale';
 import { SITE_URL } from '@/lib/seo/site';
+import { AnalyticsBoot } from '@/components/app/AnalyticsBoot';
 import '@/styles/globals.css';
 
 // Display / heading typeface (DESIGN.md §3) was loaded via next/font/google
@@ -54,7 +55,11 @@ if (typeof crypto !== 'undefined' && !crypto.randomUUID) {
           }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        {/* 前端错误上报的监听器:全站挂一次,只上报脱敏后的消息(见 lib/analytics) */}
+        <AnalyticsBoot />
+        {children}
+      </body>
     </html>
   );
 }

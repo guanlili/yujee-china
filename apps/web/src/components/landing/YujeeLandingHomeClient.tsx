@@ -10,6 +10,7 @@ import { ADDON_PACKS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config
 import { SOCIAL_LINKS, SUPPORT_EMAIL } from '@/config/social';
 import { IcpBeianLink } from '@/components/marketing/IcpBeianLink';
 import { useSession } from '@/lib/auth/client';
+import { track } from '@/lib/analytics/track-client';
 import { getMessages } from '@/lib/i18n/messages';
 import { pick } from '@/lib/i18n/pick';
 import { LOCALE_LABELS, localizePath, locales, type Locale } from '@/lib/i18n/routing';
@@ -333,6 +334,12 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
+
+  // 首页曝光:漏斗第一格。放在这里是因为它只随真实挂载触发一次,
+  // 不依赖路由事件(路由事件会把刷新、站内跳转都算成"新访客")。
+  useEffect(() => {
+    track('landing_view', { meta: { locale } });
+  }, [locale]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
