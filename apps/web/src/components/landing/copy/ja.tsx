@@ -11,7 +11,7 @@ export const ja: Copy = {
   login: 'ログイン',
   menu: 'メニュー',
   createTitle: 'ばらばらの写真を、読めて、手にとれて、ずっと残せるフォトブックに',
-  createSub: 'ログイン不要、無料で使えます。',
+  createSub: 'ログイン不要、まずは無料でサンプル本を。',
   sampleCta: '作例を見る',
   makeSame: '同じように作る',
   samplesNote: 'こちらのサンプルは、Yujee チームが製品の機能をお見せするためにつくったデモです（内容はフィクションで、お客様の作品ではありません）。',

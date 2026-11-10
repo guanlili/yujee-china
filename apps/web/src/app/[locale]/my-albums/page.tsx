@@ -367,7 +367,9 @@ export default function MyAlbumsPage({ params }: { params: Promise<{ locale: Loc
   // 后端 DELETE 也按 Creator/治理 seam 兜底 403)。
   const deleteButton = (a: Album) =>
     a.role === 'editor' ? null : (
-    <div className="absolute right-2 top-2 z-[5] flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+    // 触摸设备没有 hover:移动端常显删除入口,并把 26px 视觉圆点的点击热区
+    // 用 p-[9px] 撑到 44px(26+9*2),否则手机上既看不见也点不准。桌面仍走 hover。
+    <div className="absolute right-1 top-1 z-[5] flex gap-1 p-[9px] opacity-100 transition-opacity md:right-2 md:top-2 md:p-0 md:opacity-0 md:group-hover:opacity-100">
       <button
         type="button"
         title={t.myAlbums.delete}
