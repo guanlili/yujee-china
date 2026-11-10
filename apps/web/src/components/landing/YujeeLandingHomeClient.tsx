@@ -696,8 +696,13 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
                 (Creem 审核 2026-07-15 据此判定 social proof:账上零客户,页面却在展示
                 六本"成书")。标注后它是产品演示,不再是社交证明。放网格下方,小字。 */}
             <p className="mt-4 text-center text-xs text-[var(--meta)]">{c.samplesNote}</p>
+            {/* 与样书区顶部那处「全部示例」同一入口,同一条 44px 规则:
+                移动端 min-h-[44px]+py-3 撑热区,-my-3 抵掉布局位移,桌面还原。 */}
             <p className="mt-3 text-center">
-              <Link href={`/${locale}/examples`} className="text-sm font-semibold text-[var(--fg)] underline-offset-4 hover:underline">
+              <Link
+                href={`/${locale}/examples`}
+                className="-my-3 inline-flex min-h-[44px] items-center py-3 text-sm font-semibold text-[var(--fg)] underline-offset-4 hover:underline md:my-0 md:min-h-0 md:py-0"
+              >
                 {c.heroSamplesMore} →
               </Link>
             </p>
