@@ -191,9 +191,19 @@ Postgres + Cloudflare R2
 - 临时脚本、验证产物、trace 文件用完即删。
 - 长期说明放在仓根 README、对应 app README,或靠近模块的小 README。
 - **所有改动一律走 PR 合并 main 上线**(2026-10-26 起,agent 侧改动同样遵守):
-  merge 触发六门 CI + 自动部署(见 deploy/china/README「自动部署」);分支保护
+  merge 触发 CI 全门 + 自动部署(见 deploy/china/README「自动部署」);分支保护
   enforce admins,直推被拒。生产服务器上的跟踪文件不要 rsync 直改 —— 自动部署
   的 reset --hard 会覆盖;应急/回滚通道见 deploy README。
+- **闸门对账**:分支保护的 required checks 必须覆盖 `ci.yml` 里的每一个**判定
+  代码能否上线**的 job。目前 required = audit / typecheck / engine / web /
+  packages / chapters / secrets-scan(2026-11-11 补上 secrets-scan —— 它一直在
+  跑但不在 required,等于密钥扫描红了也能合并)。
+  `docs` / `deploy` / `notify` 故意不在 required:`docs` 见下节,`deploy`/`notify`
+  只在 main push 上跑。
+  **新增一个 gate job 时,`ci.yml` 与分支保护两处都要改**,改完读回核对:
+  `gh api repos/<owner>/<repo>/branches/main/protection -q '.required_status_checks.checks[] | "\(.context) \(.app_id)"'`
+  —— `app_id` 必须是 15368(GitHub Actions),写成裸 `context` 会让那条 check
+  永远匹配不上、PR 永久卡死。
 - 推送/PR/合并前先跑相应验证;没验证不要声称通过。
 
 ## 文档时效规则
