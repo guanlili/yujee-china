@@ -78,4 +78,135 @@ export const analyticsRepo = {
     const res = await db.delete(analyticsEvents).where(sql`${analyticsEvents.createdAt} < ${cutoff}`);
     return Number((res as unknown as { rowCount?: number }).rowCount ?? 0);
   },
+
+  // ===== 后台看板用:一次查询拿一整类数据,避免页面里发 N 条 SQL =====
+
+  // 各事件条数(分母/总量)
+  async countByNameSince(since: Date): Promise<Record<string, number>> {
+    const rows = await db
+      .select({ name: analyticsEvents.name, n: sql<number>`count(*)::int` })
+      .from(analyticsEvents)
+      .where(gte(analyticsEvents.createdAt, since))
+      .groupBy(analyticsEvents.name);
+    return Object.fromEntries(rows.map((r) => [r.name, r.n]));
+  },
+
+  // 各事件的独立主体数(漏斗用「人」而不是「次」,否则一个人反复导出会虚高)
+  async distinctSubjectsByNameSince(since: Date): Promise<Record<string, number>> {
+    const rows = await db
+      .select({
+        name: analyticsEvents.name,
+        n: sql<number>`count(distinct ${analyticsEvents.subjectId})::int`,
+      })
+      .from(analyticsEvents)
+      .where(gte(analyticsEvents.createdAt, since))
+      .groupBy(analyticsEvents.name);
+    return Object.fromEntries(rows.map((r) => [r.name, r.n]));
+  },
+
+  // 导出四态:开始次数、成功次数、渲染失败、云端上传失败。
+  // 渲染失败与上传失败必须分开 —— 后者用户已经拿到文件(见 events.ts 的口径说明)。
+  async exportOutcomesSince(since: Date): Promise<{
+    starts: number;
+    oks: number;
+    renderFails: number;
+    uploadFails: number;
+  }> {
+    const rows = await db
+      .select({
+        name: analyticsEvents.name,
+        step: sql<string | null>`${analyticsEvents.meta}->>'step'`,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(analyticsEvents)
+      .where(and(gte(analyticsEvents.createdAt, since), sql`${analyticsEvents.name} in ('export_start','export_ok','export_fail')`))
+      .groupBy(analyticsEvents.name, sql`${analyticsEvents.meta}->>'step'`);
+
+    let starts = 0;
+    let oks = 0;
+    let renderFails = 0;
+    let uploadFails = 0;
+    for (const row of rows) {
+      if (row.name === 'export_start') starts += row.n;
+      else if (row.name === 'export_ok') oks += row.n;
+      else if (row.name === 'export_fail' && row.step === 'render') renderFails += row.n;
+      else if (row.name === 'export_fail' && row.step === 'upload') uploadFails += row.n;
+    }
+    return { starts, oks, renderFails, uploadFails };
+  },
+
+  // 云端备份:批次与张数(evalue 在 upload_* 事件里就是张数)
+  async uploadTotalsSince(since: Date): Promise<{
+    okBatches: number;
+    okPhotos: number;
+    failBatches: number;
+    failPhotos: number;
+  }> {
+    const rows = await db
+      .select({
+        name: analyticsEvents.name,
+        batches: sql<number>`count(*)::int`,
+        photos: sql<number>`coalesce(sum(${analyticsEvents.value}), 0)::int`,
+      })
+      .from(analyticsEvents)
+      .where(and(gte(analyticsEvents.createdAt, since), sql`${analyticsEvents.name} in ('upload_ok','upload_fail')`))
+      .groupBy(analyticsEvents.name);
+
+    let okBatches = 0;
+    let okPhotos = 0;
+    let failBatches = 0;
+    let failPhotos = 0;
+    for (const row of rows) {
+      if (row.name === 'upload_ok') {
+        okBatches = row.batches;
+        okPhotos = row.photos;
+      } else {
+        failBatches = row.batches;
+        failPhotos = row.photos;
+      }
+    }
+    return { okBatches, okPhotos, failBatches, failPhotos };
+  },
+
+  // 前端错误 Top:按脱敏后的 message 聚合,给出次数与最近一次时间
+  async errorTopSince(
+    since: Date,
+    limit = 10,
+  ): Promise<Array<{ message: string; kind: string; hits: number; lastAt: Date }>> {
+    const rows = await db
+      .select({
+        message: sql<string>`coalesce(${analyticsEvents.meta}->>'message', '(no message)')`,
+        kind: sql<string>`coalesce(${analyticsEvents.meta}->>'kind', 'error')`,
+        hits: sql<number>`count(*)::int`,
+        lastAt: sql<Date>`max(${analyticsEvents.createdAt})`,
+      })
+      .from(analyticsEvents)
+      .where(and(eq(analyticsEvents.name, 'client_error'), gte(analyticsEvents.createdAt, since)))
+      .groupBy(sql`1, 2`)
+      .orderBy(sql`3 desc`)
+      .limit(limit);
+    return rows;
+  },
+
+  // 按天趋势:返回 [{day, name, n}],由调用方决定怎么画
+  async dailyCountsSince(
+    since: Date,
+  ): Promise<Array<{ day: string; name: string; n: number }>> {
+    const rows = await db
+      .select({
+        day: sql<string>`to_char(date_trunc('day', ${analyticsEvents.createdAt}), 'YYYY-MM-DD')`,
+        name: analyticsEvents.name,
+        n: sql<number>`count(*)::int`,
+      })
+      .from(analyticsEvents)
+      .where(
+        and(
+          gte(analyticsEvents.createdAt, since),
+          sql`${analyticsEvents.name} in ('landing_view','export_ok','client_error')`,
+        ),
+      )
+      .groupBy(sql`1, 2`)
+      .orderBy(sql`1`);
+    return rows;
+  },
 };
