@@ -238,5 +238,5 @@ dependabot 不会推 `checked-at`,盖住它们会把对应生态的每个依赖 
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json
-checked-at: 9e309161050bfc9f9a3945e801a2e3304493306f
+checked-at: 30cda27c
 -->
