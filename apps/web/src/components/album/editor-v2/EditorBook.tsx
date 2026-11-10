@@ -126,6 +126,7 @@ import {
 } from './export-retry-util';
 import { withDeadline } from '@/lib/net/fetch-timeout';
 import { logger } from '@/lib/log/logger';
+import { track } from '@/lib/analytics/track-client';
 import { loadAlbumFonts, loadFontSubset, useAlbumFonts } from '@/lib/font/album-font-loader';
 import { isCjkFontId, type CjkFontId } from '@/services/font/font-manifest';
 import { FONT_CATALOG } from '@yujee/contracts/render';
@@ -4737,6 +4738,11 @@ export function EditorBook({
       exportBleedMm = bleedMm;
       didLocalDownload = false;
       closeExportMenu();
+      // 埋点:导出是用户最在意的一步,也是唯一「耗时以分钟计」的路径。
+      // 只记页数与耗时,不记书名/页面内容(见 lib/analytics/events.ts 的隐私口径)。
+      const exportStartedAt = Date.now();
+      const exportPages = pagesState.length;
+      track('export_start', { albumId, meta: { pages: exportPages, bleed: bleedMm, mode: 'desktop' } });
       showExportProgress(aT('正在导出 PDF…', 'Exporting PDF…'));
       try {
         // render 段:出 PDF + 本地下载,自动重试 ≤3 次。连续 3 次失败才是真·导出失败 →
@@ -4748,11 +4754,24 @@ export function EditorBook({
             onExhausted: (lastError, attempts) => {
               logger.error(buildExportFailureLog(lastError, { albumId, attempts }), 'pdf export failed');
               openExportFailModal();
+              track('export_fail', {
+                albumId,
+                value: Date.now() - exportStartedAt,
+                result: 'fail',
+                meta: { pages: exportPages, attempt: attempts, step: 'render' },
+              });
             },
           },
         );
         // render 失败:安抚框已弹,到此为止(用户确实没拿到文件)。
         if (!rendered.ok || blob == null) return;
+        // 用户拿到 PDF 这一刻就算成功(云端上传是旁路,另记一条)。
+        track('export_ok', {
+          albumId,
+          value: Date.now() - exportStartedAt,
+          result: 'ok',
+          meta: { pages: exportPages, bleed: bleedMm, mode: 'desktop' },
+        });
 
         // 用户已拿到 PDF = 导出成功。云端上传解耦:失败不弹失败框,重试耗尽亮横幅。
         // 飞书推送仍后置(§4.5d);游客只本地下载;出血版跳过上传(保持标准版)。
@@ -4766,6 +4785,13 @@ export function EditorBook({
               );
               const card = byId('pdfCloudAlert');
               if (card) card.style.display = '';
+              // 本地已成功、云端没上去:单独记,别和「用户没拿到文件」混成一个失败率
+              track('export_fail', {
+                albumId,
+                value: Date.now() - exportStartedAt,
+                result: 'fail',
+                meta: { pages: exportPages, attempt: attempts, step: 'upload' },
+              });
             },
           });
         }
