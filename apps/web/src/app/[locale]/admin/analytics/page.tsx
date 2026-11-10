@@ -31,9 +31,10 @@ export default async function AdminAnalyticsPage({
   const pct = (v: number | null) => (v === null ? '—' : `${v}%`);
 
   // 漏斗条:以第一个能取到数的环节为 100%,后面的按比例缩 —— 一眼看出掉在哪一格
+  // wired=false 的那格会在标签后注明「尚未接入」,不拿 0 冒充「没人用」。
   const funnelStages = [
     { key: 'funnelLanding', value: product.funnel.landingVisitors, wired: true },
-    { key: 'funnelBook', value: product.funnel.bookStarters, wired: false },
+    { key: 'funnelBook', value: product.funnel.bookStarters, wired: true },
     { key: 'funnelExport', value: product.funnel.exporters, wired: true },
     { key: 'funnelCheckout', value: product.funnel.buyers, wired: true },
   ] as const;
