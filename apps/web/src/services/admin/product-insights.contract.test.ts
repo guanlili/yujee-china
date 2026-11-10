@@ -55,6 +55,20 @@ test('the page reads through the service, never the database directly', () => {
   assert.doesNotMatch(page, /sql`/, 'no raw SQL in the page');
 });
 
+test('every funnel stage has a real emit point in the app', () => {
+  // 白名单里有事件名不等于有人在发 —— book_start 曾经就是「定义了但没人调用」,
+  // 漏斗第二格只能标「尚未接入」。这条测试盯的是这个回归。
+  const sources = [
+    repoFile('components/landing/YujeeLandingHomeClient.tsx'),
+    repoFile('components/landing/HeroComposer.tsx'),
+    repoFile('components/album/editor-v2/EditorBook.tsx'),
+    repoFile('components/album/editor-v2/CreditsPurchaseModal.tsx'),
+  ].join('\n');
+  for (const event of ['landing_view', 'book_start', 'export_ok', 'checkout_click']) {
+    assert.match(sources, new RegExp(`track\\('${event}'`), `${event} has no emit point`);
+  }
+});
+
 test('every locale carries the same product-dashboard keys', () => {
   const locales = ['en', 'zh', 'es', 'ja', 'fr'];
   const base = Object.keys(message('en').admin.analytics.product).sort();
