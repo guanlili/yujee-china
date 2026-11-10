@@ -22,6 +22,7 @@ import { draftExpirySweeper } from '@/services/job/draft-expiry-sweeper';
 import { agentClient } from '@/lib/agent/agent-client';
 import { designAgentClient } from '@/lib/agent/design-agent-client';
 import { r2 } from '@/lib/r2/r2-client';
+import { normalizeAssetUrl } from '@/lib/r2/asset-url';
 import { ERRORS } from '@/lib/api/error-codes';
 import { getTemplate } from '@yujee/contracts/templates';
 import { transientPagePhotoRefs } from './page-photo-refs';
@@ -134,8 +135,9 @@ export function toMyAlbumListItem(
     role,
     photoCount: a.photoCount,
     pageCount: a.pageCount,
-    pdfUrl: a.pdfUrl,
-    coverThumbnailUrl: a.coverThumbnailUrl ?? null,
+    // 落库的可能是历史裸存储地址(桶私有,直链一律 403 + ORB 拦截),读侧统一归一到代理路径。
+    pdfUrl: normalizeAssetUrl(a.pdfUrl),
+    coverThumbnailUrl: normalizeAssetUrl(a.coverThumbnailUrl ?? null),
     photoFilter: a.photoFilter ?? null,
     createdAt: a.createdAt,
     coverPage,
@@ -583,8 +585,9 @@ export const albumService = {
         layoutJson: album.layoutJson ?? null,
         photoCount: album.photoCount,
         pageCount: album.pageCount,
-        pdfUrl: album.pdfUrl,
-        coverThumbnailUrl: album.coverThumbnailUrl,
+        // 同 list 投影:老数据是裸存储地址,读侧归一化。
+        pdfUrl: normalizeAssetUrl(album.pdfUrl),
+        coverThumbnailUrl: normalizeAssetUrl(album.coverThumbnailUrl),
         // 手动备份过的照片的服务器压缩图 URL(photoId→url)。resolveImage 在本地原图
         // 缺失时回退到它,让换设备/清缓存后内页不空白。未备份 → {}。
         // key 固定 **owner**(album.userId)命名空间(collab rework §3.3:备份执行者

@@ -11,6 +11,7 @@ import {
 } from './photo-snapshot-util';
 import { effectiveRenderVersion } from '@/lib/photo/filter-state';
 import { r2 } from '@/lib/r2/r2-client';
+import { normalizeAssetUrl } from '@/lib/r2/asset-url';
 import { ERRORS } from '@/lib/api/error-codes';
 import { resolveRole } from '@/services/collaboration/collaboration-service';
 import { COLLAB_ERRORS } from '@/services/collaboration/collaboration-errors';
@@ -147,6 +148,19 @@ export const shareService = {
   async getPublicShare(token: string): Promise<PublicShare | null> {
     const share = await albumShareRepo.findByToken(token);
     if (!share) return null;
-    return { title: share.title, snapshot: share.snapshotJson };
+    // 读侧统一改写图片地址:历史行里冻结的是存储裸链(桶私有 → 403 + ORB 拦截),
+    // 新建的行是代理路径但缺 token。这里一律改写成「代理路径 + ?t=<token>」——
+    // token 本身就是访问凭证,分享页免登也能看图,且不用给老分享写数据迁移。
+    const photoUrls = Object.fromEntries(
+      Object.entries(share.snapshotJson.photoUrls ?? {}).map(([photoId, raw]) => {
+        const proxy = normalizeAssetUrl(raw);
+        if (!proxy) return [photoId, raw];
+        return [photoId, `${proxy}${proxy.includes('?') ? '&' : '?'}t=${token}`];
+      }),
+    );
+    return {
+      title: share.title,
+      snapshot: { ...share.snapshotJson, photoUrls },
+    };
   },
 };
