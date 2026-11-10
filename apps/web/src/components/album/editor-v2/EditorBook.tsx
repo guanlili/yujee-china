@@ -4752,13 +4752,22 @@ export function EditorBook({
           async () => { const b = await renderPdfOnce(bleedMm); downloadPdfOnce(b); blob = b; },
           {
             onExhausted: (lastError, attempts) => {
-              logger.error(buildExportFailureLog(lastError, { albumId, attempts }), 'pdf export failed');
+              // 同一份归类结果既进日志也进埋点:两处各算一次迟早会漂移,
+              // 而 classifyExportFailure 本身是封闭词表,天然满足隐私红线。
+              const failure = buildExportFailureLog(lastError, { albumId, attempts });
+              logger.error(failure, 'pdf export failed');
               openExportFailModal();
               track('export_fail', {
                 albumId,
                 value: Date.now() - exportStartedAt,
                 result: 'fail',
-                meta: { pages: exportPages, attempt: attempts, step: 'render' },
+                meta: {
+                  pages: exportPages,
+                  attempt: attempts,
+                  step: 'render',
+                  code: failure.failureCode,
+                  ...(failure.status !== undefined ? { status: failure.status } : {}),
+                },
               });
             },
           },
@@ -4779,18 +4788,26 @@ export function EditorBook({
         if (bleedMm === 0) {
           await runExportWithRetry(() => uploadPdfOnce(blob!), {
             onExhausted: (lastError, attempts) => {
+              const failure = buildExportFailureLog(lastError, { albumId, attempts });
               logger.error(
-                buildExportFailureLog(lastError, { albumId, attempts }),
+                failure,
                 'pdf cloud upload failed (local download already succeeded)',
               );
               const card = byId('pdfCloudAlert');
               if (card) card.style.display = '';
-              // 本地已成功、云端没上去:单独记,别和「用户没拿到文件」混成一个失败率
+              // 本地已成功、云端没上去:单独记,别和「用户没拿到文件」混成一个失败率。
+              // code 同样取封闭词表 —— 上传失败最常见的就是桶策略/签名过期,看一眼就知道。
               track('export_fail', {
                 albumId,
                 value: Date.now() - exportStartedAt,
                 result: 'fail',
-                meta: { pages: exportPages, attempt: attempts, step: 'upload' },
+                meta: {
+                  pages: exportPages,
+                  attempt: attempts,
+                  step: 'upload',
+                  code: failure.failureCode,
+                  ...(failure.status !== undefined ? { status: failure.status } : {}),
+                },
               });
             },
           });
@@ -5006,6 +5023,13 @@ export function EditorBook({
           throw new Error('share failed');
         }
         const url = `${window.location.origin}/${locale}/s/${token}`;
+        // 埋点:分享是这本相册唯一「能离开本机」的出口 —— 有人点、真的生成出链接,
+        // 才说明这本书值得给别人看。和 album_open 一起,就构成「分享 → 有人打开」的闭环。
+        track('share_click', {
+          albumId,
+          result: 'ok',
+          meta: { photos: detail.album.photoCount, step: 'create' },
+        });
         byId('shareLinkConfirm')?.classList.add('hidden');
         byId('shareLinkResult')?.classList.remove('hidden');
         if (input) input.value = url;
@@ -5016,6 +5040,13 @@ export function EditorBook({
           if (hint) hint.textContent = aT('链接已生成,请手动复制', 'Link ready — copy it manually');
         }
       } catch {
+        // 分享失败要单独记:照片没备份齐 / 服务端拒绝,用户看到的是同一句「生成失败」,
+        // 但看板上分得开才知道该先修哪一段。
+        track('share_click', {
+          albumId,
+          result: 'fail',
+          meta: { photos: detail.album.photoCount, step: 'create', code: 'share_failed' },
+        });
         if (hint) hint.textContent = aT('生成失败,请重试', 'Failed to generate, please retry');
         if (btn) btn.disabled = false;
       }
