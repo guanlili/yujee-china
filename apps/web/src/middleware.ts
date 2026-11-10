@@ -97,11 +97,38 @@ function hasSessionCookie(request: NextRequest): boolean {
   );
 }
 
+// ── CSP(2026-11-10)────────────────────────────────────────────
+// 此前只有 HSTS/nosniff/X-Frame-Options/Referrer-Policy,没有 CSP。策略刻意
+// 不带 default-src 与 frame-src:字体自托管(/fonts/*.woff2),图片与 PDF 走
+// 同源 /api/v1/assets → 302 到 cos.ap-beijing.myqcloud.com,编辑器占位图用
+// images.unsplash.com,邮件与生图全在服务端调用(NEXT_PUBLIC_ 里没有浏览器端
+// 外部基址)。编辑器截图用 html2canvas 把页面克隆进同源 srcdoc iframe,设了
+// frame-src 会连带限制它,所以不设。
+// 这版收掉的是:被第三方页面嵌入(frame-ancestors,与 X-Frame-Options 双保险)、
+// <base> 劫持、表单外发、object/embed 注入、外部脚本只能来自本站。
+// 仍未收紧的是 script-src 的 'unsafe-inline'/'unsafe-eval':Next 15 的内联启动
+// 脚本需要前者;强 CSP 要走 nonce,而本仓库先让 next-intl middleware 产出
+// response,拿不到改写请求头注入 nonce 的时机。
+const CONTENT_SECURITY_POLICY = [
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https://*.myqcloud.com https://images.unsplash.com",
+  "font-src 'self' data:",
+  "connect-src 'self' https://*.myqcloud.com",
+  "media-src 'self' blob: data:",
+  "worker-src 'self' blob:",
+].join('; ');
+
 function withSecurityHeaders(response: NextResponse): NextResponse {
   response.headers.set('X-Frame-Options', 'DENY');
   response.headers.set('X-Content-Type-Options', 'nosniff');
   response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  response.headers.set('Content-Security-Policy', CONTENT_SECURITY_POLICY);
   return response;
 }
 

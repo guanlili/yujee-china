@@ -103,7 +103,9 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     // 原来是读者可见的语义变化,updatedAt 落在这天。
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
     updatedAt: '2026-11-10',
-    reviewedSources: '4208b154906e',
+    // 2026-11-10(第二轮): 首页底部第二处「全部示例」补 44px 触控热区。
+    // 只改可点范围,文案与图像没动 —— 只推进 reviewedSources。
+    reviewedSources: '5db889786da4',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback
