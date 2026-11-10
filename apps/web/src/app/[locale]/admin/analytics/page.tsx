@@ -114,7 +114,7 @@ export default async function AdminAnalyticsPage({
                 <dt>
                   {p[stage.key]}
                   {stage.wired ? null : (
-                    <span className="ml-2 text-xs text-[var(--muted)]">({p.notWired})</span>
+                    <span className="ml-1 text-xs text-[var(--muted)]">· {p.notWired}</span>
                   )}
                 </dt>
                 <dd className="tabular-nums">
@@ -200,26 +200,21 @@ export default async function AdminAnalyticsPage({
         <p className={label}>{p.trend}</p>
         <div className="flex items-end gap-[2px] h-28">
           {trend.map((row) => {
-            const total = trendSeries.reduce((sum, name) => sum + (row.values[name] ?? 0), 0);
+            const h = (name: (typeof trendSeries)[number]) => {
+              const value = row.values[name] ?? 0;
+              // 列必须撑满 112px,否则百分比高度算出来是 0,整块趋势图会空白
+              return { height: `${Math.round((value / trendPeak) * 100)}%`, minHeight: value > 0 ? 2 : 0 };
+            };
             return (
               <div
                 key={row.day}
-                className="flex-1 flex items-end gap-[1px] group relative"
+                className="flex-1 h-full flex items-end gap-[1px] group relative"
                 style={{ minWidth: 2 }}
                 title={`${row.day} · ${p.trendLanding} ${row.values.landing_view ?? 0} · ${p.trendExport} ${row.values.export_ok ?? 0} · ${p.trendErrors} ${row.values.client_error ?? 0}`}
               >
-                <div
-                  className="flex-1 bg-[var(--muted)]/40"
-                  style={{ height: `${Math.round(((row.values.landing_view ?? 0) / trendPeak) * 100)}%`, minHeight: total > 0 ? 2 : 0 }}
-                />
-                <div
-                  className="flex-1 bg-[var(--ink)]"
-                  style={{ height: `${Math.round(((row.values.export_ok ?? 0) / trendPeak) * 100)}%` }}
-                />
-                <div
-                  className="flex-1 bg-red-600"
-                  style={{ height: `${Math.round(((row.values.client_error ?? 0) / trendPeak) * 100)}%` }}
-                />
+                <div className="flex-1 bg-[var(--muted)]/40" style={h('landing_view')} />
+                <div className="flex-1 bg-[var(--ink)]" style={h('export_ok')} />
+                <div className="flex-1 bg-red-600" style={h('client_error')} />
               </div>
             );
           })}
