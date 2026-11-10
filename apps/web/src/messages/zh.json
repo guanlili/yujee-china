@@ -503,7 +503,21 @@
         "errorKind": "类型",
         "errorMessage": "消息",
         "errorLast": "最近一次",
-        "noData": "该时间窗口暂无数据"
+        "noData": "该时间窗口暂无数据",
+        "kpiRetention": "回访率",
+        "kpiShares": "分享链接",
+        "compareHint": "与上一个同长度窗口相比(按人去重)",
+        "albumShare": "相册与分享",
+        "openOwner": "自己打开",
+        "openVisitor": "访客打开",
+        "shareOk": "分享成功",
+        "shareFail": "分享失败",
+        "shareToOpen": "分享后有访客打开",
+        "failureCodes": "失败原因",
+        "failEvent": "事件",
+        "failStep": "环节",
+        "failCode": "原因码",
+        "failHits": "次数"
       }
     },
     "settings": {

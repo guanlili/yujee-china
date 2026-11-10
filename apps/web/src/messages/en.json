@@ -503,7 +503,21 @@
         "errorKind": "Kind",
         "errorMessage": "Message",
         "errorLast": "Last seen",
-        "noData": "No data in this window yet"
+        "noData": "No data in this window yet",
+        "kpiRetention": "Returning visitors",
+        "kpiShares": "Shares",
+        "compareHint": "vs the previous window of the same length (deduped by visitor)",
+        "albumShare": "Albums & sharing",
+        "openOwner": "Opened by owner",
+        "openVisitor": "Opened by visitor",
+        "shareOk": "Share created",
+        "shareFail": "Share failed",
+        "shareToOpen": "Shares that got opened",
+        "failureCodes": "Failure reasons",
+        "failEvent": "Event",
+        "failStep": "Step",
+        "failCode": "Reason code",
+        "failHits": "Hits"
       }
     },
     "settings": {

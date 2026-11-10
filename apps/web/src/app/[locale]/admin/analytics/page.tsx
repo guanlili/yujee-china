@@ -29,14 +29,23 @@ export default async function AdminAnalyticsPage({
   const p = t.product;
   const n = (v: number) => v.toLocaleString(locale);
   const pct = (v: number | null) => (v === null ? '—' : `${v}%`);
+  // 环比:null 表示上期没有数据 —— 显示 "—" 而不是 0%,也不涂颜色。
+  // 一个凭空出现的 "+100%" 比"没有上期"更误导人。
+  const deltaText = (v: number | null) => (v === null ? '—' : `${v > 0 ? '+' : ''}${v}%`);
+  const deltaColor = (v: number | null) =>
+    v === null || v === 0
+      ? 'text-[var(--muted)]'
+      : v > 0
+        ? 'text-emerald-600'
+        : 'text-red-600';
 
   // 漏斗条:以第一个能取到数的环节为 100%,后面的按比例缩 —— 一眼看出掉在哪一格
   // wired=false 的那格会在标签后注明「尚未接入」,不拿 0 冒充「没人用」。
   const funnelStages = [
-    { key: 'funnelLanding', value: product.funnel.landingVisitors, wired: true },
-    { key: 'funnelBook', value: product.funnel.bookStarters, wired: true },
-    { key: 'funnelExport', value: product.funnel.exporters, wired: true },
-    { key: 'funnelCheckout', value: product.funnel.buyers, wired: true },
+    { key: 'funnelLanding', value: product.funnel.landingVisitors, delta: product.compare.landingVisitors, wired: true },
+    { key: 'funnelBook', value: product.funnel.bookStarters, delta: product.compare.bookStarters, wired: true },
+    { key: 'funnelExport', value: product.funnel.exporters, delta: product.compare.exporters, wired: true },
+    { key: 'funnelCheckout', value: product.funnel.buyers, delta: null, wired: true },
   ] as const;
   const funnelTop = Math.max(1, ...funnelStages.map((s) => s.value));
 
@@ -88,12 +97,14 @@ export default async function AdminAnalyticsPage({
       {/* ─── 产品行为:埋点读出来的四个数 ─── */}
       <section className="mb-3">
         <p className={label}>{p.title}</p>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { k: p.kpiVisitors, v: n(product.funnel.landingVisitors) },
             { k: p.kpiBookStarters, v: n(product.funnel.bookStarters) },
             { k: p.kpiExports, v: n(product.export.oks) },
             { k: p.kpiSuccess, v: pct(product.export.successRate) },
+            { k: p.kpiRetention, v: pct(product.retention.rate) },
+            { k: p.kpiShares, v: n(product.albumShare.shareOk) },
             { k: p.kpiUploadFails, v: n(product.upload.failPhotos) },
             { k: p.kpiErrors, v: n(product.totals.errors) },
           ].map((item) => (
@@ -124,6 +135,12 @@ export default async function AdminAnalyticsPage({
                     {product.funnel.landingVisitors > 0
                       ? `${Math.round((stage.value / product.funnel.landingVisitors) * 100)}%`
                       : '—'}
+                  </span>
+                  <span
+                    className={`ml-2 text-xs tabular-nums ${deltaColor(stage.delta)}`}
+                    title={p.compareHint}
+                  >
+                    {deltaText(stage.delta)}
                   </span>
                 </dd>
               </div>
@@ -195,6 +212,63 @@ export default async function AdminAnalyticsPage({
           </dl>
         </section>
       </div>
+
+      {/* ─── 相册与分享:这本书有没有人看、有没有被分享出去 ───
+          这是产品唯一的外部增长路径,所以单独一块:owner 打开 = 自己在用,
+          visitor 打开 = 分享真的生效了,两者混在一起就看不出增长。 */}
+      <section className={`${card} mb-3`}>
+        <p className={label}>{p.albumShare}</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          {[
+            { k: p.openOwner, v: n(product.albumShare.openOwner) },
+            { k: p.openVisitor, v: n(product.albumShare.openVisitor) },
+            { k: p.shareOk, v: n(product.albumShare.shareOk) },
+            { k: p.shareFail, v: n(product.albumShare.shareFail) },
+          ].map((item) => (
+            <div key={item.k}>
+              <p className="text-[var(--muted)]">{item.k}</p>
+              <p className="serif text-2xl mt-1">{item.v}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-[var(--muted)] mt-4">
+          {p.shareToOpen}:{' '}
+          {product.albumShare.shareOk > 0
+            ? `${Math.round((product.albumShare.openVisitor / product.albumShare.shareOk) * 100)}%`
+            : '—'}
+        </p>
+      </section>
+
+      {/* ─── 失败原因 Top ───
+          第 5 项之前这张表只能是"失败了几次";现在 code 来自封闭词表,
+          一眼就能看出是陈旧构建包、canvas 超限,还是桶策略拒绝。 */}
+      <section className={`${card} mb-3`}>
+        <p className={label}>{p.failureCodes}</p>
+        {product.failures.length === 0 ? (
+          <p className="text-sm text-[var(--muted)]">{p.noData}</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs uppercase tracking-widest text-[var(--muted)] text-left">
+                <th className="py-2 font-normal">{p.failEvent}</th>
+                <th className="py-2 font-normal">{p.failStep}</th>
+                <th className="py-2 font-normal">{p.failCode}</th>
+                <th className="py-2 font-normal text-right">{p.failHits}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {product.failures.map((row) => (
+                <tr key={`${row.name}:${row.step}:${row.code}`} className="border-t border-[var(--border)]">
+                  <td className="py-2 pr-3 font-mono text-xs">{row.name}</td>
+                  <td className="py-2 pr-3 text-[var(--muted)]">{row.step}</td>
+                  <td className="py-2 pr-3 font-mono text-xs">{row.code}</td>
+                  <td className="py-2 text-right tabular-nums">{n(row.hits)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
 
       {/* ─── 每日趋势:每天三根柱,同比例缩放 ─── */}
       <section className={`${card} mb-3`}>

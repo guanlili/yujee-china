@@ -503,7 +503,21 @@
         "errorKind": "Type",
         "errorMessage": "Message",
         "errorLast": "Dernière fois",
-        "noData": "Aucune donnée sur cette période"
+        "noData": "Aucune donnée sur cette période",
+        "kpiRetention": "Visiteurs récurrents",
+        "kpiShares": "Liens partagés",
+        "compareHint": "par rapport à la fenêtre précédente de même durée (dédupliqué par visiteur)",
+        "albumShare": "Albums et partages",
+        "openOwner": "Ouverts par le propriétaire",
+        "openVisitor": "Ouverts par un visiteur",
+        "shareOk": "Partage créé",
+        "shareFail": "Échec du partage",
+        "shareToOpen": "Partages ouverts",
+        "failureCodes": "Motifs d'échec",
+        "failEvent": "Événement",
+        "failStep": "Étape",
+        "failCode": "Code du motif",
+        "failHits": "Occurrences"
       }
     },
     "settings": {
