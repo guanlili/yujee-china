@@ -73,15 +73,25 @@ jobs:
           install -m 600 /dev/stdin ~/.ssh/id_ed25519 <<< "$DEPLOY_SSH_KEY"
           echo "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
           SSH="ssh -i ~/.ssh/id_ed25519 -o ServerAliveInterval=30 ubuntu@$DEPLOY_HOST"
-          remote=$($SSH "git -C /home/ubuntu/yujee-clip rev-parse HEAD")
-          running=$($SSH "docker inspect -f '{{.State.Running}}' yujee-web-1")
+          # 2026-11-11 第一版直接比字符串,CI 里判失败,而服务器上 HEAD 其实是对的 ——
+          # 远端 shell 的 .bashrc 会往 stdout 掺东西。改成从输出里正则抠出 40 位 hash,
+          # 拿不到就明确判空失败,不再让「掺了别的东西」伪装成「部署没生效」。
+          raw_remote=$($SSH "git -C /home/ubuntu/yujee-clip rev-parse HEAD" 2>/dev/null)
+          remote=$(printf '%s' "$raw_remote" | tr -d '\r' | grep -Eo '[0-9a-f]{40}' | tail -1)
+          raw_running=$($SSH "docker inspect -f '{{.State.Running}}' yujee-web-1" 2>/dev/null)
+          running=$(printf '%s' "$raw_running" | tr -d '\r' | grep -Eo 'true|false' | tail -1)
           code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 https://outman.press/zh)
+          echo "raw ssh stdout   = $(printf '%s' "$raw_remote" | head -c 200 | tr '\n' ' ')"
           echo "remote HEAD      = $remote"
           echo "expected (push)  = $GITHUB_SHA"
           echo "container running= $running"
           echo "public /zh       = $code"
+          if [ -z "$remote" ]; then
+            echo "::error::没能从远端 git 输出里解析出提交哈希(输出见上一行)"
+            exit 1
+          fi
           if [ "$remote" != "$GITHUB_SHA" ]; then
-            echo "::error::远端 git HEAD 未跟上本次提交,部署没有真正生效"
+            echo "::error::远端 git HEAD($remote) != 本次提交($GITHUB_SHA),部署没有真正生效"
             exit 1
           fi
           if [ "$running" != "true" ]; then
