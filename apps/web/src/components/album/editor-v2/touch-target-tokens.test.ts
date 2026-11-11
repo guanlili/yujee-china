@@ -9,6 +9,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
+import postcss from 'postcss';
+
 const css = (p: string) => readFileSync(new URL(p, import.meta.url), 'utf8');
 const tokens = css('./editor-tokens.css');
 const port = css('./editor-port.css');
@@ -73,5 +75,22 @@ describe('兜底:新增的 30×30 控件必须带热区', () => {
       0,
       `这些 30×30 控件没有补热区:${missing.map((m) => m.sel).join(' | ')}`,
     );
+  });
+});
+
+describe('CSS 语法(注释区)', () => {
+  // 2026-11-11 在同一天踩了两次,两次都只在 next build 的 CSS 编译阶段才暴露,
+  // 单测与 typecheck 全绿:
+  //   ① 在注释里写了裸花括号,被上面那个按 {} 切规则块的扫描吃掉后续 token;
+  //   ② 把两段注释拼坏,`*/` 之后漏了 `/*`,一大段裸中文露在规则外 → "Missed semicolon"。
+  // 所以这里用真正的解析器兜一道,而不是只靠人眼看。
+  it('三份编辑器 CSS 都必须能被 postcss 解析', () => {
+    for (const file of ['./editor-tokens.css', './editor-port.css', './mobile/mobile-editor.css']) {
+      const text = css(file);
+      assert.doesNotThrow(
+        () => postcss.parse(text),
+        `${file} 解析失败:注释可能未闭合或规则块被拼坏(next build 会直接失败)`,
+      );
+    }
   });
 });
