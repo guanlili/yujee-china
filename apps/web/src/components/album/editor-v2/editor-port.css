@@ -370,7 +370,9 @@
   border:1px solid var(--border-soft); border-radius:9999px;
   padding:4px; box-shadow:0 2px 12px rgba(0,0,0,0.08);
 }
-.editor-port .zoom-btn{ width:25px; height:25px; border-radius:9999px; display:flex; align-items:center; justify-content:center; color:var(--fg-2); cursor:pointer; transition:background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease); }
+.editor-port .zoom-btn{ position:relative; width:25px; height:25px; border-radius:9999px; display:flex; align-items:center; justify-content:center; color:var(--fg-2); cursor:pointer; transition:background var(--motion-fast) var(--ease), color var(--motion-fast) var(--ease); }
+/* 触控热区补满 --touch-min(视觉尺寸不变,见 editor-tokens.css)。 */
+.editor-port .zoom-btn::after{ content:''; position:absolute; inset:-10px; border-radius:9999px; }
 .editor-port .zoom-btn:hover{ background:var(--bg); color:var(--fg); }
 .editor-port .zoom-btn.active{ background:var(--bg); color:var(--fg); }
 /* 视图切换按钮略大于翻页控件。 */
@@ -1001,10 +1003,12 @@
 
 .editor-port .collage-card{ width:min(440px,100%); position:relative; }
 .editor-port .collage-close{
-  position:absolute; top:16px; right:16px; width:30px; height:30px;
+  position:absolute; top:16px; right:16px; width:var(--ctl-close); height:var(--ctl-close);
   display:flex; align-items:center; justify-content:center; border-radius:50%;
   color:var(--muted); cursor:pointer; transition: background var(--motion-fast) var(--ease);
 }
+/* 30×30 的视觉 + 44×44 的触控(补热区,不改视觉)。关闭按钮点不中=关不掉弹窗。 */
+.editor-port .collage-close::after{ content:''; position:absolute; inset:var(--touch-spread); border-radius:50%; }
 .editor-port .collage-close svg{ width:18px; height:18px; }
 .editor-port .collage-close:hover{ background:var(--bg); color:var(--fg); }
 .editor-port .collage-density{ display:flex; gap:14px; justify-content:center; }
@@ -1143,9 +1147,11 @@
 .editor-port .board-bg-sheet{ width:min(440px,100%); }
 .editor-port .board-bg-head{ display:flex; align-items:center; justify-content:space-between; padding:18px 20px 6px; }
 .editor-port .board-bg-close{
-  width:30px; height:30px; display:flex; align-items:center; justify-content:center;
+  position:relative;
+  width:var(--ctl-close); height:var(--ctl-close); display:flex; align-items:center; justify-content:center;
   border-radius:50%; color:var(--muted); cursor:pointer; transition: background var(--motion-fast) var(--ease);
 }
+.editor-port .board-bg-close::after{ content:''; position:absolute; inset:var(--touch-spread); border-radius:50%; }
 .editor-port .board-bg-close svg{ width:18px; height:18px; }
 .editor-port .board-bg-close:hover{ background:var(--bg); color:var(--fg); }
 /* body 可滚:颜色区(内联 Fill 取色器)较高时,图片/上传要能滚到、不被 modal-card 的 overflow:hidden 裁掉。 */
@@ -2748,9 +2754,11 @@
   color:var(--muted); font-size:12px; font-weight:600;
 }
 .editor-port .filter-bar-close{
-  flex:0 0 auto; margin-left:auto; width:30px; height:30px;
+  position:relative; flex:0 0 auto; margin-left:auto; width:var(--ctl-close); height:var(--ctl-close);
   border-radius:999px; font-size:20px; color:var(--muted);
 }
+/* 30×30 视觉 + 44×44 触控。漏掉这条时,窄屏上「关掉滤镜条」几乎点不中。 */
+.editor-port .filter-bar-close::after{ content:''; position:absolute; inset:var(--touch-spread); border-radius:999px; }
 .editor-port .filter-bar-close:hover{ background:var(--bg); color:var(--fg); }
 .editor-port .filter-scope-switch{
   display:flex; gap:3px; padding:3px;
