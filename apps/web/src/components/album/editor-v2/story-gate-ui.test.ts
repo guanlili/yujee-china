@@ -13,7 +13,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 // editor-coordinator.ts as the bridge. These structural guards don't care which of
 // the four a symbol lives in, so a request for the editor source returns the four
 // merged; assertions still hit and doesNotMatch guards hold across all four.
-const EDITOR_SOURCES = ['EditorPort.tsx', 'EditorBook.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts'];
+// 2026-11-11(阶段 2a):导出状态/门闩搬到了 export-state / export-ui,一并纳入
+// 合并源码 —— 否则这些结构守卫会因为「字符串不在老文件里」而误报。
+const EDITOR_SOURCES = ['EditorPort.tsx', 'EditorBook.tsx', 'ChatPanel.tsx', 'editor-coordinator.ts', 'export-state.ts', 'export-ui.ts'];
 function source(file: string): string {
   if (file === 'EditorPort.tsx') {
     return EDITOR_SOURCES.map((f) => readFileSync(join(here, f), 'utf8')).join('\n\n');
@@ -128,12 +130,12 @@ test('imperative export guard locks unknown progress and exempts non-V3 authorin
   // dropped that user-facing message and the imperative guard now silently returns.
   assert.match(
     src,
-    /let exportGateLocked = isAuthoring;/,
+    /createExportState\(isAuthoring\)/,
     'exportPdf must block unknown authoring progress via the mirrored export gate lock',
   );
   assert.match(
     src,
-    /if \(exportGateLocked\) return;/,
+    /if \(exportState\.gateLocked\) return;/,
     'exportPdf must defend against a locked authoring export before rendering a client PDF',
   );
   assert.doesNotMatch(
