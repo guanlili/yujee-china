@@ -62,6 +62,8 @@ test('every funnel stage has a real emit point in the app', () => {
     repoFile('components/landing/YujeeLandingHomeClient.tsx'),
     repoFile('components/landing/HeroComposer.tsx'),
     repoFile('components/album/editor-v2/EditorBook.tsx'),
+    // 阶段 2b:export_ok / export_fail 的 emit 点搬到了 export-actions。
+    repoFile('components/album/editor-v2/export-actions.ts'),
     repoFile('components/album/editor-v2/CreditsPurchaseModal.tsx'),
   ].join('\n');
   for (const event of ['landing_view', 'book_start', 'export_ok', 'checkout_click']) {

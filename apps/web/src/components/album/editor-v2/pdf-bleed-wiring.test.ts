@@ -21,6 +21,8 @@ const editor = read('EditorPort.tsx') + '\n\n' + read('EditorBook.tsx')
 // 2026-11-11(阶段 2a):版式弹窗与导出状态搬到了 export-ui / export-state,
 // 下面三条断言跟着指向新文件 —— 断言内容不变。
 const exportUiSrc = read('export-ui.ts')
+// 阶段 2b:exportPdf 主路径搬到了 export-actions。
+const exportActionsSrc = read('export-actions.ts')
 const editorBook = read('EditorBook.tsx');
 const exportModals = read('mobile', 'modals', 'ExportModals.tsx');
 const useExport = read('mobile', 'use-export.ts');
@@ -87,8 +89,8 @@ test('出血版只本地下载,不上传云端;文件名带 -bleed3mm 后缀', (
     '移动端游客/出血版都跳过 uploadPdf(与 main 游客模式合流)',
   );
   assert.match(useExport, /-bleed3mm\.pdf/);
-  assert.match(editor, /if \(bleedMm === 0\) \{/, '桌面出血版跳过 uploadPdfOnce');
-  assert.match(editor, /exportState\.bleedMm \? '-bleed3mm' : ''/);
+  assert.match(exportActionsSrc, /if \(bleedMm === 0\) \{/, '桌面出血版跳过 uploadPdfOnce');
+  assert.match(exportActionsSrc, /state\.bleedMm \? '-bleed3mm' : ''/);
 });
 
 test('桌面 export-gate 罩住菜单里的 PDF 入口', () => {

@@ -56,7 +56,8 @@ test('网络截止工具是单一实现,导出侧的 fetchWithTimeout 从它 re-
 test('两端整本渲染都有 watchdog,超时按 render 失败处理', () => {
   const raster = source('lib/pdf/render-raster.ts');
   assert.match(raster, /RASTER_PDF_RENDER_DEADLINE_MS/, '渲染兜底期限必须集中定义');
-  for (const file of ['components/album/editor-v2/EditorBook.tsx', 'components/album/editor-v2/mobile/use-export.ts']) {
+  // 阶段 2b:桌面端整本渲染搬到了 export-actions,但它仍必须整段包在 watchdog 里。
+  for (const file of ['components/album/editor-v2/export-actions.ts', 'components/album/editor-v2/mobile/use-export.ts']) {
     const src = source(file);
     assert.match(src, /RASTER_PDF_RENDER_DEADLINE_MS/, `${file} 必须引用渲染期限`);
     assert.match(

@@ -21,14 +21,22 @@ test('① HeroComposer:无 session 时 signIn.anonymous 静默建号,不再直�
 });
 
 test('② EditorPort:保存/分享挂 guestGate,PDF 云上传对游客短路', () => {
-  const src = read('./EditorPort.tsx') + '\n\n' + read('./EditorBook.tsx');
+  // 2026-11-11(阶段 2b):exportPdf 搬到了 export-actions,一并纳入合并源。
+  const src = read('./EditorPort.tsx') + '\n\n' + read('./EditorBook.tsx') + '\n\n' + read('./export-actions.ts');
   assert.match(src, /function guestGate\(\)/);
   assert.match(src, /async function backupPhotos\(\) \{\n      if \(guestGate\(\)\) return;/);
   assert.match(src, /function shareLink\(\) \{\n      if \(guestGate\(\)\) return;/);
   // 游客先 return,再轮到出血版跳过判断(2026-08-03 出血设计与游客门禁合流)。
   assert.match(
     src,
-    /if \(viewerAnonRef\.current === true\) return;[\s\S]{0,200}if \(bleedMm === 0\) \{\n\s+await runExportWithRetry\(\(\) => uploadPdfOnce/,
+    /if \(deps\.isAnon\(\)\) return;[\s\S]{0,200}if \(bleedMm === 0\) \{\n\s+await runExportWithRetry\(\(\) => uploadPdfOnce/,
+  );
+  // 短路判断走注入的 isAnon,而它的真值语义必须仍是「明确是游客」——
+  // 只在 export-actions 断言 deps.isAnon() 会漏掉注入端被改成恒 false 的情况。
+  assert.match(
+    src,
+    /isAnon: \(\) => viewerAnonRef\.current === true/,
+    'isAnon 注入必须保持 viewerAnonRef.current === true 的严格语义(不能用 !== false 之类的宽松判断)',
   );
 });
 
@@ -45,7 +53,8 @@ test('②③ 移动端:use-export 支持 skipCloudUpload,MobileEditorRoot 游客
 });
 
 test('③ 桌面 EditorPort:原图对账补传只对真实账号开', () => {
-  const src = read('./EditorPort.tsx') + '\n\n' + read('./EditorBook.tsx');
+  // 2026-11-11(阶段 2b):exportPdf 搬到了 export-actions,一并纳入合并源。
+  const src = read('./EditorPort.tsx') + '\n\n' + read('./EditorBook.tsx') + '\n\n' + read('./export-actions.ts');
   assert.match(src, /enabled: Boolean\(viewerSession\.user && !viewerSession\.user\.isAnonymous\)/);
   assert.doesNotMatch(src, /usePhotoOriginalSync\(\{[^}]*enabled: true/s);
 });
