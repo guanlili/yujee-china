@@ -100,8 +100,13 @@ jobs:
         env:
           WEBHOOK: ${{ secrets.FEISHU_ALERT_WEBHOOK }}
         run: |
-          if [ -z "$WEBHOOK" ]; then exit 0; fi
-          curl -fsS -m 10 -X POST "$WEBHOOK" \
+          if [ -z "$WEBHOOK" ]; then
+            echo "::warning::FEISHU_ALERT_WEBHOOK 未配置 —— 本次部署失败告警没有发出"
+            exit 0
+          fi
+          # 飞书 webhook 的「送达」不等于 HTTP 200:业务失败(body.code != 0)同样返回 200。
+          # 只看 curl 退出码会把「消息根本没进群」记成成功,所以这里判 body.code。
+          resp=$(curl -sS -m 10 -X POST "$WEBHOOK" \
             -H "Content-Type: application/json" \
             -d "{
               \"msg_type\": \"interactive\",
@@ -111,7 +116,13 @@ jobs:
                   {\"tag\":\"div\",\"text\":{\"tag\":\"lark_md\",\"content\":\"提交: ${GITHUB_SHA::8}\n线上可能仍在跑旧版本,请检查 GitHub Actions 日志\n<at id=all></at>\"}}
                 ]
               }
-            }" || true
+            }") || { echo "::error::飞书 webhook 请求失败(curl 返回非 0)"; exit 1; }
+          code=$(printf '%s' "$resp" | jq -r '.code // .StatusCode // -1' 2>/dev/null || echo -1)
+          if [ "$code" != "0" ]; then
+            echo "::error::飞书告警未送达 (code=$code): $resp"
+            exit 1
+          fi
+          echo "飞书告警已送达 (code=0)"
 
   # 依赖漏洞门:只读 lockfile,秒级完成。2026-10-26 迁移批(drizzle 0.45 / zod 4 /
   # vite 8.1.6 override)清掉全部 high 后,收紧到 --audit-level=high —— 今后新 high
@@ -348,8 +359,10 @@ jobs:
 
   # 2026-10-30:CI 任一门失败或部署失败时发飞书群告警(替代 uptime-kuma push)。
   # 飞书 webhook 存 Secrets(FEISHU_ALERT_WEBHOOK),发交互卡片(红色标题)。
+  # 2026-11-11: needs 补 docs —— 此前 docs 单独失败时 notify 根本不会触发,
+  # 而 docs 又不在 deploy 的 needs 里,于是「文档过期」既不上线拦、也不告警。
   notify:
-    needs: [audit, typecheck, engine, web, packages, chapters]
+    needs: [audit, typecheck, engine, web, packages, chapters, docs]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -358,8 +371,13 @@ jobs:
         env:
           WEBHOOK: ${{ secrets.FEISHU_ALERT_WEBHOOK }}
         run: |
-          if [ -z "$WEBHOOK" ]; then exit 0; fi
-          curl -fsS -m 10 -X POST "$WEBHOOK" \
+          if [ -z "$WEBHOOK" ]; then
+            echo "::warning::FEISHU_ALERT_WEBHOOK 未配置 —— 本次 CI 失败告警没有发出"
+            exit 0
+          fi
+          # 飞书 webhook 的「送达」不等于 HTTP 200:业务失败(body.code != 0)同样返回 200。
+          # 只看 curl 退出码会把「消息根本没进群」记成成功,所以这里判 body.code。
+          resp=$(curl -sS -m 10 -X POST "$WEBHOOK" \
             -H "Content-Type: application/json" \
             -d "{
               \"msg_type\": \"interactive\",
@@ -369,4 +387,10 @@ jobs:
                   {\"tag\":\"div\",\"text\":{\"tag\":\"lark_md\",\"content\":\"提交: ${GITHUB_SHA::8}\n触发: ${{ github.actor }}\n<at id=all></at>\"}}
                 ]
               }
-            }" || true
+            }") || { echo "::error::飞书 webhook 请求失败(curl 返回非 0)"; exit 1; }
+          code=$(printf '%s' "$resp" | jq -r '.code // .StatusCode // -1' 2>/dev/null || echo -1)
+          if [ "$code" != "0" ]; then
+            echo "::error::飞书告警未送达 (code=$code): $resp"
+            exit 1
+          fi
+          echo "飞书告警已送达 (code=0)"
