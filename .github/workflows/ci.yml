@@ -57,6 +57,42 @@ jobs:
           install -m 600 /dev/stdin ~/.ssh/id_ed25519 <<< "$DEPLOY_SSH_KEY"
           echo "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
           ssh -i ~/.ssh/id_ed25519 -o ServerAliveInterval=30 ubuntu@$DEPLOY_HOST deploy
+      # 2026-11-11:ssh deploy 返回 0 不等于新代码上线。2026-11-10 实测过 CI 全绿
+      # 而线上仍是旧版(deploy 卡在 in_progress 时页面读到的还是旧文案)。
+      # 判据用三个外部可观测事实,不相信上游退出码:
+      #   ① 远端 git HEAD == 本次提交  ② 容器在跑  ③ 公网主页 200
+      # 任一不满足 → 本 job 失败 → 下面那条 failure 告警自动发飞书。
+      - name: Verify deployed revision
+        timeout-minutes: 5
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          install -m 600 /dev/stdin ~/.ssh/id_ed25519 <<< "$DEPLOY_SSH_KEY"
+          echo "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
+          SSH="ssh -i ~/.ssh/id_ed25519 -o ServerAliveInterval=30 ubuntu@$DEPLOY_HOST"
+          remote=$($SSH "git -C /home/ubuntu/yujee-clip rev-parse HEAD")
+          running=$($SSH "docker inspect -f '{{.State.Running}}' yujee-web-1")
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 https://outman.press/zh)
+          echo "remote HEAD      = $remote"
+          echo "expected (push)  = $GITHUB_SHA"
+          echo "container running= $running"
+          echo "public /zh       = $code"
+          if [ "$remote" != "$GITHUB_SHA" ]; then
+            echo "::error::远端 git HEAD 未跟上本次提交,部署没有真正生效"
+            exit 1
+          fi
+          if [ "$running" != "true" ]; then
+            echo "::error::容器 yujee-web-1 未在运行"
+            exit 1
+          fi
+          if [ "$code" != "200" ]; then
+            echo "::error::线上 https://outman.press/zh 返回 $code"
+            exit 1
+          fi
+
       - name: Alert Feishu on deploy failure
         if: failure()
         env:
