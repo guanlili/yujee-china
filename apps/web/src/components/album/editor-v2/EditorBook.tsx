@@ -132,6 +132,7 @@ import { isCjkFontId, type CjkFontId } from '@/services/font/font-manifest';
 import { FONT_CATALOG } from '@yujee/contracts/render';
 import { EDITOR_FONTS, CJK_PREVIEW_SAMPLE, type EditorFont } from './editor-fonts';
 import { clamp01, hsvToRgb, rgbToHsv, hexToRgb, toHex, rgbToHex, hslToHex } from './color-util';
+import { createCanvasQuery, type CanvasCtx } from './editor-canvas-context';
 import { countSpreads, findPageByIndex } from './editor-canvas-ctx';
 import { loadRecentColors, saveRecentColor } from './color-recent';
 import {
@@ -271,9 +272,20 @@ export function EditorBook({
     if (!root) return;
 
     // ── scoped equivalents of document.* / body.* from the original script ──
-    const $ = (s: string) => root.querySelector(s) as HTMLElement | null;
-    const $$ = (s: string) => root.querySelectorAll(s);
-    const byId = (id: string) => root.querySelector('#' + CSS.escape(id)) as HTMLElement | null;
+    // 查询器搬到 editor-canvas-context(阶段 1):包装成 ctx 以便阶段 2 起把
+    // 242 个闭包函数按域搬出去。这里的解构保持同名,下面所有调用点零改动。
+    // $$scoped 的内联注释(为什么排掉 .pane-chat-col)一并搬过去了。
+    const q = createCanvasQuery(root);
+    const ctx: CanvasCtx = {
+      root,
+      bodyEl: root,
+      q,
+      i18n: chatI18n as Record<string, Record<string, string>>,
+      albumId: detail.album.id,
+      isAuthoring: mode === 'authoring',
+    };
+    const { $, $$, byId, $$scoped } = ctx.q;
+    const bodyEl = root; // original toggled body classes (overview-on / chat-collapsed / rail-collapsed); scoped to root here.
     // canvas 侧的 data-action 扫描:整棵 root 扫,只把对话栏子树排掉。
     //
     // 这里原本是一份手工维护的弹窗白名单(canvasScopes):新加弹窗漏补一行 = 弹窗里
@@ -293,9 +305,9 @@ export function EditorBook({
     //
     // 仍是挂载时一次性扫描,只绑当时已在 DOM 里的节点:运行时 createElement 出来的
     // 按钮(img-edit-gen 等)必须各自 addEventListener,别给它们写 data-action。
-    const $$scoped = (sel: string): Element[] =>
-      [...root.querySelectorAll(sel)].filter((el) => !el.closest('.pane-chat-col'));
-    const bodyEl = root; // original toggled body classes (overview-on / chat-collapsed / rail-collapsed); scoped to root here.
+    // ($$scoped 的实现随查询器搬到 editor-canvas-context(阶段 1);上面那段
+    //  「为什么排掉 .pane-chat-col」的归属说明保留在此,搬函数时连同语义一起带走。)
+    // bodyEl 已在上面随 ctx 声明。
 
     /* ─── i18n translations (verbatim; shared module dict) ─── */
     const i18n: Record<string, Record<string, string>> = chatI18n;
