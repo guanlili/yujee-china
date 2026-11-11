@@ -132,6 +132,7 @@ import { isCjkFontId, type CjkFontId } from '@/services/font/font-manifest';
 import { FONT_CATALOG } from '@yujee/contracts/render';
 import { EDITOR_FONTS, CJK_PREVIEW_SAMPLE, type EditorFont } from './editor-fonts';
 import { clamp01, hsvToRgb, rgbToHsv, hexToRgb, toHex, rgbToHex, hslToHex } from './color-util';
+import { countSpreads, findPageByIndex } from './editor-canvas-ctx';
 import { loadRecentColors, saveRecentColor } from './color-recent';
 import {
   applyPatchToPages,
@@ -523,7 +524,9 @@ export function EditorBook({
       // count (no remount); clamp the cursor so we never sit on a dropped spread.
       if (currentCh >= spreadCount()) currentCh = spreadCount() - 1;
     };
-    const spreadCount = () => Math.max(1, spreads.length);
+    // 阶段 1(#328):纯函数搬进 editor-canvas-ctx,这里保留一行同名包装,
+    // 调用点零改动 —— 拆分期间零行为变化优先于「形式好看」。
+    const spreadCount = () => countSpreads(spreads);
     // 一个跨页占的页。返回 kind='full' 时它是**一整张**双宽面(#303),铺满整个跨页,
     // 不能拆成左右两半;kind='pair' 才是左右各一半(null = 空白半页)。
     // 所有画面都必须先判 kind —— 早期把双宽当 [null,null] 处理会画出一个空白跨页。
@@ -549,7 +552,7 @@ export function EditorBook({
       return list.filter((p): p is EditorPage => p !== null);
     };
     function pageByIndex(idx: number): EditorPage | undefined {
-      return pagesState.find((p) => p.pageIndex === idx);
+      return findPageByIndex(pagesState, idx);
     }
     // 画布格/章节栏/上下文徽标共用的跨页标题:给「人话」页位而非 Spread 序号。
     // 封面 / 封底按页面类别判定;内页用展示层真实页码(封面/目录/封尾不计),
