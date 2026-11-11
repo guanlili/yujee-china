@@ -56,48 +56,40 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           install -m 600 /dev/stdin ~/.ssh/id_ed25519 <<< "$DEPLOY_SSH_KEY"
           echo "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
-          ssh -i ~/.ssh/id_ed25519 -o ServerAliveInterval=30 ubuntu@$DEPLOY_HOST deploy
+          set -o pipefail
+          ssh -i ~/.ssh/id_ed25519 -o ServerAliveInterval=30 ubuntu@$DEPLOY_HOST deploy | tee /tmp/deploy.out
       # 2026-11-11:ssh deploy 返回 0 不等于新代码上线。2026-11-10 实测过 CI 全绿
       # 而线上仍是旧版(deploy 卡在 in_progress 时页面读到的还是旧文案)。
-      # 判据用三个外部可观测事实,不相信上游退出码:
-      #   ① 远端 git HEAD == 本次提交  ② 容器在跑  ③ 公网主页 200
-      # 任一不满足 → 本 job 失败 → 下面那条 failure 告警自动发飞书。
+      #
+      # 判据只能是「部署脚本自己报出的版本」:脚本在 reset --hard 之后才打印
+      # `now at <short sha> <subject>`,那行出现即代表工作区真的切到了目标提交。
+      #
+      # 不能用 ssh 去查远端 HEAD —— CI 的 DEPLOY_SSH_KEY 在 authorized_keys 里带
+      # 强制命令,任何 ssh 都会再跑一遍部署,并把部署日志塞进 stdout(实测抓到的
+      # 「HEAD」其实是日志里的一个 image id)。所以这里只读 deploy 自己留下的输出,
+      # 加上一个不依赖 ssh 的外部事实:公网主页 200。
       - name: Verify deployed revision
         timeout-minutes: 5
-        env:
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          install -m 600 /dev/stdin ~/.ssh/id_ed25519 <<< "$DEPLOY_SSH_KEY"
-          echo "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
-          SSH="ssh -i ~/.ssh/id_ed25519 -o ServerAliveInterval=30 ubuntu@$DEPLOY_HOST"
-          # 2026-11-11 第一版直接比字符串,CI 里判失败,而服务器上 HEAD 其实是对的 ——
-          # 远端 shell 的 .bashrc 会往 stdout 掺东西。改成从输出里正则抠出 40 位 hash,
-          # 拿不到就明确判空失败,不再让「掺了别的东西」伪装成「部署没生效」。
-          raw_remote=$($SSH "git -C /home/ubuntu/yujee-clip rev-parse HEAD" 2>/dev/null)
-          remote=$(printf '%s' "$raw_remote" | tr -d '\r' | grep -Eo '[0-9a-f]{40}' | tail -1)
-          raw_running=$($SSH "docker inspect -f '{{.State.Running}}' yujee-web-1" 2>/dev/null)
-          running=$(printf '%s' "$raw_running" | tr -d '\r' | grep -Eo 'true|false' | tail -1)
+          short="${GITHUB_SHA:0:7}"
+          echo "expected short = $short"
+          if [ ! -f /tmp/deploy.out ]; then
+            echo "::error::部署输出缺失(/tmp/deploy.out 不存在)"
+            exit 1
+          fi
+          echo "--- 部署脚本自报的版本 ---"
+          grep -E "deploy start|now at" /tmp/deploy.out || true
+          echo "-------------------------"
+          if grep -qE "now at ${short} .*\(rollback\)" /tmp/deploy.out; then
+            echo "::error::部署走了回滚分支,线上不是本次提交"
+            exit 1
+          fi
+          if ! grep -q "now at ${short}" /tmp/deploy.out; then
+            echo "::error::部署脚本没有报出本次提交 ${short},工作区没有切到目标提交"
+            exit 1
+          fi
           code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 https://outman.press/zh)
-          echo "raw ssh stdout   = $(printf '%s' "$raw_remote" | head -c 200 | tr '\n' ' ')"
-          echo "remote HEAD      = $remote"
-          echo "expected (push)  = $GITHUB_SHA"
-          echo "container running= $running"
-          echo "public /zh       = $code"
-          if [ -z "$remote" ]; then
-            echo "::error::没能从远端 git 输出里解析出提交哈希(输出见上一行)"
-            exit 1
-          fi
-          if [ "$remote" != "$GITHUB_SHA" ]; then
-            echo "::error::远端 git HEAD($remote) != 本次提交($GITHUB_SHA),部署没有真正生效"
-            exit 1
-          fi
-          if [ "$running" != "true" ]; then
-            echo "::error::容器 yujee-web-1 未在运行"
-            exit 1
-          fi
+          echo "public /zh = $code"
           if [ "$code" != "200" ]; then
             echo "::error::线上 https://outman.press/zh 返回 $code"
             exit 1
