@@ -133,6 +133,8 @@ import { FONT_CATALOG } from '@yujee/contracts/render';
 import { EDITOR_FONTS, CJK_PREVIEW_SAMPLE, type EditorFont } from './editor-fonts';
 import { clamp01, hsvToRgb, rgbToHsv, hexToRgb, toHex, rgbToHex, hslToHex } from './color-util';
 import { createCanvasQuery, type CanvasCtx } from './editor-canvas-context';
+import { createExportState } from './export-state';
+import { createExportUi } from './export-ui';
 import { countSpreads, findPageByIndex } from './editor-canvas-ctx';
 import { loadRecentColors, saveRecentColor } from './color-recent';
 import {
@@ -329,19 +331,16 @@ export function EditorBook({
     // §4.5a export gate: the topbar export button is prop-disabled by the shell when
     // locked; this mirror lets exportPdf() defend itself and lets the chat toggle the
     // live gate via coordinator.setExportGateUi.
-    let exportGateLocked = isAuthoring;
-    function setExportGateUi(locked: boolean) {
-      exportGateLocked = locked;
-      // 菜单里的 PDF 入口只剩一个(版式在弹窗里选;出血只是渲染参数,不改导出门槛)。
-      for (const selector of ['[data-action="openPdfStyle"]']) {
-        const exportBtn = $(selector) as HTMLButtonElement | null;
-        if (exportBtn && isAuthoring) {
-          exportBtn.disabled = locked;
-          exportBtn.classList.toggle('is-disabled', locked);
-          exportBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
-        }
-      }
-    }
+    // 导出域:6 个 let 收进 exportState(阶段 2a),六个 UI 小件搬到 export-ui。
+    // 字段语义与原子符串一一对应;setExportGateUi 保留原名,调用点零改动。
+    const exportState = createExportState(isAuthoring);
+    const exportUi = createExportUi(ctx, exportState, {
+      // 函数声明会被提升,closeExportMenu 此刻还没定义也没关系(调用时才解析)。
+      closeExportMenu: () => closeExportMenu(),
+      // aT 必须在调用时求值:locale 是 effect 内可变状态,构造时捕获会锁死一种语言。
+      aT: (zh: string, en: string) => aT(zh, en),
+    });
+    function setExportGateUi(locked: boolean) { exportUi.setGate(locked); }
     // Mutable working copy: chat and inline edits patch this in place and repaint
     // without remounting the effect. Sourced from detail.pages (editing) or the
     // draft skeleton (authoring) — both are EditorPage-shaped.
@@ -2006,7 +2005,7 @@ export function EditorBook({
       }
       /* 其余弹窗:Esc 等同点背景,共用 OVERLAY_CLOSERS,不另列一份名单。
          命中一个就收工 —— 这依赖「同时只有一个弹窗 open」。别把这条归因错:12 个
-         openXxx 里只有 3 个会先关掉上一个(collage/nineGrid/pdfStyle 关导出菜单),
+         openXxx 里只有 3 个会先关掉上一个(collage/nineGrid/exportState.pdfStyle 关导出菜单),
          真正撑住不叠窗的是 .modal-overlay 的 z-index:300 全屏遮罩(editor-port.css),
          它盖死了所有触发点(顶栏 200 / el-bar 130 / img-edit 110 / chat 70)。所以
          **新加入口的 z-index 必须 < 300**:高于它,用户看得见点得着的那个弹窗反而
@@ -4292,7 +4291,7 @@ export function EditorBook({
       host.prepend(el);
     }
     function openExportMenu() {
-      if (exportGateLocked) return;
+      if (exportState.gateLocked) return;
       showExportSourceNotice();
       byId('exportMenuModal')?.classList.add('open');
     }
@@ -4324,30 +4323,14 @@ export function EditorBook({
     function closeNineGridModal() { byId('nineGridModal')?.classList.remove('open'); }
     // PDF 版式(2026-08-06 版式选择设计):与 Live 同一副骨架,但默认预选标准版 ——
     // 大多数人要的就是标准版,少点一下。
-    let pdfStyle: 'standard' | 'bleed' = 'standard';
-    function openPdfStyleModal() {
-      if (exportGateLocked) return; // 与 openExportMenu 同一道防线(chat 也可能开闸前触发)
-      closeExportMenu();
-      pdfStyle = 'standard';
-      $$('[data-pdf-style]').forEach((el) => {
-        const selected = el.getAttribute('data-pdf-style') === 'standard';
-        el.classList.toggle('selected', selected);
-        el.setAttribute('aria-pressed', String(selected));
-      });
-      byId('pdfStyleModal')?.classList.add('open');
-    }
-    function closePdfStyleModal() { byId('pdfStyleModal')?.classList.remove('open'); }
-    function showExportProgress(title: string) {
-      const t = byId('expTitle'); if (t) t.textContent = title;
-      setExportProgress(0, 0);
-      byId('exportProgressModal')?.classList.add('open');
-    }
-    function setExportProgress(done: number, total: number) {
-      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-      const fill = byId('expBarFill'); if (fill) fill.style.width = pct + '%';
-      const label = byId('expLabel'); if (label) label.textContent = total > 0 ? `${done} / ${total}` : '…';
-    }
-    function hideExportProgress() { byId('exportProgressModal')?.classList.remove('open'); }
+    // 六个 UI 小件(版式弹窗 / 进度弹窗 / 门闩)已搬到 export-ui.ts。
+    // 进度三件在新模块里叫短名,这里映射回原来的名字,调用点零改动。
+    const {
+      openPdfStyleModal, closePdfStyleModal,
+      showProgress: showExportProgress,
+      setProgress: setExportProgress,
+      hideProgress: hideExportProgress,
+    } = exportUi;
 
     // 三条导出路径共用的输入:适配页 + 原图解析器(喂高分辨率原图,防放大糊)。
     async function buildExportInput() {
@@ -4370,10 +4353,9 @@ export function EditorBook({
       return { adaptable, photoIds: ids, resolveImage: (id: string) => dataUrls[id] };
     }
 
-    let exportingImages = false;
     async function exportSinglePages() {
-      if (exportingImages || exportingPdf) return;
-      exportingImages = true;
+      if (exportState.exportingImages || exportState.exportingPdf) return;
+      exportState.exportingImages = true;
       closeExportMenu();
       showExportProgress(aT('正在导出单页图…', 'Exporting pages…'));
       try {
@@ -4388,13 +4370,13 @@ export function EditorBook({
         openExportFailModal();
       } finally {
         hideExportProgress();
-        exportingImages = false;
+        exportState.exportingImages = false;
       }
     }
 
     async function exportCollage(perImage: 1 | 2 | 3 | 6) {
-      if (exportingImages || exportingPdf) return;
-      exportingImages = true;
+      if (exportState.exportingImages || exportState.exportingPdf) return;
+      exportState.exportingImages = true;
       showExportProgress(aT('正在导出拼图…', 'Exporting collage…'));
       try {
         const { adaptable, resolveImage } = await buildExportInput();
@@ -4414,7 +4396,7 @@ export function EditorBook({
         openExportFailModal();
       } finally {
         hideExportProgress();
-        exportingImages = false;
+        exportState.exportingImages = false;
       }
     }
 
@@ -4422,8 +4404,8 @@ export function EditorBook({
     // 用的是同一份,规则不能两边各写(见 lib/export/live-delivery 抬头的三条)。
 
     async function exportLive() {
-      if (exportingImages || exportingPdf) return;
-      exportingImages = true;
+      if (exportState.exportingImages || exportState.exportingPdf) return;
+      exportState.exportingImages = true;
       closeNineGridModal();
       showExportProgress(aT('正在导出 Live 视频…', 'Exporting Live video…'));
       try {
@@ -4449,13 +4431,13 @@ export function EditorBook({
         openExportFailModal();
       } finally {
         hideExportProgress();
-        exportingImages = false;
+        exportState.exportingImages = false;
       }
     }
 
     async function exportNineGrid() {
-      if (exportingImages || exportingPdf) return;
-      exportingImages = true;
+      if (exportState.exportingImages || exportState.exportingPdf) return;
+      exportState.exportingImages = true;
       closeNineGridModal();
       showExportProgress(aT('正在导出图钉九宫格…', 'Exporting pinned photo grid…'));
       try {
@@ -4511,7 +4493,7 @@ export function EditorBook({
         openExportFailModal();
       } finally {
         hideExportProgress();
-        exportingImages = false;
+        exportState.exportingImages = false;
       }
     }
 
@@ -4650,7 +4632,6 @@ export function EditorBook({
     //     R2 时也不再把「云端上传失败」误报成「导出失败」。
     // 任一环节失败都抛 ExportError(带 phase + 可选 status,供脱敏日志用,§3 隐私)。整段
     // 路径**零 creditService**:导出成功或失败都不碰积分(积分早在 init 成功时已实扣,§5)。
-    let didLocalDownload = false;
     async function renderPdfOnce(bleedMm = 0): Promise<Blob> {
       try {
         // C 方案:PDF 导出 = 栅格截屏幕渲染(存库 html 优先,与画布像素级一致)。
@@ -4682,12 +4663,12 @@ export function EditorBook({
     // Local download — useful even if R2 isn't configured (e.g. mock runs). Once
     // per export so a retry doesn't trigger a second download.
     function downloadPdfOnce(blob: Blob) {
-      if (didLocalDownload) return;
-      didLocalDownload = true;
+      if (exportState.didLocalDownload) return;
+      exportState.didLocalDownload = true;
       const url = URL.createObjectURL(blob);
       const aEl = document.createElement('a');
       aEl.href = url;
-      aEl.download = (currentTitle || 'album') + (exportBleedMm ? '-bleed3mm' : '') + '.pdf';
+      aEl.download = (currentTitle || 'album') + (exportState.bleedMm ? '-bleed3mm' : '') + '.pdf';
       document.body.appendChild(aEl);
       aEl.click();
       aEl.remove();
@@ -4734,17 +4715,15 @@ export function EditorBook({
       }
     }
 
-    let exportingPdf = false;
     // 当前这轮 PDF 导出的出血值(下载文件名后缀用);只在 exportPdf 入口赋值。
-    let exportBleedMm = 0;
     async function exportPdf(bleedMm = 0) {
       // The topbar export button is prop-disabled when the gate is locked, and the
       // chat export-ready card only appears when unlocked — but defend anyway.
-      if (exportGateLocked) return;
-      if (exportingPdf || exportingImages) return;
-      exportingPdf = true;
-      exportBleedMm = bleedMm;
-      didLocalDownload = false;
+      if (exportState.gateLocked) return;
+      if (exportState.exportingPdf || exportState.exportingImages) return;
+      exportState.exportingPdf = true;
+      exportState.bleedMm = bleedMm;
+      exportState.didLocalDownload = false;
       closeExportMenu();
       // 埋点:导出是用户最在意的一步,也是唯一「耗时以分钟计」的路径。
       // 只记页数与耗时,不记书名/页面内容(见 lib/analytics/events.ts 的隐私口径)。
@@ -4822,7 +4801,7 @@ export function EditorBook({
         }
       } finally {
         hideExportProgress();
-        exportingPdf = false;
+        exportState.exportingPdf = false;
       }
     }
     /* ─── 手动照片备份(photo-snapshot-design.md §5.1)───
@@ -5132,7 +5111,7 @@ export function EditorBook({
       // PDF 版式弹窗:确认时才分派;出血值 3 只在这一层出现(2026-08-03 出血设计)。
       openPdfStyle: openPdfStyleModal,
       closePdfStyle: closePdfStyleModal,
-      confirmPdfStyle: () => { closePdfStyleModal(); void exportPdf(pdfStyle === 'bleed' ? 3 : 0); },
+      confirmPdfStyle: () => { closePdfStyleModal(); void exportPdf(exportState.pdfStyle === 'bleed' ? 3 : 0); },
       exportSinglePages: () => void exportSinglePages(),
       openBoardBg: openBoardBgModal,
       closeBoardBg: closeBoardBgModal,
@@ -5204,7 +5183,7 @@ export function EditorBook({
     });
     root.querySelectorAll('[data-pdf-style]').forEach((el) => {
       const fn = () => {
-        pdfStyle = el.getAttribute('data-pdf-style') as 'standard' | 'bleed';
+        exportState.pdfStyle = el.getAttribute('data-pdf-style') as 'standard' | 'bleed';
         root.querySelectorAll('[data-pdf-style]').forEach((option) => {
           const selected = option === el;
           option.classList.toggle('selected', selected);
