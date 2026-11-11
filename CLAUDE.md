@@ -204,7 +204,13 @@ Postgres + Cloudflare R2
   `gh api repos/<owner>/<repo>/branches/main/protection -q '.required_status_checks.checks[] | "\(.context) \(.app_id)"'`
   —— `app_id` 必须是 15368(GitHub Actions),写成裸 `context` 会让那条 check
   永远匹配不上、PR 永久卡死。
-- 推送/PR/合并前先跑相应验证;没验证不要声称通过。
+- 推送/PR/合并前先跑相应验证;没验证不要声称通过。仓库根的 `pnpm verify`
+  (= `docs:check` + `typecheck`,后者含 sitemap)是本地最省的静态自查入口,
+  要连单测一起跑用 `pnpm verify:full`。
+- **部署不是「ssh 返回 0 就成功」**。`deploy` job 末尾有 `Verify deployed
+  revision`,用三个外部可观测事实判定:远端 `git HEAD` == 本次提交、容器
+  `yujee-web-1` 在跑、公网 `/zh` 200。任一不符即判失败并发飞书。定的原因:
+2026-11-10 实测过 CI 全绿而线上仍是旧版(deploy 卡在 in_progress)。
 
 ## 文档时效规则
 
