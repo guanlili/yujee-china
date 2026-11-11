@@ -1,16 +1,12 @@
-import { createElement } from 'react';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { isSpreadTemplate } from '@yujee/contracts/render';
 import {
-  adaptPageToTemplateData,
   type AdaptablePage,
   type ResolveImage,
 } from '@/components/album/adapt-layout';
 import { coverContentBox, rotatedCoverTranslate } from '@/components/album/editor-v2/image-edit-util';
-import { applyFolioOverlay, applyImageRotatePatches, fitTextBoxes, pageFolioInfos, resolveDisplayHtml, type FolioSide, type PageFolio } from '@/components/album/page-html-dom';
-import { renderPageHtml } from '@/components/album/templates/html/fill-template';
+import { pageFaceInner, toHtmlPage } from '@/components/album/editor-v2/page-face';
+import { fitTextBoxes, pageFolioInfos, type FolioSide, type HtmlPage, type PageFolio } from '@/components/album/page-html-dom';
 import { PAGE } from '@/components/album/templates/constants';
-import { getWebTemplate } from '@/components/album/web-registry';
 import { loadAlbumFonts } from '@/lib/font/album-font-loader';
 import { injectDocumentFontsInto } from '@/lib/font/clone-document-fonts';
 import { bleedCssPx, extendCanvasEdges, pdfPageFormat } from './extend-canvas-edges';
@@ -36,38 +32,9 @@ export interface RasterPdfOptions {
   onProgress?: (done: number, total: number) => void;
 }
 
-// 一页 → 屏幕渲染的 HTML 字符串:存库 html(页面真相,含手工版面)优先,
-// 缺失回退模板即时渲染,再缺回退 React 组件(与画板同源)。
-function renderFaceHtml(
-  page: AdaptablePage & { html?: string },
-  resolveImage: ResolveImage,
-  total: number,
-  folio: PageFolio = null,
-  folioSide: FolioSide = 'right',
-): string {
-  if (typeof page.html === 'string' && page.html.length > 0) {
-    return applyFolioOverlay(resolveDisplayHtml(page.html, page.images, resolveImage), folio, folioSide);
-  }
-  const html = renderPageHtml(
-    { templateId: page.templateId, images: page.images, texts: page.texts, imagePos: page.imagePos },
-    resolveImage,
-  );
-  // 空槽在即时渲染里保留 {{IMG_SRC:slot}} token(fill-template 契约),再解析一遍
-  // 渲成缺图占位 —— 与画板同脸,导出不出碎图标。旋转槽即时渲染也补不上
-  // (IMG_TF 不含 rotate),渲染后补盒交换,与 preferredPageHtml 同口径。
-  if (html !== undefined)
-    return applyFolioOverlay(
-      resolveDisplayHtml(applyImageRotatePatches(html, page.imagePos), page.images, resolveImage),
-      folio,
-      folioSide,
-    );
-  const Template = getWebTemplate(page.templateId);
-  if (!Template) return `<div style="padding:24px;font-size:14px">Unknown template: ${page.templateId}</div>`;
-  const data = adaptPageToTemplateData(page, resolveImage);
-  return renderToStaticMarkup(
-    createElement(Template, { data, totalPages: total, imagePos: page.imagePos }),
-  );
-}
+// 「一页长什么样」的定义只在 page-face.pageFaceInner 一处(#330):此前这里抄了
+// 一份等价的 renderFaceHtml,改 folio/旋转规则时很容易只改一边,导出的书就和屏幕不一样。
+// 形态转换(toHtmlPage)也留在那一层,这里只负责开盒、截图、裁切。
 
 /** 截图前的 cover 摊平 pass(2026-08-02 v1;2026-08-03 v2 泛化)。
  *
@@ -255,9 +222,12 @@ export async function renderFaceToCanvas(
   const capture = faceCaptureSpec(page.templateId);
   const host = document.createElement('div');
   host.style.cssText = capture.cssText;
-  host.innerHTML = renderFaceHtml(
-    page, resolveImage, options.total ?? 1, options.folio ?? null, options.folioSide ?? 'right',
-  );
+  host.innerHTML = pageFaceInner(toHtmlPage(page), {
+    folio: options.folio ?? null,
+    folioSide: options.folioSide ?? 'right',
+    total: options.total ?? 1,
+    resolve: resolveImage,
+  });
   document.body.appendChild(host);
   try {
     // 字体就绪后再截，避免中文/艺术字掉成回退字。
