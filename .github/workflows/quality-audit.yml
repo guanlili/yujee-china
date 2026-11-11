@@ -1,0 +1,72 @@
+name: quality-audit
+
+# 每周质量巡检:只量「机器能判定」的指标,结果落成一条 issue,失败推飞书。
+# 为什么放在仓库里而不是外部定时服务:版本化、可 review、失败和代码走同一套告警。
+on:
+  schedule:
+    # 每周一 09:07 CST。避开整点 —— GitHub 定时队列在整点最拥挤,延迟可达几十分钟。
+    - cron: '7 1 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: quality-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+
+      # 不跑 pnpm install:巡检脚本只用 Node 内置模块读文件,装依赖纯属浪费 2 分钟。
+      # pnpm 只在,用来跑 `pnpm outdated`(它读 lockfile + registry,不需要 node_modules)。
+      - name: Run audit
+        run: node scripts/quality-audit.mjs > /tmp/report.md
+
+      - name: Ensure label exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh label create 巡检 --color 0E8A16 --description '自动质量巡检报告' || true
+
+      - name: Publish report as issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="质量巡检 $(date -u +%F)"
+          # 同一周只留一条:已有同名 issue 就追加报告,不刷屏。
+          EXIST=$(gh issue list --label 巡检 --state all --limit 50 --json number,title \
+            | TITLE="$TITLE" python3 -c "import sys,json,os; t=os.environ['TITLE']; f=[i['number'] for i in json.load(sys.stdin) if i['title']==t]; print(f[0] if f else '')")
+          if [ -n "$EXIST" ]; then
+            gh issue comment "$EXIST" --body-file /tmp/report.md
+            echo "已追加到既有 issue #$EXIST"
+          else
+            gh issue create --title "$TITLE" --label 巡检 --body-file /tmp/report.md
+          fi
+          # 同时写进 job summary,不用点开 issue 也能看
+          cat /tmp/report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Alert Feishu (audit failed)
+        if: failure()
+        env:
+          WEBHOOK: ${{ secrets.FEISHU_ALERT_WEBHOOK }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then echo "未配置 webhook,跳过"; exit 0; fi
+          curl -sS -m 10 -X POST "$WEBHOOK" -H "Content-Type: application/json" \
+            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"⚠️ 质量巡检跑失败了,报告没生成 —— IO 或脚本本身出问题,巡检静默等于没有巡检。$RUN_URL\"}}" \
+            | tee /tmp/fs.json
+          # 飞书失败也回 HTTP 200,只看退出码会把「Bot 被停用」当成送达(2026-11-10 踩过)。
+          grep -q '"code":0' /tmp/fs.json || { echo "::error::飞书告警未送达: $(cat /tmp/fs.json)"; exit 1; }
