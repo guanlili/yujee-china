@@ -234,6 +234,11 @@ jobs:
     env:
       # localhost 命中 db client 的 isLocal 分支,不加 ssl require
       DATABASE_URL: postgres://yujee:yujee@localhost:5432/yujee
+      # 2026-11-11 显式钉 capture。历史上这个 job 从没注入过短信密钥,所以本来也
+      # 发不出去;这条是防未来 —— 谁哪天把 ALIYUN_SMS_* 加进 job env,测试就会
+      # 真的发短信、真扣钱、真给号码发验证码。`SMS_DELIVERY` 的默认值就是
+      # capture(env.ts:78),这里再钉一次,让「CI 不真发」成为显式约定而不是巧合。
+      SMS_DELIVERY: capture
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
