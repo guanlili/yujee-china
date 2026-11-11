@@ -118,7 +118,7 @@ import { loadAlbumFonts, loadFontSubset, useAlbumFonts } from '@/lib/font/album-
 import { isCjkFontId, type CjkFontId } from '@/services/font/font-manifest';
 import { FONT_CATALOG } from '@yujee/contracts/render';
 import { EDITOR_FONTS, CJK_PREVIEW_SAMPLE, type EditorFont } from './editor-fonts';
-import { clamp01, hsvToRgb, rgbToHsv, hexToRgb, toHex, rgbToHex } from './color-util';
+import { clamp01, hsvToRgb, rgbToHsv, hexToRgb, toHex, rgbToHex, hslToHex } from './color-util';
 import { loadRecentColors, saveRecentColor } from './color-recent';
 import {
   applyPatchToPages,
@@ -164,13 +164,7 @@ import './editor-port.css';
 // 吸色工具与画板垫底背景共用同一套常用色板(保持一致)。
 const COLOR_SWATCHES = COLOR_PRESETS;
 // 颜色换算已抽到共享层 color-util(移动端取色器用同一份,不留第二份真相)。
-function hslToHex(h: number, s: number, l: number) {
-  s /= 100; l /= 100;
-  const k = (n: number) => (n + h / 30) % 12;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
-  return rgbToHex(f(0) * 255, f(8) * 255, f(4) * 255);
-}
+// hslToHex 也在那里 —— 这里不要再写一份。
 // 色板/格子模式的常用色:中性列(极低饱和)+ 8 色相族 × 7 深浅 = 63 色。行主序,
 // 每行 = [中性, 8 色相]。饱和 58%、明度 92→26,柔和贴合纪念册,不花哨。
 const GRID_HUES = [8, 30, 45, 150, 190, 214, 258, 328];
