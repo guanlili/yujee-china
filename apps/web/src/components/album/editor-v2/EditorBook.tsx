@@ -135,6 +135,7 @@ import { clamp01, hsvToRgb, rgbToHsv, hexToRgb, toHex, rgbToHex, hslToHex } from
 import { createCanvasQuery, type CanvasCtx } from './editor-canvas-context';
 import { createExportState } from './export-state';
 import { createExportUi } from './export-ui';
+import { createExportActions } from './export-actions';
 import { countSpreads, findPageByIndex } from './editor-canvas-ctx';
 import { loadRecentColors, saveRecentColor } from './color-recent';
 import {
@@ -4632,178 +4633,19 @@ export function EditorBook({
     //     R2 时也不再把「云端上传失败」误报成「导出失败」。
     // 任一环节失败都抛 ExportError(带 phase + 可选 status,供脱敏日志用,§3 隐私)。整段
     // 路径**零 creditService**:导出成功或失败都不碰积分(积分早在 init 成功时已实扣,§5)。
-    async function renderPdfOnce(bleedMm = 0): Promise<Blob> {
-      try {
-        // C 方案:PDF 导出 = 栅格截屏幕渲染(存库 html 优先,与画布像素级一致)。
-        // 矢量导出路径已退役(消费不了自由 HTML)。喂高分辨率原图,防放大糊。
-        // bleedMm:印刷版传 3(2026-08-03 出血设计),默认 0 走原路径。
-        // 渲染整体(含动态 import、取图 buildExportInput、栅格化)要有上限:任意一环挂住,
-        // 进度条会永远停在 0%,用户既拿不到文件也没有失败提示(2026-11-09 两次实测:
-        // 先是取图/编码那段挂住,后是 render-raster 这个 chunk 的请求挂住)。
-        // 期限常量走静态 import —— 否则连 withDeadline 那行都执行不到。
-        // 到点按 render 失败处理 —— 走既有的重试 + 安抚框,有界、可重试、说得清。
-        return await withDeadline(
-          (async () => {
-            const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
-            const { adaptable, resolveImage } = await buildExportInput();
-            return await renderAlbumPdfRaster(adaptable, resolveImage, {
-              scale: 3,
-              onProgress: setExportProgress,
-              bleedMm,
-            });
-          })(),
-          RASTER_PDF_RENDER_DEADLINE_MS,
-          'pdfRender',
-        );
-      } catch (e) {
-        throw new ExportError('render', e instanceof Error ? e.message : String(e));
-      }
-    }
+    // 导出四条链路(渲染 / 本地下载 / 云端上传 / 主流程)已搬到 export-actions.ts。
+    // 注入项只有 8 个;页数/标题/游客/文案必须走 getter —— 它们在 effect 内可变。
+    const exportActions = createExportActions(ctx, exportState, exportUi, {
+      buildExportInput,
+      getPageCount: () => pagesState.length,
+      getTitle: () => currentTitle,
+      isAnon: () => viewerAnonRef.current === true,
+      closeExportMenu: () => closeExportMenu(),
+      openExportFailModal: () => openExportFailModal(),
+      aT: (zh: string, en: string) => aT(zh, en),
+    });
+    const { renderPdfOnce, downloadPdfOnce, uploadPdfOnce, exportPdf } = exportActions;
 
-    // Local download — useful even if R2 isn't configured (e.g. mock runs). Once
-    // per export so a retry doesn't trigger a second download.
-    function downloadPdfOnce(blob: Blob) {
-      if (exportState.didLocalDownload) return;
-      exportState.didLocalDownload = true;
-      const url = URL.createObjectURL(blob);
-      const aEl = document.createElement('a');
-      aEl.href = url;
-      aEl.download = (currentTitle || 'album') + (exportState.bleedMm ? '-bleed3mm' : '') + '.pdf';
-      document.body.appendChild(aEl);
-      aEl.click();
-      aEl.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-    }
-
-    async function uploadPdfOnce(blob: Blob): Promise<void> {
-      const signRes = await fetch(`/api/v1/albums/${albumId}/pdf-upload-url`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contentType: 'application/pdf', size: blob.size }),
-      });
-      const signJson = await signRes.json();
-      if (!signJson.ok) {
-        throw new ExportError('upload', signJson.error?.message ?? 'sign failed', signRes.status);
-      }
-      const { putUrl, r2Key } = signJson.data;
-      // 直传必须带截止时间:这条链路实测会**挂住**(既不 200 也不报错,一直 inflight),
-      // 没有截止时间的话 runExportWithRetry 永远停在第 1 次,「3 次耗尽」永远不到,
-      // 用户既没云端备份也没提示(2026-11-09,与移动端同源,共用同一份实现)。
-      let putRes: Response;
-      try {
-        putRes = await fetchWithTimeout(
-          putUrl,
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/pdf' },
-            body: blob,
-          },
-          PDF_UPLOAD_TIMEOUT_MS,
-        );
-      } catch (e) {
-        throw normalizeUploadError(e);
-      }
-      if (!putRes.ok) throw new ExportError('upload', `R2 PUT ${putRes.status}`, putRes.status);
-      const confirmRes = await fetch(`/api/v1/albums/${albumId}/pdf`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ r2Key }),
-      });
-      const confirmJson = await confirmRes.json();
-      if (!confirmRes.ok || confirmJson.ok !== true) {
-        throw new ExportError('upload', confirmJson.error?.message ?? 'PDF confirm failed', confirmRes.status);
-      }
-    }
-
-    // 当前这轮 PDF 导出的出血值(下载文件名后缀用);只在 exportPdf 入口赋值。
-    async function exportPdf(bleedMm = 0) {
-      // The topbar export button is prop-disabled when the gate is locked, and the
-      // chat export-ready card only appears when unlocked — but defend anyway.
-      if (exportState.gateLocked) return;
-      if (exportState.exportingPdf || exportState.exportingImages) return;
-      exportState.exportingPdf = true;
-      exportState.bleedMm = bleedMm;
-      exportState.didLocalDownload = false;
-      closeExportMenu();
-      // 埋点:导出是用户最在意的一步,也是唯一「耗时以分钟计」的路径。
-      // 只记页数与耗时,不记书名/页面内容(见 lib/analytics/events.ts 的隐私口径)。
-      const exportStartedAt = Date.now();
-      const exportPages = pagesState.length;
-      track('export_start', { albumId, meta: { pages: exportPages, bleed: bleedMm, mode: 'desktop' } });
-      showExportProgress(aT('正在导出 PDF…', 'Exporting PDF…'));
-      try {
-        // render 段:出 PDF + 本地下载,自动重试 ≤3 次。连续 3 次失败才是真·导出失败 →
-        // 弹安抚框 + 落日志。计数全在前端(runExportWithRetry),**不动积分**(§5)。
-        let blob: Blob | null = null;
-        const rendered = await runExportWithRetry(
-          async () => { const b = await renderPdfOnce(bleedMm); downloadPdfOnce(b); blob = b; },
-          {
-            onExhausted: (lastError, attempts) => {
-              // 同一份归类结果既进日志也进埋点:两处各算一次迟早会漂移,
-              // 而 classifyExportFailure 本身是封闭词表,天然满足隐私红线。
-              const failure = buildExportFailureLog(lastError, { albumId, attempts });
-              logger.error(failure, 'pdf export failed');
-              openExportFailModal();
-              track('export_fail', {
-                albumId,
-                value: Date.now() - exportStartedAt,
-                result: 'fail',
-                meta: {
-                  pages: exportPages,
-                  attempt: attempts,
-                  step: 'render',
-                  code: failure.failureCode,
-                  ...(failure.status !== undefined ? { status: failure.status } : {}),
-                },
-              });
-            },
-          },
-        );
-        // render 失败:安抚框已弹,到此为止(用户确实没拿到文件)。
-        if (!rendered.ok || blob == null) return;
-        // 用户拿到 PDF 这一刻就算成功(云端上传是旁路,另记一条)。
-        track('export_ok', {
-          albumId,
-          value: Date.now() - exportStartedAt,
-          result: 'ok',
-          meta: { pages: exportPages, bleed: bleedMm, mode: 'desktop' },
-        });
-
-        // 用户已拿到 PDF = 导出成功。云端上传解耦:失败不弹失败框,重试耗尽亮横幅。
-        // 飞书推送仍后置(§4.5d);游客只本地下载;出血版跳过上传(保持标准版)。
-        if (viewerAnonRef.current === true) return;
-        if (bleedMm === 0) {
-          await runExportWithRetry(() => uploadPdfOnce(blob!), {
-            onExhausted: (lastError, attempts) => {
-              const failure = buildExportFailureLog(lastError, { albumId, attempts });
-              logger.error(
-                failure,
-                'pdf cloud upload failed (local download already succeeded)',
-              );
-              const card = byId('pdfCloudAlert');
-              if (card) card.style.display = '';
-              // 本地已成功、云端没上去:单独记,别和「用户没拿到文件」混成一个失败率。
-              // code 同样取封闭词表 —— 上传失败最常见的就是桶策略/签名过期,看一眼就知道。
-              track('export_fail', {
-                albumId,
-                value: Date.now() - exportStartedAt,
-                result: 'fail',
-                meta: {
-                  pages: exportPages,
-                  attempt: attempts,
-                  step: 'upload',
-                  code: failure.failureCode,
-                  ...(failure.status !== undefined ? { status: failure.status } : {}),
-                },
-              });
-            },
-          });
-        }
-      } finally {
-        hideExportProgress();
-        exportState.exportingPdf = false;
-      }
-    }
     /* ─── 手动照片备份(photo-snapshot-design.md §5.1)───
        用户点顶栏「保存」→ 把书里用到、本地有、尚未备份的照片的 display 档压缩图直传 R2。
        原图仍不上传。备份状态直接显示在「保存」按钮上:备份中 → 绿点「已备份」/ 红点
