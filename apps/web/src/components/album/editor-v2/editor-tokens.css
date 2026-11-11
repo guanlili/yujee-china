@@ -38,6 +38,18 @@
   --radius-pill: 9999px;
   --radius-md: 12px;
   --radius-lg: 16px;
+  /* ── 尺寸 / 触控 ─────────────────────────────────────────────────────────
+     触控目标的最小边长。Apple HIG 44pt、Material 48dp,取 44 作为下限。
+     视觉可以更小,但**可点区域**不许小于它 —— 做法是控件保持原视觉尺寸,
+     用 ::after 的 inset 负值把 30×30 补到 44×44(19 号坑:窄热区漏检三次)。
+     注意:这段注释里不要写花括号 —— 有测试按花括号切 CSS 规则块,写了会把
+     token 吞掉(2026-11-11 踩过,web tests 直接红)。 */
+     2026-11-11 建:此前这套值只以字面量散落在 editor-port.css 与
+     mobile-editor.css 两处,没有单一来源,导致触控尺寸无法统一治理。 */
+  --touch-min: 44px;
+  /* 圆角关闭/图标按钮的视觉边长(30)+ 补热区扩张量(7)= 44。 */
+  --ctl-close: 30px;
+  --touch-spread: -7px;
   --chat-user-bubble: radial-gradient(58% 78% at 0% 0%, rgba(19,184,166,.11), transparent 60%),radial-gradient(58% 78% at 100% 100%, rgba(140,94,244,.10), transparent 60%),var(--bg);
   /* 书口纸叠(页缘)的两支纸色:受光纸边 / 纸间阴影(与 editor-port.css 逐字一致)。 */
   --paper-sheet-lit: #fcfbf8;
