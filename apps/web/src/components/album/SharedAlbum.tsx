@@ -10,6 +10,7 @@ import type { EditorPage } from './types';
 import { presetImageUrl } from '@/lib/board-bg/presets';
 import { boundPick } from '@/lib/i18n/pick';
 import { defaultLocale, isLocale } from '@/lib/i18n/routing';
+import { track } from '@/lib/analytics/track-client';
 
 export type SharedBoardBackground =
   | { kind: 'color'; color: string }
@@ -33,6 +34,12 @@ export function SharedAlbum({
   title: string;
 }) {
   const [selected, setSelected] = useState(0);
+  // 埋点:访客打开只读链接 = 一次「这本书真的被人看了」。
+  // 和 owner 那条 album_open 同一口径(页数取快照页数),两边相除就是「分享后有人看」的比例。
+  // 访客侧拿不到 albumId(只认 token),所以只记 source/pages ——不猜、不补 id。
+  useEffect(() => {
+    track('album_open', { result: 'ok', meta: { pages: pages.length, source: 'visitor' } });
+  }, [pages.length]);
   const resolveImage: ResolveImage = (id: string) => photoUrls[id];
   // The snapshot stores whatever locale the sharer was on; anything we no longer
   // ship degrades to the default rather than to Chinese.

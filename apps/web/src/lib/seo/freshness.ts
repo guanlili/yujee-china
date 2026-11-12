@@ -98,9 +98,16 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     // 同样只推进 reviewedSources,updatedAt 不动。
     // 2026-11-09: 移动端触控目标放大到 44px(侧边导航/菜单/页脚联系/Hero 发送热区)。
     // 只改可点范围与按钮尺寸,文案与图像一字未动 —— 仍只推进 reviewedSources。
+    // 2026-11-10: 首屏副标题在五种语言里都改了,把「不需要登录,免费使用」写成
+    // 「先免费做一本样书」—— 游客拿到的是零 AI 的示例样稿,真文案与导出要登录,
+    // 原来是读者可见的语义变化,updatedAt 落在这天。
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
-    updatedAt: '2026-10-28',
-    reviewedSources: 'b24666376780',
+    updatedAt: '2026-11-10',
+    // 2026-11-10(第二轮): 首页底部第二处「全部示例」补 44px 触控热区。
+    // 只改可点范围,文案与图像没动 —— 只推进 reviewedSources。
+    // 2026-11-10(第三轮): 首页挂产品埋点(landing_view 曝光)。纯观测代码,
+    // 读者看到的一个字、一张图都没变 —— 仍只推进 reviewedSources。
+    reviewedSources: '0a42bb40a83b',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback

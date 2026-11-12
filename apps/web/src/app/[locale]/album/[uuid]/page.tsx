@@ -1,6 +1,7 @@
 'use client';
 
-import { use, useEffect } from 'react';
+import { use, useEffect, useRef } from 'react';
+import { track } from '@/lib/analytics/track-client';
 import { useRouter } from 'next/navigation';
 import { useAlbumPoll } from '@/lib/hooks/use-album-poll';
 import { EditorPort } from '@/components/album/editor-v2/EditorPort';
@@ -42,6 +43,25 @@ export default function AlbumPage({
   // the URL. A bookmarked/ready album loads immediately; a dead generation is
   // swept to FAILED server-side and surfaces here instead of spinning forever.
   const { detail, generation, phase, error } = useAlbumPoll(uuid);
+
+  // 埋点:这本书真的渲染出来(ready + 拿到 detail)才算「打开过」,loading 帧不算。
+  // ref 挡重复:轮询会让 detail 换引用,同一次打开只记一条。
+  // 页数取 album.pageCount 而不是 detail.pages.length —— 草稿阶段 pages 是空的,
+  // 拿它记会得到一排 0,把「书有多少页」这个最基础的口径弄脏。
+  const openedRef = useRef(false);
+  useEffect(() => {
+    if (openedRef.current || phase !== 'ready' || !detail) return;
+    openedRef.current = true;
+    track('album_open', {
+      albumId: uuid,
+      result: 'ok',
+      meta: {
+        pages: detail.album.pageCount,
+        photos: detail.album.photoCount,
+        source: 'owner',
+      },
+    });
+  }, [phase, detail, uuid]);
 
   // Session expired mid-generation → don't spin, send them to sign in and back.
   useEffect(() => {

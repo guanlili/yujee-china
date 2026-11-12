@@ -12,6 +12,7 @@ import {
 import { lutEngine } from './lut/engine';
 import { cutoutEngine } from './cutout/engine';
 import { isValidPhotoId } from '../../services/album/photo-snapshot-util';
+import { fetchWithTimeout, withDeadline } from '@/lib/net/fetch-timeout';
 
 // Original photos live only in the browser (architecture invariant 1). They are
 // kept in IndexedDB keyed by a globally-unique photoId so the editor and PDF
@@ -629,10 +630,21 @@ async function getTierBlobResult(
 /** 取一张已备份的服务器压缩图。取不到就是 undefined —— 单张缺图只影响这一张,
  *  绝不能把整本导出拖垮(与 getTierUrls 里「逐张隔离」同一条口径)。
  *  失败原因写进 warn:跨域没开 CORS、快照被清、离线,现场只能靠这条日志区分。 */
+// 导出/画板要用的备份图(display 档)从对象存储直拉。这条也是**会挂住**的链路:
+// 导出时本地没有原图就靠它兜底,挂住则 getPdfDataUrls 卡在第一张,整次导出 0% 不动
+// (2026-11-09 实测)。超时即当"没有备份图"处理,让导出用占位继续,而不是陪它等。
+const BACKUP_SNAPSHOT_TIMEOUT_MS = 30_000;
+// 远端原图回退(fetcher 由外部注入)同理给上限。
+const REMOTE_ORIGINAL_TIMEOUT_MS = 30_000;
+
 async function fetchBackupBlob(url: string | undefined, photoId: string): Promise<Blob | undefined> {
   if (!url) return undefined;
   try {
-    const res = await fetch(url, { mode: 'cors', credentials: 'omit' });
+    const res = await fetchWithTimeout(
+      url,
+      { mode: 'cors', credentials: 'omit' },
+      BACKUP_SNAPSHOT_TIMEOUT_MS,
+    );
     if (!res.ok) {
       console.warn('[photo] backup snapshot fetch failed', { photoId, status: res.status });
       return undefined;
@@ -683,7 +695,7 @@ function fetchRemoteOriginal(photoId: string): Promise<Blob | undefined> {
 
   const promise = (async (): Promise<Blob | undefined> => {
     try {
-      const remote = await fetcher(photoId);
+      const remote = await withDeadline(fetcher(photoId), REMOTE_ORIGINAL_TIMEOUT_MS, 'remoteOriginal');
       if (!remote) return undefined;
       const cached = await toMemoryBackedBlob(remote);
       try {

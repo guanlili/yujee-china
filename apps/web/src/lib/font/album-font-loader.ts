@@ -11,6 +11,13 @@ import {
   isCjkFontId,
   type CjkFontId,
 } from '@/services/font/font-manifest';
+import { fetchWithTimeout, withDeadline } from '@/lib/net/fetch-timeout';
+
+// 导出渲染要先等字体子集到位。这两个 await 一旦挂住(跨境/服务端子集化变慢),
+// 整页栅格化就不会开始,用户看到的是一个永远 0% 的进度条(2026-11-09 实测)。
+// 字体是装饰:超时就降级成 CSS 兜底字体,导出必须继续。
+const FONT_SUBSET_TIMEOUT_MS = 30_000;
+const FONT_FACE_READY_TIMEOUT_MS = 5_000;
 
 interface FontSubsetPayload {
   sansBase64: string;
@@ -47,11 +54,15 @@ function requestKey(request: AlbumFontRequest): string {
 function browserEnvironment(): AlbumFontEnvironment {
   return {
     async fetchSubset(request) {
-      const response = await fetch('/api/v1/fonts/subset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(request),
-      });
+      const response = await fetchWithTimeout(
+        '/api/v1/fonts/subset',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(request),
+        },
+        FONT_SUBSET_TIMEOUT_MS,
+      );
       const json = await response.json();
       if (!response.ok || !json.ok) {
         throw new Error(json.error?.message ?? 'font subset failed');
@@ -118,7 +129,11 @@ async function installSubset(
     const loaded = await face.load();
     env.addFontFace(loaded);
   }));
-  await env.fontsReady();
+  // document.fonts.ready 是浏览器全局信号,可能被别的字体拖住:给上限,
+  // 到点就当作"字体已就绪/降级"继续导出,别让整次导出陪它等。
+  await withDeadline(Promise.resolve(env.fontsReady()), FONT_FACE_READY_TIMEOUT_MS, 'fontsReady').catch(
+    () => undefined,
+  );
 }
 
 export function loadAlbumFonts(

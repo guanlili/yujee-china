@@ -19,12 +19,19 @@ COPY packages/design-agent/package.json ./packages/design-agent/
 
 # 与上游一致：只装 design-agent 子树（含 workspace 依赖与 devDeps——tsx 运行、
 # tsgo 构建 pi 包），随后构建两个 pi 包到 dist/。
-RUN pnpm install --filter @smalldog/design-agent... --frozen-lockfile
+# 2026-11-10：npmmirror 对单包 tgz 的下载会偶发 Socket timeout（同一条构建里
+# 每次卡在不同包：pump-3.0.4、shebang-regex-1.0.0……），整条部署因此失败且与
+# 代码无关。默认 fetch 重试只有 2 次、超时偏短，这里放宽并把整条 install 再兜
+# 一次;第二次兜底同时换回官方 registry —— 镜像源单点抽风时换源比继续重试有效。
+ARG PNPM_FETCH="--fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=180000 --fetch-timeout=180000"
+RUN pnpm install --filter @smalldog/design-agent... --frozen-lockfile $PNPM_FETCH \
+ || pnpm install --filter @smalldog/design-agent... --frozen-lockfile $PNPM_FETCH --registry=https://registry.npmjs.org
 COPY . .
 # COPY . . 会带入上下文里的 packages/*/node_modules 与 dist(宿主残留),
 # 覆盖掉上一步的依赖并打断 symlink,表现为构建 pi-ai 时报
 # `Cannot find module '@anthropic-ai/sdk'`。再按 lockfile 复装一次。
-RUN pnpm install --filter @smalldog/design-agent... --frozen-lockfile
+RUN pnpm install --filter @smalldog/design-agent... --frozen-lockfile $PNPM_FETCH \
+ || pnpm install --filter @smalldog/design-agent... --frozen-lockfile $PNPM_FETCH --registry=https://registry.npmjs.org
 RUN pnpm --filter @earendil-works/pi-ai build \
  && pnpm --filter @earendil-works/pi-agent-core build
 
