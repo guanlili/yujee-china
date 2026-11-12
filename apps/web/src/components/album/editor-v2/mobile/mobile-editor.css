@@ -345,7 +345,7 @@
   background: transparent;
   color: var(--fg);
   font-family: var(--font-display);
-  font-size: 12.5px;
+  font-size: var(--fs-body);
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
@@ -898,7 +898,7 @@
 /* ── 图片面板(缩放滑块 / 复位)。类名沿用 .mes-*,视觉与文字面板同一套 ────────
    只在移动端宿主内生效,editor-port.css 一行不动。 */
 .mobile-modal-host .mes-hint {
-  font-size: 12.5px;
+  font-size: var(--fs-body);
   line-height: 1.5;
   color: var(--muted);
   margin: 2px 0 10px;
@@ -1137,7 +1137,7 @@
 .mgen-hint {
   min-height: 18px;
   margin: 8px 2px;
-  font-size: 12.5px;
+  font-size: var(--fs-body);
   color: var(--muted);
 }
 .mgen-hint[data-error='1'] { color: #c44; }

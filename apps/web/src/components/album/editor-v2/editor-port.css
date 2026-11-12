@@ -18,7 +18,7 @@
   --shadow-card-hover: 0 2px 6px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.08);
   --shadow-card: 0 1px 3px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
   --radius-pill:9999px; --radius-md:12px; --radius-lg:16px;
-  --fs-xs:11px; --fs-sm:12px; --fs-body:13px; --fs-md:14px;
+  --fs-2xs:10px; --fs-xs:11px; --fs-sm:12px; --fs-body:13px; --fs-md:14px;
   --fs-lg:15px; --fs-xl:16px; --fs-2xl:17px;
   /* 用户气泡底:青紫双径向渐变叠在 --bg 上。两棵 UI 树共用(见 editor-tokens.css)——
      移动端曾把它写成纯黑底白字,而黑色在这套设计里只属于对话收起时那枚浮标。 */
@@ -554,7 +554,7 @@
 }
 .editor-port .ch-narrative{
   font-family: var(--font-body);
-  font-size:13.5px; color:var(--fg-2);
+  font-size:var(--fs-body); color:var(--fg-2);
   line-height:2; text-indent:2em;
   flex:1; overflow:hidden;
 }
@@ -577,13 +577,13 @@
   position:absolute; bottom:0; left:0; right:0;
   padding:14px 12px 8px;
   background: linear-gradient(180deg, transparent, rgba(0,0,0,.45));
-  color:#fff; font-size:10px; letter-spacing:.06em;
+  color:#fff; font-size:var(--fs-2xs); letter-spacing:.06em;
   font-family: var(--font-mono);
 }
 .editor-port .photo-foot{
   margin-top:10px;
   display:flex; justify-content:space-between;
-  font-size:10px; color:var(--meta);
+  font-size:var(--fs-2xs); color:var(--meta);
   font-family: var(--font-mono); letter-spacing:.08em;
 }
 
@@ -594,10 +594,10 @@
   border:1px solid var(--border-soft);
   color: var(--fg);
   border-radius: 16px 4px 16px 16px;
-  padding:10px 16px; font-size:13.5px;
+  padding:10px 16px; font-size:var(--fs-body);
   line-height:1.7; max-width:80%;
 }
-.editor-port .msg.ai .ai-text{ font-size:13.5px; line-height:1.8; color:var(--fg-2); }
+.editor-port .msg.ai .ai-text{ font-size:var(--fs-body); line-height:1.8; color:var(--fg-2); }
 /* markdown 局部样式:AI 气泡内 renderMarkdownSafe 的产物;全部限定在 .ai-text 内不外溢。 */
 .editor-port .msg.ai .ai-text h1,
 .editor-port .msg.ai .ai-text h2,
@@ -643,12 +643,12 @@
 .editor-port .ep-step-feed .ep-step-text{ font-size:var(--fs-body); line-height:1.65; color:var(--fg-2); }
 .editor-port .ep-step-tool{
   display:flex; align-items:center; gap:8px;
-  font-size:12.5px; color:var(--muted);
+  font-size:var(--fs-body); color:var(--muted);
 }
 .editor-port .ep-step-tool .ep-step-dot{
   width:14px; height:14px; flex-shrink:0;
   display:flex; align-items:center; justify-content:center;
-  font-size:10px; line-height:1; color:var(--accent);
+  font-size:var(--fs-2xs); line-height:1; color:var(--accent);
 }
 .editor-port .ep-step-tool.running .ep-step-dot::after{
   content:''; width:6px; height:6px; border-radius:50%;
@@ -660,7 +660,7 @@
 .editor-port .ep-step-todos{
   display:flex; flex-direction:column; gap:5px;
   padding:8px 10px; border-left:2px solid var(--border-soft);
-  font-size:12.5px; color:var(--fg-2);
+  font-size:var(--fs-body); color:var(--fg-2);
 }
 .editor-port .ep-step-todos .todo-row{ display:flex; align-items:baseline; gap:7px; }
 .editor-port .ep-step-todos .todo-mark{ flex-shrink:0; width:14px; text-align:center; font-family:var(--font-mono); font-size:var(--fs-xs); color:var(--accent); }
@@ -724,7 +724,7 @@
 .editor-port .thinking-detail{
   display:none; margin:-2px 0 10px 3px; padding:9px 14px;
   border-left:2px solid var(--border); background:var(--bg); border-radius:0 10px 10px 0;
-  font-size:12.5px; line-height:1.75; color:var(--muted);
+  font-size:var(--fs-body); line-height:1.75; color:var(--muted);
 }
 .editor-port .thinking-block.open + .thinking-detail{ display:block; animation: ep-op-in .24s var(--ease) both; }
 .editor-port .op-card{
@@ -746,7 +746,7 @@
 .editor-port .op-ic svg{ width:15px; height:15px; }
 .editor-port .op-body{ flex:1; min-width:0; }
 .editor-port .op-kicker{
-  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.09em;
+  font-family:var(--font-mono); font-size:var(--fs-2xs); letter-spacing:.09em;
   text-transform:uppercase; color:var(--meta); margin-bottom:1px;
 }
 .editor-port .op-label{ font-size:var(--fs-body); color:var(--fg); line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -768,10 +768,10 @@
   background:linear-gradient(135deg, rgba(245,158,11,.20), rgba(217,119,6,.16));
 }
 .editor-port .op-notes{ margin-top:2px; }
-.editor-port .op-note{ font-size:12.5px; line-height:1.7; color:var(--fg-2); }
+.editor-port .op-note{ font-size:var(--fs-body); line-height:1.7; color:var(--fg-2); }
 .editor-port .op-note + .op-note{ margin-top:4px; }
 .editor-port .ai-doc{ margin-top:8px; }
-.editor-port .ai-doc h4{ font-size:13.5px; font-weight:700; color:var(--fg); margin:13px 0 3px; }
+.editor-port .ai-doc h4{ font-size:var(--fs-md); font-weight:700; color:var(--fg); margin:13px 0 3px; }
 .editor-port .ai-doc h4:first-of-type{ margin-top:2px; }
 .editor-port .ai-doc ul{ margin:0; padding:0; list-style:none; }
 .editor-port .ai-doc li{ position:relative; padding-left:15px; font-size:var(--fs-body); line-height:1.75; color:var(--fg-2); }
@@ -837,14 +837,14 @@
   box-shadow:0 1px 2px rgba(0,0,0,.03);
 }
 .editor-port .iv-kicker{
-  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
+  font-family:var(--font-mono); font-size:var(--fs-2xs); letter-spacing:.08em; text-transform:uppercase;
   color:var(--meta); font-weight:600;
 }
 .editor-port .iv-title{ font-family:var(--font-display); font-size:var(--fs-md); font-weight:700; color:var(--fg); }
 /* 两颗并排白描边按钮 —— 次要、低调,不抢输入框 */
 .editor-port .iv-skips-row{ display:flex; gap:8px; }
 .editor-port .iv-skip{
-  flex:1; text-align:center; font-family:var(--font-body); font-size:12.5px; font-weight:600;
+  flex:1; text-align:center; font-family:var(--font-body); font-size:var(--fs-body); font-weight:600;
   color:var(--fg-2); background:var(--surface); border:1px solid var(--border);
   border-radius:10px; padding:9px 10px; cursor:pointer;
   transition: all var(--motion-fast) var(--ease);
@@ -924,7 +924,7 @@
 .editor-port .chapter-card::-webkit-scrollbar{ width:0; display:none; }
 .editor-port .chapter-card{ scrollbar-width:none; }
 .editor-port .chapter-card-head{
-  font-size:10px; font-weight:700; color:var(--meta);
+  font-size:var(--fs-2xs); font-weight:700; color:var(--meta);
   letter-spacing:.08em; text-transform:uppercase;
   padding:3px 8px 5px; text-align:center;
 }
@@ -937,7 +937,7 @@
 }
 .editor-port .chapter:hover{ background:rgba(0,0,0,0.05); }
 .editor-port .chapter.active{ background:rgba(0,0,0,0.06); }
-.editor-port .chapter-num{ font-family:var(--font-mono); font-size:9.5px; font-weight:600; color:var(--meta); letter-spacing:.04em; }
+.editor-port .chapter-num{ font-family:var(--font-mono); font-size:var(--fs-2xs); font-weight:600; color:var(--meta); letter-spacing:.04em; }
 .editor-port .chapter.active .chapter-num{ color:var(--fg); }
 .editor-port .chapter-title{ font-size:var(--fs-sm); font-weight:600; color:var(--fg-2); line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .editor-port .chapter.active .chapter-title{ color:var(--fg); }
@@ -992,7 +992,7 @@
 .editor-port .export-opt-soon:hover{ background:var(--bg); }
 .editor-port .export-soon-tag{
   position:absolute; right:14px; top:50%; transform:translateY(-50%);
-  font-size:10.5px; font-weight:600; color:var(--muted);
+  font-size:var(--fs-xs); font-weight:600; color:var(--muted);
   background:var(--surface); border:1px solid var(--border-soft);
   padding:2px 7px; border-radius:999px;
 }
@@ -1121,7 +1121,7 @@
   margin-top:11px; font-size:var(--fs-body); line-height:1.3; font-weight:700; color:var(--fg);
 }
 .editor-port .motion-option-copy{
-  margin-top:4px; font-size:11.5px; line-height:1.45; color:var(--muted);
+  margin-top:4px; font-size:var(--fs-sm); line-height:1.45; color:var(--muted);
 }
 /* 70° 是缩略图的刻意取值,不是从几何推出来的:出片那边是 cos((1-e)·90°),
    e=0 完全合拢;缩略图里合到看不见不如留一点厚度好认。 */
@@ -1180,7 +1180,7 @@
 .editor-port .bbg-custom input[type="color"]{
   position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; border:none; padding:0; background:none;
 }
-.editor-port .bbg-section-label{ font-size:12.5px; color:var(--muted); margin:20px 0 10px; }
+.editor-port .bbg-section-label{ font-size:var(--fs-body); color:var(--muted); margin:20px 0 10px; }
 .editor-port .bbg-images{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
 .editor-port .bbg-image{
   aspect-ratio:1; border-radius:12px; cursor:pointer; background-size:cover; background-position:center;
@@ -1269,7 +1269,7 @@
 .editor-port .satisfaction-card .sc-btn{
   display:inline-flex; align-items:center; justify-content:center;
   flex:1; min-height:36px; padding:0 14px; border-radius:9999px;
-  font-size:12.5px; font-weight:600; letter-spacing:.01em; cursor:pointer;
+  font-size:var(--fs-body); font-weight:600; letter-spacing:.01em; cursor:pointer;
   transition: transform var(--motion-fast) var(--ease),
               box-shadow var(--motion-fast) var(--ease),
               filter var(--motion-fast) var(--ease), opacity var(--motion-fast) var(--ease);
@@ -1309,7 +1309,7 @@
   align-self:flex-start;
   display:inline-flex; align-items:center; justify-content:center;
   min-height:36px; padding:0 18px; border-radius:9999px; border:none;
-  font-size:12.5px; font-weight:600; letter-spacing:.01em; cursor:pointer;
+  font-size:var(--fs-body); font-weight:600; letter-spacing:.01em; cursor:pointer;
   background:var(--fg); color:#fff; box-shadow:0 1px 3px rgba(0,0,0,.12);
   transition: transform var(--motion-fast) var(--ease),
               filter var(--motion-fast) var(--ease),
@@ -1340,7 +1340,7 @@
 /* ─── Chat Purchase Card ─── */
 .editor-port .balance-alert{ display:block; }
 .editor-port .balance-alert.hidden{ display:none; }
-.editor-port .bp-lead{ font-size:12.5px; color:var(--fg-2); line-height:1.5; margin-bottom:8px; }
+.editor-port .bp-lead{ font-size:var(--fs-body); color:var(--fg-2); line-height:1.5; margin-bottom:8px; }
 .editor-port .bp-card{
   position:relative;
   background:linear-gradient(115deg, rgba(19,184,166,0.16) 0%, rgba(140,94,244,0.13) 48%, rgba(218,244,94,0.16) 100%);
@@ -1508,7 +1508,7 @@
    移动端 ReorderSheet 经 ModalHost 命中同一套规则,幽灵挂网格内 fixed 等效)。 */
 .editor-port .preorder-card{ width:min(920px,92vw); max-height:86vh; display:flex; flex-direction:column; }
 .editor-port .preorder-head{ position:relative; padding:20px 24px 10px; }
-.editor-port .preorder-hint{ margin-top:4px; font-size:12.5px; color:var(--muted); }
+.editor-port .preorder-hint{ margin-top:4px; font-size:var(--fs-body); color:var(--muted); }
 .editor-port .preorder-grid{ position:relative; flex:1; overflow-y:auto; display:flex; flex-wrap:wrap; align-content:flex-start; gap:14px; padding:14px 24px; }
 .editor-port .preorder-cell{ position:relative; flex:0 0 auto; border-radius:6px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.14); cursor:grab; touch-action:none; }
 .editor-port .preorder-cell.preorder-locked{ opacity:.45; cursor:default; }
@@ -1627,11 +1627,11 @@
 .editor-port .cv-reco{
   position:absolute; top:6px; left:6px; z-index:1;
   height:16px; padding:0 7px; border-radius:9999px;
-  background:var(--fg); color:#fff; font-size:10px; font-weight:600; line-height:16px;
+  background:var(--fg); color:#fff; font-size:var(--fs-2xs); font-weight:600; line-height:16px;
 }
 .editor-port .cv-actions{ display:flex; gap:8px; justify-content:flex-end; margin-top:2px; }
 .editor-port .cv-action{
-  border-radius:9999px; padding:7px 14px; font-size:12.5px; font-weight:600;
+  border-radius:9999px; padding:7px 14px; font-size:var(--fs-body); font-weight:600;
   cursor:pointer; transition: all var(--motion-fast) var(--ease);
 }
 .editor-port .cv-action-primary{ background:var(--fg); color:#fff; border:1px solid var(--fg); }
@@ -1891,7 +1891,7 @@
 .editor-port .eb-color-seg{ display:flex; gap:3px; margin:12px 14px 0; padding:3px; background:var(--bg); border-radius:10px; }
 .editor-port .eb-color-seg button{
   flex:1; border:none; background:transparent; padding:6px 0; border-radius:8px;
-  font-family:inherit; font-size:12.5px; font-weight:600; color:var(--meta); cursor:pointer;
+  font-family:inherit; font-size:var(--fs-body); font-weight:600; color:var(--meta); cursor:pointer;
   transition:background .14s var(--ease), color .14s var(--ease);
 }
 .editor-port .eb-color-panel[data-mode="grid"] .eb-color-seg [data-color-mode="grid"],
@@ -2019,7 +2019,7 @@
 }
 .editor-port .cv-kicker{
   display:flex; align-items:center; gap:6px; margin-bottom:6px;
-  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+  font-family:var(--font-mono); font-size:var(--fs-2xs); letter-spacing:.1em; text-transform:uppercase;
   color:var(--grad-purple); font-weight:600;
 }
 .editor-port .cv-kicker svg{ width:12px; height:12px; }
@@ -2050,7 +2050,7 @@
 .editor-port .cv-foot2{ display:flex; justify-content:flex-end; margin-top:13px; }
 .editor-port .cv-confirm{
   display:inline-flex; align-items:center; gap:6px; border:none; cursor:pointer;
-  background:var(--fg); color:#fff; font-size:12.5px; font-weight:660;
+  background:var(--fg); color:#fff; font-size:var(--fs-body); font-weight:660;
   padding:9px 16px; border-radius:9999px;
   transition:transform var(--motion-fast) var(--ease);
 }
@@ -2372,7 +2372,7 @@
 }
 .credits-pack-info{ flex:1; min-width:0; display:flex; flex-direction:column; }
 .credits-pack-cred{ font-size:19px; font-weight:700; letter-spacing:-.01em; color:var(--fg); }
-.credits-pack-cap{ margin-top:3px; font-size:12.5px; color:var(--muted); }
+.credits-pack-cap{ margin-top:3px; font-size:var(--fs-body); color:var(--muted); }
 .credits-pack-price{
   flex:none; font-size:27px; font-weight:700; color:var(--fg);
   font-family:'Playfair Display','Noto Serif SC Landing',Georgia,serif;
@@ -2401,7 +2401,7 @@
 .credits-modal-cta-amt{ font-family:'Playfair Display','Noto Serif SC Landing',Georgia,serif; font-weight:700; }
 
 .credits-modal-error{
-  margin:14px 0 0; text-align:center; font-size:12.5px; line-height:1.5;
+  margin:14px 0 0; text-align:center; font-size:var(--fs-body); line-height:1.5;
   color:#c9483a; /* readable error accent (real --danger is greyscale, unreadable as an error) */
 }
 .credits-modal-foot{
@@ -2522,7 +2522,7 @@
 .editor-port .mes-tsep{ width:1px; height:22px; background:var(--border-soft); margin:0 4px; flex:none; }
 
 /* 主视图漏出的常用色 / 常用字体 + 分区标签(颜色 / 字体) */
-.editor-port .mes-label{ font-size:12.5px; color:var(--muted); margin:16px 2px 9px; }
+.editor-port .mes-label{ font-size:var(--fs-body); color:var(--muted); margin:16px 2px 9px; }
 .editor-port .mes-row-tools{ margin-top:14px; }
 .editor-port .mes-sw-row{ display:flex; gap:10px; flex-wrap:wrap; }
 .editor-port .mes-sw{
@@ -2662,7 +2662,7 @@
   .editor-port .mc-l1 button{
     flex:1; border:none; background:transparent; cursor:pointer;
     display:flex; flex-direction:column; align-items:center; gap:4px;
-    font-size:10.5px; color:var(--fg-2); padding:4px 0; border-radius:var(--radius-md);
+    font-size:var(--fs-xs); color:var(--fg-2); padding:4px 0; border-radius:var(--radius-md);
   }
   .editor-port .mc-l1 button.mc-l1-active{ color:var(--accent); }
   /* 图片/文字选取态 affordance:只是虚线框提示"可点这些",不拦截点击。 */
@@ -2709,7 +2709,7 @@
     overflow-x:auto; -webkit-overflow-scrolling:touch;
   }
   .editor-port .mc-subbar .mc-chip{
-    flex:0 0 auto; font-size:11.5px; padding:3px 10px; border-radius:var(--radius-pill);
+    flex:0 0 auto; font-size:var(--fs-sm); padding:3px 10px; border-radius:var(--radius-pill);
     background:var(--bg); color:var(--fg-2); white-space:nowrap;
   }
   .editor-port .mc-subbar .mc-chip.on{ background:var(--fg); color:var(--surface); }
