@@ -24,6 +24,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          # 巡检第 167 行会跑 docs-check,它按提交历史比对文档的 checked-at。
+          # 默认 depth=1 时,指向已被 squash 掉的分支提交的 checked-at 会解析失败,
+          # 报成 6 条 `fatal: Needed a single revision`,整项被判「未通过」——
+          # 2026-11-11 的巡检就是这么被假红占掉的。ci.yml 的 docs job 早已同样处理。
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
 
