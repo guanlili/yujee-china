@@ -38,7 +38,7 @@
   --radius-pill: 9999px;
   --radius-md: 12px;
   --radius-lg: 16px;
-  --fs-xs:11px; --fs-sm:12px; --fs-body:13px; --fs-md:14px;
+  --fs-2xs:10px; --fs-xs:11px; --fs-sm:12px; --fs-body:13px; --fs-md:14px;
   --fs-lg:15px; --fs-xl:16px; --fs-2xl:17px;
   /* ── 尺寸 / 触控 ─────────────────────────────────────────────────────────
      触控目标的最小边长。Apple HIG 44pt、Material 48dp,取 44 作为下限。
