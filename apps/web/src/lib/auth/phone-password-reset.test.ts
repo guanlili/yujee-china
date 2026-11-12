@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { test } from 'node:test';
 
 import { betterAuth } from 'better-auth';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { sessions, users, verifications } from '@/db/schema';
 import { cleanupUser, isDbReachable } from '@/db/repos/__test__/setup';
@@ -117,9 +117,16 @@ async function sessionCount(userId: string) {
 }
 
 async function clearOtps(phone: string) {
-  await db.delete(verifications).where(eq(verifications.identifier, `${phone}-request-password-reset`));
-  // 注册发码(2026-10-28 起)与登录发码共用 identifier=裸号,一并清。
-  await db.delete(verifications).where(eq(verifications.identifier, phone));
+  // better-auth 1.7.18 起:找回 = phone-number-reset-<号>,OTP = phone-number-otp-<号>;
+  // 旧版行(裸号 / <号>-request-password-reset)一并清,兼容存量。
+  await db.delete(verifications).where(
+    inArray(verifications.identifier, [
+      `phone-number-reset-${phone}`,
+      `phone-number-otp-${phone}`,
+      `${phone}-request-password-reset`,
+      phone,
+    ]),
+  );
 }
 
 async function waitForSignupCode(phone: string): Promise<string> {
@@ -267,7 +274,7 @@ test('R4: a bad or expired OTP does not change the password, and resend still wo
     await db
       .update(verifications)
       .set({ expiresAt: new Date(Date.now() - 60_000) })
-      .where(eq(verifications.identifier, `${expiredPhone}-request-password-reset`));
+      .where(eq(verifications.identifier, `phone-number-reset-${expiredPhone}`));
     const expired = await callAuth(
       '/phone-number/reset-password',
       jsonInit({ phoneNumber: expiredPhone, otp: expiredCode, newPassword: NEW_PASSWORD }),

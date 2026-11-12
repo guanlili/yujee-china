@@ -8,7 +8,7 @@ import { APIError, createAuthEndpoint, createAuthMiddleware, getSessionFromCtx }
 import { parseSetCookieHeader, setSessionCookie } from 'better-auth/cookies';
 import { randomInt } from 'node:crypto';
 import { z } from 'zod';
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import * as schema from '@/db/schema';
 import { anonTransferService } from '@/services/user/anon-transfer-service';
@@ -129,14 +129,24 @@ function consumePhoneNumberOtp(phone: string, code: string): Promise<{ status: b
 
 // 同号 60s 一条(方案 §5.1 第①层):better-auth 的限流只有按 IP,换 IP 轰炸同号
 // 拦不住 —— 直查 verifications 表该 identifier 最新一行,60s 内有新行即 429。
-// 登录发码与注册发码共用 identifier=裸手机号,窗口天然共享。
+// better-auth 1.7.18 起插件 OTP 行 identifier 从裸号改为 `phone-number-otp-<号>`
+// (找回是 `phone-number-reset-<号>`,旧为 `<号>-request-password-reset`)。注册
+// 发码与登录发码共用新 identifier,窗口天然共享;同时兼容清查旧裸号行,避免
+// 升级刚落地的 60s 内按旧约定发过码的号被新口径漏放。
 const OTP_SEND_MIN_INTERVAL_MS = 60_000;
 
-export async function lastOtpSentAt(identifier: string): Promise<Date | null> {
+/** better-auth ≥1.7.18 phone-number 插件的 OTP 行 identifier。 */
+export function phoneNumberOtpIdentifier(phone: string): string {
+  return `phone-number-otp-${phone}`;
+}
+
+export async function lastOtpSentAt(phone: string): Promise<Date | null> {
   const rows = await db
     .select({ createdAt: schema.verifications.createdAt })
     .from(schema.verifications)
-    .where(eq(schema.verifications.identifier, identifier))
+    .where(
+      inArray(schema.verifications.identifier, [phone, phoneNumberOtpIdentifier(phone)]),
+    )
     .orderBy(desc(schema.verifications.createdAt))
     .limit(1);
   return rows[0]?.createdAt ?? null;
@@ -181,11 +191,13 @@ const yujeePhoneSignup = {
         if (existing) {
           return ctx.json({ message: 'code sent' });
         }
-        // 镜像插件 sendPhoneNumberOTP 的存码格式(identifier=裸号,value=`code:0`)
+        // 镜像插件 sendPhoneNumberOTP 的存码格式(identifier=phone-number-otp-<号>,
+        // value=`code:0`)—— 1.7.18 起插件验码(consumePhoneNumberOTP)按新前缀查,
+        // 写旧裸号会导致注册验码一律 OTP_NOT_FOUND。
         const code = generatePhoneOtp();
         await ctx.context.internalAdapter.createVerificationValue({
           value: `${code}:0`,
-          identifier: phone,
+          identifier: phoneNumberOtpIdentifier(phone),
           expiresAt: new Date(Date.now() + PHONE_OTP_EXPIRES_IN_SECONDS * 1000),
         });
         await sendSms({ phoneNumber: phone, code, scene: 'signup' });
