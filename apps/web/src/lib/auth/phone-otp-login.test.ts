@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
 
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { users, verifications } from '@/db/schema';
 import { albumRepo } from '@/db/repos/album-repo';
@@ -98,7 +98,10 @@ async function verificationRow(identifier: string) {
 }
 
 async function clearOtps(phone: string) {
-  await db.delete(verifications).where(eq(verifications.identifier, phone));
+  // 1.7.18 起插件 OTP 行 identifier 带 phone-number-otp- 前缀;旧裸号行一并清。
+  await db.delete(verifications).where(
+    inArray(verifications.identifier, [phone, `phone-number-otp-${phone}`]),
+  );
 }
 
 async function signUpWithOtp(phoneRaw: string): Promise<{ id: string; phone: string }> {
@@ -126,7 +129,11 @@ test('L1: 未注册号发码静默 200,不产生验证码行也不写 capture(D1
     const res = await callAuth('/phone-number/send-otp', jsonInit({ phoneNumber: `+86 ${phone.slice(0, 3)} ${phone.slice(3)}` }));
     const body = await readJson(res, 'send-otp unregistered', 200);
     assert.equal(body.message, 'code sent', 'must look identical to the plugin success body');
-    assert.equal(await verificationRow(phone), null, 'no verification row for unregistered numbers');
+    assert.equal(
+      (await verificationRow(phone)) ?? (await verificationRow(`phone-number-otp-${phone}`)),
+      null,
+      'no verification row for unregistered numbers',
+    );
     assert.equal(captureRows(phone).length, 0, 'no capture row => no SMS in aliyun mode');
   } finally {
     await clearOtps(phone);
@@ -144,8 +151,8 @@ test('L2: 已注册号发码 → capture 行 + verification 行;同号 60s 内�
     await readJson(first, 'send-otp registered', 200);
     const code = await waitForCode(created.phone, 'login');
     assert.match(code, /^\d{6}$/);
-    const row = await verificationRow(created.phone);
-    assert.ok(row, 'plugin stores the OTP under identifier=normalized phone');
+    const row = await verificationRow(`phone-number-otp-${created.phone}`);
+    assert.ok(row, 'plugin stores the OTP under identifier=phone-number-otp-<phone>');
     assert.match(row.value, /^\d{6}:0$/);
 
     const second = await callAuth('/phone-number/send-otp', jsonInit({ phoneNumber: created.phone }));
@@ -192,7 +199,12 @@ test('L3: 验码登录置 phoneNumberVerified=true 并种会话;游客并号走 
     assert.equal(moved?.userId, created.id, 'guest album must be transferred on OTP login');
     const anonRow = await db.select().from(users).where(eq(users.id, anon.user!.id));
     assert.equal(anonRow.length, 0, 'anonymous user row must be deleted after the merge');
-    assert.equal(await verificationRow(created.phone), null, 'verify consumes the OTP row');
+    assert.equal(
+      (await verificationRow(created.phone)) ??
+        (await verificationRow(`phone-number-otp-${created.phone}`)),
+      null,
+      'verify consumes the OTP row',
+    );
   } finally {
     await clearOtps(created.phone);
     await cleanupUser(created.id);
@@ -280,7 +292,11 @@ test('S2: 漏 code / 错 code 都建不了号;对 code 建号即 phoneNumberVeri
     const user = await userByPhone(phone);
     assert.equal(user?.id, okBody.user?.id);
     assert.equal(user?.phoneNumberVerified, true, 'signup via OTP must mark the phone verified');
-    assert.equal(await verificationRow(phone), null, 'signup consumes the OTP row');
+    assert.equal(
+      (await verificationRow(phone)) ?? (await verificationRow(`phone-number-otp-${phone}`)),
+      null,
+      'signup consumes the OTP row',
+    );
   } finally {
     await clearOtps(phone);
     const user = await userByPhone(phone);
