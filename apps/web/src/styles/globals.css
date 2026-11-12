@@ -15,6 +15,20 @@
   font-display: swap;
 }
 
+/* Brand display typeface (DESIGN.md §3), self-hosted. Was next/font/google
+   (compile-time fetch from fonts.googleapis.com hangs behind the GFW); the
+   variable wght axis ships one 40KB woff2, same pattern as the album fonts
+   above. --font-display picks it up via the 'Bricolage Grotesque' fallback
+   entry — next/font's --font-bricolage is gone and that var now resolves to
+   nothing, so the named family is the live path. */
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  src: url('/fonts/BricolageGrotesqueVF.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Album Latin fonts stay small enough to ship as browser assets. Full CJK
    families remain server-only and are installed per album as dynamic subsets. */
 @font-face {
@@ -193,9 +207,9 @@
   --danger: #111111;
 
   /* ─── Typography ──────────────────────────────────────────────── */
-  /* --font-bricolage is provided by next/font (root layout). Fall back to the
-     named Google font, then system-ui, so headings render before/without it. */
-  --font-display: var(--font-bricolage), 'Bricolage Grotesque', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Display typeface is the self-hosted 'Bricolage Grotesque' @font-face
+     (see top of file); system-ui stays as the pre-swap fallback. */
+  --font-display: 'Bricolage Grotesque', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-body: system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, 'JetBrains Mono', Menlo, monospace;
 

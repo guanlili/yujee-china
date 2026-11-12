@@ -4,12 +4,11 @@ import { SITE_URL } from '@/lib/seo/site';
 import { AnalyticsBoot } from '@/components/app/AnalyticsBoot';
 import '@/styles/globals.css';
 
-// Display / heading typeface (DESIGN.md §3) was loaded via next/font/google
-// (Bricolage Grotesque). That fetches from fonts.googleapis.com at compile time,
-// which is unreachable behind the GFW and hangs every first compile. Disabled for
-// local dev; --font-display in globals.css already falls back to system-ui.
-// TODO: self-host the woff2 via next/font/local (download through a proxy) to
-// restore the brand font without the network fetch.
+// Display / heading typeface (DESIGN.md §3) is self-hosted: the variable-wght
+// Bricolage Grotesque woff2 lives in public/fonts with an @font-face in
+// globals.css (same pattern as the album Latin fonts). The old next/font/google
+// path fetched from fonts.googleapis.com at compile time, which is unreachable
+// behind the GFW and hung every first compile.
 
 export const metadata: Metadata = {
   // Resolves every relative canonical/OG URL against the apex rather than the

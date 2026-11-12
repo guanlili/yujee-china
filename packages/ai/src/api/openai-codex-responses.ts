@@ -879,8 +879,13 @@ let _cachedWebsocket: WebSocketConstructor | null = null;
 async function getWebSocketConstructor(env?: ProviderEnv): Promise<WebSocketConstructor | null> {
 	if (!env && _cachedWebsocket) return _cachedWebsocket;
 
-	// bun doesn't respect http proxy envs, ref: https://github.com/oven-sh/bun/issues/15489
-	// TODO: remove this when bun supports proxy envs in websocket.
+	// bun didn't respect http proxy envs, ref: https://github.com/oven-sh/bun/issues/15489
+	// (closed as completed 2026-07 — bun now reads proxy envs natively). Kept anyway:
+	// this wrapper routes through resolveHttpProxyUrlForTarget, which adds
+	// no_proxy/shouldProxyHostname semantics, per-protocol env selection
+	// (https_proxy|http_proxy|all_proxy) and a clear error for SOCKS/PAC URLs —
+	// none of which bun's native env handling covers. Production runs node
+	// (design-agent Dockerfile: node:24-slim) where this branch never triggers.
 	if (typeof process !== "undefined" && process.versions?.bun) {
 		const WebSocketWithProxy = class extends WebSocket {
 			constructor(url: string | URL, options?: string | string[] | Record<string, unknown>) {
