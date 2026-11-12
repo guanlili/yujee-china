@@ -18,6 +18,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const read = (...p: string[]) => readFileSync(join(here, ...p), 'utf8');
 
 const editor = read('EditorPort.tsx') + '\n\n' + read('EditorBook.tsx')
+// 2026-11-11(阶段 2a):版式弹窗与导出状态搬到了 export-ui / export-state,
+// 下面三条断言跟着指向新文件 —— 断言内容不变。
+const exportUiSrc = read('export-ui.ts')
+// 阶段 2b:exportPdf 主路径搬到了 export-actions。
+const exportActionsSrc = read('export-actions.ts')
 const editorBook = read('EditorBook.tsx');
 const exportModals = read('mobile', 'modals', 'ExportModals.tsx');
 const useExport = read('mobile', 'use-export.ts');
@@ -58,8 +63,8 @@ test('双端各一个版式弹窗:标准/印刷两张卡,默认选中标准版',
   // 桌面:两张卡是字面 testid,打开时复位为标准版(selected + aria-pressed 对齐)
   assert.equal((editor.match(/data-testid="pdf-style-standard"/g) ?? []).length, 1, 'desktop 恰好一张标准版卡片');
   assert.equal((editor.match(/data-testid="pdf-style-bleed"/g) ?? []).length, 1, 'desktop 恰好一张印刷版卡片');
-  assert.match(editor, /pdfStyle = 'standard';/, '桌面每次打开复位标准版');
-  assert.match(editor, /getAttribute\('data-pdf-style'\) === 'standard'/);
+  assert.match(exportUiSrc, /state\.pdfStyle = 'standard';/, '桌面每次打开复位标准版');
+  assert.match(exportUiSrc, /getAttribute\('data-pdf-style'\) === 'standard'/);
   // 移动:卡片由 options 数组生成(testid 模板化),恰好 standard/bleed 两项
   assert.match(exportModals, /data-testid=\{`pdf-style-\$\{o\.id\}`\}/, 'mobile 卡片带模板 testid');
   assert.match(exportModals, /id: 'standard' \| 'bleed'/, 'mobile 版式恰好两种');
@@ -70,7 +75,7 @@ test('双端各一个版式弹窗:标准/印刷两张卡,默认选中标准版',
 test('出血值 3 只在确认分派层:桌面 confirmPdfStyle + 移动 Root 各一处', () => {
   assert.match(
     editor,
-    /confirmPdfStyle:[\s\S]{0,120}exportPdf\(pdfStyle === 'bleed' \? 3 : 0\)/,
+    /confirmPdfStyle:[\s\S]{0,120}exportPdf\(exportState\.pdfStyle === 'bleed' \? 3 : 0\)/,
     '桌面确认时按选中版式分派',
   );
   assert.match(mobileRoot, /exportPdf\(\{ bleedMm: 3 \}\)/, '移动确认时印刷版传 3');
@@ -84,11 +89,11 @@ test('出血版只本地下载,不上传云端;文件名带 -bleed3mm 后缀', (
     '移动端游客/出血版都跳过 uploadPdf(与 main 游客模式合流)',
   );
   assert.match(useExport, /-bleed3mm\.pdf/);
-  assert.match(editor, /if \(bleedMm === 0\) \{/, '桌面出血版跳过 uploadPdfOnce');
-  assert.match(editor, /exportBleedMm \? '-bleed3mm' : ''/);
+  assert.match(exportActionsSrc, /if \(bleedMm === 0\) \{/, '桌面出血版跳过 uploadPdfOnce');
+  assert.match(exportActionsSrc, /state\.bleedMm \? '-bleed3mm' : ''/);
 });
 
 test('桌面 export-gate 罩住菜单里的 PDF 入口', () => {
-  assert.match(editor, /\['\[data-action="openPdfStyle"\]'\]/, '闸门选择器盯 openPdfStyle');
+  assert.match(exportUiSrc, /\['\[data-action="openPdfStyle"\]'\]/, '闸门选择器盯 openPdfStyle');
   assert.doesNotMatch(editor, /exportPdfBleed/, '旧的印刷版直达 action 退场');
 });

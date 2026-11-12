@@ -5,7 +5,13 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const editor = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
+const editor =
+  readFileSync(join(here, 'EditorPort.tsx'), 'utf8') +
+  '\n\n' +
+  readFileSync(join(here, 'EditorBook.tsx'), 'utf8') +
+  // 阶段 2b:导出主流程搬到 export-actions,它要用当前 filter 状态。
+  '\n\n' +
+  readFileSync(join(here, 'export-actions.ts'), 'utf8');
 const bar = readFileSync(join(here, 'FilterBar.tsx'), 'utf8');
 const css = readFileSync(join(here, 'editor-port.css'), 'utf8');
 

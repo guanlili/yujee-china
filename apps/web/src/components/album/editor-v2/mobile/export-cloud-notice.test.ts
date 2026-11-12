@@ -62,7 +62,8 @@ test('直传有明确截止时间 —— 否则挂住的请求会让重试永远
     /putRes\s*=\s*await fetchWithTimeout\(/,
     '移动端:超时必须包在真正上传那一次调用上,不能只包签名',
   );
-  const book = source('../EditorBook.tsx');
+  // 阶段 2b:桌面端上传实现搬到 export-actions(仍是同一份 export-retry-util)。
+  const book = source('../export-actions.ts');
   assert.match(
     book,
     /putRes = await fetchWithTimeout\(\s*putUrl/,
