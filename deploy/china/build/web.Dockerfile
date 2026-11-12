@@ -29,13 +29,18 @@ ENV DATABASE_URL=postgres://build:build@build:5432/build \
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.pi.base.json ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/contracts/package.json ./packages/contracts/
-RUN pnpm install --filter @yujee/web... --frozen-lockfile
+# 2026-11-10：npmmirror 单包 tgz 偶发 Socket timeout（design.Dockerfile 同因），
+# 放宽 fetch 重试并整条兜一次(兜底那轮同时换官方 registry),避免与代码无关的部署失败。
+ARG PNPM_FETCH="--fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=180000 --fetch-timeout=180000"
+RUN pnpm install --filter @yujee/web... --frozen-lockfile $PNPM_FETCH \
+ || pnpm install --filter @yujee/web... --frozen-lockfile $PNPM_FETCH --registry=https://registry.npmjs.org
 COPY . .
 # COPY . . 会把构建上下文里的 node_modules 一并带进来(宿主残留/半装目录),
 # 覆盖掉上一步刚装好的依赖并打断 pnpm 的 symlink —— 表现为构建时报
 # `Cannot find module '/app/apps/web/node_modules/next/dist/bin/next'`。
 # 这里再按 lockfile 复装一次,保证镜像里的依赖只以 lockfile 为准。
-RUN pnpm install --filter @yujee/web... --frozen-lockfile
+RUN pnpm install --filter @yujee/web... --frozen-lockfile $PNPM_FETCH \
+ || pnpm install --filter @yujee/web... --frozen-lockfile $PNPM_FETCH --registry=https://registry.npmjs.org
 RUN pnpm --filter @yujee/web build
 
 # ---- runner(standalone,2026-10-30)----

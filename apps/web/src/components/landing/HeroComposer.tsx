@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { track } from '@/lib/analytics/track-client';
 import { getSession, signIn } from '@/lib/auth/client';
 import { compressFile, type CompressedPhoto } from '@/lib/photo/compress';
 import { IMAGE_INPUT_ACCEPT } from '@/lib/photo/heic';
@@ -241,6 +242,13 @@ export function HeroComposer({
     );
     generationDraft.clear();
     albumRecipe.save(albumId, { language: draft.language, photoIds, requestId });
+    // 漏斗第二格:真正把生成请求发出去了(不是「点了按钮」)。放在提交成功之后,
+    // 上传失败/被登录墙拦下的人不算开始做书 —— 否则这条转化率会被虚高。
+    track('book_start', {
+      albumId,
+      result: 'ok',
+      meta: { photos: photoIds.length, locale: draft.language, source: opts.anonymous === true ? 'guest' : 'user' },
+    });
     router.push(`/${locale}/album/${albumId}`);
   };
 

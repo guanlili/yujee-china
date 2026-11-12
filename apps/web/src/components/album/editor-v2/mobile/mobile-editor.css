@@ -70,7 +70,7 @@
   min-width: 0;
   padding: 0 4px;
   font-family: var(--font-display);
-  font-size: 17px;
+  font-size: var(--fs-2xl);
   font-weight: 700;
   letter-spacing: -0.01em;
   overflow: hidden;
@@ -302,7 +302,8 @@
 /* 图片工具栏:贴着选中框的一小条,只有换图/复位/删除。缩放平移走手势,不占这里的位置。
    z-index 要压过 .msel(2),否则选中框的描边会盖在按钮上;它自己要能点,所以
    pointer-events 必须是 auto —— .msel 是 none,别跟着抄。
-   高度与 EditView 的 IMG_BAR_H 保持一致(那边靠它算挂上方还是下方)。 */
+   高度与 EditView 的 IMG_BAR_H 保持一致(那边靠它算挂上方还是下方)。
+   44px 是触控下限:条内按钮撑满是 40,原来整条只有 40 高,换图/删除在手机上偏窄。 */
 .mobile-editor .mimg-bar {
   position: absolute;
   z-index: 3;
@@ -311,7 +312,7 @@
   /* 保留四个操作的完整宽度;极窄屏时把外框限制在画布内并横向滚动。 */
   width: max-content;
   max-width: calc(100% - 16px);
-  height: 40px;
+  height: 44px;
   display: flex;
   align-items: stretch;
   overflow-x: auto;
@@ -334,6 +335,7 @@
 
 .mobile-editor .mimg-btn {
   flex: 0 0 auto;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 5px;
@@ -343,13 +345,20 @@
   background: transparent;
   color: var(--fg);
   font-family: var(--font-display);
-  font-size: 12.5px;
+  font-size: var(--fs-body);
   font-weight: 600;
   white-space: nowrap;
   cursor: pointer;
 }
 
 .mobile-editor .mimg-btn:active { background: var(--surface-2, rgba(0, 0, 0, 0.05)); }
+/* 伪元素把热区补满整条 44px(按钮自身 36),视觉尺寸不变。
+   纵向 -4 由条内 padding 吃掉,不再往外溢出;横向 -2 只补到相邻按钮的 gap 处。 */
+.mobile-editor .mimg-btn::after {
+  content: '';
+  position: absolute;
+  inset: -4px -2px;
+}
 .mobile-editor .mimg-btn[data-danger='1'] { color: #c44; }
 .mobile-editor .mimg-ic { width: 15px; height: 15px; flex-shrink: 0; }
 
@@ -388,7 +397,7 @@
   border: 1.5px dashed var(--line, rgba(0, 0, 0, 0.16));
   background: transparent;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   line-height: 1.2;
   text-align: center;
   padding: 0 8px;
@@ -397,7 +406,7 @@
 .mpick-empty {
   padding: 28px 8px;
   text-align: center;
-  font-size: 13px;
+  font-size: var(--fs-body);
   color: var(--muted);
 }
 
@@ -731,7 +740,7 @@
   gap: 4px;
   border: 0;
   background: none;
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--fg-2);
 }
 
@@ -871,7 +880,7 @@
   border-radius: 9999px;
   background: #c44;
   color: var(--surface);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.2);
 }
 
@@ -889,7 +898,7 @@
 /* ── 图片面板(缩放滑块 / 复位)。类名沿用 .mes-*,视觉与文字面板同一套 ────────
    只在移动端宿主内生效,editor-port.css 一行不动。 */
 .mobile-modal-host .mes-hint {
-  font-size: 12.5px;
+  font-size: var(--fs-body);
   line-height: 1.5;
   color: var(--muted);
   margin: 2px 0 10px;
@@ -912,20 +921,20 @@
 
 .mobile-modal-host .mes-zoom-val {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--muted);
   min-width: 56px;
   text-align: right;
 }
 
 .mobile-modal-host .mes-reset {
-  height: 38px;
+  height: 44px;
   padding: 0 18px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--fg);
-  font-size: 13px;
+  font-size: var(--fs-body);
   font-weight: 600;
 }
 
@@ -1021,7 +1030,7 @@
   border-radius: var(--radius-md);
   background: var(--bg);
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--fs-body);
   color: var(--muted);
 }
 .mobile-modal-host .mcp-hex { flex: 1; min-width: 0; }
@@ -1036,7 +1045,7 @@
   outline: none;
   font-family: inherit;
   /* 16px 防 iOS 聚焦时整页缩放(与 .mes-textarea 同一处置) */
-  font-size: 16px;
+  font-size: var(--fs-xl);
   color: var(--fg);
   text-transform: uppercase;
 }
@@ -1054,7 +1063,7 @@
   border-radius: var(--radius-pill);
   background: var(--fg);
   color: var(--surface);
-  font-size: 13px;
+  font-size: var(--fs-body);
   box-shadow: var(--shadow-card-hover);
   pointer-events: none;
   animation: mtoast-in 0.18s var(--ease) both;
@@ -1080,12 +1089,12 @@
 
 /* ── 删除书页确认弹窗(2026-08-03):挂在 ModalHost(.modal-card)里。── */
 .mobile-modal-host .mdel-body { padding: 20px 20px 4px; display: grid; gap: 8px; }
-.mobile-modal-host .mdel-title { font-size: 17px; font-weight: 600; }
-.mobile-modal-host .mdel-text { font-size: 14px; opacity: 0.75; line-height: 1.5; }
+.mobile-modal-host .mdel-title { font-size: var(--fs-2xl); font-weight: 600; }
+.mobile-modal-host .mdel-text { font-size: var(--fs-md); opacity: 0.75; line-height: 1.5; }
 .mobile-modal-host .mdel-warn { opacity: 1; color: #c44; }
 .mobile-modal-host .mdel-actions { display: flex; gap: 10px; padding: 16px 20px 20px; }
 .mobile-modal-host .mdel-btn {
-  flex: 1; padding: 11px 0; border-radius: 10px; font-size: 15px;
+  flex: 1; padding: 11px 0; border-radius: 10px; font-size: var(--fs-lg);
   border: 1px solid rgba(0, 0, 0, 0.12); background: transparent; color: var(--fg);
 }
 .mobile-modal-host .mdel-danger { background: #c44; border-color: #c44; color: var(--surface); }
@@ -1103,7 +1112,7 @@
   border: 1.5px solid var(--accent);
   background: var(--surface);
   color: var(--fg);
-  font-size: 12px;
+  font-size: var(--fs-sm);
   line-height: 1.2;
   text-align: center;
   padding: 0 8px;
@@ -1119,7 +1128,7 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 12px;
-  font-size: 16px; /* iOS 聚焦时 <16px 会自动放大整个页面,这里必须 ≥16 */
+  font-size: var(--fs-xl); /* iOS 聚焦时 <16px 会自动放大整个页面,这里必须 ≥16 */
   line-height: 1.5;
   background: var(--surface);
   color: var(--fg);
@@ -1128,7 +1137,7 @@
 .mgen-hint {
   min-height: 18px;
   margin: 8px 2px;
-  font-size: 12.5px;
+  font-size: var(--fs-body);
   color: var(--muted);
 }
 .mgen-hint[data-error='1'] { color: #c44; }
@@ -1139,7 +1148,7 @@
   border-radius: 12px;
   background: var(--accent);
   color: var(--surface);
-  font-size: 15px;
+  font-size: var(--fs-lg);
   font-weight: 600;
 }
 .mgen-submit:disabled { opacity: 0.45; }
@@ -1151,5 +1160,5 @@
 .mobile-editor input:not([type='checkbox']):not([type='radio']),
 .mobile-editor textarea,
 .mobile-editor select {
-  font-size: 16px;
+  font-size: var(--fs-xl);
 }

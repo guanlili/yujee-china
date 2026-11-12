@@ -12,10 +12,9 @@
 
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import type { EditorPage } from '../types';
-import type { ResolveImage } from '../adapt-layout';
+import type { AdaptablePage, ResolveImage } from '../adapt-layout';
 import { adaptPageToTemplateData } from '../adapt-layout';
-import { applyFolioOverlay, preferredPageHtml, type FolioSide, type PageFolio } from '../page-html-dom';
+import { applyFolioOverlay, preferredPageHtml, type FolioSide, type HtmlPage, type PageFolio } from '../page-html-dom';
 import { getWebTemplate } from '../web-registry';
 import { PAGE, pageBox } from '../templates/constants';
 
@@ -31,9 +30,29 @@ export type PageFaceCtx = {
   resolve: ResolveImage;
 };
 
+/** 导出侧(AdaptablePage: images/texts/imagePos + html) → 屏显侧(HtmlPage: *Json)
+ *  的字段名适配。只换名,语义一致 —— 适配层留在这里,而不是让导出自己再拼一份 HTML(#330)。
+ *  导出要的是原尺寸内容(尺寸由 faceCaptureSpec 定),所以喂 pageFaceInner,不是 pageFaceHTML。 */
+export function toHtmlPage(page: AdaptablePage & { html?: string }): HtmlPage {
+  return {
+    templateId: page.templateId,
+    imagesJson: page.images,
+    textsJson: page.texts,
+    imagePosJson: page.imagePos,
+    htmlJson: page.html,
+  };
+}
+
 /** 把一页渲染成静态 HTML(794×1123 原始尺寸,不含缩放外框)。
- *  HTML 模板已迁移的走单一 HTML 渲染器;未迁的回退现有 React 组件。 */
-export function pageFaceInner(page: EditorPage | null, ctx: PageFaceCtx): string {
+ *  HTML 模板已迁移的走单一 HTML 渲染器;未迁的回退现有 React 组件。
+ *
+ *  **这就是「一页长什么样」的唯一定义**:桌面画板、移动端、以及栅格 PDF 导出
+ *  (lib/pdf/render-raster)全都调这里。导出侧的尺寸由 faceCaptureSpec 定,所以它
+ *  要的是本函数的原尺寸输出,不是 pageFaceHTML 的缩放外框(#330)。
+ *
+ *  入参用 HtmlPage 而不是 EditorPage —— 后者是前者的超集(多 pageIndex/version),
+ *  放宽之后导出侧的 AdaptablePage 也能直接喂进来,不必再写一份等价实现。 */
+export function pageFaceInner(page: HtmlPage | null, ctx: PageFaceCtx): string {
   if (!page) return '';
   // 页面真相 = 存库 html(含 AI/用户手工版面);页签按当前页序展示层计算,
   // 覆盖模板遗留 folio(封面/封尾不编号)。
@@ -63,7 +82,7 @@ export function pageFaceInner(page: EditorPage | null, ctx: PageFaceCtx): string
  *  书上以装订在一起的左右两个半页出现(各自参与翻页、各带页码角)。
  *  只对双宽模板生效;普通页传了也按整页画(框本来就是整页)。 */
 export function pageFaceHTML(
-  page: EditorPage | null,
+  page: HtmlPage | null,
   boxW: number,
   boxH: number,
   ctx: PageFaceCtx,

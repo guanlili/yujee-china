@@ -14,6 +14,19 @@ LOG=logs/deploy.log
 # 输出双写:CI job log(经 ssh stdout 回传)+ 本地留档。
 exec > >(tee -a "$LOG") 2>&1
 
+# ── 运维脚本同步(2026-11-10)────────────────────────────────────────
+# cron 跑的是 ~/yujee-ops/bin/*.sh,不是业务目录里的副本。原因:备份脚本、备份
+# 产物、告警脚本原本都住在 yujee-clip 里,清理或重装业务目录会连带把备份链和
+# 告警通道一起删掉 —— 备份最不该和业务放同一个篮子。仓库 deploy/china/bin/
+# 仍是唯一版本源,每次部署覆盖过去,cron 侧不需要跟着仓库结构改。
+OPS_DIR="${OPS_DIR:-$HOME/yujee-ops}"
+mkdir -p "$OPS_DIR/bin" "$OPS_DIR/backups"
+for f in feishu-alert.sh pg-backup-cos.sh resource-check.sh analytics-prune.sh; do
+  install -m 755 "deploy/china/bin/$f" "$OPS_DIR/bin/$f"
+done
+echo "ops scripts synced → $OPS_DIR/bin"
+
+
 # ── 自愈(2026-10-29):清理孤儿构建进程 ─────────────────────────────
 # 部署并发组(cancel-in-progress:false)排队不取消,但 GitHub Actions 侧 job
 # 超时或手动取消时,服务器上的 docker compose build 可能已被杀掉客户端但

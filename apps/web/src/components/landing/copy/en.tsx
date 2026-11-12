@@ -11,7 +11,7 @@ export const en: Copy = {
   login: 'Log in',
   menu: 'Menu',
   createTitle: 'Turn your scattered photos into a story-driven photobook you can read, touch, and keep',
-  createSub: 'No sign-in needed, free to use.',
+  createSub: 'No sign-in needed — make a sample book free.',
   sampleCta: 'See example',
   makeSame: 'Make one like this',
   samplesNote: 'Demo books made by the Yujee team to show what the product can do — fictional content, not customer work.',

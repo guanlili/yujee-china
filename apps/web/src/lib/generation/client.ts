@@ -11,6 +11,8 @@ import {
   signPhotoSnapshotUpload,
   type SnapshotEntry,
 } from '@/lib/album/photo-snapshot-client';
+import { track } from '@/lib/analytics/track-client';
+import { classifyTransferFailure } from '@/lib/analytics/failure-code';
 
 // Browser-side client for the generation endpoints. Owns the two billing-aware
 // flows BILL-1 defines so /create (UI-2) and /my-albums + /album (UI-4) consume
@@ -18,6 +20,7 @@ import {
 //   • submit / retry both surface CREDIT_INSUFFICIENT as a typed error so the
 //     caller can route to /credits and resume (§6.5.2);
 //   • retry reuses the same albumId (§6.5.3), the browser resending base64.
+
 
 export type GenerationPhoto = {
   photoId: string;
@@ -315,6 +318,10 @@ async function backupGenerationPreviews(
   }
 
   const uploaded: SnapshotEntry[] = [];
+  const failed: SnapshotEntry[] = [];
+  // 记第一个失败的原因就够了:批量 PUT 时同一个根因(签名过期/桶策略/断网)
+  // 通常一次全挂,逐张记只会把同一条错误刷几十遍。
+  let firstFailCode: string | undefined;
   const queue = [...entries];
   const worker = async () => {
     for (;;) {
@@ -325,12 +332,29 @@ async function backupGenerationPreviews(
       try {
         await putSnapshotBlob(target.putUrl, blob);
         uploaded.push(entry);
-      } catch {
+      } catch (err) {
         // Partial cloud backup is still useful; confirm only successful PUTs.
+        failed.push(entry);
+        firstFailCode ??= classifyTransferFailure(err);
       }
     }
   };
   await Promise.all(Array.from({ length: Math.min(4, entries.length) }, worker));
+  // 埋点:这张表的意义就在于「备份到底成不成」——以前只能靠用户说「卡住了」。
+  // 失败张数单独记一条,避免部分成功把成功率算成 100%。
+  if (uploaded.length > 0) {
+    track('upload_ok', { albumId, value: uploaded.length, result: 'ok', meta: { photos: entries.length } });
+  }
+  if (failed.length > 0) {
+    // code:失败原因(封闭词表)。没有它,这张表只能告诉你"备份挂了 3 张",
+    // 却答不出"为什么挂" —— 而这两件事的补救办法完全不同。
+    track('upload_fail', {
+      albumId,
+      value: failed.length,
+      result: 'fail',
+      meta: { photos: entries.length, step: 'put', ...(firstFailCode ? { code: firstFailCode } : {}) },
+    });
+  }
   if (uploaded.length > 0) await confirmPhotoSnapshot(albumId, uploaded);
 }
 
