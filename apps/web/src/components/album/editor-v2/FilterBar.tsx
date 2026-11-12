@@ -76,6 +76,13 @@ export function FilterBar({
   const current = currentScopeFilter(state, scope, photoId);
   const strength = current?.strength ?? 100;
   const [dragStrength, setDragStrength] = useState<number | null>(null);
+  const apply = useCallback(
+    (ref: PhotoFilterRef | null) => {
+      if (scope === 'photo' && photoId) onChange(setPhotoOverride(state, photoId, ref));
+      else onChange(setBookFilter(state, ref));
+    },
+    [scope, photoId, onChange, state],
+  );
   const commitStrength = useCallback(() => {
     setDragStrength((pending) => {
       if (pending != null && pending !== strength) {
@@ -83,8 +90,7 @@ export function FilterBar({
       }
       return null;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current, strength]);
+  }, [current, strength, apply]);
   /** 这张图正在跟随全书 = 没有自己的 override(与 override === null 是两回事)。 */
   const following =
     scope === 'photo' && photoId != null && state?.overrides?.[photoId] === undefined;
@@ -170,10 +176,6 @@ export function FilterBar({
     el.scrollBy({ left: direction * Math.max(120, el.clientWidth * 0.85), behavior: 'smooth' });
   };
 
-  const apply = (ref: PhotoFilterRef | null) => {
-    if (scope === 'photo' && photoId) onChange(setPhotoOverride(state, photoId, ref));
-    else onChange(setBookFilter(state, ref));
-  };
   const select = (lutId: LutId) => apply({ lutId, strength: quantizeStrength(strength) });
   /** 全书当前风格 —— 「跟随全书」那张卡的缩略图用它,让用户看到跟随的结果长什么样。 */
   const bookLutId = state?.default?.lutId ?? null;
