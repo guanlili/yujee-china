@@ -131,7 +131,12 @@ import { loadAlbumFonts, loadFontSubset, useAlbumFonts } from '@/lib/font/album-
 import { isCjkFontId, type CjkFontId } from '@/services/font/font-manifest';
 import { FONT_CATALOG } from '@yujee/contracts/render';
 import { EDITOR_FONTS, CJK_PREVIEW_SAMPLE, type EditorFont } from './editor-fonts';
-import { clamp01, hsvToRgb, rgbToHsv, hexToRgb, toHex, rgbToHex } from './color-util';
+import { clamp01, hsvToRgb, rgbToHsv, hexToRgb, toHex, rgbToHex, hslToHex } from './color-util';
+import { createCanvasQuery, type CanvasCtx } from './editor-canvas-context';
+import { createExportState } from './export-state';
+import { createExportUi } from './export-ui';
+import { createExportActions } from './export-actions';
+import { countSpreads, findPageByIndex } from './editor-canvas-ctx';
 import { loadRecentColors, saveRecentColor } from './color-recent';
 import {
   applyPatchToPages,
@@ -169,6 +174,7 @@ import {
   type ChatCoordinator,
   type DraftActApplied,
 } from './editor-coordinator';
+import { buildOverviewHtml } from './overview-template';
 import './editor-port.css';
 // 字体表已抽到 editor-fonts(移动端弹窗同用一份,见该文件抬头)。
 // ── 自定义取色器(参考「填充」面板设计):HSV 拾色 + 色相/透明度条 + 预设色 + hex/不透明度 ──
@@ -176,14 +182,7 @@ import './editor-port.css';
 // 吸色工具与画板垫底背景共用同一套常用色板(保持一致)。
 const COLOR_SWATCHES = COLOR_PRESETS;
 // 颜色换算已抽到共享层 color-util(移动端取色器用同一份,不留第二份真相)。
-
-function hslToHex(h: number, s: number, l: number) {
-  s /= 100; l /= 100;
-  const k = (n: number) => (n + h / 30) % 12;
-  const a = s * Math.min(l, 1 - l);
-  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
-  return rgbToHex(f(0) * 255, f(8) * 255, f(4) * 255);
-}
+// hslToHex 也在那里 —— 这里不要再写一份。
 // 色板/格子模式的常用色:中性列(极低饱和)+ 8 色相族 × 7 深浅 = 63 色。行主序,
 // 每行 = [中性, 8 色相]。饱和 58%、明度 92→26,柔和贴合纪念册,不花哨。
 const GRID_HUES = [8, 30, 45, 150, 190, 214, 258, 328];
@@ -277,9 +276,20 @@ export function EditorBook({
     if (!root) return;
 
     // ── scoped equivalents of document.* / body.* from the original script ──
-    const $ = (s: string) => root.querySelector(s) as HTMLElement | null;
-    const $$ = (s: string) => root.querySelectorAll(s);
-    const byId = (id: string) => root.querySelector('#' + CSS.escape(id)) as HTMLElement | null;
+    // 查询器搬到 editor-canvas-context(阶段 1):包装成 ctx 以便阶段 2 起把
+    // 242 个闭包函数按域搬出去。这里的解构保持同名,下面所有调用点零改动。
+    // $$scoped 的内联注释(为什么排掉 .pane-chat-col)一并搬过去了。
+    const q = createCanvasQuery(root);
+    const ctx: CanvasCtx = {
+      root,
+      bodyEl: root,
+      q,
+      i18n: chatI18n as Record<string, Record<string, string>>,
+      albumId: detail.album.id,
+      isAuthoring: mode === 'authoring',
+    };
+    const { $, $$, byId, $$scoped } = ctx.q;
+    const bodyEl = root; // original toggled body classes (overview-on / chat-collapsed / rail-collapsed); scoped to root here.
     // canvas 侧的 data-action 扫描:整棵 root 扫,只把对话栏子树排掉。
     //
     // 这里原本是一份手工维护的弹窗白名单(canvasScopes):新加弹窗漏补一行 = 弹窗里
@@ -299,9 +309,9 @@ export function EditorBook({
     //
     // 仍是挂载时一次性扫描,只绑当时已在 DOM 里的节点:运行时 createElement 出来的
     // 按钮(img-edit-gen 等)必须各自 addEventListener,别给它们写 data-action。
-    const $$scoped = (sel: string): Element[] =>
-      [...root.querySelectorAll(sel)].filter((el) => !el.closest('.pane-chat-col'));
-    const bodyEl = root; // original toggled body classes (overview-on / chat-collapsed / rail-collapsed); scoped to root here.
+    // ($$scoped 的实现随查询器搬到 editor-canvas-context(阶段 1);上面那段
+    //  「为什么排掉 .pane-chat-col」的归属说明保留在此,搬函数时连同语义一起带走。)
+    // bodyEl 已在上面随 ctx 声明。
 
     /* ─── i18n translations (verbatim; shared module dict) ─── */
     const i18n: Record<string, Record<string, string>> = chatI18n;
@@ -323,19 +333,16 @@ export function EditorBook({
     // §4.5a export gate: the topbar export button is prop-disabled by the shell when
     // locked; this mirror lets exportPdf() defend itself and lets the chat toggle the
     // live gate via coordinator.setExportGateUi.
-    let exportGateLocked = isAuthoring;
-    function setExportGateUi(locked: boolean) {
-      exportGateLocked = locked;
-      // 菜单里的 PDF 入口只剩一个(版式在弹窗里选;出血只是渲染参数,不改导出门槛)。
-      for (const selector of ['[data-action="openPdfStyle"]']) {
-        const exportBtn = $(selector) as HTMLButtonElement | null;
-        if (exportBtn && isAuthoring) {
-          exportBtn.disabled = locked;
-          exportBtn.classList.toggle('is-disabled', locked);
-          exportBtn.setAttribute('aria-disabled', locked ? 'true' : 'false');
-        }
-      }
-    }
+    // 导出域:6 个 let 收进 exportState(阶段 2a),六个 UI 小件搬到 export-ui。
+    // 字段语义与原子符串一一对应;setExportGateUi 保留原名,调用点零改动。
+    const exportState = createExportState(isAuthoring);
+    const exportUi = createExportUi(ctx, exportState, {
+      // 函数声明会被提升,closeExportMenu 此刻还没定义也没关系(调用时才解析)。
+      closeExportMenu: () => closeExportMenu(),
+      // aT 必须在调用时求值:locale 是 effect 内可变状态,构造时捕获会锁死一种语言。
+      aT: (zh: string, en: string) => aT(zh, en),
+    });
+    function setExportGateUi(locked: boolean) { exportUi.setGate(locked); }
     // Mutable working copy: chat and inline edits patch this in place and repaint
     // without remounting the effect. Sourced from detail.pages (editing) or the
     // draft skeleton (authoring) — both are EditorPage-shaped.
@@ -530,7 +537,9 @@ export function EditorBook({
       // count (no remount); clamp the cursor so we never sit on a dropped spread.
       if (currentCh >= spreadCount()) currentCh = spreadCount() - 1;
     };
-    const spreadCount = () => Math.max(1, spreads.length);
+    // 阶段 1(#328):纯函数搬进 editor-canvas-ctx,这里保留一行同名包装,
+    // 调用点零改动 —— 拆分期间零行为变化优先于「形式好看」。
+    const spreadCount = () => countSpreads(spreads);
     // 一个跨页占的页。返回 kind='full' 时它是**一整张**双宽面(#303),铺满整个跨页,
     // 不能拆成左右两半;kind='pair' 才是左右各一半(null = 空白半页)。
     // 所有画面都必须先判 kind —— 早期把双宽当 [null,null] 处理会画出一个空白跨页。
@@ -556,7 +565,7 @@ export function EditorBook({
       return list.filter((p): p is EditorPage => p !== null);
     };
     function pageByIndex(idx: number): EditorPage | undefined {
-      return pagesState.find((p) => p.pageIndex === idx);
+      return findPageByIndex(pagesState, idx);
     }
     // 画布格/章节栏/上下文徽标共用的跨页标题:给「人话」页位而非 Spread 序号。
     // 封面 / 封底按页面类别判定;内页用展示层真实页码(封面/目录/封尾不计),
@@ -1998,7 +2007,7 @@ export function EditorBook({
       }
       /* 其余弹窗:Esc 等同点背景,共用 OVERLAY_CLOSERS,不另列一份名单。
          命中一个就收工 —— 这依赖「同时只有一个弹窗 open」。别把这条归因错:12 个
-         openXxx 里只有 3 个会先关掉上一个(collage/nineGrid/pdfStyle 关导出菜单),
+         openXxx 里只有 3 个会先关掉上一个(collage/nineGrid/exportState.pdfStyle 关导出菜单),
          真正撑住不叠窗的是 .modal-overlay 的 z-index:300 全屏遮罩(editor-port.css),
          它盖死了所有触发点(顶栏 200 / el-bar 130 / img-edit 110 / chat 70)。所以
          **新加入口的 z-index 必须 < 300**:高于它,用户看得见点得着的那个弹窗反而
@@ -2658,24 +2667,22 @@ export function EditorBook({
     function renderOverview() {
       const g = byId('ovGrid');
       if (!g) return;
-      g.innerHTML = Array.from({ length: spreadCount() }, (_, i) => {
+      // 模板(含 data-ovidx / data-oface / data-page-index 三个隐式契约属性)在
+      // overview-template.ts —— 属性名写错不会有任何类型报错,只能靠单测锁住。
+      const specs = Array.from({ length: spreadCount() }, (_, i) => {
         const faces = spreadFaces(i);
         // 双宽(#303)页占满整格:画进左 cell(CSS 的 ov-full 撑满左 cell、右 cell 退场、
         // 中缝隐藏)—— 和书籍视图的 book-full 同一套处理。
         const full = faces.kind === 'full';
         const [lp, rp] = full ? [faces.page, null] : [faces.left, faces.right];
-        // #158 follow-up: drop the ov-book surface fill + spine for a solo spread so
-        // the empty half reads as empty space, not a white page.
-        const solo = !full && (lp === null || rp === null);
-        const lpi = lp === null ? '' : String(lp.pageIndex);
-        const rpi = rp === null ? '' : String(rp.pageIndex);
-        const lSel = lp !== null && lp.pageIndex === selectedPageIndex ? ' ov-page-selected' : '';
-        const rSel = rp !== null && rp.pageIndex === selectedPageIndex ? ' ov-page-selected' : '';
-        return `<div class="ov-spread${i === currentCh ? ' ov-current' : ''}" data-ovidx="${i}">
-          <div class="ov-book${solo ? ' ov-solo' : ''}${full ? ' ov-full' : ''}"><div class="ov-page ov-left${lp === null ? ' ov-empty' : ''}${lSel}" data-oface="${i}-l" data-page-index="${lpi}"></div><div class="ov-page ov-right${rp === null ? ' ov-empty' : ''}${rSel}" data-oface="${i}-r" data-page-index="${rpi}"></div></div>
-          <div class="ov-cap">${spreadLabel(i)}</div>
-        </div>`;
-      }).join('');
+        return {
+          label: spreadLabel(i),
+          full,
+          leftIndex: lp?.pageIndex ?? null,
+          rightIndex: rp?.pageIndex ?? null,
+        };
+      });
+      g.innerHTML = buildOverviewHtml(specs, { currentIndex: currentCh, selectedPageIndex });
       // 懒 paint:格子进入视口才渲(20+ 页的总览一次性全渲是强制重排+解码风暴)。
       // IntersectionObserver 不可用(旧引擎/jsdom)时回退空闲帧全量渲。
       // ⚠️ 全保真模式,不是 thumb:总览网格就是主画板(无限画布,可缩放到 3x,
@@ -4284,7 +4291,7 @@ export function EditorBook({
       host.prepend(el);
     }
     function openExportMenu() {
-      if (exportGateLocked) return;
+      if (exportState.gateLocked) return;
       showExportSourceNotice();
       byId('exportMenuModal')?.classList.add('open');
     }
@@ -4316,30 +4323,14 @@ export function EditorBook({
     function closeNineGridModal() { byId('nineGridModal')?.classList.remove('open'); }
     // PDF 版式(2026-08-06 版式选择设计):与 Live 同一副骨架,但默认预选标准版 ——
     // 大多数人要的就是标准版,少点一下。
-    let pdfStyle: 'standard' | 'bleed' = 'standard';
-    function openPdfStyleModal() {
-      if (exportGateLocked) return; // 与 openExportMenu 同一道防线(chat 也可能开闸前触发)
-      closeExportMenu();
-      pdfStyle = 'standard';
-      $$('[data-pdf-style]').forEach((el) => {
-        const selected = el.getAttribute('data-pdf-style') === 'standard';
-        el.classList.toggle('selected', selected);
-        el.setAttribute('aria-pressed', String(selected));
-      });
-      byId('pdfStyleModal')?.classList.add('open');
-    }
-    function closePdfStyleModal() { byId('pdfStyleModal')?.classList.remove('open'); }
-    function showExportProgress(title: string) {
-      const t = byId('expTitle'); if (t) t.textContent = title;
-      setExportProgress(0, 0);
-      byId('exportProgressModal')?.classList.add('open');
-    }
-    function setExportProgress(done: number, total: number) {
-      const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-      const fill = byId('expBarFill'); if (fill) fill.style.width = pct + '%';
-      const label = byId('expLabel'); if (label) label.textContent = total > 0 ? `${done} / ${total}` : '…';
-    }
-    function hideExportProgress() { byId('exportProgressModal')?.classList.remove('open'); }
+    // 六个 UI 小件(版式弹窗 / 进度弹窗 / 门闩)已搬到 export-ui.ts。
+    // 进度三件在新模块里叫短名,这里映射回原来的名字,调用点零改动。
+    const {
+      openPdfStyleModal, closePdfStyleModal,
+      showProgress: showExportProgress,
+      setProgress: setExportProgress,
+      hideProgress: hideExportProgress,
+    } = exportUi;
 
     // 三条导出路径共用的输入:适配页 + 原图解析器(喂高分辨率原图,防放大糊)。
     async function buildExportInput() {
@@ -4362,10 +4353,9 @@ export function EditorBook({
       return { adaptable, photoIds: ids, resolveImage: (id: string) => dataUrls[id] };
     }
 
-    let exportingImages = false;
     async function exportSinglePages() {
-      if (exportingImages || exportingPdf) return;
-      exportingImages = true;
+      if (exportState.exportingImages || exportState.exportingPdf) return;
+      exportState.exportingImages = true;
       closeExportMenu();
       showExportProgress(aT('正在导出单页图…', 'Exporting pages…'));
       try {
@@ -4380,13 +4370,13 @@ export function EditorBook({
         openExportFailModal();
       } finally {
         hideExportProgress();
-        exportingImages = false;
+        exportState.exportingImages = false;
       }
     }
 
     async function exportCollage(perImage: 1 | 2 | 3 | 6) {
-      if (exportingImages || exportingPdf) return;
-      exportingImages = true;
+      if (exportState.exportingImages || exportState.exportingPdf) return;
+      exportState.exportingImages = true;
       showExportProgress(aT('正在导出拼图…', 'Exporting collage…'));
       try {
         const { adaptable, resolveImage } = await buildExportInput();
@@ -4406,7 +4396,7 @@ export function EditorBook({
         openExportFailModal();
       } finally {
         hideExportProgress();
-        exportingImages = false;
+        exportState.exportingImages = false;
       }
     }
 
@@ -4414,8 +4404,8 @@ export function EditorBook({
     // 用的是同一份,规则不能两边各写(见 lib/export/live-delivery 抬头的三条)。
 
     async function exportLive() {
-      if (exportingImages || exportingPdf) return;
-      exportingImages = true;
+      if (exportState.exportingImages || exportState.exportingPdf) return;
+      exportState.exportingImages = true;
       closeNineGridModal();
       showExportProgress(aT('正在导出 Live 视频…', 'Exporting Live video…'));
       try {
@@ -4441,13 +4431,13 @@ export function EditorBook({
         openExportFailModal();
       } finally {
         hideExportProgress();
-        exportingImages = false;
+        exportState.exportingImages = false;
       }
     }
 
     async function exportNineGrid() {
-      if (exportingImages || exportingPdf) return;
-      exportingImages = true;
+      if (exportState.exportingImages || exportState.exportingPdf) return;
+      exportState.exportingImages = true;
       closeNineGridModal();
       showExportProgress(aT('正在导出图钉九宫格…', 'Exporting pinned photo grid…'));
       try {
@@ -4503,7 +4493,7 @@ export function EditorBook({
         openExportFailModal();
       } finally {
         hideExportProgress();
-        exportingImages = false;
+        exportState.exportingImages = false;
       }
     }
 
@@ -4642,181 +4632,19 @@ export function EditorBook({
     //     R2 时也不再把「云端上传失败」误报成「导出失败」。
     // 任一环节失败都抛 ExportError(带 phase + 可选 status,供脱敏日志用,§3 隐私)。整段
     // 路径**零 creditService**:导出成功或失败都不碰积分(积分早在 init 成功时已实扣,§5)。
-    let didLocalDownload = false;
-    async function renderPdfOnce(bleedMm = 0): Promise<Blob> {
-      try {
-        // C 方案:PDF 导出 = 栅格截屏幕渲染(存库 html 优先,与画布像素级一致)。
-        // 矢量导出路径已退役(消费不了自由 HTML)。喂高分辨率原图,防放大糊。
-        // bleedMm:印刷版传 3(2026-08-03 出血设计),默认 0 走原路径。
-        // 渲染整体(含动态 import、取图 buildExportInput、栅格化)要有上限:任意一环挂住,
-        // 进度条会永远停在 0%,用户既拿不到文件也没有失败提示(2026-11-09 两次实测:
-        // 先是取图/编码那段挂住,后是 render-raster 这个 chunk 的请求挂住)。
-        // 期限常量走静态 import —— 否则连 withDeadline 那行都执行不到。
-        // 到点按 render 失败处理 —— 走既有的重试 + 安抚框,有界、可重试、说得清。
-        return await withDeadline(
-          (async () => {
-            const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
-            const { adaptable, resolveImage } = await buildExportInput();
-            return await renderAlbumPdfRaster(adaptable, resolveImage, {
-              scale: 3,
-              onProgress: setExportProgress,
-              bleedMm,
-            });
-          })(),
-          RASTER_PDF_RENDER_DEADLINE_MS,
-          'pdfRender',
-        );
-      } catch (e) {
-        throw new ExportError('render', e instanceof Error ? e.message : String(e));
-      }
-    }
+    // 导出四条链路(渲染 / 本地下载 / 云端上传 / 主流程)已搬到 export-actions.ts。
+    // 注入项只有 8 个;页数/标题/游客/文案必须走 getter —— 它们在 effect 内可变。
+    const exportActions = createExportActions(ctx, exportState, exportUi, {
+      buildExportInput,
+      getPageCount: () => pagesState.length,
+      getTitle: () => currentTitle,
+      isAnon: () => viewerAnonRef.current === true,
+      closeExportMenu: () => closeExportMenu(),
+      openExportFailModal: () => openExportFailModal(),
+      aT: (zh: string, en: string) => aT(zh, en),
+    });
+    const { renderPdfOnce, downloadPdfOnce, uploadPdfOnce, exportPdf } = exportActions;
 
-    // Local download — useful even if R2 isn't configured (e.g. mock runs). Once
-    // per export so a retry doesn't trigger a second download.
-    function downloadPdfOnce(blob: Blob) {
-      if (didLocalDownload) return;
-      didLocalDownload = true;
-      const url = URL.createObjectURL(blob);
-      const aEl = document.createElement('a');
-      aEl.href = url;
-      aEl.download = (currentTitle || 'album') + (exportBleedMm ? '-bleed3mm' : '') + '.pdf';
-      document.body.appendChild(aEl);
-      aEl.click();
-      aEl.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 0);
-    }
-
-    async function uploadPdfOnce(blob: Blob): Promise<void> {
-      const signRes = await fetch(`/api/v1/albums/${albumId}/pdf-upload-url`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contentType: 'application/pdf', size: blob.size }),
-      });
-      const signJson = await signRes.json();
-      if (!signJson.ok) {
-        throw new ExportError('upload', signJson.error?.message ?? 'sign failed', signRes.status);
-      }
-      const { putUrl, r2Key } = signJson.data;
-      // 直传必须带截止时间:这条链路实测会**挂住**(既不 200 也不报错,一直 inflight),
-      // 没有截止时间的话 runExportWithRetry 永远停在第 1 次,「3 次耗尽」永远不到,
-      // 用户既没云端备份也没提示(2026-11-09,与移动端同源,共用同一份实现)。
-      let putRes: Response;
-      try {
-        putRes = await fetchWithTimeout(
-          putUrl,
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/pdf' },
-            body: blob,
-          },
-          PDF_UPLOAD_TIMEOUT_MS,
-        );
-      } catch (e) {
-        throw normalizeUploadError(e);
-      }
-      if (!putRes.ok) throw new ExportError('upload', `R2 PUT ${putRes.status}`, putRes.status);
-      const confirmRes = await fetch(`/api/v1/albums/${albumId}/pdf`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ r2Key }),
-      });
-      const confirmJson = await confirmRes.json();
-      if (!confirmRes.ok || confirmJson.ok !== true) {
-        throw new ExportError('upload', confirmJson.error?.message ?? 'PDF confirm failed', confirmRes.status);
-      }
-    }
-
-    let exportingPdf = false;
-    // 当前这轮 PDF 导出的出血值(下载文件名后缀用);只在 exportPdf 入口赋值。
-    let exportBleedMm = 0;
-    async function exportPdf(bleedMm = 0) {
-      // The topbar export button is prop-disabled when the gate is locked, and the
-      // chat export-ready card only appears when unlocked — but defend anyway.
-      if (exportGateLocked) return;
-      if (exportingPdf || exportingImages) return;
-      exportingPdf = true;
-      exportBleedMm = bleedMm;
-      didLocalDownload = false;
-      closeExportMenu();
-      // 埋点:导出是用户最在意的一步,也是唯一「耗时以分钟计」的路径。
-      // 只记页数与耗时,不记书名/页面内容(见 lib/analytics/events.ts 的隐私口径)。
-      const exportStartedAt = Date.now();
-      const exportPages = pagesState.length;
-      track('export_start', { albumId, meta: { pages: exportPages, bleed: bleedMm, mode: 'desktop' } });
-      showExportProgress(aT('正在导出 PDF…', 'Exporting PDF…'));
-      try {
-        // render 段:出 PDF + 本地下载,自动重试 ≤3 次。连续 3 次失败才是真·导出失败 →
-        // 弹安抚框 + 落日志。计数全在前端(runExportWithRetry),**不动积分**(§5)。
-        let blob: Blob | null = null;
-        const rendered = await runExportWithRetry(
-          async () => { const b = await renderPdfOnce(bleedMm); downloadPdfOnce(b); blob = b; },
-          {
-            onExhausted: (lastError, attempts) => {
-              // 同一份归类结果既进日志也进埋点:两处各算一次迟早会漂移,
-              // 而 classifyExportFailure 本身是封闭词表,天然满足隐私红线。
-              const failure = buildExportFailureLog(lastError, { albumId, attempts });
-              logger.error(failure, 'pdf export failed');
-              openExportFailModal();
-              track('export_fail', {
-                albumId,
-                value: Date.now() - exportStartedAt,
-                result: 'fail',
-                meta: {
-                  pages: exportPages,
-                  attempt: attempts,
-                  step: 'render',
-                  code: failure.failureCode,
-                  ...(failure.status !== undefined ? { status: failure.status } : {}),
-                },
-              });
-            },
-          },
-        );
-        // render 失败:安抚框已弹,到此为止(用户确实没拿到文件)。
-        if (!rendered.ok || blob == null) return;
-        // 用户拿到 PDF 这一刻就算成功(云端上传是旁路,另记一条)。
-        track('export_ok', {
-          albumId,
-          value: Date.now() - exportStartedAt,
-          result: 'ok',
-          meta: { pages: exportPages, bleed: bleedMm, mode: 'desktop' },
-        });
-
-        // 用户已拿到 PDF = 导出成功。云端上传解耦:失败不弹失败框,重试耗尽亮横幅。
-        // 飞书推送仍后置(§4.5d);游客只本地下载;出血版跳过上传(保持标准版)。
-        if (viewerAnonRef.current === true) return;
-        if (bleedMm === 0) {
-          await runExportWithRetry(() => uploadPdfOnce(blob!), {
-            onExhausted: (lastError, attempts) => {
-              const failure = buildExportFailureLog(lastError, { albumId, attempts });
-              logger.error(
-                failure,
-                'pdf cloud upload failed (local download already succeeded)',
-              );
-              const card = byId('pdfCloudAlert');
-              if (card) card.style.display = '';
-              // 本地已成功、云端没上去:单独记,别和「用户没拿到文件」混成一个失败率。
-              // code 同样取封闭词表 —— 上传失败最常见的就是桶策略/签名过期,看一眼就知道。
-              track('export_fail', {
-                albumId,
-                value: Date.now() - exportStartedAt,
-                result: 'fail',
-                meta: {
-                  pages: exportPages,
-                  attempt: attempts,
-                  step: 'upload',
-                  code: failure.failureCode,
-                  ...(failure.status !== undefined ? { status: failure.status } : {}),
-                },
-              });
-            },
-          });
-        }
-      } finally {
-        hideExportProgress();
-        exportingPdf = false;
-      }
-    }
     /* ─── 手动照片备份(photo-snapshot-design.md §5.1)───
        用户点顶栏「保存」→ 把书里用到、本地有、尚未备份的照片的 display 档压缩图直传 R2。
        原图仍不上传。备份状态直接显示在「保存」按钮上:备份中 → 绿点「已备份」/ 红点
@@ -5124,7 +4952,7 @@ export function EditorBook({
       // PDF 版式弹窗:确认时才分派;出血值 3 只在这一层出现(2026-08-03 出血设计)。
       openPdfStyle: openPdfStyleModal,
       closePdfStyle: closePdfStyleModal,
-      confirmPdfStyle: () => { closePdfStyleModal(); void exportPdf(pdfStyle === 'bleed' ? 3 : 0); },
+      confirmPdfStyle: () => { closePdfStyleModal(); void exportPdf(exportState.pdfStyle === 'bleed' ? 3 : 0); },
       exportSinglePages: () => void exportSinglePages(),
       openBoardBg: openBoardBgModal,
       closeBoardBg: closeBoardBgModal,
@@ -5196,7 +5024,7 @@ export function EditorBook({
     });
     root.querySelectorAll('[data-pdf-style]').forEach((el) => {
       const fn = () => {
-        pdfStyle = el.getAttribute('data-pdf-style') as 'standard' | 'bleed';
+        exportState.pdfStyle = el.getAttribute('data-pdf-style') as 'standard' | 'bleed';
         root.querySelectorAll('[data-pdf-style]').forEach((option) => {
           const selected = option === el;
           option.classList.toggle('selected', selected);
