@@ -329,6 +329,8 @@ export function mapStopReason(reason: FinishReason): StopReason {
 		case FinishReason.OTHER:
 		case FinishReason.LANGUAGE:
 		case FinishReason.MALFORMED_FUNCTION_CALL:
+		// MALFORMED_RESPONSE(v3 新增):模型输出整体畸形,与 MALFORMED_FUNCTION_CALL 同类
+		case FinishReason.MALFORMED_RESPONSE:
 		case FinishReason.UNEXPECTED_TOOL_CALL:
 		case FinishReason.NO_IMAGE:
 			return "error";
