@@ -191,10 +191,26 @@ Postgres + Cloudflare R2
 - 临时脚本、验证产物、trace 文件用完即删。
 - 长期说明放在仓根 README、对应 app README,或靠近模块的小 README。
 - **所有改动一律走 PR 合并 main 上线**(2026-10-26 起,agent 侧改动同样遵守):
-  merge 触发六门 CI + 自动部署(见 deploy/china/README「自动部署」);分支保护
+  merge 触发 CI 全门 + 自动部署(见 deploy/china/README「自动部署」);分支保护
   enforce admins,直推被拒。生产服务器上的跟踪文件不要 rsync 直改 —— 自动部署
   的 reset --hard 会覆盖;应急/回滚通道见 deploy README。
-- 推送/PR/合并前先跑相应验证;没验证不要声称通过。
+- **闸门对账**:分支保护的 required checks 必须覆盖 `ci.yml` 里的每一个**判定
+  代码能否上线**的 job。目前 required = audit / typecheck / engine / web /
+  packages / chapters / secrets-scan(2026-11-11 补上 secrets-scan —— 它一直在
+  跑但不在 required,等于密钥扫描红了也能合并)。
+  `docs` / `deploy` / `notify` 故意不在 required:`docs` 见下节,`deploy`/`notify`
+  只在 main push 上跑。
+  **新增一个 gate job 时,`ci.yml` 与分支保护两处都要改**,改完读回核对:
+  `gh api repos/<owner>/<repo>/branches/main/protection -q '.required_status_checks.checks[] | "\(.context) \(.app_id)"'`
+  —— `app_id` 必须是 15368(GitHub Actions),写成裸 `context` 会让那条 check
+  永远匹配不上、PR 永久卡死。
+- 推送/PR/合并前先跑相应验证;没验证不要声称通过。仓库根的 `pnpm verify`
+  (= `docs:check` + `typecheck`,后者含 sitemap)是本地最省的静态自查入口,
+  要连单测一起跑用 `pnpm verify:full`。
+- **部署不是「ssh 返回 0 就成功」**。`deploy` job 末尾有 `Verify deployed
+  revision`,用三个外部可观测事实判定:远端 `git HEAD` == 本次提交、容器
+  `yujee-web-1` 在跑、公网 `/zh` 200。任一不符即判失败并发飞书。定的原因:
+2026-11-10 实测过 CI 全绿而线上仍是旧版(deploy 卡在 in_progress)。
 
 ## 文档时效规则
 
@@ -205,7 +221,13 @@ Postgres + Cloudflare R2
 不是「已改写」。
 
 `pnpm docs:check` 会校验这件事:覆盖路径自 `checked-at` 以来有新提交、而 `checked-at`
-没跟上,就报错。它已挂进 `pnpm typecheck`。不要靠自觉,靠这个脚本。
+没跟上,就报错。不要靠自觉,靠这个脚本。
+
+**它在 CI 里是独立 job `docs`,不进 `deploy` 的 `needs`(2026-11-11)。** 原因:
+squash 合并后 `checked-at` 指向的分支提交不在 main 历史里,这个检查在同一次合并里
+必然先红一次 —— 必须先合并、才拿到 squash hash,天生两跳。拿它 gate 部署,红的是
+部署本身,而"部署失败"看不出是文档过期。它仍然会红,该补 `checked-at` 时照补;
+被移出 `pnpm typecheck` 后,本地跑 `pnpm typecheck` 也不再用它挡 tsc。
 
 机器改动的依赖清单不进 doc-scope:`pnpm-lock.yaml`(机器生成)、以及 dependabot
 会直接编辑地板的 manifest(`engine/pyproject.toml`、`apps/web/package.json`)。
@@ -238,5 +260,5 @@ dependabot 不会推 `checked-at`,盖住它们会把对应生态的每个依赖 
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json
-checked-at: c21ffc73b322aa8f4802015ee17c25956e38d4c8
+checked-at: b56cb026
 -->

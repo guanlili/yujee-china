@@ -1,6 +1,7 @@
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '@/lib/env';
+import { assetProxyPath } from './asset-url';
 import { ERRORS } from '@/lib/api/error-codes';
 import { logger } from '@/lib/log/logger';
 
@@ -59,8 +60,10 @@ function resolveRegion(endpoint: string): string {
 export const r2 = {
   bucket: () => env.R2_BUCKET,
 
-  publicUrl: (key: string): string =>
-    `${env.R2_PUBLIC_BASE_URL.replace(/\/+$/, '')}/${key}`,
+  // 对外「公开地址」= 本应用的同源代理,不是存储直链。桶是私有的,裸拼的存储 URL
+  // 对匿名读一律 403 + application/xml,浏览器会以 ERR_BLOCKED_BY_ORB 拦掉图片。
+  // 代理只回 302 到预签名 GET,字节仍由浏览器直拉(见 app/api/v1/assets/[...key])。
+  publicUrl: (key: string): string => assetProxyPath(key),
 
   async signPutUrl(
     key: string,

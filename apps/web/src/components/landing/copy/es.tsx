@@ -11,7 +11,7 @@ export const es: Copy = {
   login: 'Iniciar sesión',
   menu: 'Menú',
   createTitle: 'Convierte tus fotos dispersas en un fotolibro que puedes leer, tocar y guardar',
-  createSub: 'Gratis y sin registro.',
+  createSub: 'Gratis y sin registro: haz primero un libro de muestra.',
   sampleCta: 'Ver el ejemplo',
   makeSame: 'Hacer uno así',
   samplesNote: 'Libros de demostración hechos por el equipo de Yujee para enseñar de qué es capaz el producto. El contenido es ficticio, no es trabajo de clientes.',

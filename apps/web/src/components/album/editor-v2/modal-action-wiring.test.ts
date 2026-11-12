@@ -16,6 +16,9 @@ import { test } from 'node:test';
 const here = dirname(fileURLToPath(import.meta.url));
 const editor = readFileSync(join(here, 'EditorPort.tsx'), 'utf8') + '\n\n' + readFileSync(join(here, 'EditorBook.tsx'), 'utf8');
 const chat = readFileSync(join(here, 'ChatPanel.tsx'), 'utf8');
+// 2026-11-11(拆 EditorBook 阶段 1):$$scoped 的实现搬到了 editor-canvas-context,
+// 这里一起读 —— 断言的意图不变,只是跟着实现搬家。
+const canvasCtx = readFileSync(join(here, 'editor-canvas-context.ts'), 'utf8');
 
 /** 断言只看代码,不看注释 —— 注释里出现某个标识符不能算它「接线了」。 */
 const stripComments = (t: string) =>
@@ -27,8 +30,11 @@ test('扫描范围按容器排除,不得退回手工白名单', () => {
     /const canvasScopes\s*=/,
     '不得恢复 canvasScopes 手工白名单:漏登记一个弹窗 = 一整屏死按钮,而且没人拦得住',
   );
-  const impl = editor.match(/const \$\$scoped = \(sel: string\)[\s\S]{0,400}?;\n/)?.[0] ?? '';
-  assert.ok(impl, '$$scoped 应存在');
+  const impl =
+    canvasCtx.match(/\$\$scoped:[\s\S]{0,300}?\n/)?.[0] ??
+    editor.match(/\$\$scoped[\s\S]{0,300}?;\n/)?.[0] ??
+    '';
+  assert.ok(impl, '$$scoped 应存在(editor-canvas-context 或 EditorBook 里)');
   assert.match(impl, /root\.querySelectorAll\(sel\)/, '必须从整棵 root 扫,别再枚举容器');
   // 必须带上取反:写成 el.closest(...) 是「只留对话栏」,桌面端每个按钮当场变砖。
   assert.match(impl, /!el\.closest\('\.pane-chat-col'\)/, '必须是 !el.closest —— 掉一个感叹号 = 全屏死按钮');

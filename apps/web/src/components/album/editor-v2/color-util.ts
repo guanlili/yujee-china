@@ -89,6 +89,20 @@ export function rgbToHex(r: number, g: number, b: number): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
+/** HSL(h 度数, s/l 百分比)→ #rrggbb。色板生成用。
+ *
+ *  2026-11-11:原来 EditorBook 与 EditorPort 各自留了一份 8 行副本,而两处的注释
+ *  都写着「颜色换算已抽到共享层 color-util…不留第二份真相」—— 注释在骗人。收到
+ *  这里之后,那份注释才成立。 */
+export function hslToHex(h: number, s: number, l: number): string {
+  s /= 100;
+  l /= 100;
+  const k = (n: number) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return rgbToHex(f(0) * 255, f(8) * 255, f(4) * 255);
+}
+
 /** HSV → #rrggbb 的一步到位(取色面板每次拖动都要它)。 */
 export function hsvToHex(h: number, s: number, v: number): string {
   const { r, g, b } = hsvToRgb(h, s, v);

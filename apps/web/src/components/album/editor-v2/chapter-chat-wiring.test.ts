@@ -81,7 +81,9 @@ test('conversation chapter prompt card keeps the supplied editor.html sizing', (
   assert.match(css, /\.editor-port \.chap-card\{[\s\S]*?border:1px solid var\(--border-soft\); border-radius:16px;/);
   assert.match(css, /\.editor-port \.chap-card\{[\s\S]*?box-shadow:0 1px 3px rgba\(0,0,0,\.04\); max-width:100%;/);
   assert.match(css, /\.editor-port \.cc-thumbs\{ display:flex; gap:8px; \}/);
-  assert.match(css, /\.editor-port \.cc-title\{[\s\S]*?font-size:15px; font-weight:700;/);
+  // 字号于 2026-11-12 提升为 --fs-lg(15px),值本身由 editor-tokens.test.ts 锁在 token 层;
+  // 这里守的是「标题必须走 --fs-lg 且仍配 700 字重」——从字面量换成 token,断言不放宽。
+  assert.match(css, /\.editor-port \.cc-title\{[\s\S]*?font-size:var\(--fs-lg\); font-weight:700;/);
   assert.match(css, /\.editor-port \.cc-view svg\{ width:14px; height:14px; \}/);
 });
 

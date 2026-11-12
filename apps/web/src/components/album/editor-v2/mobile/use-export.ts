@@ -25,7 +25,16 @@ import { photoStore, RASTER_PDF_IMAGE_MAX_EDGE } from '@/lib/photo/store';
 import { collectPhotoIds } from '../../adapt-layout';
 import type { BoardBackground } from '@/lib/board-bg/presets';
 import type { EditorPage } from '../../types';
-import { runExportWithRetry, buildExportFailureLog, ExportError } from '../export-retry-util';
+import {
+  runExportWithRetry,
+  buildExportFailureLog,
+  PDF_UPLOAD_TIMEOUT_MS,
+  fetchWithTimeout,
+  normalizeUploadError,
+  ExportError,
+  RASTER_PDF_RENDER_DEADLINE_MS,
+} from '../export-retry-util';
+import { withDeadline } from '@/lib/net/fetch-timeout';
 import { logger } from '@/lib/log/logger';
 import type { PhotoFilterState } from '@/lib/photo/filter-state';
 import { deliverLiveAssets } from '@/lib/export/live-delivery';
@@ -325,15 +334,24 @@ export function useExport({
       // render 段:生成 PDF,自动重试 ≤3 次。连续 3 次失败才是真·导出失败。
       const rendered = await runExportWithRetry(
         async () => {
-          const { adaptable, resolveImage } = await buildInput();
-          const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
           let b: Blob;
           try {
-            b = await renderAlbumPdfRaster(adaptable, resolveImage, {
-              scale: 3,
-              onProgress,
-              bleedMm: opts?.bleedMm ?? 0,
-            });
+            // 整段(动态 import + 取图 buildInput + 栅格化)都要有上限:任一环挂住,
+            // 进度条会永远停在 0%(2026-11-09 实测)。期限常量必须静态取,否则挂住的
+            // 动态 import 会跑在 watchdog 之外。
+            b = await withDeadline(
+              (async () => {
+                const { renderAlbumPdfRaster } = await import('@/lib/pdf/render-raster');
+                const { adaptable, resolveImage } = await buildInput();
+                return await renderAlbumPdfRaster(adaptable, resolveImage, {
+                  scale: 3,
+                  onProgress,
+                  bleedMm: opts?.bleedMm ?? 0,
+                });
+              })(),
+              RASTER_PDF_RENDER_DEADLINE_MS,
+              'pdfRender',
+            );
           } catch (e) {
             throw new ExportError('render', e instanceof Error ? e.message : String(e));
           }
@@ -400,27 +418,6 @@ export function useExport({
   };
 }
 
-/** 直传 COS 的单次上限。线上实测:跨境链路上 PUT 会**挂住**——既不成功也不报错,
- *  浏览器一直 inflight,于是 runExportWithRetry 永远停在第 1 次,「3 次耗尽」永远
- *  不到,用户既拿不到云端备份、也收不到任何提示(2026-11-09)。给它一个明确的
- *  截止时间,失败才变成有界的、可重试的、可见的。60s 是 50MB 上限的宽裕量。 */
-const PDF_UPLOAD_TIMEOUT_MS = 60_000;
-
-/** 带截止时间的 fetch:到点 abort,把「挂住」变成一个真实的失败。 */
-async function fetchWithTimeout(
-  input: string,
-  init: RequestInit,
-  ms: number,
-): Promise<Response> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), ms);
-  try {
-    return await fetch(input, { ...init, signal: ctrl.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 /** 签名 → 直传 R2 → confirm 落库。与桌面 uploadPdfOnce 同一条。 */
 async function uploadPdf(albumId: string, blob: Blob): Promise<void> {
   const signRes = await fetch(`/api/v1/albums/${albumId}/pdf-upload-url`, {
@@ -442,10 +439,7 @@ async function uploadPdf(albumId: string, blob: Blob): Promise<void> {
     );
   } catch (e) {
     // 超时 / 连接被掐:统一成可重试的 upload 失败,别让调用方卡在 await 上。
-    throw new ExportError(
-      'upload',
-      e instanceof Error && e.name === 'AbortError' ? 'R2 PUT timeout' : 'R2 PUT interrupted',
-    );
+    throw normalizeUploadError(e);
   }
   if (!putRes.ok) throw new ExportError('upload', `R2 PUT ${putRes.status}`, putRes.status);
   const confirmRes = await fetch(`/api/v1/albums/${albumId}/pdf`, {

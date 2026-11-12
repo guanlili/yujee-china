@@ -56,14 +56,57 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           install -m 600 /dev/stdin ~/.ssh/id_ed25519 <<< "$DEPLOY_SSH_KEY"
           echo "$DEPLOY_KNOWN_HOSTS" >> ~/.ssh/known_hosts
-          ssh -i ~/.ssh/id_ed25519 -o ServerAliveInterval=30 ubuntu@$DEPLOY_HOST deploy
+          set -o pipefail
+          ssh -i ~/.ssh/id_ed25519 -o ServerAliveInterval=30 ubuntu@$DEPLOY_HOST deploy | tee /tmp/deploy.out
+      # 2026-11-11:ssh deploy 返回 0 不等于新代码上线。2026-11-10 实测过 CI 全绿
+      # 而线上仍是旧版(deploy 卡在 in_progress 时页面读到的还是旧文案)。
+      #
+      # 判据只能是「部署脚本自己报出的版本」:脚本在 reset --hard 之后才打印
+      # `now at <short sha> <subject>`,那行出现即代表工作区真的切到了目标提交。
+      #
+      # 不能用 ssh 去查远端 HEAD —— CI 的 DEPLOY_SSH_KEY 在 authorized_keys 里带
+      # 强制命令,任何 ssh 都会再跑一遍部署,并把部署日志塞进 stdout(实测抓到的
+      # 「HEAD」其实是日志里的一个 image id)。所以这里只读 deploy 自己留下的输出,
+      # 加上一个不依赖 ssh 的外部事实:公网主页 200。
+      - name: Verify deployed revision
+        timeout-minutes: 5
+        run: |
+          short="${GITHUB_SHA:0:7}"
+          echo "expected short = $short"
+          if [ ! -f /tmp/deploy.out ]; then
+            echo "::error::部署输出缺失(/tmp/deploy.out 不存在)"
+            exit 1
+          fi
+          echo "--- 部署脚本自报的版本 ---"
+          grep -E "deploy start|now at" /tmp/deploy.out || true
+          echo "-------------------------"
+          if grep -qE "now at ${short} .*\(rollback\)" /tmp/deploy.out; then
+            echo "::error::部署走了回滚分支,线上不是本次提交"
+            exit 1
+          fi
+          if ! grep -q "now at ${short}" /tmp/deploy.out; then
+            echo "::error::部署脚本没有报出本次提交 ${short},工作区没有切到目标提交"
+            exit 1
+          fi
+          code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 https://outman.press/zh)
+          echo "public /zh = $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::线上 https://outman.press/zh 返回 $code"
+            exit 1
+          fi
+
       - name: Alert Feishu on deploy failure
         if: failure()
         env:
           WEBHOOK: ${{ secrets.FEISHU_ALERT_WEBHOOK }}
         run: |
-          if [ -z "$WEBHOOK" ]; then exit 0; fi
-          curl -fsS -m 10 -X POST "$WEBHOOK" \
+          if [ -z "$WEBHOOK" ]; then
+            echo "::warning::FEISHU_ALERT_WEBHOOK 未配置 —— 本次部署失败告警没有发出"
+            exit 0
+          fi
+          # 飞书 webhook 的「送达」不等于 HTTP 200:业务失败(body.code != 0)同样返回 200。
+          # 只看 curl 退出码会把「消息根本没进群」记成成功,所以这里判 body.code。
+          resp=$(curl -sS -m 10 -X POST "$WEBHOOK" \
             -H "Content-Type: application/json" \
             -d "{
               \"msg_type\": \"interactive\",
@@ -73,7 +116,13 @@ jobs:
                   {\"tag\":\"div\",\"text\":{\"tag\":\"lark_md\",\"content\":\"提交: ${GITHUB_SHA::8}\n线上可能仍在跑旧版本,请检查 GitHub Actions 日志\n<at id=all></at>\"}}
                 ]
               }
-            }" || true
+            }") || { echo "::error::飞书 webhook 请求失败(curl 返回非 0)"; exit 1; }
+          code=$(printf '%s' "$resp" | jq -r '.code // .StatusCode // -1' 2>/dev/null || echo -1)
+          if [ "$code" != "0" ]; then
+            echo "::error::飞书告警未送达 (code=$code): $resp"
+            exit 1
+          fi
+          echo "飞书告警已送达 (code=0)"
 
   # 依赖漏洞门:只读 lockfile,秒级完成。2026-10-26 迁移批(drizzle 0.45 / zod 4 /
   # vite 8.1.6 override)清掉全部 high 后,收紧到 --audit-level=high —— 今后新 high
@@ -123,8 +172,31 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # = docs:check + sitemap:check + templates:check + contracts/web tsc
+      # = sitemap:check + contracts/web tsc + pi/design-agent tsc
+      # docs:check 已拆成独立 job(见下)—— 它 gate 不了部署
       - run: pnpm typecheck
+
+  # 文档时效闸门,与代码闸门分开跑,也**不进 deploy 的 needs**(2026-11)。
+  # 原因:squash 合并后 checked-at 指向的分支提交不在 main 历史里,这个检查
+  # 在同一次合并里必然先红一次 —— 必须先合并、才拿到 squash hash,天生两跳。
+  # 拿它 gate 部署,红的就是部署本身,而且没人能从"部署失败"看出是文档过期。
+  # 它仍然会红:该补 docs PR 时照补,只是不再把代码拦在门外。
+  docs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          # docs:check 按提交历史比对 doc-scope 的 checked-at,浅克隆会误报
+          fetch-depth: 0
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm docs:check
 
   engine:
     runs-on: ubuntu-24.04
@@ -173,6 +245,11 @@ jobs:
     env:
       # localhost 命中 db client 的 isLocal 分支,不加 ssl require
       DATABASE_URL: postgres://yujee:yujee@localhost:5432/yujee
+      # 2026-11-11 显式钉 capture。历史上这个 job 从没注入过短信密钥,所以本来也
+      # 发不出去;这条是防未来 —— 谁哪天把 ALIYUN_SMS_* 加进 job env,测试就会
+      # 真的发短信、真扣钱、真给号码发验证码。`SMS_DELIVERY` 的默认值就是
+      # capture(env.ts:78),这里再钉一次,让「CI 不真发」成为显式约定而不是巧合。
+      SMS_DELIVERY: capture
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -282,8 +359,10 @@ jobs:
 
   # 2026-10-30:CI 任一门失败或部署失败时发飞书群告警(替代 uptime-kuma push)。
   # 飞书 webhook 存 Secrets(FEISHU_ALERT_WEBHOOK),发交互卡片(红色标题)。
+  # 2026-11-11: needs 补 docs —— 此前 docs 单独失败时 notify 根本不会触发,
+  # 而 docs 又不在 deploy 的 needs 里,于是「文档过期」既不上线拦、也不告警。
   notify:
-    needs: [audit, typecheck, engine, web, packages, chapters]
+    needs: [audit, typecheck, engine, web, packages, chapters, docs]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -292,8 +371,13 @@ jobs:
         env:
           WEBHOOK: ${{ secrets.FEISHU_ALERT_WEBHOOK }}
         run: |
-          if [ -z "$WEBHOOK" ]; then exit 0; fi
-          curl -fsS -m 10 -X POST "$WEBHOOK" \
+          if [ -z "$WEBHOOK" ]; then
+            echo "::warning::FEISHU_ALERT_WEBHOOK 未配置 —— 本次 CI 失败告警没有发出"
+            exit 0
+          fi
+          # 飞书 webhook 的「送达」不等于 HTTP 200:业务失败(body.code != 0)同样返回 200。
+          # 只看 curl 退出码会把「消息根本没进群」记成成功,所以这里判 body.code。
+          resp=$(curl -sS -m 10 -X POST "$WEBHOOK" \
             -H "Content-Type: application/json" \
             -d "{
               \"msg_type\": \"interactive\",
@@ -303,4 +387,10 @@ jobs:
                   {\"tag\":\"div\",\"text\":{\"tag\":\"lark_md\",\"content\":\"提交: ${GITHUB_SHA::8}\n触发: ${{ github.actor }}\n<at id=all></at>\"}}
                 ]
               }
-            }" || true
+            }") || { echo "::error::飞书 webhook 请求失败(curl 返回非 0)"; exit 1; }
+          code=$(printf '%s' "$resp" | jq -r '.code // .StatusCode // -1' 2>/dev/null || echo -1)
+          if [ "$code" != "0" ]; then
+            echo "::error::飞书告警未送达 (code=$code): $resp"
+            exit 1
+          fi
+          echo "飞书告警已送达 (code=0)"

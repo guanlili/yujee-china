@@ -10,6 +10,7 @@ import { ADDON_PACKS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config
 import { SOCIAL_LINKS, SUPPORT_EMAIL } from '@/config/social';
 import { IcpBeianLink } from '@/components/marketing/IcpBeianLink';
 import { useSession } from '@/lib/auth/client';
+import { track } from '@/lib/analytics/track-client';
 import { getMessages } from '@/lib/i18n/messages';
 import { pick } from '@/lib/i18n/pick';
 import { LOCALE_LABELS, localizePath, locales, type Locale } from '@/lib/i18n/routing';
@@ -334,6 +335,12 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
     setMobileOpen(false);
   }, [pathname]);
 
+  // 首页曝光:漏斗第一格。放在这里是因为它只随真实挂载触发一次,
+  // 不依赖路由事件(路由事件会把刷新、站内跳转都算成"新访客")。
+  useEffect(() => {
+    track('landing_view', { meta: { locale } });
+  }, [locale]);
+
   useEffect(() => {
     const timer = window.setInterval(() => {
       setActivePreview((current) => (current + 1) % c.previewChapters.length);
@@ -652,7 +659,12 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
             <div className="hero-samples relative mx-auto mt-12 max-w-5xl px-5 md:mt-16 md:px-8">
               <div className="mb-3 flex items-baseline justify-between gap-4">
                 <p className="text-sm font-semibold text-[var(--fg-2)]">{c.heroSamplesTitle}</p>
-                <Link href={`/${locale}/examples`} className="shrink-0 text-sm text-[var(--muted)] transition hover:text-[var(--fg)]">
+                {/* 移动端把热区撑到 44px:19px 高的文字链接在手机上几乎点不中。
+                    -my-3 抵消 padding,桌面布局不受影响。 */}
+                <Link
+                  href={`/${locale}/examples`}
+                  className="-my-3 inline-flex min-h-[44px] shrink-0 items-center py-3 text-sm text-[var(--muted)] transition hover:text-[var(--fg)] md:my-0 md:min-h-0 md:py-0"
+                >
                   {c.heroSamplesMore} →
                 </Link>
               </div>
@@ -691,8 +703,13 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
                 (Creem 审核 2026-07-15 据此判定 social proof:账上零客户,页面却在展示
                 六本"成书")。标注后它是产品演示,不再是社交证明。放网格下方,小字。 */}
             <p className="mt-4 text-center text-xs text-[var(--meta)]">{c.samplesNote}</p>
+            {/* 与样书区顶部那处「全部示例」同一入口,同一条 44px 规则:
+                移动端 min-h-[44px]+py-3 撑热区,-my-3 抵掉布局位移,桌面还原。 */}
             <p className="mt-3 text-center">
-              <Link href={`/${locale}/examples`} className="text-sm font-semibold text-[var(--fg)] underline-offset-4 hover:underline">
+              <Link
+                href={`/${locale}/examples`}
+                className="-my-3 inline-flex min-h-[44px] items-center py-3 text-sm font-semibold text-[var(--fg)] underline-offset-4 hover:underline md:my-0 md:min-h-0 md:py-0"
+              >
                 {c.heroSamplesMore} →
               </Link>
             </p>

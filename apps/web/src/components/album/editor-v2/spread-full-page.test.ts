@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 
 const CSS = readFileSync(new URL('./editor-port.css', import.meta.url), 'utf8');
 const PORT = readFileSync(new URL('./EditorPort.tsx', import.meta.url), 'utf8') + '\n\n' + readFileSync(new URL('./EditorBook.tsx', import.meta.url), 'utf8');
+// 总览网格的 HTML 模板 2026-11-12 搬进 overview-template.ts(纯函数);
+// ov-full 标记与 solo/full 互斥断言随之改指这里,断言内容不放宽。
+const OV_TPL = readFileSync(new URL('./overview-template.ts', import.meta.url), 'utf8');
 
 // 双宽页占满整个跨页:右 cell 退场(左 cell flex:1 自动撑满)。
 // 中缝 2026-08-02 起**保留**:双宽页是装订的两半,书沟与四端一致(反转旧决定)。
@@ -53,9 +56,16 @@ test('overview grid gives a full spread its own ov-full branch (one face, no spi
     /const \[lp, rp\] = full \? \[faces\.page, null\] : \[faces\.left, faces\.right\]/,
     '双宽页整张进左 cell(右 cell 空);普通跨页仍是左右两半',
   );
-  assert.match(body, /\$\{full \? ' ov-full' : ''\}/, 'ov-book 必须带上 ov-full 标记供 CSS collapse');
+  // 模板已搬到 overview-template.ts(纯函数,可单测)。ov-full 标记与 solo/full
+  // 互斥在这里照样 pin 死 —— 唯一的差别是变量名从 lp/rp 变成了页号 leftIndex/rightIndex,
+  // 语义等价(null page ↔ null index),该等价性另由 overview-template.test.ts 的行为断言覆盖。
+  assert.match(OV_TPL, /\$\{s\.full \? ' ov-full' : ''\}/, 'ov-book 必须带上 ov-full 标记供 CSS collapse');
   // solo 与 full 是互斥的两种形态:双宽页绝不能被当成 solo(那会收窄成单页宽)。
-  assert.match(body, /const solo = !full && \(lp === null \|\| rp === null\)/);
+  assert.match(
+    OV_TPL,
+    /const solo = !s\.full && \(s\.leftIndex === null \|\| s\.rightIndex === null\)/,
+    'solo 判定必须先被 full 挡掉,否则双宽页会同时挂 ov-solo',
+  );
 });
 
 test('ov-full collapses the empty half and the spine, mirroring book-full', () => {

@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { after, describe, it } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 
 import { env } from '@/lib/env';
+import { setLoggerSinkForTest } from '@/lib/log/logger';
 import {
   maskPhoneNumber,
   sendSmsViaAliyun,
@@ -44,6 +45,13 @@ function fakeTransport(
   };
   return { transport, requests };
 }
+
+// 本文件有意构造 provider 的错误返回(欠费、签名不合法、限流),这些用例会打
+// error/warn 级日志。静音它们:2026-11-11 CI 输出里那条
+// 「sms.send.fail: 阿里云短信账户欠费,已停发」被当成线上真故障排查过一次 ——
+// 它其实是这里的用例造出来的。断言不受影响,只是不往日志里喊。
+before(() => setLoggerSinkForTest(() => {}));
+after(() => setLoggerSinkForTest(null));
 
 describe('maskPhoneNumber(日志脱敏)', () => {
   it('keeps head 3 and tail 2, masks the middle', () => {

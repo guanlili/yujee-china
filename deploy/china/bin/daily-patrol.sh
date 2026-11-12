@@ -90,7 +90,40 @@ USE=$(df -h / | awk 'NR==2 {gsub("%","",$5); print $5}')
 FLAG=OK; [ "$USE" -ge 80 ] && FLAG=WARN
 patrol_line "$FLAG" "disk [$FLAG] root_use=${USE}%"
 
-# ── 5. 告警汇总:本轮有 WARN 才发一条飞书;无 WARN 不打扰 ──────
+# ── 5. 应用层探针(2026-11-10)─────────────────────────────────
+# 容器 healthy ≠ 业务可用。2026-11-09 的事故里五个容器全 healthy、24h error
+# 计数为 0,但 COS 桶是私有的,缩略图/封面/分享照片/PDF 的直链全部 403,页面
+# 在而图片全挂 —— 上面四项(容器/内存/errcount/磁盘)一个都查不出来。
+# 这里补两条只读探针,专测"字节到底能不能拿到":
+#   1) /api/v1/health 必须 200 且 body 含 "ok":true
+#   2) 取库里最近一条相册的封面 key,走 /api/v1/assets 必须 302,跟随后必须
+#      200 + image/*。cover-thumbs/ 是公开前缀,无需登录,匿名 curl 即可 ——
+#      它覆盖的正是"签名 → 302 → COS 直拉"这条链路。
+# 站点可用 PATROL_SITE 覆盖(默认线上正式域名;本地调试可指 127.0.0.1)。
+SITE="${PATROL_SITE:-https://outman.press}"
+HC=$(curl -s -m 10 -o /tmp/.patrol_health -w '%{http_code}' "$SITE/api/v1/health" 2>/dev/null || echo 000)
+if [ "$HC" = "200" ] && grep -q '"ok":true' /tmp/.patrol_health 2>/dev/null; then
+  patrol_line OK "app [OK] health=200"
+else
+  patrol_line WARN "app [WARN] health=${HC:-000}"
+fi
+rm -f /tmp/.patrol_health
+
+COVER_KEY=$(docker exec yujee-postgres-1 psql -U yujee -d yujee -tAc \
+  "select cover_thumbnail_r2_key from albums where cover_thumbnail_r2_key is not null order by updated_at desc limit 1" 2>/dev/null | tr -d '\r' | head -1)
+if [ -n "${COVER_KEY:-}" ]; then
+  ASSET="$SITE/api/v1/assets/$COVER_KEY"
+  SC=$(curl -s -m 15 -o /dev/null -w '%{http_code}' "$ASSET" 2>/dev/null || echo 000)
+  LC=$(curl -s -L -m 30 -o /dev/null -w '%{http_code} %{content_type}' "$ASSET" 2>/dev/null || echo "000 -")
+  case "$LC" in
+    "200 image/"*) patrol_line OK "assets [OK] redirect=$SC final=${LC}" ;;
+    *)             patrol_line WARN "assets [WARN] cover redirect=$SC final=${LC} key=$COVER_KEY" ;;
+  esac
+else
+  patrol_line WARN "assets [WARN] 库里取不到 cover_thumbnail_r2_key,资源链路未探"
+fi
+
+# ── 6. 告警汇总:本轮有 WARN 才发一条飞书;无 WARN 不打扰 ──────
 if [ "${#WARN_LINES[@]}" -gt 0 ]; then
   body="共 ${#WARN_LINES[@]} 条 WARN:"
   for i in "${!WARN_LINES[@]}"; do

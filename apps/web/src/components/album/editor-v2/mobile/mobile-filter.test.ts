@@ -161,7 +161,9 @@ test('selected-photo toolbar keeps all four actions reachable on narrow viewport
   assert.match(toolbarRule, /box-sizing:\s*border-box/);
   assert.match(toolbarRule, /width:\s*max-content/);
   assert.match(toolbarRule, /max-width:\s*calc\(100% - 16px\)/);
-  assert.match(toolbarRule, /height:\s*40px/);
+  assert.match(toolbarRule, /height:\s*44px/);
+  // 44 是触控下限:按钮自身只有 36(条内 padding 4 上下),靠伪元素补满整条。
+  assert.match(css, /\.mobile-editor \.mimg-btn::after\s*\{[\s\S]*?inset:\s*-4px -2px/);
   assert.match(toolbarRule, /overflow-x:\s*auto/);
   assert.match(toolbarRule, /touch-action:\s*pan-x/);
   assert.match(toolbarRule, /scrollbar-width:\s*none/);

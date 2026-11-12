@@ -11,7 +11,7 @@ export const fr: Copy = {
   login: 'Se connecter',
   menu: 'Menu',
   createTitle: 'Vos photos éparpillées deviennent un livre photo à lire, à toucher, à garder',
-  createSub: 'Gratuit, sans inscription.',
+  createSub: 'Gratuit, sans inscription : créez d’abord un livre d’essai.',
   sampleCta: 'Voir l’exemple',
   makeSame: 'En créer un comme ça',
   samplesNote: 'Livres de démonstration réalisés par l’équipe Yujee pour montrer ce que le produit sait faire — contenu fictif, pas des créations de clients.',

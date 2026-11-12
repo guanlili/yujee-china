@@ -24,6 +24,7 @@ import { ADDON_PACKS, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { boundPick } from '@/lib/i18n/pick';
 import type { Locale } from '@/lib/i18n/routing';
 import { safeFetchJSON } from '@/lib/safe-fetch-json';
+import { track } from '@/lib/analytics/track-client';
 
 // Poll cadence + hard cap for the "waiting for payment" balance watcher.
 const BALANCE_POLL_MS = 3000;
@@ -138,6 +139,8 @@ export function CreditsPurchaseModal({
     setCheckingOut(true);
     setError(null);
     setManualPayUrl(null);
+    // 漏斗最后一格:用户真的点了付钱。只记套餐 id,不记金额与账号。
+    track('checkout_click', { result: 'ok', meta: { code: selectedId } });
     const result = await safeFetchJSON<{
       ok?: boolean;
       data?: { url?: string };

@@ -782,3 +782,38 @@ export const changelogEntries = pgTable('changelog_entries', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+// 产品埋点 + 前端错误上报(2026-11-10):给「做得好不好」一个可验收的依据。
+// 此前全项目零埋点,任何优化都只能靠读代码猜。
+//
+// 隐私红线:只存事件名、匿名主体 id、相册 id、locale、数值与结果。绝不存照片
+// URL、文案正文、手机号、邮箱 —— 写入侧(api/v1/events)有事件名白名单、字段
+// 白名单与长度截断;违反的字段直接丢弃而不是报错(埋点不能影响主流程)。
+//
+// 刻意不建外键:用户/相册删除后事件仍要保留(统计口径得能追溯历史),靠清理
+// 任务按保留期删控制体量。
+export const analyticsEvents = pgTable(
+  'analytics_events',
+  {
+    id: text('id').primaryKey().default(sql`gen_random_uuid()`),
+    name: text('name').notNull(),
+    // user = 登录账号或影子账号;anon = 只存在 cookie 里的匿名访客(首页也能量到)
+    subjectType: text('subject_type').notNull(),
+    subjectId: text('subject_id').notNull(),
+    albumId: text('album_id'),
+    locale: text('locale'),
+    // 语义由事件名决定:导出耗时(ms)、张数、失败次数……不做统一单位约定
+    value: bigint('value', { mode: 'number' }),
+    result: text('result'), // ok / fail / timeout / skipped
+    meta: jsonb('meta').$type<Record<string, string | number | boolean>>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    byNameCreated: index('idx_analytics_name_created').on(t.name, t.createdAt.desc()),
+    bySubjectCreated: index('idx_analytics_subject_created').on(t.subjectId, t.createdAt.desc()),
+    byCreated: index('idx_analytics_created').on(t.createdAt),
+  }),
+);
+
+export type AnalyticsEvent = typeof analyticsEvents.$inferSelect;
+export type NewAnalyticsEvent = typeof analyticsEvents.$inferInsert;
