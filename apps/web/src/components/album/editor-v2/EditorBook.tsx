@@ -174,6 +174,7 @@ import {
   type ChatCoordinator,
   type DraftActApplied,
 } from './editor-coordinator';
+import { buildOverviewHtml } from './overview-template';
 import './editor-port.css';
 // 字体表已抽到 editor-fonts(移动端弹窗同用一份,见该文件抬头)。
 // ── 自定义取色器(参考「填充」面板设计):HSV 拾色 + 色相/透明度条 + 预设色 + hex/不透明度 ──
@@ -2666,24 +2667,22 @@ export function EditorBook({
     function renderOverview() {
       const g = byId('ovGrid');
       if (!g) return;
-      g.innerHTML = Array.from({ length: spreadCount() }, (_, i) => {
+      // 模板(含 data-ovidx / data-oface / data-page-index 三个隐式契约属性)在
+      // overview-template.ts —— 属性名写错不会有任何类型报错,只能靠单测锁住。
+      const specs = Array.from({ length: spreadCount() }, (_, i) => {
         const faces = spreadFaces(i);
         // 双宽(#303)页占满整格:画进左 cell(CSS 的 ov-full 撑满左 cell、右 cell 退场、
         // 中缝隐藏)—— 和书籍视图的 book-full 同一套处理。
         const full = faces.kind === 'full';
         const [lp, rp] = full ? [faces.page, null] : [faces.left, faces.right];
-        // #158 follow-up: drop the ov-book surface fill + spine for a solo spread so
-        // the empty half reads as empty space, not a white page.
-        const solo = !full && (lp === null || rp === null);
-        const lpi = lp === null ? '' : String(lp.pageIndex);
-        const rpi = rp === null ? '' : String(rp.pageIndex);
-        const lSel = lp !== null && lp.pageIndex === selectedPageIndex ? ' ov-page-selected' : '';
-        const rSel = rp !== null && rp.pageIndex === selectedPageIndex ? ' ov-page-selected' : '';
-        return `<div class="ov-spread${i === currentCh ? ' ov-current' : ''}" data-ovidx="${i}">
-          <div class="ov-book${solo ? ' ov-solo' : ''}${full ? ' ov-full' : ''}"><div class="ov-page ov-left${lp === null ? ' ov-empty' : ''}${lSel}" data-oface="${i}-l" data-page-index="${lpi}"></div><div class="ov-page ov-right${rp === null ? ' ov-empty' : ''}${rSel}" data-oface="${i}-r" data-page-index="${rpi}"></div></div>
-          <div class="ov-cap">${spreadLabel(i)}</div>
-        </div>`;
-      }).join('');
+        return {
+          label: spreadLabel(i),
+          full,
+          leftIndex: lp?.pageIndex ?? null,
+          rightIndex: rp?.pageIndex ?? null,
+        };
+      });
+      g.innerHTML = buildOverviewHtml(specs, { currentIndex: currentCh, selectedPageIndex });
       // 懒 paint:格子进入视口才渲(20+ 页的总览一次性全渲是强制重排+解码风暴)。
       // IntersectionObserver 不可用(旧引擎/jsdom)时回退空闲帧全量渲。
       // ⚠️ 全保真模式,不是 thumb:总览网格就是主画板(无限画布,可缩放到 3x,
