@@ -244,11 +244,12 @@ export function FlipBook({
 
   // Keep the book in sync when the selection is driven from elsewhere (e.g. a
   // chat edit that targets a specific page).
+  // spreadOf 也必须在 deps 里:pages 重排(增删页)后 selected 不变,但同一页号
+  // 落在哪个跨页会变 —— 只盯 selected 的话书会停在旧跨页上。
   useEffect(() => {
     const target = spreadOf(selected);
     setSpread((cur) => (cur === target ? cur : target));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected]);
+  }, [selected, spreadOf]);
 
   // Animation state. `anim` holds the in-flight flip (direction + the spread we
   // are turning toward). While animating we keep painting the *current* spread
