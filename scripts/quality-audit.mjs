@@ -222,6 +222,36 @@ function metricDeps() {
   };
 }
 
+/**
+ * 远程分支残留。只读 refs,不需要完整历史。
+ *
+ * 为什么必须单列这一项:仓库约定「临时分支用完即删」,但 squash 合并会让分支提交
+ * 永远不是 main 的祖先 —— `git branch -d` 对每个已合并的分支都"正确"地拒绝,
+ * 于是一个也删不掉,而拒绝本身不报错、不显眼。2026-11-12 一次性清出 44 个本地
+ * 分支 + 1 个远程残留(关闭 PR 时漏了 --delete-branch)。靠人想起来才清等于没有。
+ */
+async function metricBranches() {
+  const out = sh('git ls-remote --heads origin');
+  if (out.startsWith('__ERR__')) {
+    return { title: '远程分支残留', md: '读取远程分支失败(无 origin remote 或网络不可达)。', data: {} };
+  }
+  const names = out
+    .split('\n')
+    .map((l) => l.replace(/^.*refs\/heads\//, '').trim())
+    .filter(Boolean);
+  // 允许存在:main、dependabot 自动分支、发布分支(rb-*)、revert 分支
+  const allowed = /^(main$|dependabot\/|rb-|revert-)/;
+  const stale = names.filter((n) => !allowed.test(n));
+  const rows = stale.slice(0, 15).map((n) => `| \`${n}\` |`);
+  return {
+    title: '远程分支残留(用完即删)',
+    md: stale.length
+      ? `${stale.length} 个分支既不是 main、也不是 dependabot/release:\n\n| 分支 |\n|---|\n${rows.join('\n')}\n\n> 判据看 **PR 是否 merged**,不看 \`merge-base --is-ancestor\`(squash 合并后分支提交不是 main 祖先)。删除用 \`git branch -D\` + \`git push origin --delete\`。`
+      : '无(干净)',
+    data: { staleBranches: stale.length },
+  };
+}
+
 async function main() {
   const started = new Date();
   const sections = [];
@@ -234,6 +264,7 @@ async function main() {
     async () => metricDocsCheck(),
     metricMigrations,
     async () => metricDeps(),
+    async () => metricBranches(),
   ];
   for (const t of tasks) {
     try {
