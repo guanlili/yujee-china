@@ -132,7 +132,9 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/pricing': {
     sources: [MARKETING, 'apps/web/src/config/pricing.ts', 'apps/web/src/app/[locale]/pricing/page.tsx'],
     updatedAt: '2026-09-21',
-    reviewedSources: 'c1d5e912f29f',
+    // 2026-11-14:配置里加了支付宝 CNY 价目(ALIPAY_PACK_PRICE_CNY),但定价页仍渲染
+    // priceUsd,读者看到的字符没变 → 只推进指纹,updatedAt 不动。
+    reviewedSources: '97a24e49d48d',
   },
   // messages/marketing 这轮被 74c590db(首页 en meta)、d2bca297(共用导航多一项
   // Guides)、c4148143(共用页脚 Pricing 改指 /pricing)和 2026-09-21 的
