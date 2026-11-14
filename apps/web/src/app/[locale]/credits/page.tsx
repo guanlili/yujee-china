@@ -13,6 +13,7 @@ import {
   PHOTOS_PER_CREDIT,
 } from '@/config/pricing';
 import { AppChrome } from '@/components/app/AppChrome';
+import { operatorLine } from '@/config/operator';
 
 type LedgerReason =
   | 'SIGNUP_BONUS'
@@ -177,6 +178,8 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
               </div>
             ))}
           </div>
+          <p className="mt-5 text-xs leading-relaxed text-[var(--meta)]">{t.channelNote}</p>
+          <p className="mt-2 text-xs text-[var(--meta)]">{operatorLine(locale)}</p>
         </section>
 
         {/* 3 — Ledger / history */}

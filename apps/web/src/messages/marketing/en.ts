@@ -59,13 +59,15 @@ export const en: MarketingMessages = {
   privacy: {
     metaTitle: 'Yujee — Privacy Policy',
     metaDesc:
-      'How Yujee handles your photos and personal data. Original photos are never uploaded — only compressed previews go to the AI for layout planning, and your albums stay private to you.',
+      'How Yujee handles your photos and personal data: original photos are never uploaded, only compressed previews go to the AI for layout planning, and your albums stay private to you.',
     title: 'Privacy Policy',
-    effective: 'Effective Date: May 27, 2026',
+    effective: 'Effective Date: November 14, 2026',
     sections: [
       {
         h: '1. Introduction',
-        body: 'Yujee ("we") values your privacy. This Privacy Policy explains how we collect, use, disclose, and protect your information when you use outman.press.',
+        body:
+          'This policy explains how Beijing Zhijing Fanglue Information Technology Co., Ltd. ("we") collects, uses, stores, shares, and protects your information when you use outman.press. ' +
+          'We provide an AI photo-book service only (photo processing, AI-written captions, layout, and electronic PDF export); we do not provide physical printing or shipping.',
       },
       {
         h: '2. Information We Collect',
@@ -77,30 +79,48 @@ export const en: MarketingMessages = {
       },
       {
         h: '4. Information Sharing',
-        body: 'We do not sell your personal information. We share data only with service providers operating the product on our behalf (cloud hosting, payment processing, email delivery, AI inference) and when required by law.',
+        body:
+          'We do not sell your personal information or share it with third parties for advertising. We share only what is necessary with service providers that operate the product: cloud hosting and object storage, payment processing, email delivery, and AI inference. ' +
+          'Specifically, hosting and storage run on Tencent Cloud (mainland China); overseas card payments are processed by Waffo (an entity registered in Hong Kong), and the Alipay channel is not yet live; layout and captions are produced by third-party model services, while image generation uses a provider in mainland China. ' +
+          'We may also disclose data when required by law or when necessary to protect users and our legitimate rights.',
       },
       {
-        h: '5. Data Security',
+        h: '5. Storage and Retention',
+        body:
+          'Account information, memoir data, and order records are stored on cloud servers and object storage in mainland China. ' +
+          'Your memoir data is retained until you delete the album or close your account; after account closure, your profile, the memoirs you created, and any remaining credits are deleted and cannot be recovered. ' +
+          'Records of failed generation tasks are cleaned up automatically after 30 days. Some order information may be retained for statutory periods where required by law (for example, transaction and financial records).',
+      },
+      {
+        h: '6. Cross-border Transfers',
+        body:
+          'When you pay by overseas card, order and payment information is transferred to our payment provider in Hong Kong. The third-party model services used for layout and captions may be hosted outside mainland China, and the photo previews and text you submit are transferred to them to produce the output. ' +
+          'We do not transfer your information abroad for any other purpose.',
+      },
+      {
+        h: '7. Data Security',
         body: 'We apply reasonable technical and organizational measures to protect your data. No internet transmission or electronic storage is 100% secure; we cannot guarantee absolute security.',
       },
       {
-        h: '6. Your Rights',
-        body: 'Depending on your jurisdiction, you may access, correct, delete, or restrict the processing of your personal data. Contact us to exercise these rights.',
+        h: '8. Your Rights',
+        body:
+          'Depending on your jurisdiction, you may have the right to access, correct, delete, or restrict the processing of your personal data, to withdraw consent, and to lodge a complaint. ' +
+          'You can exercise these rights by emailing the address at the end of this policy; we will verify your identity before acting.',
       },
       {
-        h: '7. Children’s Privacy',
+        h: '9. Children’s Privacy',
         body: 'Yujee is not directed to children under 13 (or the equivalent age in your jurisdiction). If we learn we collected personal data from a child, we will delete it promptly.',
       },
       {
-        h: '8. Changes to this Policy',
+        h: '10. Changes to this Policy',
         body: 'We may update this Privacy Policy at any time. Material changes will be announced in-product or by email.',
       },
       {
-        h: '9. Contact',
+        h: '11. Contact',
         body: '',
       },
     ],
-    contactLine: 'Questions? Email privacy@yujeeai.com.',
+    contactLine: 'Privacy and support: privacy@yujeeai.com; refunds: support@yujeeai.com. Operator: Beijing Zhijing Fanglue Information Technology Co., Ltd.',
   },
   terms: {
     metaTitle: 'Yujee — Terms of Service',
@@ -115,7 +135,10 @@ export const en: MarketingMessages = {
       },
       {
         h: '2. Description of Service',
-        body: 'Yujee is an AI-powered memoir generator. You provide photos and prompts; we lay out a magazine-style memoir and let you export it as a PDF. We do not guarantee a specific creative outcome.',
+        body:
+        'Yujee is an AI photo-book service. You upload photos and text; we provide photo processing, AI-written captions, magazine-style layout, and export to an electronic PDF. '
+        + 'The service is billed in credits: one credit covers one photo, and credits are bought through one-time credit packs — no subscription and no monthly fee. '
+        + 'We deliver electronic files only; we do not provide physical printing, binding, or shipping. We do not guarantee a specific creative outcome.',
       },
       {
         h: '3. User Accounts',
@@ -148,7 +171,7 @@ export const en: MarketingMessages = {
         body:
           'Generating a memoir consumes credits on a per-photo basis: one credit covers one photo. When you start a generation we place a hold on the corresponding credits; they are debited once the layout succeeds, and the hold is released with no charge if the generation fails. Credits are obtained through one-time credit packs — there is no subscription and no monthly fee, and credits currently have no expiry date. Current prices and pack sizes are those shown on the pricing page.\n' +
           '\n' +
-          'Once credits have been debited for a successful layout they are not refundable, including where you are unhappy with the result. Except as required by law, fees paid and credit packs purchased are non-refundable. Where you purchased through a third-party payment provider, that provider’s own refund rules also apply, and nothing in this section affects consumer rights that the law of your country or region does not permit us to exclude.\n' +
+          'Refunds follow the Refund Policy: credits that are entirely unused may be refunded; credits already debited for a successful layout are not refundable, including where you are unhappy with the result; duplicate charges or overcharges caused by our system errors are refunded in full. If this section and the Refund Policy differ, the provision more favourable to you applies. Where you purchased through a third-party payment provider, that provider’s own refund rules also apply, and nothing in this section affects consumer rights that the law of your country or region does not permit us to exclude.\n' +
           '\n' +
           'We may change prices, pack sizes, and billing models at any time. Changes take effect for new purchases when published and do not affect credits you have already purchased.',
       },
@@ -183,56 +206,53 @@ export const en: MarketingMessages = {
   refund: {
     metaTitle: 'Refund Policy',
     metaDesc:
-      'How Yujee credit packs are refunded: unused credits can be refunded within 7 days of purchase, consumed credits are not refundable, and failed generations never charge you.',
+      'How Yujee credit packs are refunded: entirely unused credits can be refunded in full, consumed credits are not refundable, and failed generations never charge you.',
     title: 'Refund Policy',
     effective: 'Effective: November 14, 2026',
     sections: [
       {
         h: '1. What this covers',
         body:
-          'This policy covers one-time credit packs bought on Yujee (outman.press). We do not sell subscriptions or charge monthly, so there is nothing to cancel. ' +
-          'Section 7 of our Terms of Service also applies; where the two differ, the term more favourable to you wins.',
+          'This policy covers one-time credit packs bought on Yujee (outman.press). Credits are used for AI photo-book production — photo processing, AI-written captions, layout, and electronic PDF export — and do not include physical printing, binding, or shipping. ' +
+          'We do not offer subscriptions or monthly billing, so there is no subscription to cancel. Section 7 of the Terms of Service also applies; where the two differ, the provision more favourable to you applies.',
       },
       {
-        h: '2. When we refund',
+        h: '2. When you can request a refund',
         body:
-          '• Within 7 days of purchase, where none of the credits from that order have been used (no generation started, nothing exported);\n' +
-          '• A duplicate charge, or a system error that charged you more than once;\n' +
-          '• Our failure that makes the credits you bought unusable within a reasonable time.\n' +
+          '• The credits from that order are entirely unused: no generation was started, and no finished book was exported or shared;\n' +
+          '• The same order was charged twice, or a system error overcharged you;\n' +
+          '• Our failure made the credits you bought completely unusable for a reasonable period.\n' +
           '\n' +
-          'These are refunded in full. This window is a voluntary commitment that exceeds the legal minimum and does not limit your statutory rights.',
+          'In these cases we refund the full amount actually paid for that order. This is a voluntary policy and does not limit any rights you have under law.',
       },
       {
-        h: '3. When we do not refund',
+        h: '3. When you cannot request a refund',
         body:
-          '• Credits already consumed by a successful layout (including where you are unhappy with the result);\n' +
+          '• Credits already debited after a successful layout — including where you are unhappy with the result;\n' +
           '• Credits used to export or share a finished book;\n' +
-          '• Requests made more than 7 days after purchase;\n' +
-          '• Accounts restricted or terminated for breaching the Terms (for example uploading unlawful or infringing content);\n' +
-          '• Credits granted through promotions, referrals or compensation.\n' +
+          '• Accounts restricted or terminated for breaching the Terms of Service (for example, uploading unlawful or infringing content) — except where the law provides otherwise;\n' +
+          '• Credits granted through promotions, referrals, or compensation.\n' +
           '\n' +
-          'We do not offer pro-rata refunds for the unused share of a pack, though we will consider special cases individually.',
+          'Refunds are handled per order; we do not split an order by "unused photos".',
       },
       {
-        h: '4. Failed generations are not refunds',
+        h: '4. Failed generations are a release, not a refund',
         body:
-          'Starting a generation only places a hold on your credits; they are deducted when the layout succeeds. ' +
-          'If a generation fails (model error, network loss, timeout) the hold is released and your balance is unchanged — no refund request needed. ' +
-          'If your balance dropped without a book being produced, contact us with the order details and we will restore it after checking.',
+          'We only hold credits when a generation starts; credits are debited when layout succeeds. If a generation fails (model error, network interruption, timeout), the held credits are released automatically, your balance is unchanged, and no refund request is needed. ' +
+          'If credits were debited but no book was produced, contact us with the order details and we will restore them after verification.',
       },
       {
-        h: '5. Your statutory rights',
+        h: '5. Rights under law',
         body:
-          'Where your country or region (for example the EU or UK) grants consumers a right of withdrawal for digital content, this policy does not limit it. ' +
-          'Under the usual rules, once you expressly consent and acknowledge that the right is lost when supply begins, credits already supplied fall outside that right; ' +
-          'credits not yet supplied (unused) can still be withdrawn within the statutory period.',
+          'If the law of your country or region (for example, the EU or the UK) grants a right of withdrawal for digital content, that right is not limited by this policy. ' +
+          'Under common rules, once you expressly consent and confirm that the right of withdrawal is lost as soon as performance begins, credits already provided are no longer subject to withdrawal; credits not yet provided can still be withdrawn within the statutory period.',
       },
       {
         h: '6. How to request a refund',
         body:
-          'Email support@yujeeai.com with the address used at checkout, the purchase time, the amount and which pack you bought. ' +
-          'We reply within 3 business days. Approved refunds go back to the original payment method: cards typically take 5–10 business days, WeChat Pay and Alipay are usually faster. ' +
-          'Cross-border payments may show a small FX difference set by your bank or the channel, not by us.',
+          'Email support@yujeeai.com with the address used at checkout, the purchase time, the amount, and which pack you bought. ' +
+          'We will verify and reply as soon as we can. Approved refunds go back to the original payment method; how long it takes depends on the channel — typically 5–10 business days for cards, usually faster for WeChat Pay and Alipay. ' +
+          'Cross-border payments may involve exchange-rate differences set by the issuing bank; those are not charged by us.',
       },
       {
         h: '7. Disputes and chargebacks',
