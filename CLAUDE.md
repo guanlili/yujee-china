@@ -9,7 +9,7 @@
 > - **CI 四门全绿**(`.github/workflows/ci.yml`:typecheck 含 docs/sitemap/templates 三闸 / engine pytest 538 / web 需先 design:build+PG service / packages)。改代码必推 CI,红了先修。基线回滚点 tag:`china-baseline-20261025`。
 > - **密钥全部在服务器** `~/yujee-clip/deploy/china/env/{single,clip}.env`(600,不进仓);ARK key 未换子账号、邮件仍 capture 模式(注册激活须从 web 容器 `/app/apps/web/.tmp/email-capture.jsonl` 捞验证链接)。
 > - **部署姿势**:rsync 必须 `--relative` 从仓根(尾斜杠=内容平铺,已踩两次);远端长任务一律 nohup;SSH 会随机断,操作要幂等。浏览器侧 HTTP+IP 阶段靠根布局的 crypto.randomUUID polyfill(安全上下文限制),上 HTTPS 后自动让位。
-> - 域名/备案/支付/手机号登录未做,见 `docs/plans/2026-10-25-china-deployment-plan.md` 与记忆。
+> - 域名/备案/手机号登录未做,见 `docs/plans/2026-10-25-china-deployment-plan.md` 与记忆。支付:代码已就绪(支付宝电脑网站支付,2026-11-14 #372),但生产未配任何 `ALIPAY_*`/`WAFFO_*`,checkout 仍 503;签约后配密钥即可切。
 
 本仓是 AI 人生纪念册应用。**海外历史架构是四个部署单元,不是两个**:
 
@@ -260,5 +260,5 @@ dependabot 不会推 `checked-at`,盖住它们会把对应生态的每个依赖 
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, apps/web/src/lib/agent/**, package.json
-checked-at: 80b14227
+checked-at: f0088953
 -->

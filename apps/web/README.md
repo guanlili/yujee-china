@@ -419,7 +419,8 @@ Defaults live in `src/lib/env.ts`. Common fields:
 | `DESIGN_AGENT_SHARED_SECRET` | Bearer secret shared with 设计 Agent(未设则不带鉴权头) |
 | `WEB_BASE_URL` | Web origin used in callbacks; **国内生产** = `https://outman.press`（无尾斜杠，better-auth `baseURL` + CSRF trustedOrigins） |
 | `BETTER_AUTH_SECRET` | Auth signing secret |
-| `WAFFO_*` | Billing(主通道,2026-08 起) |
+| `WAFFO_*` | Billing(海外卡通道,2026-08 起) |
+| `ALIPAY_*` | Billing(国内通道·电脑网站支付)。`ALIPAY_APP_ID` / `ALIPAY_PRIVATE_KEY` / `ALIPAY_PUBLIC_KEY` 缺任一即 `BILLING_NOT_CONFIGURED`(503);`ALIPAY_SELLER_ID` 可选;`ALIPAY_ENV` 决定网关(`sandbox` 默认) |
 | `CREEM_*` | Billing(仅在途订单 webhook 兜底) |
 | `R2_*` | PDF/thumbnail storage,以及 AI 生图产出的原图 |
 | `IMAGE_PROVIDER` | AI 生图走哪家:`gemini`(海外默认)/ `ark`(国内生产:火山直连)/ `kexiang`(中转站 SeeDream4.5 异步任务 API,已合入备用) |
@@ -465,6 +466,24 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 拒收并各自 error 日志),漏配不会像其它变量那样连错服务,而是所有 webhook 事件被
 拒收、不发积分。
 
+### 支付宝(国内通道)
+
+`ALIPAY_APP_ID` / `ALIPAY_PRIVATE_KEY` / `ALIPAY_PUBLIC_KEY` 三把缺任一,
+`alipayService` 一律抛 `BILLING_NOT_CONFIGURED`(503),不会生成一个签不出来的跳转 URL
+——用户看到支付宝的"验签失败"页比 503 更难排查。`ALIPAY_ENV` 决定网关地址,沙箱密钥
+打到正式网关必然验签失败,因此默认 `sandbox`,上线前显式切 `prod`。
+
+异步通知 `/api/webhooks/alipay` 与海外通道的 JSON 契约不同:支付宝只认字面量 `success`
+(否则按 4h/8h 阶梯重试 24 小时),失败回 `failure`,所以这条路由不复用 `fromException`。
+验签通过后还要过四道门:`app_id` 必须是我们(配了 `ALIPAY_SELLER_ID` 时再核对收款方)、
+`trade_status` 只认 `TRADE_SUCCESS`/`TRADE_FINISHED`、`total_amount` 必须等于
+`ALIPAY_PACK_PRICE_CNY` 里的定价、同一 `trade_no` 重复通知按
+`credit_ledger.external_event_id` 幂等跳过(键 `alipay:${trade_no}`)。
+
+价格是双轨的:海外通道用 `priceUsd`,支付宝用 `ALIPAY_PACK_PRICE_CNY`。**切
+`ACTIVE_CHECKOUT_PROVIDER` 到 `alipay` 必须与 UI 币种展示同批改**,否则页面显示 `$`、
+实扣 `¥`。
+
 ## Change Notes
 
 - Keep browser-only photo/GPS logic out of server services.
@@ -477,5 +496,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**
-checked-at: 4c1b659f
+checked-at: f0088953
 -->
