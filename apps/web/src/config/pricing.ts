@@ -135,12 +135,20 @@ export const WAFFO_PRODUCT_ENV_BY_PACK_ID: Record<AddonPackId, WaffoProductEnvKe
 };
 
 // 人民币定价(支付宝通道)。Waffo/Creem 走美元,支付宝只能按 CNY 收款,所以价格
-// 必须另一套——不能用汇率现算,否则用户每次看到的数字都在变。
-// 暂定 ¥19 / ¥69 / ¥139,对应 $3 / $10 / $20 的档位;改价只动这三行。
-export const ALIPAY_PACK_PRICE_CNY: Record<AddonPackId, number> = {
-  'pack-1': 19,
-  'pack-4': 69,
-  'pack-10': 139,
+// 必须另一套,**且必须由经营者定价**——代码里不写任何默认值,不按汇率换算:一旦
+// 内置数字,就会出现"页面和合同写着 A、实际扣 B"的钱货不符。
+//
+// 三档价格走 env(`ALIPAY_PRICE_PACK_1/4/10`),缺任一则该档下单直接
+// BILLING_NOT_CONFIGURED(503),购买入口保持关闭。
+export type AlipayPriceEnvKey =
+  | 'ALIPAY_PRICE_PACK_1'
+  | 'ALIPAY_PRICE_PACK_4'
+  | 'ALIPAY_PRICE_PACK_10';
+
+export const ALIPAY_PRICE_ENV_BY_PACK_ID: Record<AddonPackId, AlipayPriceEnvKey> = {
+  'pack-1': 'ALIPAY_PRICE_PACK_1',
+  'pack-4': 'ALIPAY_PRICE_PACK_4',
+  'pack-10': 'ALIPAY_PRICE_PACK_10',
 };
 
 export function buildCheckoutReturnUrls(

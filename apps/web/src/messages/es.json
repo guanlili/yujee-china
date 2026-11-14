@@ -240,7 +240,8 @@
         "PURCHASE": "Créditos comprados",
         "REFUND": "Reembolso",
         "ADMIN_ADJUST": "Ajuste"
-      }
+      },
+      "channelNote": "Las compras se realizan actualmente con tarjeta internacional (Waffo) y se liquidan en USD. El canal Alipay de China continental aún no está activo; hasta entonces no se ofrecen compras en CNY."
     },
     "settings": {
       "title": "Ajustes",
