@@ -75,6 +75,7 @@ export const zh: Copy = {
   footerAccount: '账户',
   footerPrivacy: '隐私政策',
   footerTerms: '服务条款',
+  footerRefund: '退款政策',
   signup: '免费注册',
   copyright: '© 2026 Yujee · 用排版，把回忆收好',
   samples: [

@@ -169,6 +169,74 @@ export const es: MarketingMessages = {
     ],
     contactLine: '¿Tienes dudas? Escribe a support@yujeeai.com.',
   },
+  refund: {
+    metaTitle: 'Política de reembolsos',
+    metaDesc:
+      'Cómo se reembolsan los paquetes de créditos de Yujee: los créditos sin usar se reembolsan dentro de 7 días, los ya consumidos no, y una generación fallida nunca te cobra.',
+    title: 'Política de reembolsos',
+    effective: 'En vigor: 14 de noviembre de 2026',
+    sections: [
+      {
+        h: '1. Alcance',
+        body:
+          'Esta política cubre los paquetes de créditos de pago único comprados en Yujee (outman.press). No vendemos suscripciones ni cobramos mensualmente, así que no hay nada que cancelar. ' +
+          'También se aplica la cláusula 7 de los Términos del servicio; si ambas difieren, prevalece la más favorable para ti.',
+      },
+      {
+        h: '2. Cuándo reembolsamos',
+        body:
+          '• Dentro de los 7 días siguientes a la compra, si ninguno de los créditos de ese pedido se ha usado (sin generaciones iniciadas, sin exportaciones);\n' +
+          '• Un cargo duplicado o un error del sistema que te cobró más de una vez;\n' +
+          '• Un fallo nuestro que deje inutilizables los créditos comprados durante un periodo razonable.\n' +
+          '\n' +
+          'En estos casos devolvemos el importe completo. Este plazo es un compromiso voluntario superior al mínimo legal y no limita tus derechos.',
+      },
+      {
+        h: '3. Cuándo no reembolsamos',
+        body:
+          '• Créditos ya consumidos por una maquetación correcta (incluido el caso de que el resultado no te guste);\n' +
+          '• Créditos usados para exportar o compartir un álbum terminado;\n' +
+          '• Solicitudes más de 7 días después de la compra;\n' +
+          '• Cuentas limitadas o cerradas por incumplir los Términos (por ejemplo, subir contenido ilícito o que infrinja derechos);\n' +
+          '• Créditos concedidos por promociones, referidos o compensaciones.\n' +
+          '\n' +
+          'No hacemos reembolsos prorrateados por la parte no usada de un paquete, aunque estudiaremos casos especiales uno a uno.',
+      },
+      {
+        h: '4. Una generación fallida no es un reembolso',
+        body:
+          'Al iniciar una generación solo reservamos los créditos; se descuentan cuando la maquetación tiene éxito. ' +
+          'Si la generación falla (error del modelo, corte de red, tiempo de espera agotado), la reserva se libera y tu saldo no cambia: no hace falta solicitar nada. ' +
+          'Si tu saldo bajó sin que se produjera el álbum, escríbenos con los datos del pedido y lo restauramos tras comprobarlo.',
+      },
+      {
+        h: '5. Tus derechos legales',
+        body:
+          'Si tu país o región (por ejemplo la UE o el Reino Unido) reconoce a los consumidores un derecho de desistimiento sobre contenido digital, esta política no lo limita. ' +
+          'Con las reglas habituales, una vez que consientes expresamente y reconoces que el derecho se pierde al comenzar el suministro, los créditos ya suministrados quedan fuera de ese derecho; ' +
+          'los créditos aún no suministrados (sin usar) pueden desistirse dentro del plazo legal.',
+      },
+      {
+        h: '6. Cómo solicitarlo',
+        body:
+          'Escribe a support@yujeeai.com indicando el correo usado en la compra, la fecha y hora, el importe y el paquete adquirido. ' +
+          'Respondemos en 3 días laborables. Los reembolsos aprobados vuelven al método de pago original: las tarjetas suelen tardar 5–10 días laborables, WeChat Pay y Alipay normalmente menos. ' +
+          'En pagos transfronterizos puede aparecer una pequeña diferencia de cambio fijada por tu banco o el canal, no por nosotros.',
+      },
+      {
+        h: '7. Disputas y contracargos',
+        body:
+          'Si un cargo no te cuadra, contáctanos primero: casi todo se resuelve directamente. ' +
+          'Presentar un contracargo en tu banco antes de contactarnos alarga el proceso, y nos reservamos el derecho de aportar el registro completo de la transacción ante una disputa.',
+      },
+      {
+        h: '8. Cambios',
+        body:
+          'Podemos actualizar esta política. Los cambios rigen desde su publicación y no afectan compras ya realizadas: la política vigente cuando compraste sigue rigiendo ese pedido.',
+      },
+    ],
+    contactLine: 'Reembolsos y dudas: support@yujeeai.com.',
+  },
   story: {
     metaTitle: 'Nuestra historia — Por qué hice Yujee',
     metaDesc:
@@ -420,6 +488,7 @@ export const es: MarketingMessages = {
         items: [
           { label: 'Privacidad', href: '/privacy' },
           { label: 'Términos', href: '/terms' },
+          { label: 'Reembolsos', href: '/refund' },
         ],
       },
     ],

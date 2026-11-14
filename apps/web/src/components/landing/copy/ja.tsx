@@ -78,6 +78,7 @@ export const ja: Copy = {
   footerAccount: 'アカウント',
   footerPrivacy: 'プライバシー',
   footerTerms: '利用規約',
+  footerRefund: '返金ポリシー',
   signup: '無料で登録',
   copyright: '© 2026 Yujee · 思い出を、美しいレイアウトで',
   samples: [

@@ -78,6 +78,7 @@ export const es: Copy = {
   footerAccount: 'Cuenta',
   footerPrivacy: 'Privacidad',
   footerTerms: 'Términos',
+  footerRefund: 'Reembolsos',
   signup: 'Regístrate gratis',
   copyright: '© 2026 Yujee · Recuerdos, bien maquetados',
   samples: [

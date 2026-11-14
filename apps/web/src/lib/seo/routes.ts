@@ -67,6 +67,10 @@ export const INDEXABLE_ROUTES: readonly string[] = [
   '/pricing',
   '/privacy',
   '/terms',
+  // Payment providers require a reachable refund policy before switching
+  // checkout on, and the footer links it — a footer href must name an entry in
+  // this list (seo.test enforces that), so it belongs here.
+  '/refund',
   ...EXAMPLE_ROUTES,
   ...GUIDE_ROUTES,
 ];
@@ -94,6 +98,7 @@ export const CHANGE_FREQUENCY: Record<string, 'weekly' | 'monthly' | 'yearly'> =
   '/pricing': 'monthly',
   '/privacy': 'yearly',
   '/terms': 'yearly',
+  '/refund': 'yearly',
   ...Object.fromEntries(EXAMPLE_ROUTES.map((route) => [route, 'monthly' as const])),
 };
 
@@ -106,6 +111,7 @@ export const ROUTE_PRIORITY: Record<string, number> = {
   '/pricing': 0.8,
   '/privacy': 0.3,
   '/terms': 0.3,
+  '/refund': 0.3,
   '/examples': 0.7,
   ...Object.fromEntries(EXAMPLE_SLUGS.map((slug) => [`/examples/${slug}`, 0.6])),
 };
