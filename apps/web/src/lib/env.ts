@@ -114,6 +114,16 @@ const EnvSchema = z.object({
   WAFFO_PRODUCT_ID_PACK_4: z.string().optional(),
   WAFFO_PRODUCT_ID_PACK_10: z.string().optional(),
 
+  // Payment · 支付宝(国内通道,电脑网站支付)
+  // ALIPAY_ENV 决定网关地址 + 用哪套密钥:沙箱的应用私钥在正式网关上一定验签失败。
+  // ALIPAY_PUBLIC_KEY 是支付宝的公钥(不是应用公钥),异步通知验签用它。
+  // ALIPAY_SELLER_ID 可选:配了就额外核对收款方,防止商户号被换。
+  ALIPAY_APP_ID: z.string().optional(),
+  ALIPAY_PRIVATE_KEY: z.string().optional(),
+  ALIPAY_PUBLIC_KEY: z.string().optional(),
+  ALIPAY_SELLER_ID: z.string().optional(),
+  ALIPAY_ENV: z.enum(['sandbox', 'prod']).default('sandbox'),
+
   // Cloudflare R2 (S3-compatible). PDF upload-url uses presigned PUT.
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),

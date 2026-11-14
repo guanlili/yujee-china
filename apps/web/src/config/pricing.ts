@@ -30,8 +30,8 @@ export interface CreditPack {
   priceUsd: number;
 }
 
-export type CheckoutProvider = 'creem' | 'waffo';
-export const CHECKOUT_PROVIDERS = ['creem', 'waffo'] as const satisfies readonly CheckoutProvider[];
+export type CheckoutProvider = 'creem' | 'waffo' | 'alipay';
+export const CHECKOUT_PROVIDERS = ['creem', 'waffo', 'alipay'] as const satisfies readonly CheckoutProvider[];
 // Waffo 是主通道(2026-08 切换);creem 保留仅为 Phase 1 在途订单 webhook 兜底。
 export const ACTIVE_CHECKOUT_PROVIDER = 'waffo' satisfies CheckoutProvider;
 // The UI locale the buyer came from — it only ever decides which /{locale}/credits
@@ -132,6 +132,15 @@ export const WAFFO_PRODUCT_ENV_BY_PACK_ID: Record<AddonPackId, WaffoProductEnvKe
   'pack-1': 'WAFFO_PRODUCT_ID_PACK_1',
   'pack-4': 'WAFFO_PRODUCT_ID_PACK_4',
   'pack-10': 'WAFFO_PRODUCT_ID_PACK_10',
+};
+
+// 人民币定价(支付宝通道)。Waffo/Creem 走美元,支付宝只能按 CNY 收款,所以价格
+// 必须另一套——不能用汇率现算,否则用户每次看到的数字都在变。
+// 暂定 ¥19 / ¥69 / ¥139,对应 $3 / $10 / $20 的档位;改价只动这三行。
+export const ALIPAY_PACK_PRICE_CNY: Record<AddonPackId, number> = {
+  'pack-1': 19,
+  'pack-4': 69,
+  'pack-10': 139,
 };
 
 export function buildCheckoutReturnUrls(

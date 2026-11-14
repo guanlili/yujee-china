@@ -6,6 +6,7 @@ import { fromException } from '@/lib/api/from-exception';
 import { defaultLocale, locales } from '@/lib/i18n/routing';
 import { creemService } from '@/services/billing/creem-service';
 import { waffoService } from '@/services/billing/waffo-service';
+import { alipayService } from '@/services/billing/alipay-service';
 import { ACTIVE_CHECKOUT_PROVIDER } from '@/config/pricing';
 
 // Billing checkout entry. Server-only because provider API keys must never reach
@@ -17,8 +18,15 @@ const schema = z.object({
   from: z.enum(['album', 'create', 'home']).optional(),
 });
 
-// createPackCheckout 双实现签名一致;按 ACTIVE_CHECKOUT_PROVIDER 单点切换。
-const checkoutService = ACTIVE_CHECKOUT_PROVIDER === 'waffo' ? waffoService : creemService;
+// 三个实现 createPackCheckout 签名一致;按 ACTIVE_CHECKOUT_PROVIDER 单点切换。
+// 用显式映射而不是三元链:新增通道时漏写一个分支会在类型层面报错,而不是悄悄
+// 落到 creem。
+const CHECKOUT_SERVICES = {
+  waffo: waffoService,
+  creem: creemService,
+  alipay: alipayService,
+} as const;
+const checkoutService = CHECKOUT_SERVICES[ACTIVE_CHECKOUT_PROVIDER];
 
 export async function POST(req: Request) {
   try {
