@@ -78,6 +78,7 @@ export const fr: Copy = {
   footerAccount: 'Compte',
   footerPrivacy: 'Confidentialité',
   footerTerms: 'Conditions',
+  footerRefund: 'Remboursements',
   signup: 'Inscription gratuite',
   copyright: '© 2026 Yujee · Vos souvenirs, joliment mis en page',
   samples: [

@@ -60,11 +60,11 @@ const EXAMPLE_SOURCES = ['apps/web/src/lib/examples/examples.ts', 'apps/web/src/
  */
 const EXAMPLES_REVIEWED_SOURCES = '867d0470b278';
 /** Hub also reads marketing chrome, so its fingerprint differs from detail rows. */
-const EXAMPLES_HUB_REVIEWED_SOURCES = 'f898c8fa5cd9';
+const EXAMPLES_HUB_REVIEWED_SOURCES = '52e869f55406';
 /** Guide prose only. guides.ts is excluded on purpose — see FRESHNESS_DECLARATIONS. */
 const GUIDES_CONTENT = 'apps/web/src/lib/guides/content';
 /** The hub has no article of its own to carry a reviewedSources, so it lives here. */
-const GUIDES_HUB_REVIEWED_SOURCES = '837a8668b7ec';
+const GUIDES_HUB_REVIEWED_SOURCES = 'af5bc0d50c68';
 
 /**
  * Every example detail page is one row of the same array, so they share sources.
@@ -107,7 +107,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     // 只改可点范围,文案与图像没动 —— 只推进 reviewedSources。
     // 2026-11-10(第三轮): 首页挂产品埋点(landing_view 曝光)。纯观测代码,
     // 读者看到的一个字、一张图都没变 —— 仍只推进 reviewedSources。
-    reviewedSources: '0a42bb40a83b',
+    reviewedSources: '542f0f17930c',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback
@@ -115,7 +115,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/about/story': {
     sources: [MARKETING, 'apps/web/src/app/[locale]/about/story/page.tsx'],
     updatedAt: '2026-08-10',
-    reviewedSources: '79dfadf380e6',
+    reviewedSources: '8c8da45453ac',
   },
   // Privacy prose last moved in the pre-launch pass that aligned it with what the
   // product actually does (b69eb438). marketing.ts has moved several times since —
@@ -132,17 +132,21 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   '/pricing': {
     sources: [MARKETING, 'apps/web/src/config/pricing.ts', 'apps/web/src/app/[locale]/pricing/page.tsx'],
     updatedAt: '2026-09-21',
-    reviewedSources: '5ab740e5b685',
+    reviewedSources: 'c1d5e912f29f',
   },
   // messages/marketing 这轮被 74c590db(首页 en meta)、d2bca297(共用导航多一项
   // Guides)、c4148143(共用页脚 Pricing 改指 /pricing)和 2026-09-21 的
   // examples.moreComing 一行碰到。对隐私页而言全是 chrome 或别页的文案,正文
   // 一个字没动 —— 这正是 reviewedSources/updatedAt 分开的意义:只推 reviewedSources。
   // 刷 updatedAt 等于告诉 Google 隐私政策也改了。
-  '/privacy': { sources: [MARKETING], updatedAt: '2026-10-28', reviewedSources: 'cfa69fff4fa2' },
+  '/privacy': { sources: [MARKETING], updatedAt: '2026-10-28', reviewedSources: 'b90bd1f0caeb' },
   // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
   // refund rule) in both locales — a genuine content change, so this one moves.
-  '/terms': { sources: [MARKETING], updatedAt: '2026-10-28', reviewedSources: 'cfa69fff4fa2' },
+  '/terms': { sources: [MARKETING], updatedAt: '2026-10-28', reviewedSources: 'b90bd1f0caeb' },
+  // New page, so its prose and the shared marketing messages both start here.
+  // reviewedSources is stamped by `pnpm --filter @yujee/web sitemap:stamp`
+  // after the first commit that contains the page.
+  '/refund': { sources: [MARKETING], updatedAt: '2026-11-14', reviewedSources: 'b90bd1f0caeb' },
   // reviewedSources 是内容指纹,不是 commit SHA —— squash/rebase 后不必重刷。
   // The hub renders one card per example, so it changes whenever the newest
   // example does — derived, like the guides hub, instead of hand-dated.

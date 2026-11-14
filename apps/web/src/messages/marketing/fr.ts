@@ -169,6 +169,74 @@ export const fr: MarketingMessages = {
     ],
     contactLine: 'Une question ? Écrivez-nous à support@yujeeai.com.',
   },
+  refund: {
+    metaTitle: 'Politique de remboursement',
+    metaDesc:
+      "Comment les packs de crédits Yujee sont remboursés : les crédits non utilisés sont remboursables sous 7 jours, les crédits consommés ne le sont pas, et une génération échouée ne vous est jamais facturée.",
+    title: 'Politique de remboursement',
+    effective: 'En vigueur le 14 novembre 2026',
+    sections: [
+      {
+        h: '1. Champ d’application',
+        body:
+          "Cette politique couvre les packs de crédits achetés en une fois sur Yujee (outman.press). Nous ne vendons pas d’abonnement et ne prélevons rien au mois : il n’y a donc rien à résilier. " +
+          "L’article 7 des Conditions d’utilisation s’applique aussi ; en cas de divergence, la disposition la plus favorable à vos droits prévaut.",
+      },
+      {
+        h: '2. Quand nous remboursons',
+        body:
+          "• Dans les 7 jours suivant l’achat, si aucun crédit de cette commande n’a été utilisé (aucune génération lancée, aucun export) ;\n" +
+          "• Un double prélèvement, ou une erreur du système vous ayant débité plusieurs fois ;\n" +
+          "• Une défaillance de notre part rendant inutilisables, pendant un délai raisonnable, les crédits achetés.\n" +
+          "\n" +
+          "Ces cas sont remboursés intégralement. Ce délai est un engagement volontaire qui dépasse le minimum légal et ne limite pas vos droits.",
+      },
+      {
+        h: '3. Quand nous ne remboursons pas',
+        body:
+          "• Crédits déjà consommés par une mise en page réussie (y compris si le résultat ne vous plaît pas) ;\n" +
+          "• Crédits utilisés pour exporter ou partager un album terminé ;\n" +
+          "• Demandes formulées plus de 7 jours après l’achat ;\n" +
+          "• Comptes restreints ou fermés pour manquement aux Conditions (par exemple dépôt de contenu illicite ou contrefaisant) ;\n" +
+          "• Crédits offerts via une promotion, un parrainage ou une compensation.\n" +
+          "\n" +
+          "Nous ne remboursons pas au prorata la part non utilisée d’un pack, mais les cas particuliers sont examinés au cas par cas.",
+      },
+      {
+        h: '4. Une génération échouée n’est pas un remboursement',
+        body:
+          "Lancer une génération ne fait que réserver des crédits ; ils ne sont débités qu’en cas de mise en page réussie. " +
+          "Si la génération échoue (erreur de modèle, coupure réseau, expiration du délai), la réservation est libérée et votre solde reste intact : aucune demande n’est nécessaire. " +
+          "Si votre solde a baissé sans qu’aucun album ne soit produit, écrivez-nous avec les informations de commande et nous le rétablirons après vérification.",
+      },
+      {
+        h: '5. Vos droits légaux',
+        body:
+          "Si votre pays ou région (par exemple l’UE ou le Royaume-Uni) accorde aux consommateurs un droit de rétractation sur les contenus numériques, cette politique ne le limite pas. " +
+          "Selon les règles usuelles, une fois que vous consentez expressément et reconnaissez la perte de ce droit dès le début de la fourniture, les crédits déjà fournis en sont exclus ; " +
+          "les crédits non encore fournis (non utilisés) restent rétractables dans le délai légal.",
+      },
+      {
+        h: '6. Comment demander',
+        body:
+          "Écrivez à support@yujeeai.com en précisant l’adresse e-mail utilisée lors de l’achat, la date et l’heure, le montant et le pack acheté. " +
+          "Nous répondons sous 3 jours ouvrés. Les remboursements approuvés repartent vers le moyen de paiement d’origine : comptez en général 5 à 10 jours ouvrés pour une carte, souvent moins pour WeChat Pay et Alipay. " +
+          "Les paiements transfrontaliers peuvent présenter un léger écart de change fixé par votre banque ou le canal, non par nous.",
+      },
+      {
+        h: '7. Litiges et rétrofacturations',
+        body:
+          "Si un prélèvement vous semble erroné, contactez-nous d’abord : la plupart des situations se règlent directement. " +
+          "Ouvrir une rétrofacturation auprès de votre banque avant de nous contacter rallonge le traitement, et nous nous réservons le droit de produire l’intégralité des pièces de la transaction en cas de litige.",
+      },
+      {
+        h: '8. Modifications',
+        body:
+          "Nous pouvons mettre à jour cette politique. Les modifications prennent effet dès leur publication et ne concernent pas les achats déjà effectués : la politique en vigueur lors de votre achat continue de régir cette commande.",
+      },
+    ],
+    contactLine: 'Remboursements et questions : support@yujeeai.com.',
+  },
   story: {
     metaTitle: 'Notre histoire — pourquoi j’ai créé Yujee',
     metaDesc:
@@ -420,6 +488,7 @@ export const fr: MarketingMessages = {
         items: [
           { label: 'Confidentialité', href: '/privacy' },
           { label: 'Conditions', href: '/terms' },
+          { label: 'Remboursements', href: '/refund' },
         ],
       },
     ],

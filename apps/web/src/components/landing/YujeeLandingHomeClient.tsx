@@ -886,6 +886,7 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
                 [c.footerStory, `/${locale}/about/story`],
                 [c.footerPrivacy, `/${locale}/privacy`],
                 [c.footerTerms, `/${locale}/terms`],
+                [c.footerRefund, `/${locale}/refund`],
               ]} />
               <FooterColumn title={c.footerAccount} links={accountLinks} />
             </div>

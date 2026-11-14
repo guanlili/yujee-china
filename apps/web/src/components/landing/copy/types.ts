@@ -65,6 +65,7 @@ export type Copy = {
   footerAccount: string;
   footerPrivacy: string;
   footerTerms: string;
+  footerRefund: string;
   signup: string;
   copyright: string;
   samples: Sample[];

@@ -78,6 +78,7 @@ export const en: Copy = {
   footerAccount: 'Account',
   footerPrivacy: 'Privacy',
   footerTerms: 'Terms',
+  footerRefund: 'Refunds',
   signup: 'Sign up free',
   copyright: '© 2026 Yujee · Memories, beautifully laid out',
   samples: [

@@ -42,6 +42,16 @@ export interface MarketingMessages {
     sections: { h: string; body: string }[];
     contactLine: string;
   };
+  // Refund policy. Same shape as terms/privacy so the three legal pages render
+  // through one template — the difference is only prose.
+  refund: {
+    metaTitle: string;
+    metaDesc: string;
+    title: string;
+    effective: string;
+    sections: { h: string; body: string }[];
+    contactLine: string;
+  };
   // The founder story. Long-form prose, so unlike privacy/terms it carries
   // structure: an opening, per-section paragraphs, an optional pull quote, and
   // one bulleted list. Plain text only — the page renders these as text nodes,

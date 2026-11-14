@@ -180,6 +180,74 @@ export const en: MarketingMessages = {
     ],
     contactLine: 'Questions? Email support@yujeeai.com.',
   },
+  refund: {
+    metaTitle: 'Refund Policy',
+    metaDesc:
+      'How Yujee credit packs are refunded: unused credits can be refunded within 7 days of purchase, consumed credits are not refundable, and failed generations never charge you.',
+    title: 'Refund Policy',
+    effective: 'Effective: November 14, 2026',
+    sections: [
+      {
+        h: '1. What this covers',
+        body:
+          'This policy covers one-time credit packs bought on Yujee (outman.press). We do not sell subscriptions or charge monthly, so there is nothing to cancel. ' +
+          'Section 7 of our Terms of Service also applies; where the two differ, the term more favourable to you wins.',
+      },
+      {
+        h: '2. When we refund',
+        body:
+          '• Within 7 days of purchase, where none of the credits from that order have been used (no generation started, nothing exported);\n' +
+          '• A duplicate charge, or a system error that charged you more than once;\n' +
+          '• Our failure that makes the credits you bought unusable within a reasonable time.\n' +
+          '\n' +
+          'These are refunded in full. This window is a voluntary commitment that exceeds the legal minimum and does not limit your statutory rights.',
+      },
+      {
+        h: '3. When we do not refund',
+        body:
+          '• Credits already consumed by a successful layout (including where you are unhappy with the result);\n' +
+          '• Credits used to export or share a finished book;\n' +
+          '• Requests made more than 7 days after purchase;\n' +
+          '• Accounts restricted or terminated for breaching the Terms (for example uploading unlawful or infringing content);\n' +
+          '• Credits granted through promotions, referrals or compensation.\n' +
+          '\n' +
+          'We do not offer pro-rata refunds for the unused share of a pack, though we will consider special cases individually.',
+      },
+      {
+        h: '4. Failed generations are not refunds',
+        body:
+          'Starting a generation only places a hold on your credits; they are deducted when the layout succeeds. ' +
+          'If a generation fails (model error, network loss, timeout) the hold is released and your balance is unchanged — no refund request needed. ' +
+          'If your balance dropped without a book being produced, contact us with the order details and we will restore it after checking.',
+      },
+      {
+        h: '5. Your statutory rights',
+        body:
+          'Where your country or region (for example the EU or UK) grants consumers a right of withdrawal for digital content, this policy does not limit it. ' +
+          'Under the usual rules, once you expressly consent and acknowledge that the right is lost when supply begins, credits already supplied fall outside that right; ' +
+          'credits not yet supplied (unused) can still be withdrawn within the statutory period.',
+      },
+      {
+        h: '6. How to request a refund',
+        body:
+          'Email support@yujeeai.com with the address used at checkout, the purchase time, the amount and which pack you bought. ' +
+          'We reply within 3 business days. Approved refunds go back to the original payment method: cards typically take 5–10 business days, WeChat Pay and Alipay are usually faster. ' +
+          'Cross-border payments may show a small FX difference set by your bank or the channel, not by us.',
+      },
+      {
+        h: '7. Disputes and chargebacks',
+        body:
+          'If a charge looks wrong, contact us first — most issues are resolved directly. ' +
+          'Filing a chargeback with your bank before contacting us lengthens the process, and we reserve the right to submit the full transaction record in response to a dispute.',
+      },
+      {
+        h: '8. Changes',
+        body:
+          'We may update this policy. Changes take effect when published and do not affect purchases already made: the policy in force when you bought continues to govern that order.',
+      },
+    ],
+    contactLine: 'Refund requests and questions: support@yujeeai.com.',
+  },
   story: {
     metaTitle: 'Our Story — Why I built Yujee',
     metaDesc:
@@ -432,6 +500,7 @@ export const en: MarketingMessages = {
         items: [
           { label: 'Privacy', href: '/privacy' },
           { label: 'Terms', href: '/terms' },
+          { label: 'Refund policy', href: '/refund' },
         ],
       },
     ],
