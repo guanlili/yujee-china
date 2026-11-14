@@ -420,7 +420,7 @@ Defaults live in `src/lib/env.ts`. Common fields:
 | `WEB_BASE_URL` | Web origin used in callbacks; **国内生产** = `https://outman.press`（无尾斜杠，better-auth `baseURL` + CSRF trustedOrigins） |
 | `BETTER_AUTH_SECRET` | Auth signing secret |
 | `WAFFO_*` | Billing(海外卡通道,2026-08 起) |
-| `ALIPAY_*` | Billing(国内通道·电脑网站支付)。`ALIPAY_APP_ID` / `ALIPAY_PRIVATE_KEY` / `ALIPAY_PUBLIC_KEY` 缺任一即 `BILLING_NOT_CONFIGURED`(503);`ALIPAY_SELLER_ID` 可选;`ALIPAY_ENV` 决定网关(`sandbox` 默认) |
+| `ALIPAY_*` | Billing(国内通道·电脑网站支付)。`ALIPAY_APP_ID` / `ALIPAY_PRIVATE_KEY` / `ALIPAY_PUBLIC_KEY` 缺任一即 `BILLING_NOT_CONFIGURED`(503);`ALIPAY_SELLER_ID` 可选;`ALIPAY_ENV` 决定网关(`sandbox` 默认);`ALIPAY_PRICE_PACK_1/4/10` 是人民币三档售价,由经营者填,代码不含默认值,缺配置则该档不可购买 |
 | `CREEM_*` | Billing(仅在途订单 webhook 兜底) |
 | `R2_*` | PDF/thumbnail storage,以及 AI 生图产出的原图 |
 | `IMAGE_PROVIDER` | AI 生图走哪家:`gemini`(海外默认)/ `ark`(国内生产:火山直连)/ `kexiang`(中转站 SeeDream4.5 异步任务 API,已合入备用) |
@@ -480,7 +480,8 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 `ALIPAY_PACK_PRICE_CNY` 里的定价、同一 `trade_no` 重复通知按
 `credit_ledger.external_event_id` 幂等跳过(键 `alipay:${trade_no}`)。
 
-价格是双轨的:海外通道用 `priceUsd`,支付宝用 `ALIPAY_PACK_PRICE_CNY`。**切
+价格是双轨的:海外通道用 `priceUsd`,支付宝用 `ALIPAY_PRICE_PACK_1/4/10`(人民币,元)。
+**代码里不写人民币默认价、也不按汇率折算**——定价由经营者给,缺配置就关单。**切
 `ACTIVE_CHECKOUT_PROVIDER` 到 `alipay` 必须与 UI 币种展示同批改**,否则页面显示 `$`、
 实扣 `¥`。
 
