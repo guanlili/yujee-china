@@ -102,12 +102,13 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     // 「先免费做一本样书」—— 游客拿到的是零 AI 的示例样稿,真文案与导出要登录,
     // 原来是读者可见的语义变化,updatedAt 落在这天。
     sources: [MARKETING, 'apps/web/src/components/landing/copy', 'apps/web/src/components/landing/YujeeLandingHome.tsx', 'apps/web/src/components/landing/YujeeLandingHomeClient.tsx', 'apps/web/src/lib/seo/faq'],
-    updatedAt: '2026-11-10',
+    updatedAt: '2026-11-15',
     // 2026-11-10(第二轮): 首页底部第二处「全部示例」补 44px 触控热区。
     // 只改可点范围,文案与图像没动 —— 只推进 reviewedSources。
     // 2026-11-10(第三轮): 首页挂产品埋点(landing_view 曝光)。纯观测代码,
     // 读者看到的一个字、一张图都没变 —— 仍只推进 reviewedSources。
-    reviewedSources: 'b65ca8ef46b0',
+    // 2026-11-15: 页脚补「运营与服务提供方」一行,读者可见内容变了 → updatedAt 推进。
+    reviewedSources: '9252b5ba3d54',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback
