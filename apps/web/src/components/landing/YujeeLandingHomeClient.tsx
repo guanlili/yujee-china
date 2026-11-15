@@ -9,6 +9,7 @@ import { LANDING_COPIES, type Sample } from '@/components/landing/copy';
 import { ADDON_PACKS, PAGES_PER_CREDIT_LABEL, PHOTOS_PER_CREDIT } from '@/config/pricing';
 import { SOCIAL_LINKS, SUPPORT_EMAIL } from '@/config/social';
 import { IcpBeianLink } from '@/components/marketing/IcpBeianLink';
+import { operatorLine } from '@/config/operator';
 import { useSession } from '@/lib/auth/client';
 import { track } from '@/lib/analytics/track-client';
 import { getMessages } from '@/lib/i18n/messages';
@@ -892,7 +893,10 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
             </div>
             <div className="flex flex-col items-start justify-between gap-4 pt-8 sm:flex-row sm:items-center">
               <div className="flex flex-col gap-1 text-xs text-[var(--meta)]">
-                <div>{c.copyright}</div>
+                <div className="flex flex-col gap-1">
+                  <div>{c.copyright}</div>
+                  <div>{operatorLine(locale)}</div>
+                </div>
                 <IcpBeianLink className="hover:text-[var(--fg)] underline-offset-2 hover:underline" />
               </div>
               {/* Accounts come from @/config/social — an entry with no href is not
