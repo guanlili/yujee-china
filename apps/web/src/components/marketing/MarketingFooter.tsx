@@ -4,6 +4,7 @@ import { getMarketingMessages } from '@/messages/marketing';
 import { Brand } from '@/components/app/Brand';
 import { MarketingSocials } from './MarketingSocials';
 import { IcpBeianLink } from './IcpBeianLink';
+import { operatorLine } from '@/config/operator';
 
 interface Props {
   locale: Locale;
@@ -60,7 +61,10 @@ export function MarketingFooter({ locale }: Props) {
         </div>
       </div>
       <div className="max-w-[1100px] mx-auto px-6 md:px-8 pb-8 pt-6 border-t border-[var(--border-soft)] text-xs text-[var(--meta)] flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>{m.footer.copy}</div>
+        <div className="flex flex-col gap-1">
+          <div>{m.footer.copy}</div>
+          <div>{operatorLine(locale)}</div>
+        </div>
         <IcpBeianLink className="hover:text-[var(--fg)] underline-offset-2 hover:underline" />
       </div>
     </footer>

@@ -123,6 +123,11 @@ const EnvSchema = z.object({
   ALIPAY_PUBLIC_KEY: z.string().optional(),
   ALIPAY_SELLER_ID: z.string().optional(),
   ALIPAY_ENV: z.enum(['sandbox', 'prod']).default('sandbox'),
+  // 人民币三档售价(元,两位小数以内)。由经营者定价,代码不含默认值:
+  // 缺任一则该档下单 503,购买入口保持关闭。
+  ALIPAY_PRICE_PACK_1: z.string().optional(),
+  ALIPAY_PRICE_PACK_4: z.string().optional(),
+  ALIPAY_PRICE_PACK_10: z.string().optional(),
 
   // Cloudflare R2 (S3-compatible). PDF upload-url uses presigned PUT.
   R2_ACCOUNT_ID: z.string().optional(),

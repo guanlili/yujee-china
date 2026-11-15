@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { alipayService } from './alipay-service';
 import { AppError } from '@/lib/api/error-codes';
-import { ADDON_PACKS, ALIPAY_PACK_PRICE_CNY } from '@/config/pricing';
+import { ADDON_PACKS, ALIPAY_PRICE_ENV_BY_PACK_ID } from '@/config/pricing';
 
 // 这些用例刻意不配任何 ALIPAY_* env:验的是"没配好就不放行"的 fail-closed 行为,
 // 以及配置之外的输入校验。真实入账链路(applyDelta + 幂等索引)已由
@@ -29,9 +29,10 @@ test('handleWebhook: 未配置支付宝公钥时拒绝受理', async () => {
   );
 });
 
-test('CNY 价目覆盖每一档,且与美元档位同序(小到大)', () => {
-  const cny = ADDON_PACKS.map((p) => ALIPAY_PACK_PRICE_CNY[p.id]);
-  assert.equal(cny.length, ADDON_PACKS.length);
-  assert.ok(cny.every((v) => Number.isFinite(v) && v > 0));
-  assert.deepEqual([...cny].sort((a, b) => a - b), cny);
+test('人民币价走 env:每一档都有独立变量,代码里没有内置价格', () => {
+  const keys = ADDON_PACKS.map((p) => ALIPAY_PRICE_ENV_BY_PACK_ID[p.id]);
+  assert.equal(keys.length, ADDON_PACKS.length);
+  assert.equal(new Set(keys).size, keys.length, '三档各用一个独立 env key');
+  // 默认(测试环境未配)必须关闭购买,而不是拿美元汇率折算。
+  assert.deepEqual(Object.keys(ALIPAY_PRICE_ENV_BY_PACK_ID), ADDON_PACKS.map((p) => p.id));
 });

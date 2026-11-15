@@ -240,7 +240,8 @@
         "PURCHASE": "购买积分",
         "REFUND": "退款",
         "ADMIN_ADJUST": "调整"
-      }
+      },
+      "channelNote": "当前购买通道为海外银行卡（Waffo），价格以美元结算。中国大陆支付宝通道尚未开通，开通前不提供人民币购买。"
     },
     "settings": {
       "title": "设置",

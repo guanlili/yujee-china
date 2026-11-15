@@ -3,7 +3,7 @@ import { creditLedgerRepo } from '@/db/repos/credit-ledger-repo';
 import { creditService } from '@/services/credit/credit-service';
 import {
   ADDON_PACKS,
-  ALIPAY_PACK_PRICE_CNY,
+  ALIPAY_PRICE_ENV_BY_PACK_ID,
   buildCheckoutReturnUrls,
   type AddonPackId,
   type CheckoutReturnContext,
@@ -47,6 +47,21 @@ function getConfig(): AlipayConfig {
   };
 }
 
+/**
+ * 人民币售价由经营者通过 env 配置,代码里不存任何数字。缺配置 → 该档不可购买
+ * (503),而不是拿美元按汇率折算——汇率折算会随行情漂移,页面与实扣对不上。
+ */
+function resolvePriceCny(packId: AddonPackId): number {
+  const envKey = ALIPAY_PRICE_ENV_BY_PACK_ID[packId];
+  const raw = env[envKey];
+  const value = Number(raw);
+  if (!raw || !Number.isFinite(value) || value <= 0) {
+    logger.warn({ packId, envKey }, 'alipay price not configured, checkout closed');
+    throw ERRORS.BILLING_NOT_CONFIGURED();
+  }
+  return value;
+}
+
 /** 单号:支付宝要求同一商户下唯一,且是账务对账的主键。 */
 function newOutTradeNo(): string {
   return `yj${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
@@ -84,8 +99,7 @@ export const alipayService = {
     const pack = ADDON_PACKS.find((p) => p.id === packId);
     if (!pack) throw ERRORS.VALIDATION_FAILED(`Unknown pack: ${packId}`);
     const config = getConfig();
-    const priceCny = ALIPAY_PACK_PRICE_CNY[pack.id as AddonPackId];
-    if (!priceCny) throw ERRORS.BILLING_NOT_CONFIGURED();
+    const priceCny = resolvePriceCny(pack.id as AddonPackId);
 
     // 电脑网站支付需要同步回跳(return_url)和异步通知(notify_url)两个地址。
     // 回跳只负责用户体验,入账一律等异步通知——用户关掉页面也不会丢单。
@@ -157,7 +171,7 @@ export const alipayService = {
 
     // 金额核对:以我们自己定的 CNY 价为准,通知里的金额只用来核对。不一致说明
     // 商品被改价或有人拿别的商品的钱来换积分——不入账,留 error 日志人工处理。
-    const expected = ALIPAY_PACK_PRICE_CNY[pack.id as AddonPackId];
+    const expected = resolvePriceCny(pack.id as AddonPackId);
     const paid = Number(params.total_amount);
     if (!Number.isFinite(paid) || Math.round(paid * 100) !== expected * 100) {
       logger.error(
