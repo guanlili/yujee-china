@@ -137,7 +137,7 @@ export const es: MarketingMessages = {
         body:
           'Generar unas memorias consume créditos foto a foto: un crédito cubre una foto. Cuando inicias una generación retenemos los créditos correspondientes; se cobran en cuanto la maquetación se completa, y la retención se libera sin ningún cargo si la generación falla. Los créditos se obtienen mediante paquetes de pago único: no hay suscripción ni cuota mensual, y por ahora los créditos no caducan. Los precios y los tamaños de paquete vigentes son los que aparecen en la página de precios.\n' +
           '\n' +
-          'Una vez cobrados los créditos por una maquetación completada, no son reembolsables, tampoco si el resultado no te convence. Salvo que la ley exija otra cosa, los importes pagados y los paquetes de créditos comprados no admiten devolución. Si compraste a través de una pasarela de pago externa, también se aplican sus propias normas de reembolso, y nada de esta sección afecta a los derechos de consumo que la ley de tu país o región no nos permita excluir.\n' +
+          'Los reembolsos siguen la Política de reembolsos: los créditos totalmente sin usar pueden reembolsarse; los créditos descontados tras una maquetación correcta no se devuelven, tampoco si el resultado no te convence; un cargo duplicado o un cobro excesivo por un fallo de nuestro sistema se devuelve íntegramente. Si esta cláusula y la Política de reembolsos difieren, prevalece la disposición más favorable para ti. Si compraste a través de una pasarela de pago externa, también se aplican sus propias normas de reembolso, y nada de esta sección afecta a los derechos de consumo que la ley de tu país o región no nos permita excluir.\n' +
           '\n' +
           'Podemos cambiar los precios, los tamaños de paquete y los modelos de facturación en cualquier momento. Los cambios se aplican a las compras nuevas desde su publicación y no afectan a los créditos que ya hayas comprado.',
       },
@@ -418,7 +418,7 @@ export const es: MarketingMessages = {
       'Los créditos se retienen al empezar la maquetación y solo se descuentan si termina bien. Si falla, la retención se libera y los créditos vuelven a tu saldo.',
     refundHead: 'Reembolsos',
     refundBody:
-      'Los paquetes de créditos son una compra única de un producto digital y no son reembolsables, salvo donde la ley obligue a lo contrario. Los créditos ya gastados en un libro que salió bien no se devuelven, ni siquiera si el resultado no te convence. Si pagaste a través de una pasarela de pago, también se aplican sus propias normas de reembolso.',
+      'Los paquetes de créditos son una compra única de un producto digital. Los créditos totalmente sin usar pueden reembolsarse según la Política de reembolsos; los créditos ya descontados tras una maquetación correcta no se devuelven, ni siquiera si el resultado no te convence; los cargos duplicados o los cobros excesivos por errores de nuestro sistema se devuelven íntegramente. Si pagaste mediante una pasarela de pago, también se aplican sus propias normas de reembolso, y no se ven afectados los derechos del consumidor que la ley no permite excluir.',
     noExpiryHead: 'Sin suscripción, sin caducidad',
     noExpiryBody:
       'No se renueva nada ni se vuelve a cobrar. Los créditos se quedan en tu cuenta hasta que los uses: por ahora no tienen fecha de caducidad.',
