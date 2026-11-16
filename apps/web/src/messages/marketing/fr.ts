@@ -172,35 +172,34 @@ export const fr: MarketingMessages = {
   refund: {
     metaTitle: 'Politique de remboursement',
     metaDesc:
-      "Comment les packs de crédits Yujee sont remboursés : les crédits non utilisés sont remboursables sous 7 jours, les crédits consommés ne le sont pas, et une génération échouée ne vous est jamais facturée.",
+      "Comment les packs de crédits Yujee sont remboursés : les crédits entièrement non utilisés sont remboursés intégralement, les crédits consommés ne le sont pas, et une génération échouée ne vous est jamais facturée.",
     title: 'Politique de remboursement',
     effective: 'En vigueur le 14 novembre 2026',
     sections: [
       {
         h: '1. Champ d’application',
         body:
-          "Cette politique couvre les packs de crédits achetés en une fois sur Yujee (outman.press). Nous ne vendons pas d’abonnement et ne prélevons rien au mois : il n’y a donc rien à résilier. " +
+          "Cette politique couvre les packs de crédits achetés en une fois sur Yujee (outman.press). Les crédits servent à produire des albums photo avec IA (traitement des photos, textes générés, mise en page et export PDF électronique) et n’incluent ni impression, ni reliure, ni expédition. Nous ne vendons pas d’abonnement et ne prélevons rien au mois : il n’y a donc rien à résilier. " +
           "L’article 7 des Conditions d’utilisation s’applique aussi ; en cas de divergence, la disposition la plus favorable à vos droits prévaut.",
       },
       {
         h: '2. Quand nous remboursons',
         body:
-          "• Dans les 7 jours suivant l’achat, si aucun crédit de cette commande n’a été utilisé (aucune génération lancée, aucun export) ;\n" +
+          "• Si aucun crédit de cette commande n’a été utilisé (aucune génération lancée, aucun export) ;\n" +
           "• Un double prélèvement, ou une erreur du système vous ayant débité plusieurs fois ;\n" +
           "• Une défaillance de notre part rendant inutilisables, pendant un délai raisonnable, les crédits achetés.\n" +
           "\n" +
-          "Ces cas sont remboursés intégralement. Ce délai est un engagement volontaire qui dépasse le minimum légal et ne limite pas vos droits.",
+          "Ces cas sont remboursés intégralement. Cette politique est un engagement volontaire et ne limite pas vos droits.",
       },
       {
         h: '3. Quand nous ne remboursons pas',
         body:
           "• Crédits déjà consommés par une mise en page réussie (y compris si le résultat ne vous plaît pas) ;\n" +
           "• Crédits utilisés pour exporter ou partager un album terminé ;\n" +
-          "• Demandes formulées plus de 7 jours après l’achat ;\n" +
-          "• Comptes restreints ou fermés pour manquement aux Conditions (par exemple dépôt de contenu illicite ou contrefaisant) ;\n" +
+                    "• Comptes restreints ou fermés pour manquement aux Conditions (par exemple dépôt de contenu illicite ou contrefaisant) ;\n" +
           "• Crédits offerts via une promotion, un parrainage ou une compensation.\n" +
           "\n" +
-          "Nous ne remboursons pas au prorata la part non utilisée d’un pack, mais les cas particuliers sont examinés au cas par cas.",
+          "Les remboursements sont traités par commande ; nous ne proratisons pas une commande selon les « photos non utilisées ».",
       },
       {
         h: '4. Une génération échouée n’est pas un remboursement',
@@ -220,7 +219,7 @@ export const fr: MarketingMessages = {
         h: '6. Comment demander',
         body:
           "Écrivez à support@yujeeai.com en précisant l’adresse e-mail utilisée lors de l’achat, la date et l’heure, le montant et le pack acheté. " +
-          "Nous répondons sous 3 jours ouvrés. Les remboursements approuvés repartent vers le moyen de paiement d’origine : comptez en général 5 à 10 jours ouvrés pour une carte, souvent moins pour WeChat Pay et Alipay. " +
+          "Nous répondons dès que possible. Les remboursements approuvés repartent vers le moyen de paiement d’origine : comptez en général 5 à 10 jours ouvrés pour une carte, souvent moins pour WeChat Pay et Alipay. " +
           "Les paiements transfrontaliers peuvent présenter un léger écart de change fixé par votre banque ou le canal, non par nous.",
       },
       {
