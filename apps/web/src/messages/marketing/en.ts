@@ -450,7 +450,7 @@ export const en: MarketingMessages = {
       'Credits are held when a layout starts and debited only when it succeeds. If the generation fails, the hold is released and the credits go back to your balance.',
     refundHead: 'Refunds',
     refundBody:
-      'Credit packs are a one-time purchase of a digital product and are non-refundable except where the law requires otherwise. Once credits have been spent on a book that came out, they are spent — including if you are unhappy with the result. If you paid through a payment provider, their own refund rules apply as well.',
+      'Credit packs are a one-time purchase of a digital product. Credits that are entirely unused may be refunded under the Refund Policy; credits already debited after a successful layout are not refundable, including where you are unhappy with the result; duplicate charges or overcharges caused by our system errors are refunded in full. If you paid through a third-party payment provider, that provider’s own refund rules also apply, and consumer rights the law does not permit us to exclude are unaffected.',
     noExpiryHead: 'No subscription, no expiry',
     noExpiryBody:
       'Nothing renews and nothing is charged again. Credits sit in your account until you use them — they currently have no expiry date.',

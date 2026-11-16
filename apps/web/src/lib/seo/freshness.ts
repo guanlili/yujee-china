@@ -60,11 +60,11 @@ const EXAMPLE_SOURCES = ['apps/web/src/lib/examples/examples.ts', 'apps/web/src/
  */
 const EXAMPLES_REVIEWED_SOURCES = '867d0470b278';
 /** Hub also reads marketing chrome, so its fingerprint differs from detail rows. */
-const EXAMPLES_HUB_REVIEWED_SOURCES = 'cb8a6b3125ba';
+const EXAMPLES_HUB_REVIEWED_SOURCES = '4e574bd373f8';
 /** Guide prose only. guides.ts is excluded on purpose — see FRESHNESS_DECLARATIONS. */
 const GUIDES_CONTENT = 'apps/web/src/lib/guides/content';
 /** The hub has no article of its own to carry a reviewedSources, so it lives here. */
-const GUIDES_HUB_REVIEWED_SOURCES = 'f9a2c03616bc';
+const GUIDES_HUB_REVIEWED_SOURCES = '489cf0793929';
 
 /**
  * Every example detail page is one row of the same array, so they share sources.
@@ -110,7 +110,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     // 2026-11-15: 页脚补「运营与服务提供方」一行,读者可见内容变了 → updatedAt 推进。
     // 2026-11-16: 购买失败话术换成友好文案(503 不再甩英文技术错误);正文没动,
     // 只推进 reviewedSources。
-    reviewedSources: 'd91173fdbe63',
+    reviewedSources: 'f187bafc64f4',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback
@@ -119,7 +119,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     sources: [MARKETING, 'apps/web/src/app/[locale]/about/story/page.tsx'],
     updatedAt: '2026-08-10',
     // 2026-11-16: 共享 marketing 文案模块改动波及本页,正文未变 —— 只推进 reviewedSources。
-    reviewedSources: 'fcd3217fac3e',
+    reviewedSources: 'effa34c70580',
   },
   // Privacy prose last moved in the pre-launch pass that aligned it with what the
   // product actually does (b69eb438). marketing.ts has moved several times since —
@@ -135,26 +135,26 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
   // 也没有坏处。
   '/pricing': {
     sources: [MARKETING, 'apps/web/src/config/pricing.ts', 'apps/web/src/app/[locale]/pricing/page.tsx'],
-    updatedAt: '2026-11-14',
+    updatedAt: '2026-11-16',
     // 2026-11-14:配置里加了支付宝 CNY 价目(ALIPAY_PACK_PRICE_CNY),但定价页仍渲染
     // priceUsd,读者看到的字符没变 → 只推进指纹,updatedAt 不动。
     // 2026-11-16: 共享文案模块改了三语种退款与隐私措辞,定价页正文未变 → 仍只推进指纹。
-    reviewedSources: 'c1010955ebd5',
+    reviewedSources: '96786b7943a9',
   },
   // messages/marketing 这轮被 74c590db(首页 en meta)、d2bca297(共用导航多一项
   // Guides)、c4148143(共用页脚 Pricing 改指 /pricing)和 2026-09-21 的
   // examples.moreComing 一行碰到。对隐私页而言全是 chrome 或别页的文案,正文
   // 一个字没动 —— 这正是 reviewedSources/updatedAt 分开的意义:只推 reviewedSources。
   // 刷 updatedAt 等于告诉 Google 隐私政策也改了。
-  '/privacy': { sources: [MARKETING], updatedAt: '2026-11-16', reviewedSources: '7eeee93078b2' },
+  '/privacy': { sources: [MARKETING], updatedAt: '2026-11-16', reviewedSources: '3739d716f983' },
   // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
   // refund rule) in both locales — a genuine content change, so this one moves.
-  // 2026-11-16: 条款正文没改(改的是退款/隐私与三语种退款文案),只推进 reviewedSources。
-  '/terms': { sources: [MARKETING], updatedAt: '2026-11-14', reviewedSources: '7eeee93078b2' },
+  // 2026-11-16: 条款退款段改为政策口径,正文变了 → updatedAt 推进到这天。
+  '/terms': { sources: [MARKETING], updatedAt: '2026-11-16', reviewedSources: '3739d716f983' },
   // New page, so its prose and the shared marketing messages both start here.
   // reviewedSources is stamped by `pnpm --filter @yujee/web sitemap:stamp`
   // after the first commit that contains the page.
-  '/refund': { sources: [MARKETING], updatedAt: '2026-11-16', reviewedSources: '7eeee93078b2' },
+  '/refund': { sources: [MARKETING], updatedAt: '2026-11-16', reviewedSources: '3739d716f983' },
   // reviewedSources 是内容指纹,不是 commit SHA —— squash/rebase 后不必重刷。
   // The hub renders one card per example, so it changes whenever the newest
   // example does — derived, like the guides hub, instead of hand-dated.
