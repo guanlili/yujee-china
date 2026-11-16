@@ -14,6 +14,7 @@ import { useSession } from '@/lib/auth/client';
 import { track } from '@/lib/analytics/track-client';
 import { getMessages } from '@/lib/i18n/messages';
 import { pick } from '@/lib/i18n/pick';
+import { checkoutErrorMessage } from '@/lib/billing/checkout-error';
 import { LOCALE_LABELS, localizePath, locales, type Locale } from '@/lib/i18n/routing';
 import { safeFetchJSON } from '@/lib/safe-fetch-json';
 
@@ -240,7 +241,7 @@ function LandingPricing({ locale }: { locale: Locale }) {
     });
     setBusy(null);
     if (!result.ok) {
-      setErr(result.message ?? tc.error);
+      setErr(checkoutErrorMessage(result, locale, tc.error));
       return;
     }
     const json = result.data;

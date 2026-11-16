@@ -172,35 +172,34 @@ export const es: MarketingMessages = {
   refund: {
     metaTitle: 'Política de reembolsos',
     metaDesc:
-      'Cómo se reembolsan los paquetes de créditos de Yujee: los créditos sin usar se reembolsan dentro de 7 días, los ya consumidos no, y una generación fallida nunca te cobra.',
+      'Cómo se reembolsan los paquetes de créditos de Yujee: los créditos totalmente sin usar se reembolsan íntegramente, los ya consumidos no, y una generación fallida nunca te cobra.',
     title: 'Política de reembolsos',
     effective: 'En vigor: 14 de noviembre de 2026',
     sections: [
       {
         h: '1. Alcance',
         body:
-          'Esta política cubre los paquetes de créditos de pago único comprados en Yujee (outman.press). No vendemos suscripciones ni cobramos mensualmente, así que no hay nada que cancelar. ' +
+          'Esta política cubre los paquetes de créditos de pago único comprados en Yujee (outman.press). Los créditos se usan para producir libros de fotos con IA (procesamiento de fotos, textos generados, maquetación y exportación a PDF electrónico) y no incluyen impresión, encuadernación ni envío físico. No vendemos suscripciones ni cobramos mensualmente, así que no hay nada que cancelar. ' +
           'También se aplica la cláusula 7 de los Términos del servicio; si ambas difieren, prevalece la más favorable para ti.',
       },
       {
         h: '2. Cuándo reembolsamos',
         body:
-          '• Dentro de los 7 días siguientes a la compra, si ninguno de los créditos de ese pedido se ha usado (sin generaciones iniciadas, sin exportaciones);\n' +
+          '• Si ninguno de los créditos de ese pedido se ha usado (sin generaciones iniciadas, sin exportaciones);\n' +
           '• Un cargo duplicado o un error del sistema que te cobró más de una vez;\n' +
           '• Un fallo nuestro que deje inutilizables los créditos comprados durante un periodo razonable.\n' +
           '\n' +
-          'En estos casos devolvemos el importe completo. Este plazo es un compromiso voluntario superior al mínimo legal y no limita tus derechos.',
+          'En estos casos devolvemos el importe completo. Esta política es un compromiso voluntario y no limita tus derechos.',
       },
       {
         h: '3. Cuándo no reembolsamos',
         body:
           '• Créditos ya consumidos por una maquetación correcta (incluido el caso de que el resultado no te guste);\n' +
           '• Créditos usados para exportar o compartir un álbum terminado;\n' +
-          '• Solicitudes más de 7 días después de la compra;\n' +
-          '• Cuentas limitadas o cerradas por incumplir los Términos (por ejemplo, subir contenido ilícito o que infrinja derechos);\n' +
+                    '• Cuentas limitadas o cerradas por incumplir los Términos (por ejemplo, subir contenido ilícito o que infrinja derechos);\n' +
           '• Créditos concedidos por promociones, referidos o compensaciones.\n' +
           '\n' +
-          'No hacemos reembolsos prorrateados por la parte no usada de un paquete, aunque estudiaremos casos especiales uno a uno.',
+          'Los reembolsos se tramitan por pedido; no prorrateamos un pedido por «fotos sin usar».',
       },
       {
         h: '4. Una generación fallida no es un reembolso',
@@ -220,7 +219,7 @@ export const es: MarketingMessages = {
         h: '6. Cómo solicitarlo',
         body:
           'Escribe a support@yujeeai.com indicando el correo usado en la compra, la fecha y hora, el importe y el paquete adquirido. ' +
-          'Respondemos en 3 días laborables. Los reembolsos aprobados vuelven al método de pago original: las tarjetas suelen tardar 5–10 días laborables, WeChat Pay y Alipay normalmente menos. ' +
+          'Respondemos en cuanto podamos. Los reembolsos aprobados vuelven al método de pago original: las tarjetas suelen tardar 5–10 días laborables, WeChat Pay y Alipay normalmente menos. ' +
           'En pagos transfronterizos puede aparecer una pequeña diferencia de cambio fijada por tu banco o el canal, no por nosotros.',
       },
       {

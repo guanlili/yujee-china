@@ -1,5 +1,6 @@
 'use client';
 
+import { checkoutErrorMessage } from '@/lib/billing/checkout-error';
 import { use, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getMessages } from '@/lib/i18n/messages';
@@ -108,7 +109,7 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
     });
     setBuying(null);
     if (!result.ok) {
-      setErr(result.message ?? tc.error);
+      setErr(checkoutErrorMessage(result, locale, tc.error));
       return;
     }
     const env = result.data;

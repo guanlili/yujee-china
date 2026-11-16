@@ -18,6 +18,7 @@
    PHOTOS_PER_CREDIT — never hardcode the photo counts or the dollar amounts here.
    ════════════════════════════════════════════════════════════════════════════ */
 
+import { checkoutErrorMessage } from '@/lib/billing/checkout-error';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ADDON_PACKS, PHOTOS_PER_CREDIT } from '@/config/pricing';
@@ -152,7 +153,11 @@ export function CreditsPurchaseModal({
     });
     if (!result.ok) {
       setError(
-        result.message ?? aT('发起支付失败，请重试。', 'Couldn’t start checkout — please try again.'),
+        checkoutErrorMessage(
+          result,
+          locale,
+          aT('发起支付失败，请重试。', 'Couldn’t start checkout — please try again.'),
+        ),
       );
       setCheckingOut(false);
       return;

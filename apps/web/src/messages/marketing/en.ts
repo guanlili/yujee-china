@@ -89,7 +89,7 @@ export const en: MarketingMessages = {
         body:
           'Account information, memoir data, and order records are stored on cloud servers and object storage in mainland China. ' +
           'Your memoir data is retained until you delete the album or close your account; after account closure, your profile, the memoirs you created, and any remaining credits are deleted and cannot be recovered. ' +
-          'Records of failed generation tasks are cleaned up automatically after 30 days. Some order information may be retained for statutory periods where required by law (for example, transaction and financial records).',
+          'Records of failed generation tasks are not kept long term: we clear them during routine maintenance, which runs on an operational schedule rather than at a fixed interval. Some order information may be retained for statutory periods where required by law (for example, transaction and financial records).',
       },
       {
         h: '6. Cross-border Transfers',
