@@ -1,6 +1,14 @@
-import {cpSync,rmSync,mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {cpSync,rmSync,mkdirSync,readFileSync,writeFileSync,copyFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 const cli='node_modules/vite/bin/vite.js';
+// 字体单一源在 fonts/(47 个唯一文件),构建前按 manifest 铺回各 public 目录。
+// 这些目录不再进 git —— 原来同一份字节在 public/fonts、public/shared/fonts、
+// 两个模块的 public/fonts 里各存一份,共 9.0MB;收成 6.4MB 后产物一模一样。
+const fontsManifest=JSON.parse(readFileSync('fonts/manifest.json','utf8'));
+for(const [dir,names] of Object.entries(fontsManifest)){
+  mkdirSync(dir,{recursive:true});
+  for(const name of names)copyFileSync(`fonts/${name}`,`${dir}/${name}`);
+}
 rmSync('dist',{recursive:true,force:true});
 // All chapters share one origin and one IndexedDB project collection.
 for (const name of ['image-studio','palace']) cpSync('public/shared',`modules/${name}/public/shared`,{recursive:true});

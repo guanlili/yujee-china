@@ -1,0 +1,61 @@
+{
+  "public/fonts": [
+    "CormorantGaramond.ttf",
+    "NotoSerifSC-Landing.woff2"
+  ],
+  "public/shared/fonts": [
+    "noto-serif-sc-3000.woff2",
+    "noto-serif-sc-4e00.woff2",
+    "noto-serif-sc-5000.woff2",
+    "noto-serif-sc-5200.woff2",
+    "noto-serif-sc-5400.woff2",
+    "noto-serif-sc-5600.woff2",
+    "noto-serif-sc-5800.woff2",
+    "noto-serif-sc-5a00.woff2",
+    "noto-serif-sc-5c00.woff2",
+    "noto-serif-sc-5e00.woff2",
+    "noto-serif-sc-6000.woff2",
+    "noto-serif-sc-6200.woff2",
+    "noto-serif-sc-6400.woff2",
+    "noto-serif-sc-6600.woff2",
+    "noto-serif-sc-6800.woff2",
+    "noto-serif-sc-6a00.woff2",
+    "noto-serif-sc-6c00.woff2",
+    "noto-serif-sc-6e00.woff2",
+    "noto-serif-sc-7000.woff2",
+    "noto-serif-sc-7200.woff2",
+    "noto-serif-sc-7400.woff2",
+    "noto-serif-sc-7600.woff2",
+    "noto-serif-sc-7800.woff2",
+    "noto-serif-sc-7a00.woff2",
+    "noto-serif-sc-7c00.woff2",
+    "noto-serif-sc-7e00.woff2",
+    "noto-serif-sc-8000.woff2",
+    "noto-serif-sc-8200.woff2",
+    "noto-serif-sc-8400.woff2",
+    "noto-serif-sc-8600.woff2",
+    "noto-serif-sc-8800.woff2",
+    "noto-serif-sc-8a00.woff2",
+    "noto-serif-sc-8c00.woff2",
+    "noto-serif-sc-8e00.woff2",
+    "noto-serif-sc-9000.woff2",
+    "noto-serif-sc-9200.woff2",
+    "noto-serif-sc-9400.woff2",
+    "noto-serif-sc-9600.woff2",
+    "noto-serif-sc-9800.woff2",
+    "noto-serif-sc-9a00.woff2",
+    "noto-serif-sc-9c00.woff2",
+    "noto-serif-sc-9e00.woff2",
+    "noto-serif-sc-fe00.woff2"
+  ],
+  "modules/palace/public/fonts": [
+    "CormorantGaramond.ttf",
+    "NotoSerifSC-Landing.woff2",
+    "NotoSerifSC-Palace.woff2",
+    "PlayfairDisplay.ttf"
+  ],
+  "modules/image-studio/public/fonts": [
+    "CormorantGaramond.ttf",
+    "NotoSerifSC-Landing.woff2"
+  ]
+}
