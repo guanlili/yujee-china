@@ -100,6 +100,19 @@ function globToRegex(pattern) {
   return new RegExp(`^${body}$`);
 }
 
+/**
+ * 覆盖路径下有没有未提交改动。指纹只看已提交内容,所以这类改动不会被判红 —— 但提
+ * 一句「提交后要回头核对」有用,不然你改完代码跑绿就以为没自己的事。
+ */
+function dirtyUnder(paths, rel) {
+  try {
+    const out = git(['status', '--porcelain', '--', ...paths, `:(exclude)${rel}`]);
+    return out ? out.split('\n') : [];
+  } catch {
+    return [];
+  }
+}
+
 /** 全树只读一次,后面按文档逐个过滤。 */
 const TREE_ROWS = (() => {
   let out = '';
@@ -171,7 +184,11 @@ for (const file of findMarkdown(REPO_ROOT)) {
   if (block.fingerprint) {
     if (block.fingerprint !== current) {
       stale.push({ rel, kind: 'fingerprint', recorded: block.fingerprint, current, paths: block.paths });
+      continue;
     }
+    // 指纹只看得见已提交的内容;工作区还有未提交改动时给一条提示(不算失败)。
+    const dirty = dirtyUnder(block.paths, rel);
+    if (dirty) pending.push({ rel, dirty });
     continue;
   }
 
