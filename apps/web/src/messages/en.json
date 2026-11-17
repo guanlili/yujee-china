@@ -130,7 +130,8 @@
       "Hi-res, print-ready PDF export — no watermark",
       "Original photos are never uploaded — only compressed previews for AI layout"
     ],
-    "loginHint": "Pick a pack and sign in to check out — you'll come right back here."
+    "loginHint": "Pick a pack and sign in to check out — you'll come right back here.",
+    "checkoutClosed": "Checkout coming soon"
   },
   "dashboard": {
     "common": {

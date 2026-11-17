@@ -482,6 +482,7 @@ export const en: MarketingMessages = {
       'Upload a folder of photos and see a laid-out book before you decide whether to buy anything.',
     ctaButton: 'Make a book',
     buyLink: 'Buy credits',
+    checkoutClosed: 'Checkout coming soon',
   },
   footer: {
     tagline: 'Turn scattered photos into a magazine worth keeping.',

@@ -130,7 +130,8 @@
       "Export PDF haute résolution prêt à imprimer — sans filigrane",
       "Vos photos originales ne sont jamais envoyées — seuls des aperçus compressés servent à la mise en page"
     ],
-    "loginHint": "Choisissez un pack et connectez-vous pour payer — vous reviendrez directement ici."
+    "loginHint": "Choisissez un pack et connectez-vous pour payer — vous reviendrez directement ici.",
+    "checkoutClosed": "Achat bientôt disponible"
   },
   "dashboard": {
     "common": {

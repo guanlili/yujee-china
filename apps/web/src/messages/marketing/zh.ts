@@ -465,6 +465,7 @@ export const zh: MarketingMessages = {
     ctaBody: '上传一个照片文件夹，先看到排好的书，再决定要不要买。',
     ctaButton: '做一本书',
     buyLink: '购买积分',
+    checkoutClosed: '暂不可购买',
   },
   footer: {
     tagline: '把散落的照片，变成一本可以收藏的杂志。',

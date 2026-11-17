@@ -166,6 +166,8 @@ export interface MarketingMessages {
     ctaButton: string;
     /** Secondary link to the home #pricing block, the only checkout surface. */
     buyLink: string;
+    /** 支付通道未配置时按钮上的文案(替代「购买」)。 */
+    checkoutClosed: string;
   };
   footer: {
     tagline: string;

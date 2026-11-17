@@ -35,6 +35,8 @@ export type HeroSample = {
 
 type Props = {
   locale: Locale;
+  /** 服务端判定当前支付通道是否配置齐备;false 时不给可点的购买按钮。 */
+  checkoutEnabled?: boolean;
   composer: ReactNode;
   /** One entry per /examples page, in hub order. Rendered as the strip under the composer. */
   heroSamples: HeroSample[];
@@ -207,7 +209,7 @@ function SampleCard({
   );
 }
 
-function LandingPricing({ locale }: { locale: Locale }) {
+function LandingPricing({ locale, checkoutEnabled }: { locale: Locale; checkoutEnabled: boolean }) {
   const t = getMessages(locale).pricing;
   const tc = getMessages(locale).dashboard.common;
   // Copy comes from messages/*.json for BOTH locales. The zh strings used to be
@@ -293,14 +295,15 @@ function LandingPricing({ locale }: { locale: Locale }) {
                 <button
                   type="button"
                   onClick={() => buy(pack.id)}
-                  disabled={disabled}
+                  disabled={disabled || !checkoutEnabled}
+                  title={checkoutEnabled ? undefined : t.checkoutClosed}
                   className={`mt-6 inline-flex items-center justify-center rounded-full py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
                     isBest
                       ? 'bg-[var(--fg)] text-white hover:bg-black'
                       : 'border border-black/15 text-[var(--fg)] hover:bg-black/5'
                   }`}
                 >
-                  {isBusy ? t.redirecting : t.buy}
+                  {isBusy ? t.redirecting : checkoutEnabled ? t.buy : t.checkoutClosed}
                 </button>
               </div>
             );
@@ -314,7 +317,12 @@ function LandingPricing({ locale }: { locale: Locale }) {
   );
 }
 
-export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props) {
+export function YujeeLandingHomeClient({
+  locale,
+  composer,
+  heroSamples,
+  checkoutEnabled = true,
+}: Props) {
   const c = LANDING_COPIES[locale];
   const dashboard = getMessages(locale).dashboard;
   const chrome = dashboard.chrome;
@@ -808,7 +816,7 @@ export function YujeeLandingHomeClient({ locale, composer, heroSamples }: Props)
           </div>
         </section>
 
-        <LandingPricing locale={locale} />
+        <LandingPricing locale={locale} checkoutEnabled={checkoutEnabled} />
 
         <section className="py-20 md:py-28">
           <div className="wrap text-center">

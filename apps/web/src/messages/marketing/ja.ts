@@ -448,6 +448,7 @@ export const ja: MarketingMessages = {
     ctaBody: '写真フォルダをアップロードして、購入を決める前にレイアウト済みの本を見てください。',
     ctaButton: '本を作る',
     buyLink: 'クレジットを購入',
+    checkoutClosed: 'ご購入は準備中です',
   },
   footer: {
     tagline: 'ばらばらの写真を、とっておきの一冊の雑誌に。',
