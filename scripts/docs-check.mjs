@@ -188,7 +188,8 @@ for (const file of findMarkdown(REPO_ROOT)) {
     }
     // 指纹只看得见已提交的内容;工作区还有未提交改动时给一条提示(不算失败)。
     const dirty = dirtyUnder(block.paths, rel);
-    if (dirty) pending.push({ rel, dirty });
+    // 注意空数组也是真值,必须判 length —— 否则每份文档都会挂一条没有内容的提示。
+    if (dirty.length) pending.push({ rel, dirty });
     continue;
   }
 
