@@ -48,48 +48,70 @@ export const es: MarketingMessages = {
   privacy: {
     metaTitle: 'Yujee — Política de privacidad',
     metaDesc:
-      'Cómo trata Yujee tus fotos y tus datos personales. Las fotos originales nunca se suben: a la IA solo llegan vistas previas comprimidas para planificar la maquetación, y tus álbumes siguen siendo privados.',
+      'Cómo Yujee trata tus fotos y tus datos: no subimos los originales, solo enviamos una vista previa comprimida a la IA para maquetar, y el álbum queda visible solo para ti.',
     title: 'Política de privacidad',
-    effective: 'Fecha de entrada en vigor: 27 de mayo de 2026',
+    effective: 'En vigor: 16 de noviembre de 2026',
     sections: [
       {
         h: '1. Introducción',
-        body: 'Yujee ("nosotros") valora tu privacidad. Esta Política de privacidad explica cómo recopilamos, usamos, divulgamos y protegemos tu información cuando utilizas outman.press.',
+        body:
+          'Esta política explica cómo 北京知景方略信息科技有限责任公司 («nosotros») recoge, usa, almacena, comparte y protege tu información cuando usas outman.press. ' +
+          'Solo prestamos el servicio de creación de libros de fotos con IA (procesamiento de fotos, textos generados, maquetación y exportación a PDF electrónico); no incluimos impresión física ni envío.',
       },
       {
-        h: '2. Información que recopilamos',
-        body: 'Recopilamos: (a) información de la cuenta (correo electrónico, nombre) cuando te registras; (b) datos de uso sobre cómo interactúas con Yujee; (c) los textos e indicaciones que envías para generar unas memorias; (d) las memorias que produces, es decir, los datos de maquetación, los archivos PDF exportados y las miniaturas de portada, guardados en nuestro almacenamiento en la nube para que puedas volver a abrirlos y descargarlos cuando quieras. No guardamos las fotos originales que subes: se quedan en tu navegador, y a nuestro proveedor de IA solo se envían vistas previas comprimidas para planificar la maquetación. Ten en cuenta que las fotos que coloques en unas memorias quedan incrustadas en el PDF que exportas y guardas.',
+        h: '2. Qué información recogemos',
+        body:
+          'Recogemos: (a) datos de cuenta (correo electrónico, nombre de usuario); (b) datos de uso; (c) los textos e indicaciones que envías; (d) los datos de tus obras — maquetación, PDF exportados y miniaturas de portada, guardados en nuestra nube para que puedas reabrirlos y descargarlos cuando quieras. ' +
+          'No guardamos las fotos originales que subes: los originales se quedan en tu navegador y a la IA solo se envía una vista previa comprimida para planificar la maqueta. Ten en cuenta que las fotos colocadas en el álbum quedan dentro del PDF exportado.',
       },
       {
-        h: '3. Cómo usamos tu información',
-        body: 'Usamos la información para ofrecer y mejorar Yujee, procesar los pagos y gestionar los créditos, enviar avisos relacionados con el servicio, seguir las tendencias de uso y detectar o evitar fraudes y abusos.',
+        h: '3. Para qué usamos la información',
+        body: 'Para prestar y mejorar el servicio, procesar pagos y créditos, enviar avisos relacionados con el servicio, analizar tendencias de uso y detectar y prevenir fraudes y abusos.',
       },
       {
-        h: '4. Cesión de información',
-        body: 'No vendemos tu información personal. Solo compartimos datos con los proveedores que operan el producto en nuestro nombre (alojamiento en la nube, procesamiento de pagos, envío de correo e inferencia de IA) y cuando la ley lo exige.',
+        h: '4. Con quién compartimos',
+        body:
+          'No vendemos tus datos personales ni los cedemos a terceros con fines publicitarios. Compartimos lo necesario con estas categorías de proveedores: alojamiento en la nube y almacenamiento de objetos, procesamiento de pagos, envío de correo y inferencia de IA. ' +
+          'En concreto: la nube y el almacenamiento están en Tencent Cloud (territorio chino); los pagos con tarjeta internacional los procesa Waffo (entidad en Hong Kong) y el canal Alipay aún no está habilitado; la maquetación y los textos los procesa un servicio de modelos de terceros, y la generación de imágenes usa un proveedor del territorio chino. ' +
+          'También podemos divulgar información cuando la ley lo exija o cuando sea necesario para proteger los derechos de los usuarios y los nuestros.',
       },
       {
-        h: '5. Seguridad de los datos',
-        body: 'Aplicamos medidas técnicas y organizativas razonables para proteger tus datos. Ninguna transmisión por internet ni ningún almacenamiento electrónico es seguro al 100 %; no podemos garantizar una seguridad absoluta.',
+        h: '5. Almacenamiento y conservación',
+        body:
+          'Los datos de cuenta, los datos de tus obras y los registros de pedidos se almacenan en servidores en la nube y almacenamiento de objetos situados en territorio chino. ' +
+          'Los datos de tus obras se conservan hasta que borres ese álbum o elimines tu cuenta; al eliminar la cuenta, tu perfil, los álbumes creados y los créditos restantes se borran conforme al proceso de eliminación y no pueden recuperarse. ' +
+          'Los registros de tareas de generación fallidas no se conservan a largo plazo: los limpiamos periódicamente durante el mantenimiento rutinario, según un plan operativo y no con un intervalo fijo. Por obligaciones legales (por ejemplo, registros de transacciones y financieros), parte de la información de pedidos puede conservarse durante los plazos legales.',
       },
       {
-        h: '6. Tus derechos',
-        body: 'Según la jurisdicción en la que te encuentres, puedes acceder a tus datos personales, corregirlos, eliminarlos o limitar su tratamiento. Escríbenos para ejercer estos derechos.',
+        h: '6. Transferencias internacionales',
+        body:
+          'Si pagas con tarjeta internacional, los datos del pedido y del pago se transmiten al proveedor de pagos situado en Hong Kong. El servicio de modelos de terceros que usamos para maquetar y redactar puede estar alojado fuera de China, y las vistas previas de fotos y los textos que envías se transmiten a ese servicio para generar el contenido. ' +
+          'No transferimos tu información fuera del país para otros fines.',
       },
       {
-        h: '7. Privacidad de los menores',
-        body: 'Yujee no se dirige a menores de 13 años (o la edad equivalente en tu jurisdicción). Si descubrimos que hemos recopilado datos personales de un menor, los eliminaremos sin demora.',
+        h: '7. Seguridad de los datos',
+        body: 'Aplicamos medidas técnicas y organizativas razonables para proteger tus datos. Ninguna transmisión por internet ni almacenamiento electrónico es 100% seguro, así que no podemos garantizar una seguridad absoluta.',
       },
       {
-        h: '8. Cambios en esta política',
-        body: 'Podemos actualizar esta Política de privacidad en cualquier momento. Los cambios importantes se anunciarán dentro del producto o por correo electrónico.',
+        h: '8. Tus derechos',
+        body:
+          'Según la ley de tu jurisdicción, puedes tener derecho a acceder, corregir, eliminar o limitar el tratamiento de tus datos personales, así como a retirar tu consentimiento o presentar una reclamación. ' +
+          'Puedes ejercer estos derechos escribiendo al correo indicado al final de esta política; verificaremos tu identidad antes de atender la solicitud.',
       },
       {
-        h: '9. Contacto',
+        h: '9. Privacidad de menores',
+        body: 'Yujee no está dirigido a menores de 13 años (o la edad equivalente en tu jurisdicción). Si detectamos que hemos recibido datos de un menor por error, los borraremos lo antes posible.',
+      },
+      {
+        h: '10. Cambios en esta política',
+        body: 'Podemos actualizar esta política. Los cambios importantes se anunciarán en el producto o por correo electrónico.',
+      },
+      {
+        h: '11. Contacto',
         body: '',
       },
     ],
-    contactLine: '¿Tienes dudas? Escribe a privacy@yujeeai.com.',
+    contactLine: 'Privacidad y soporte: privacy@yujeeai.com; reembolsos: support@yujeeai.com. Operador: 北京知景方略信息科技有限责任公司.',
   },
   terms: {
     metaTitle: 'Yujee — Términos del servicio',
@@ -104,7 +126,9 @@ export const es: MarketingMessages = {
       },
       {
         h: '2. Descripción del servicio',
-        body: 'Yujee es un generador de memorias con IA. Tú aportas fotos e indicaciones; nosotros maquetamos unas memorias con estilo de revista y te dejamos exportarlas en PDF. No garantizamos un resultado creativo concreto.',
+        body: 'Yujee es un generador de memorias con IA. Tú aportas fotos e indicaciones; nosotros maquetamos unas memorias con estilo de revista y te dejamos exportarlas en PDF. ' +
+          'El servicio se factura por créditos: 1 crédito equivale a 1 foto y los créditos se compran en paquetes de pago único, sin suscripción ni cuota mensual. ' +
+          'Solo entregamos archivos electrónicos: no ofrecemos impresión física, encuadernación ni envío. No garantizamos un resultado creativo concreto.',
       },
       {
         h: '3. Cuentas de usuario',
