@@ -447,6 +447,13 @@ function assertStoryExportUnlocked(album: Awaited<ReturnType<typeof albumRepo.fi
   }
 }
 
+// 旧 PDF 的 key 一定是 signPdfUpload 发出去的 `pdfs/<albumId>/<uuid>.pdf`;删之前
+// 再校一次归属,避免历史数据里出现别的命名空间(封面缩略、照片原图)时被误删。
+function pdfKeyBelongsTo(key: string, albumId: string): boolean {
+  const m = /^pdfs\/([^/]+)\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.pdf$/.exec(key);
+  return !!m && m[1] === albumId;
+}
+
 // ── 全局创作设置 OCC(Phase 2B)────────────────────────────────────────────
 // title / boardBackground / photoFilter 三个相册级设置写的共享事务骨架:
 // ①行锁 ②resolveRole(owner/editor 同为 Creator)③safe integer 校验
@@ -2519,14 +2526,28 @@ export const albumService = {
     }
 
     const pdfUrl = r2.publicUrl(r2Key);
+    let replacedKey: string | null = null;
     await db.transaction(async (tx) => {
       const album = await albumRepo.findByIdForUpdate(tx, albumId);
       if (!album) throw ERRORS.ALBUM_NOT_FOUND();
       const role = await resolveRole(album, userId, tx);
       if (!role) throw COLLAB_ERRORS.ALBUM_ACCESS_DENIED();
       assertStoryExportUnlocked(album);
+      // 同一相册重新导出会拿到新的 UUID key;旧稿在新稿落库后删掉,否则每导一次
+      // 多留一份(实测单相册 4 份、最大一份 10MB)。删除放在事务外、失败只记日志:
+      // 旧稿删不掉不该让用户这次导出失败(它是可重现产物,不是用户数据)。
+      if (album.pdfR2Key && album.pdfR2Key !== r2Key && pdfKeyBelongsTo(album.pdfR2Key, albumId)) {
+        replacedKey = album.pdfR2Key;
+      }
       await albumRepo.update(tx, albumId, { pdfR2Key: r2Key, pdfUrl, status: 'COMPLETED' });
     });
+    if (replacedKey) {
+      try {
+        await r2.deleteObject(replacedKey);
+      } catch {
+        // deleteObject 已记 error 日志;旧稿残留不影响本次导出,交给后续清理。
+      }
+    }
     return { pdfUrl };
   },
 
