@@ -60,11 +60,11 @@ const EXAMPLE_SOURCES = ['apps/web/src/lib/examples/examples.ts', 'apps/web/src/
  */
 const EXAMPLES_REVIEWED_SOURCES = '867d0470b278';
 /** Hub also reads marketing chrome, so its fingerprint differs from detail rows. */
-const EXAMPLES_HUB_REVIEWED_SOURCES = '1dfb52b75e31';
+const EXAMPLES_HUB_REVIEWED_SOURCES = 'dbbf5fa2b60d';
 /** Guide prose only. guides.ts is excluded on purpose — see FRESHNESS_DECLARATIONS. */
 const GUIDES_CONTENT = 'apps/web/src/lib/guides/content';
 /** The hub has no article of its own to carry a reviewedSources, so it lives here. */
-const GUIDES_HUB_REVIEWED_SOURCES = '77c069eb2e9c';
+const GUIDES_HUB_REVIEWED_SOURCES = 'e4ab1d511906';
 
 /**
  * Every example detail page is one row of the same array, so they share sources.
@@ -110,7 +110,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     // 2026-11-15: 页脚补「运营与服务提供方」一行,读者可见内容变了 → updatedAt 推进。
     // 2026-11-16: 购买失败话术换成友好文案(503 不再甩英文技术错误);正文没动,
     // 只推进 reviewedSources。
-    reviewedSources: '940bd648a22d',
+    reviewedSources: '80e572c0d117',
   },
   // bd254fcd rewrote the「一个人做的」section in all five locales: dropped the
   // Claude Code attribution, added the rough-edges admission, added a feedback
@@ -119,7 +119,7 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     sources: [MARKETING, 'apps/web/src/app/[locale]/about/story/page.tsx'],
     updatedAt: '2026-08-10',
     // 2026-11-16: 共享 marketing 文案模块改动波及本页,正文未变 —— 只推进 reviewedSources。
-    reviewedSources: '0701083da6fb',
+    reviewedSources: '421c02a66eda',
   },
   // Privacy prose last moved in the pre-launch pass that aligned it with what the
   // product actually does (b69eb438). marketing.ts has moved several times since —
@@ -140,22 +140,24 @@ export const ROUTE_FRESHNESS: Record<string, RouteFreshness> = {
     // priceUsd,读者看到的字符没变 → 只推进指纹,updatedAt 不动。
     // 2026-11-16: 共享文案模块改了三语种退款与隐私措辞,定价页正文未变 → 仍只推进指纹。
     // 2026-11-17: 三语种隐私补两节、条款补商品边界,定价页正文仍未变 → 只推进指纹。
-    reviewedSources: '499723bac38e',
+    reviewedSources: '084133009ecb',
   },
   // messages/marketing 这轮被 74c590db(首页 en meta)、d2bca297(共用导航多一项
   // Guides)、c4148143(共用页脚 Pricing 改指 /pricing)和 2026-09-21 的
   // examples.moreComing 一行碰到。对隐私页而言全是 chrome 或别页的文案,正文
   // 一个字没动 —— 这正是 reviewedSources/updatedAt 分开的意义:只推 reviewedSources。
   // 刷 updatedAt 等于告诉 Google 隐私政策也改了。
-  '/privacy': { sources: [MARKETING], updatedAt: '2026-11-17', reviewedSources: '6fd29f209a35' },
+  // 2026-11-17(第二轮): 跨境告知段删掉「海外卡支付由 Waffo（香港主体）处理」——
+  // 通道已删除,这句不再是事实。隐私正文真的变了,updatedAt 就是这天。
+  '/privacy': { sources: [MARKETING], updatedAt: '2026-11-17', reviewedSources: '3a9c1582715c' },
   // b3d095bc rewrote sections 5–12 (breach/termination, governing law, the real
   // refund rule) in both locales — a genuine content change, so this one moves.
   // 2026-11-16: 条款退款段改为政策口径,正文变了 → updatedAt 推进到这天。
-  '/terms': { sources: [MARKETING], updatedAt: '2026-11-17', reviewedSources: '6fd29f209a35' },
+  '/terms': { sources: [MARKETING], updatedAt: '2026-11-17', reviewedSources: '3a9c1582715c' },
   // New page, so its prose and the shared marketing messages both start here.
   // reviewedSources is stamped by `pnpm --filter @yujee/web sitemap:stamp`
   // after the first commit that contains the page.
-  '/refund': { sources: [MARKETING], updatedAt: '2026-11-17', reviewedSources: '6fd29f209a35' },
+  '/refund': { sources: [MARKETING], updatedAt: '2026-11-17', reviewedSources: '3a9c1582715c' },
   // reviewedSources 是内容指纹,不是 commit SHA —— squash/rebase 后不必重刷。
   // The hub renders one card per example, so it changes whenever the newest
   // example does — derived, like the guides hub, instead of hand-dated.
