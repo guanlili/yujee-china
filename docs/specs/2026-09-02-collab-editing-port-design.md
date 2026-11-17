@@ -9,8 +9,8 @@
 产品模型、并发控制、授权模型都照收黑客松已验证的实现，本文只定移植的范围、切分和验证。
 
 黑客松那边的原始设计文档随代码一起搬：
-- `docs/plans/2026-08-28-creator-collaboration-rework.md`（386 行，最终真相）
-- `docs/plans/2026-08-27-simple-reliable-collaboration.md`（1085 行，已标注「被取代」）
+- `docs/archive/plans/2026-08-28-creator-collaboration-rework.md`（386 行，最终真相）
+- `docs/archive/plans/2026-08-27-simple-reliable-collaboration.md`（1085 行，已标注「被取代」）
 
 ### 为什么现在做
 

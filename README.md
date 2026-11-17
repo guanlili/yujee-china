@@ -3,7 +3,8 @@
 AI 人生纪念册 Web 应用,面向海外市场。用户选择照片后进入编辑器,系统完成分章、排版、用户编辑和浏览器导出 PDF。
 
 仓根 README 只放大的框架;各服务的内部实现分别看子目录 README。
-设计文档和实施计划放 `docs/specs/` 与 `docs/plans/`(按 issue 归档,不再扩张成大 docs 树)。
+设计与实施计划放 `docs/specs/`(按 issue 归档,现行口径的唯一来源);已交付的历史计划沉到
+`docs/archive/`,只作决策考古,不再新增。
 
 ## 系统框架
 
@@ -36,7 +37,7 @@ Postgres + Cloudflare R2
 memoir-agent-rebuild/
 ├── README.md                       # 系统总框架
 ├── CLAUDE.md                       # agent 起手约束(AGENTS.md 是指向它的符号链接)
-├── docs/specs/ · docs/plans/       # 按 issue 归档的设计与实施计划
+├── docs/specs/ · docs/archive/     # 现行设计 / 历史计划归档(只读)
 ├── apps/
 │   └── web/README.md               # Web 内部结构、状态、API、运行命令
 ├── engine/README.md                # 生成 Agent 的 route/workflow/provider/测试
@@ -208,6 +209,6 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json
-checked-at: e541ab73
+checked-at: 449d6c8c
 fingerprint: 914a42f4c773
 -->

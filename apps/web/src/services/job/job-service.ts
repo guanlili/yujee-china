@@ -39,7 +39,7 @@ import { coverColorwayById } from '@/lib/design/third-set-palette';
 import { albumMessageRepo } from '@/db/repos/album-message-repo';
 import { bakePagesHtml, type BakeablePage } from '@/services/album/bake-html';
 // draft_pages 拆表(Phase 1a):三个回调写点(analyze-append/select-layout/compose)
-// 加 album 行锁 + 切行级写(docs/plans/2026-08-03-draft-pages-split.md Task 5)。
+// 加 album 行锁 + 切行级写(docs/archive/plans/2026-08-03-draft-pages-split.md Task 5)。
 import {
   bumpDraftRevision,
   ensureDraftPagesSeeded,

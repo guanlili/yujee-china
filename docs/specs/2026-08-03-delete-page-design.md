@@ -13,7 +13,7 @@
 1. **Phase 1(先行)**: 编辑器手动删除 —— 移动端已有按钮占位
    (`EditView.tsx` 一级工具栏"删除"格,现只弹"即将上线"),桌面端新增选中页删除。
 2. **Phase 2(后行)**: 设计 Agent 对话删除 —— `delete_page` 写工具。
-   **前置**: `docs/plans/2026-08-03-draft-pages-split.md` Task 6
+   **前置**: `docs/archive/plans/2026-08-03-draft-pages-split.md` Task 6
    (`persistDesignChat` 切行级写)完成。在那之前 agent 写路径落 legacy
    `draftJson.pages`,对已播种行的相册改动会被 `loadStoryDraft` 无视、静默丢失。
 

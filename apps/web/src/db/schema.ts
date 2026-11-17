@@ -264,7 +264,7 @@ export const albums = pgTable(
     // written row(s)' `version` with the NEW revision — page versions are
     // comparable book-wide, and a full-book replace (reorder/select-layout/
     // compose/design-chat) naturally advances every page's version. 0 = no
-    // draft_pages rows yet (legacy-only album). See docs/plans/2026-08-03-draft-pages-split.md.
+    // draft_pages rows yet (legacy-only album). See docs/archive/plans/2026-08-03-draft-pages-split.md.
     draftRevision: bigint('draft_revision', { mode: 'number' }).notNull().default(0),
     // 协同增量同步(2026-08-27 collab plan §7.4):最后一次「结构/整书级写入」
     // (reorder/delete/add/select-layout/compose/design-chat/replaceAll)落地时的
@@ -344,7 +344,7 @@ export const albumPages = pgTable(
 // `albums.draft_json.pages` 数组(legacy 字段只读回退,新写点永不再写它)。PK
 // (albumId, pageIndex)。`page` 一律 contracts `Page`(strict)。`version` = 写入
 // 该行时的新 `albums.draft_revision`(全书单调可比);`updatedBy` null 表示
-// 系统/agent 写入(而非某个用户)。docs/plans/2026-08-03-draft-pages-split.md。
+// 系统/agent 写入(而非某个用户)。docs/archive/plans/2026-08-03-draft-pages-split.md。
 export const draftPages = pgTable(
   'draft_pages',
   {

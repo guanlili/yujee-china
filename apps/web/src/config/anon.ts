@@ -1,4 +1,4 @@
-// 游客(匿名)模式的产品硬上限。设计:docs/superpowers/specs/2026-08-04-anon-guest-flow-design.md
+// 游客(匿名)模式的产品硬上限。设计:docs/archive/superpowers/specs/2026-08-04-anon-guest-flow-design.md
 //
 // 匿名照片上限刻意等于 FREE_PLAN_CREDITS(20):登录转正后自动补跑真 compose 时,
 // 新账号的注册赠送积分恰好覆盖首本书,不会刚登录就撞 402 付费墙。

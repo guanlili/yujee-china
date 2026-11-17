@@ -245,7 +245,7 @@ test('readAppendChapterIds: 合法 meta 返回 ids,其余 null', () => {
 });
 
 // ───────────── draft_pages 拆表(Phase 1a,Task 5)DB 级回归 ─────────────
-// job 回调三写点加 album 行锁 + 切行级写(docs/plans/2026-08-03-draft-pages-split.md)。
+// job 回调三写点加 album 行锁 + 切行级写(docs/archive/plans/2026-08-03-draft-pages-split.md)。
 // 这两条覆盖「加照片」场景下最容易踩的两个坑:analyze 的树合并分支必须只碰
 // envelope、完全不动已落库的 draft_pages 行/revision;select-layout 的追加合并分支
 // 必须能只从 draft_pages 行(不再依赖 draftJson.pages)取到既有页 —— 老代码在
