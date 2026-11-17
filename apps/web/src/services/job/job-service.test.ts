@@ -79,7 +79,7 @@ test('mergeSelectLayoutPages rejects select-layout output before a Stage1 tree e
 });
 
 // draft_pages 拆表(Phase 1a,Task 5):handleV3SelectLayoutCompleted 加 album 行锁 +
-// 组页落库切行级写(docs/plans/2026-08-03-draft-pages-split.md)。回调后页真相落
+// 组页落库切行级写(docs/archive/plans/2026-08-03-draft-pages-split.md)。回调后页真相落
 // draft_pages 行,draftJson 瘦身为 envelope,pageCount 收口(此前 select-layout 这里
 // 遗漏了 pageCount)。
 test('handleV3SelectLayoutCompleted: 组页落库切 draft_pages 行级写 + pageCount 收口', async (t) => {

@@ -406,7 +406,7 @@ export type V3StoryDraft = z.infer<typeof V3StoryDraft>;
 
 // ───────────── ②b 页级编辑 — POST /v3/page-edit(同步,两段式) ─────────────
 //
-// 两段解耦(docs/superpowers/specs/2026-06-25-page-edit-agent-loop-design.md):
+// 两段解耦(docs/archive/superpowers/specs/2026-06-25-page-edit-agent-loop-design.md):
 //   段一意图路由(轻调用)判 intent ∈ edit_text|change_layout|advance|talk;段二专门执行
 //   (edit_text=一次写作调用 / change_layout=纯确定性 / advance=置标志 / talk=段一 reply)。
 // 编辑只作用于聚焦页;完成度由 Agent 代码确定性算(复用 chapter-chat 判定),派生不落库。

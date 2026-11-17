@@ -4,7 +4,7 @@ import { db, type DbOrTx } from '../client';
 import { draftPages, type DraftPage } from '../schema';
 
 // draft_pages 拆表(Phase 1a):per-page repo for the `draft_pages` table —
-// the per-page truth for V3 draft pages (docs/plans/2026-08-03-draft-pages-split.md).
+// the per-page truth for V3 draft pages (docs/archive/plans/2026-08-03-draft-pages-split.md).
 export const draftPageRepo = {
   // Defaults to the top-level `db` (mirrors albumPhotoRepo.findByAlbum) so
   // unscoped callers are unchanged; pass an open `tx` to read inside a

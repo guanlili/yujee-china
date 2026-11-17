@@ -1978,7 +1978,7 @@ export const albumService = {
       }
 
       // draft_pages 拆表(Phase 1a)固定写事务次序:行锁(above)→ 懒播种 → 行级写
-      // → bump revision(docs/plans/2026-08-03-draft-pages-split.md Global
+      // → bump revision(docs/archive/plans/2026-08-03-draft-pages-split.md Global
       // Constraints)。播种对没有 legacy pages 的相册是 no-op,返回值就是不变的
       // 当前 revision——`bumpDraftRevision` 必须接它而不是 `latest.draftRevision`,
       // 否则刚播种(0→1)的相册这次写入会把 revision 撞错。

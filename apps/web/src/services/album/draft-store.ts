@@ -7,7 +7,7 @@ import { logger } from '@/lib/log/logger';
 import { bakePagesHtml, type BakeablePage } from './bake-html';
 
 // draft_pages 拆表(Phase 1a) — the only draft access layer
-// (docs/plans/2026-08-03-draft-pages-split.md). Reads prefer the per-page
+// (docs/archive/plans/2026-08-03-draft-pages-split.md). Reads prefer the per-page
 // `draft_pages` rows and fall back read-only to legacy `draftJson.pages` when
 // an album has no rows yet; writers (Task 3+) seed rows lazily under the
 // album row lock before writing.
