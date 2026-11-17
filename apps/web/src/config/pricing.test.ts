@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   ACTIVE_CHECKOUT_PROVIDER,
   ADDON_PACKS,
+  ALIPAY_PRICE_ENV_BY_PACK_ID,
   CHECKOUT_PROVIDERS,
   CREDIT_COST_PER_ALBUM,
   FREE_PLAN_CREDITS,
@@ -14,23 +15,21 @@ import {
   PLANS,
   buildCheckoutReturnUrls,
   creditsForPhotos,
-  WAFFO_PRODUCT_ENV_BY_PACK_ID,
 } from './pricing';
 
-test('credit checkout routes through Waffo (active) with Creem fallback', () => {
-  assert.equal(ACTIVE_CHECKOUT_PROVIDER, 'waffo');
-  assert.ok(CHECKOUT_PROVIDERS.includes('waffo'));
-  assert.ok(CHECKOUT_PROVIDERS.includes('creem'));
+test('credit checkout routes through Alipay (the only live channel)', () => {
+  assert.equal(ACTIVE_CHECKOUT_PROVIDER, 'alipay');
+  assert.deepEqual([...CHECKOUT_PROVIDERS], ['alipay']);
 
   const urls = buildCheckoutReturnUrls(
     'https://app.yujee.test',
-    'waffo',
+    'alipay',
     { locale: 'en', from: 'create' },
   );
 
   assert.equal(
     urls.successUrl,
-    'https://app.yujee.test/en/credits?checkout=success&provider=waffo&from=create',
+    'https://app.yujee.test/en/credits?checkout=success&provider=alipay&from=create',
   );
 });
 
@@ -184,19 +183,18 @@ test('pricing copy states the typical page range from the constant', () => {
   assert.ok(PAGES_PER_CREDIT.min < PAGES_PER_CREDIT.max, 'page range must be a real range');
 });
 
-test('waffo is the active checkout provider', () => {
-  assert.equal(ACTIVE_CHECKOUT_PROVIDER, 'waffo');
-  assert.ok(CHECKOUT_PROVIDERS.includes('waffo'));
-  assert.ok(CHECKOUT_PROVIDERS.includes('creem')); // Phase 1 保留
+test('alipay is the active checkout provider, and it is the only one', () => {
+  assert.equal(ACTIVE_CHECKOUT_PROVIDER, 'alipay');
+  assert.deepEqual([...CHECKOUT_PROVIDERS], ['alipay']);
 });
 
-test('every pack has a waffo product env key', () => {
+test('every pack has a CNY price env key (no hardcoded numbers)', () => {
   for (const pack of ADDON_PACKS) {
-    assert.match(WAFFO_PRODUCT_ENV_BY_PACK_ID[pack.id], /^WAFFO_PRODUCT_ID_PACK_/);
+    assert.match(ALIPAY_PRICE_ENV_BY_PACK_ID[pack.id], /^ALIPAY_PRICE_PACK_/);
   }
 });
 
-test('buildCheckoutReturnUrls carries provider=waffo', () => {
-  const { successUrl } = buildCheckoutReturnUrls('https://app.yujee.test', 'waffo', { locale: 'zh', from: 'create' });
-  assert.equal(successUrl, 'https://app.yujee.test/zh/credits?checkout=success&provider=waffo&from=create');
+test('buildCheckoutReturnUrls carries provider=alipay', () => {
+  const { successUrl } = buildCheckoutReturnUrls('https://app.yujee.test', 'alipay', { locale: 'zh', from: 'create' });
+  assert.equal(successUrl, 'https://app.yujee.test/zh/credits?checkout=success&provider=alipay&from=create');
 });

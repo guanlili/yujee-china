@@ -30,10 +30,14 @@ export interface CreditPack {
   priceUsd: number;
 }
 
-export type CheckoutProvider = 'creem' | 'waffo' | 'alipay';
-export const CHECKOUT_PROVIDERS = ['creem', 'waffo', 'alipay'] as const satisfies readonly CheckoutProvider[];
-// Waffo 是主通道(2026-08 切换);creem 保留仅为 Phase 1 在途订单 webhook 兜底。
-export const ACTIVE_CHECKOUT_PROVIDER = 'waffo' satisfies CheckoutProvider;
+// 只剩支付宝一条通道(2026-11-17)。Waffo / Creem 是 2026-05~08 的海外卡方案,
+// 从未在生产跑起来过一次(容器里从来没有 WAFFO_* / CREEM_* 变量),Waffo 注册也被拒,
+// 于是整体删除 —— 代码留在 git 历史里,将来要接海外卡时重写比复活更省事。
+// 保留 CheckoutProvider 名义上是为将来留位:新增通道要同时补齐 checkout 路由、
+// availability 判定和文案,所以做成显式联合而不是裸字符串。
+export type CheckoutProvider = 'alipay';
+export const CHECKOUT_PROVIDERS = ['alipay'] as const satisfies readonly CheckoutProvider[];
+export const ACTIVE_CHECKOUT_PROVIDER = 'alipay' satisfies CheckoutProvider;
 // The UI locale the buyer came from — it only ever decides which /{locale}/credits
 // URL the provider returns them to, so it tracks the full locale set (never the
 // zh|en generation language).
@@ -43,16 +47,6 @@ export type CheckoutReturnContext = {
   locale?: CheckoutLocale;
   from?: CheckoutSource;
 };
-
-export type CreemProductEnvKey =
-  | 'CREEM_PRODUCT_ID_PACK_1'
-  | 'CREEM_PRODUCT_ID_PACK_4'
-  | 'CREEM_PRODUCT_ID_PACK_10';
-
-export type WaffoProductEnvKey =
-  | 'WAFFO_PRODUCT_ID_PACK_1'
-  | 'WAFFO_PRODUCT_ID_PACK_4'
-  | 'WAFFO_PRODUCT_ID_PACK_10';
 
 // ── Photo → credit accounting (SINGLE SOURCE OF TRUTH) ───────────────────────
 // One credit covers up to PHOTOS_PER_CREDIT photos. A generation of N photos
@@ -112,8 +106,10 @@ export const PLANS: readonly Plan[] = [
   },
 ] as const;
 
-// 三档一次性积分包。价格 $3/$10/$20 固定(Creem 产品),books 字段沿用旧名、语义是积分数。
-// 2026-07-17 重定价:1 积分=1 张后,三档积分数 ×20 → 20/80/200(美元不变)。产品 id 走 env(主通道 Waffo,Creem 兜底)。
+// 三档一次性积分包。books 字段沿用旧名、语义是积分数。
+// 2026-07-17 重定价:1 积分=1 张后,三档积分数 ×20 → 20/80/200。
+// priceUsd 现在只是**参考价**(页面在通道未开通时会标注暂不可购买);真实收款金额
+// 一律取人民币 env(见下方 ALIPAY_PRICE_ENV_BY_PACK_ID),不按汇率换算。
 export const ADDON_PACKS = [
   { id: 'pack-1', books: 20, priceUsd: 3 },
   { id: 'pack-4', books: 80, priceUsd: 10 },
@@ -122,19 +118,7 @@ export const ADDON_PACKS = [
 
 export type AddonPackId = (typeof ADDON_PACKS)[number]['id'];
 
-export const CREEM_PRODUCT_ENV_BY_PACK_ID: Record<AddonPackId, CreemProductEnvKey> = {
-  'pack-1': 'CREEM_PRODUCT_ID_PACK_1',
-  'pack-4': 'CREEM_PRODUCT_ID_PACK_4',
-  'pack-10': 'CREEM_PRODUCT_ID_PACK_10',
-};
-
-export const WAFFO_PRODUCT_ENV_BY_PACK_ID: Record<AddonPackId, WaffoProductEnvKey> = {
-  'pack-1': 'WAFFO_PRODUCT_ID_PACK_1',
-  'pack-4': 'WAFFO_PRODUCT_ID_PACK_4',
-  'pack-10': 'WAFFO_PRODUCT_ID_PACK_10',
-};
-
-// 人民币定价(支付宝通道)。Waffo/Creem 走美元,支付宝只能按 CNY 收款,所以价格
+// 人民币定价(支付宝通道)。支付宝只能按 CNY 收款,所以价格
 // 必须另一套,**且必须由经营者定价**——代码里不写任何默认值,不按汇率换算:一旦
 // 内置数字,就会出现"页面和合同写着 A、实际扣 B"的钱货不符。
 //

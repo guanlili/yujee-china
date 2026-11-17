@@ -1,5 +1,11 @@
 # 支付接入清单（Waffo Pancake / 国内通道）
 
+> **已失效（2026-11-17）**：Waffo / Creem 两条海外卡通道整体删除（从未在生产跑起来过，
+> Waffo 开户被拒）。本文件仅作决策考古保留，**不要照抄其中的步骤**。
+> 现行口径见 `docs/specs/2026-11-14-cn-alipay-compliance.md`（支付宝合规与上线检查表）
+> 与 `docs/specs/2026-11-17-beian-entity-change-checklist.md`（备案主体变更材料）。
+
+
 > 状态：**代码已就绪，生产未配置**。线上容器没有任何 `WAFFO_*` 环境变量，
 > 登录用户点购买会拿到 503 `BILLING_NOT_CONFIGURED`，webhook 因缺 store 边界
 > 全部 fail-closed。本文是「把它真正接上」的材料清单与验收步骤。

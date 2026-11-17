@@ -71,8 +71,9 @@ export const messageRoleEnum = pgEnum('message_role', ['user', 'assistant']);
 // row lock; a 'missing' upsert must never downgrade an existing 'uploaded' row.
 export const albumPhotoStatusEnum = pgEnum('album_photo_status', ['uploaded', 'missing']);
 
-// Keep the legacy `stripe` enum value for existing production rows and Drizzle
-// migration compatibility. New application code writes `creem` only.
+// 历史枚举值,只为既有生产数据与 Drizzle 迁移兼容保留:stripe(2026-06 下线)、
+// creem(2026-11 删除通道)。当前没有任何代码路径会写入这两个值 —— 支付宝通道
+// 不建 customer 行,幂等靠 credit_ledger 的 external_event_id。
 export const customerProviderEnum = pgEnum('customer_provider', ['stripe', 'creem']);
 
 export const creditLedgerReasonEnum = pgEnum('credit_ledger_reason', [

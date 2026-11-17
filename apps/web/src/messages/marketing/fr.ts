@@ -72,7 +72,7 @@ export const fr: MarketingMessages = {
         h: '4. Partage des informations',
         body:
           'Nous ne vendons pas vos données personnelles et ne les transmettons pas à des tiers à des fins publicitaires. Nous partageons le nécessaire avec ces catégories de prestataires : hébergement cloud et stockage objet, traitement des paiements, envoi d’e-mails et inférence IA. ' +
-          'Concrètement : le cloud et le stockage sont chez Tencent Cloud (territoire chinois) ; les paiements par carte internationale sont traités par Waffo (entité à Hong Kong) et le canal Alipay n’est pas encore ouvert ; la mise en page et les textes sont traités par un service de modèles tiers, et la génération d’images utilise un prestataire du territoire chinois. ' +
+          'Concrètement : le cloud et le stockage sont chez Tencent Cloud (territoire chinois) ; le canal de paiement en ligne (Alipay) n’est pas encore ouvert ; aucun paiement n’est traité avant son ouverture ; la mise en page et les textes sont traités par un service de modèles tiers, et la génération d’images utilise un prestataire du territoire chinois. ' +
           'Nous pouvons également divulguer des informations lorsque la loi l’exige ou lorsque cela est nécessaire pour protéger les droits des utilisateurs et les nôtres.',
       },
       {
