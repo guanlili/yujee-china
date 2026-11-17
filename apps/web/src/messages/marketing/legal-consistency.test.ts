@@ -62,6 +62,18 @@ test('退款政策段落数五语种一致', () => {
   }
 });
 
+test('隐私政策段落数五语种一致', () => {
+  const base = getMarketingMessages('zh').privacy.sections.length;
+  assert.ok(base > 0);
+  for (const locale of LOCALES) {
+    assert.equal(
+      getMarketingMessages(locale).privacy.sections.length,
+      base,
+      `${locale} 的隐私政策段落数与 zh 不一致 —— 中文新增的「存储与保留」「跨境传输」必须同步`,
+    );
+  }
+});
+
 test('服务条款段落数五语种一致', () => {
   const base = getMarketingMessages('zh').terms.sections.length;
   for (const locale of LOCALES) {
@@ -69,6 +81,25 @@ test('服务条款段落数五语种一致', () => {
       getMarketingMessages(locale).terms.sections.length,
       base,
       `${locale} 的服务条款段落数与 zh 不一致`,
+    );
+  }
+});
+
+/** 商品边界（数字服务，不含实体印刷/配送）在五语种里各自的写法。 */
+const DIGITAL_ONLY_PHRASES: Record<Locale, string> = {
+  zh: '不提供实体印刷',
+  en: 'physical printing',
+  ja: '印刷・製本・配送は行いません',
+  es: 'impresión física',
+  fr: 'impression physique',
+};
+
+test('五语种条款都写明「不提供实体印刷/配送」', () => {
+  for (const locale of LOCALES) {
+    const terms = JSON.stringify(getMarketingMessages(locale).terms);
+    assert.ok(
+      terms.includes(DIGITAL_ONLY_PHRASES[locale]),
+      `${locale} 的条款没写商品边界 —— 容易被读成卖实体相册`,
     );
   }
 });
