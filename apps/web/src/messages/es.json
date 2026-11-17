@@ -130,7 +130,8 @@
       "PDF en alta resolución listo para imprimir, sin marca de agua",
       "Tus fotos originales nunca se suben: solo vistas previas comprimidas para la maquetación"
     ],
-    "loginHint": "Elige un paquete e inicia sesión para pagar; volverás justo a esta página."
+    "loginHint": "Elige un paquete e inicia sesión para pagar; volverás justo a esta página.",
+    "checkoutClosed": "Compra no disponible aún"
   },
   "dashboard": {
     "common": {

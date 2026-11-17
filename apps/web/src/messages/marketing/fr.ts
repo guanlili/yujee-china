@@ -449,6 +449,7 @@ export const fr: MarketingMessages = {
     ctaBody: 'Déposez un dossier de photos et regardez le livre déjà mis en page avant de décider d’acheter quoi que ce soit.',
     ctaButton: 'Créer un livre',
     buyLink: 'Acheter des crédits',
+    checkoutClosed: 'Achat bientôt disponible',
   },
   footer: {
     tagline: 'Vos photos éparpillées deviennent un magazine à garder.',

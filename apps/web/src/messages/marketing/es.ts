@@ -449,6 +449,7 @@ export const es: MarketingMessages = {
     ctaBody: 'Sube una carpeta de fotos y mira el libro ya maquetado antes de decidir si compras algo.',
     ctaButton: 'Hacer un libro',
     buyLink: 'Comprar créditos',
+    checkoutClosed: 'Compra no disponible aún',
   },
   footer: {
     tagline: 'Convierte las fotos dispersas en una revista que merece guardarse.',

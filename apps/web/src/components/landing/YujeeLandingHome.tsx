@@ -4,6 +4,7 @@ import { pick } from '@/lib/i18n/pick';
 import type { Locale } from '@/lib/i18n/routing';
 import { getMarketingMessages } from '@/messages/marketing';
 import { HeroComposer } from './HeroComposer';
+import { isCheckoutConfigured } from '@/lib/billing/checkout-availability';
 import { YujeeLandingHomeClient } from './YujeeLandingHomeClient';
 
 type Props = {
@@ -44,6 +45,7 @@ export function YujeeLandingHome({ locale }: Props) {
       locale={locale}
       composer={composer}
       heroSamples={heroSamples}
+      checkoutEnabled={isCheckoutConfigured()}
     />
   );
 }
