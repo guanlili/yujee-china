@@ -242,7 +242,7 @@
         "REFUND": "Refund",
         "ADMIN_ADJUST": "Adjustment"
       },
-      "channelNote": "Purchases currently go through overseas card payment (Waffo) and settle in USD. The mainland-China Alipay channel is not live yet; CNY purchases are not available until it is."
+      "channelNote": "Online checkout (Alipay) is being enabled; purchases are unavailable until it goes live."
     },
     "settings": {
       "title": "Settings",

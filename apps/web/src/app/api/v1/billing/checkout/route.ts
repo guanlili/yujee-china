@@ -4,8 +4,6 @@ import { parseBody } from '@/lib/api/zod-parse';
 import { ok } from '@/lib/api/ok';
 import { fromException } from '@/lib/api/from-exception';
 import { defaultLocale, locales } from '@/lib/i18n/routing';
-import { creemService } from '@/services/billing/creem-service';
-import { waffoService } from '@/services/billing/waffo-service';
 import { alipayService } from '@/services/billing/alipay-service';
 import { ACTIVE_CHECKOUT_PROVIDER } from '@/config/pricing';
 
@@ -18,12 +16,9 @@ const schema = z.object({
   from: z.enum(['album', 'create', 'home']).optional(),
 });
 
-// 三个实现 createPackCheckout 签名一致;按 ACTIVE_CHECKOUT_PROVIDER 单点切换。
-// 用显式映射而不是三元链:新增通道时漏写一个分支会在类型层面报错,而不是悄悄
-// 落到 creem。
+// 按 ACTIVE_CHECKOUT_PROVIDER 单点切换。用显式映射而不是三元链:新增通道时漏写一个
+// 分支会在类型层面报错,而不是悄悄落到别的通道。当前只有支付宝一条。
 const CHECKOUT_SERVICES = {
-  waffo: waffoService,
-  creem: creemService,
   alipay: alipayService,
 } as const;
 const checkoutService = CHECKOUT_SERVICES[ACTIVE_CHECKOUT_PROVIDER];

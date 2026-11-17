@@ -242,7 +242,7 @@
         "REFUND": "返金",
         "ADMIN_ADJUST": "調整"
       },
-      "channelNote": "現在の購入経路は海外クレジットカード（Waffo）で、米ドル決済です。中国本土の Alipay 経路は未開通のため、開通前は人民元での購入はできません。"
+      "channelNote": "オンライン決済（Alipay）は準備中です。開通までは購入できません。"
     },
     "settings": {
       "title": "設定",

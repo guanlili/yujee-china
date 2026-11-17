@@ -236,7 +236,7 @@ export default async function PricingPage({ params }: Props) {
           because the copy above it sells the free credits — the reader has not
           decided to pay yet. The secondary link is the only buy path on this
           page: checkout buttons live in the home #pricing block (that is where
-          the Waffo call sits) and repointing the footer at /pricing removed the
+          the checkout call sits) and repointing the footer at /pricing removed the
           other route to them. A money page with no way to pay was the bug.
         */}
         <aside className="rounded-2xl border border-[var(--line)] p-8">

@@ -242,7 +242,7 @@
         "REFUND": "Remboursement",
         "ADMIN_ADJUST": "Ajustement"
       },
-      "channelNote": "Les achats passent actuellement par une carte bancaire internationale (Waffo) et sont réglés en USD. Le canal Alipay pour la Chine continentale n’est pas encore actif ; aucun achat en CNY n’est proposé avant son ouverture."
+      "channelNote": "Le paiement en ligne (Alipay) est en cours d’activation ; aucun achat n’est possible avant son ouverture."
     },
     "settings": {
       "title": "Paramètres",

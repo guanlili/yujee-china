@@ -710,7 +710,7 @@ export function YujeeLandingHomeClient({
               ))}
             </div>
             {/* 明示官方演示,不是用户作品 —— 没有这行,样书区读起来就是"客户案例"
-                (Creem 审核 2026-07-15 据此判定 social proof:账上零客户,页面却在展示
+                (2026-07-15 海外审查据此判定 social proof:账上零客户,页面却在展示
                 六本"成书")。标注后它是产品演示,不再是社交证明。放网格下方,小字。 */}
             <p className="mt-4 text-center text-xs text-[var(--meta)]">{c.samplesNote}</p>
             {/* 与样书区顶部那处「全部示例」同一入口,同一条 44px 规则:

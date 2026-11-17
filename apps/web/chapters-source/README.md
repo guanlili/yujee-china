@@ -4,6 +4,13 @@
 
 宠物小窝、旅行小岛、记忆宫殿以 `/pet`、`/travel`、`/palace` 为入口；五种语言沿用官网前缀。源码在本目录，已构建文件在 `../public/chapters`，由现有 Next.js rewrite 提供。没有新部署服务、数据库迁移或 AI 调用。
 
+### 字体只有一个源
+
+`fonts/` 是字体的唯一真源（47 个文件，6.4MB）。`public/fonts`、`public/shared/fonts`、
+`modules/*/public/fonts` 都不再进 git —— `build.mjs` 在打包前按 `fonts/manifest.json`
+把它们逐份铺回去，产物 URL 与以前一字不差（`../public/chapters` 不需要重新提交）。
+要加字体：先把文件放进 `fonts/`，再改 `manifest.json` 里对应目录的清单。
+
 执行 `npm ci && npm test && npm run build`（构建末尾会自动跑 `scripts/verify-build.mjs`）。将 dist 中三个篇章和五个语言目录复制到 `../public/chapters` 后随官网发布。请勿复制本地根页面或兼容目录覆盖官网首页。
 
 个人照片与相册目前保存在同域 IndexedDB，尚未连接官网账号的云相册。跨设备前需要导出备份。空白账号不注入虚构宠物或相册；原始迁移数据保留在备份中。移除旧验收内容仅匹配已知 ID 与原始内容，用户修改会保留。

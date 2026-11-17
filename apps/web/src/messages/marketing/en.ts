@@ -81,7 +81,7 @@ export const en: MarketingMessages = {
         h: '4. Information Sharing',
         body:
           'We do not sell your personal information or share it with third parties for advertising. We share only what is necessary with service providers that operate the product: cloud hosting and object storage, payment processing, email delivery, and AI inference. ' +
-          'Specifically, hosting and storage run on Tencent Cloud (mainland China); overseas card payments are processed by Waffo (an entity registered in Hong Kong), and the Alipay channel is not yet live; layout and captions are produced by third-party model services, while image generation uses a provider in mainland China. ' +
+          'Specifically, hosting and storage run on Tencent Cloud (mainland China); online checkout (Alipay) is not live yet, so no payment information is processed before it is; layout and captions are produced by third-party model services, while image generation uses a provider in mainland China. ' +
           'We may also disclose data when required by law or when necessary to protect users and our legitimate rights.',
       },
       {

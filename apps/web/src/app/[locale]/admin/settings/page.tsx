@@ -20,9 +20,13 @@ export default async function AdminSettingsPage({
 
   const t = getMessages(locale).admin.settings;
 
+  // 只剩支付宝一条通道(2026-11-17 删掉 Waffo/Creem)。这里回显的是「密钥是否配齐」,
+  // 与购买入口的可用性判定同一口径。
   const providers = [
-    { name: 'Waffo', on: Boolean(env.WAFFO_MERCHANT_ID) },
-    { name: 'Creem(兜底)', on: Boolean(env.CREEM_API_KEY) },
+    {
+      name: '支付宝(电脑网站支付)',
+      on: Boolean(env.ALIPAY_APP_ID && env.ALIPAY_PRIVATE_KEY && env.ALIPAY_PUBLIC_KEY),
+    },
   ];
 
   // 生图 provider 的**生效状态**,不是配置值的回显:resolveImageProvider 返回 null 就
