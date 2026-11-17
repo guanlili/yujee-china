@@ -208,5 +208,6 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json
-checked-at: 213ccbc7
-fingerprint: 25d2b3107f2c -->
+checked-at: fe919323
+fingerprint: 25d2b3107f2c
+-->

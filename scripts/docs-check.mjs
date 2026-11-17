@@ -126,24 +126,23 @@ for (const file of findMarkdown(REPO_ROOT)) {
     continue;
   }
 
-  // 文档描述的是别处的代码;把文档自身排除,免得改文档触发自己。
-  const pathspec = [...block.paths, `:(exclude)${rel}`];
+  // 文档自身在 fingerprintOf 里被排除,免得「改文档」被算成「覆盖路径变了」。
   const current = fingerprintOf(block.paths, rel);
 
   if (STAMP) {
-    if (block.fingerprint === current) continue;
     const head = git(['rev-parse', '--short=8', 'HEAD']);
-    const body = [
-      'doc-scope',
-      `paths: ${block.paths.join(', ')}`,
-      `checked-at: ${head}`,
-      `fingerprint: ${current}`,
-    ].join('\n');
-    const next = text.replace(BLOCK, `<!-- ${body} -->`);
-    if (next !== text) {
-      writeFileSync(file, next);
-      stamped.push(rel);
-    }
+    const next = text.replace(
+      BLOCK,
+      [
+        '<!-- doc-scope',
+        `paths: ${block.paths.join(', ')}`,
+        `checked-at: ${head}`,
+        `fingerprint: ${current}`,
+        '-->',
+      ].join('\n'),
+    );
+    if (next !== text) writeFileSync(file, next);
+    if (block.fingerprint !== current) stamped.push(rel);
     continue;
   }
 
