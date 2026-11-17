@@ -204,14 +204,10 @@ if (stale.length) {
       console.error(`  ✖ ${s.rel}`);
       console.error(`      记录: ${s.recorded}   现状: ${s.current}`);
       // 逐个路径给落点:哪条覆盖路径下面现在有多少文件,方便定位改了什么。
+      // 计数走同一套 glob 匹配 —— 直接拿 `ls-tree -- <glob>` 会恒等于 0,看着像没文件。
       for (const p of s.paths) {
-        let count = 0;
-        try {
-          const out = git(['ls-tree', '-r', '--full-tree', 'HEAD', '--', p]);
-          count = out ? out.split('\n').length : 0;
-        } catch {
-          count = 0;
-        }
+        const re = globToRegex(p);
+        const count = TREE_ROWS.filter((row) => row.path !== s.rel && re.test(row.path)).length;
         console.error(`      · ${p}（当前 ${count} 个文件）`);
       }
     } else {
