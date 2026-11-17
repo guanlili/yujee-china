@@ -119,7 +119,15 @@ jobs:
             }") || { echo "::error::飞书 webhook 请求失败(curl 返回非 0)"; exit 1; }
           code=$(printf '%s' "$resp" | jq -r '.code // .StatusCode // -1' 2>/dev/null || echo -1)
           if [ "$code" != "0" ]; then
-            echo "::error::飞书告警未送达 (code=$code): $resp"
+            # 19007 = 机器人未启用/被移除:webhook 地址还在,但消息进不了群。
+            # 这是群侧权限问题,代码改不动,只能由群管理员处理 —— 所以把话说到位,
+            # 别让人对着「告警没发出去」猜。
+            if [ "$code" = "19007" ]; then
+              echo "::error::飞书告警未送达 (code=19007 Bot Not Enabled): 群里的自定义机器人被停用或被移除。请群管理员在飞书群「设置 → 群机器人」重新启用/重建机器人,并把新 webhook 写入仓库 secret FEISHU_ALERT_WEBHOOK。响应: $resp"
+            else
+              echo "::error::飞书告警未送达 (code=$code): $resp"
+            fi
+            echo "本次 CI 失败仍可在 Actions 页面查看: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           echo "飞书告警已送达 (code=0)"
@@ -390,7 +398,12 @@ jobs:
             }") || { echo "::error::飞书 webhook 请求失败(curl 返回非 0)"; exit 1; }
           code=$(printf '%s' "$resp" | jq -r '.code // .StatusCode // -1' 2>/dev/null || echo -1)
           if [ "$code" != "0" ]; then
-            echo "::error::飞书告警未送达 (code=$code): $resp"
+            if [ "$code" = "19007" ]; then
+              echo "::error::飞书告警未送达 (code=19007 Bot Not Enabled): 群里的自定义机器人被停用或被移除。请群管理员在飞书群「设置 → 群机器人」重新启用/重建机器人,并把新 webhook 写入仓库 secret FEISHU_ALERT_WEBHOOK。响应: $resp"
+            else
+              echo "::error::飞书告警未送达 (code=$code): $resp"
+            fi
+            echo "本次 CI 失败仍可在 Actions 页面查看: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           echo "飞书告警已送达 (code=0)"

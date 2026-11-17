@@ -6,22 +6,32 @@
 //   <!-- doc-scope
 //   paths: engine/src/**, apps/web/src/lib/env.ts
 //   checked-at: 98d40cb8
+//   fingerprint: 3f1a92b7c0de
 //   -->
 //
-// 规则:covered paths 自 checked-at 以来有新提交(或工作区有未提交改动),
-// 而 checked-at 没跟上 => 判定文档已过期,退出码 1。
+// 规则:covered paths 的内容跟 `fingerprint` 对不上,说明代码变了而文档没回头核对 =>
+// 判定文档已过期,退出码 1。
 //
-// 修复方式:回头核对该文档,确认描述仍属实(不属实就改),然后把 checked-at 更新到
-// 当前提交。checked-at 记录的是「已核对」,不是「已改写」—— 内容无需改动时也要更新它。
+// 为什么用内容指纹而不是提交号(2026-11-17 修):
+// 原来判定的是「自 checked-at 提交以来这些路径有没有新提交」。但 squash 合并会把分支
+// 提交改写成新 hash —— `checked-at` 指向的提交根本不在 main 历史里,于是每次合并后
+// docs job 必然红一次,还得再补一个 docs PR 修它。两跳修一次、每次合并踩一次。
+// 指纹比较的是**文件内容**,squash / rebase / amend 都不改变 blob,所以天然免疫。
+// `checked-at` 保留成人可读的「上次核对到哪个提交」,不参与判定。
 //
-// 这么做是因为「改完记得更新文档」这类软约束在实践中一定会被跳过。让它在 typecheck
-// 里报错,比写在文档尾巴上靠自觉可靠。
+// 修复方式:`pnpm docs:stamp`(重算所有文档的 fingerprint,并把 checked-at 指到 HEAD)。
+// 前提是你真的回头核对过内容 —— 指纹能证明「内容没变」,不能证明「人看过」。
+//
+// 这么做是因为「改完记得更新文档」这类软约束在实践中一定会被跳过。让它在 CI 里报错,
+// 比写在文档尾巴上靠自觉可靠。
 
 import { execFileSync } from 'node:child_process';
-import { readFileSync, readdirSync, lstatSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readFileSync, readdirSync, lstatSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 const REPO_ROOT = process.cwd();
+const STAMP = process.argv.includes('--stamp');
 const SKIP_DIRS = new Set([
   'node_modules', '.git', '.next', '.turbo', 'dist', 'build',
   '.venv', '__pycache__', '.pytest_cache', '.worktrees', '.superpowers',
@@ -62,19 +72,88 @@ function parseBlock(text) {
   const body = m[1];
   const paths = /^\s*paths:\s*(.+)$/m.exec(body)?.[1] ?? '';
   const checkedAt = /^\s*checked-at:\s*(\S+)\s*$/m.exec(body)?.[1] ?? '';
+  const fingerprint = /^\s*fingerprint:\s*(\S+)\s*$/m.exec(body)?.[1] ?? '';
   return {
     paths: paths.split(',').map((p) => p.trim()).filter(Boolean),
     checkedAt,
+    fingerprint,
   };
+}
+
+/**
+ * glob → 正则。git 的 pathspec glob 与 shell 不同:`**` 跨目录、`*` 不跨 `/`。
+ *
+ * 为什么不用 `git ls-tree -- <glob>`:那条命令的 pathspec 不支持 `**` 展开(`:(glob)`
+ * magic 在 ls-tree 上直接报错),传 `apps/web/src/app/api/**` 会匹配到 0 个文件 ——
+ * 指纹于是只覆盖了不含通配符的几条路径,**Glob 覆盖的代码改了也不报**。所以自己取全树
+ * 再匹配(2014 个文件,一次 ls-tree 足够)。
+ */
+function globToRegex(pattern) {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  const body = escaped
+    .replace(/\*\*\//g, '\u0000DSLASH\u0000')
+    .replace(/\*\*/g, '\u0000DSTAR\u0000')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\?/g, '[^/]')
+    .replace(/\u0000DSLASH\u0000/g, '(?:.*/)?')
+    .replace(/\u0000DSTAR\u0000/g, '.*');
+  return new RegExp(`^${body}$`);
+}
+
+/**
+ * 覆盖路径下有没有未提交改动。指纹只看已提交内容,所以这类改动不会被判红 —— 但提
+ * 一句「提交后要回头核对」有用,不然你改完代码跑绿就以为没自己的事。
+ */
+function dirtyUnder(paths, rel) {
+  try {
+    const out = git(['status', '--porcelain', '--', ...paths, `:(exclude)${rel}`]);
+    return out ? out.split('\n') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 全树只读一次,后面按文档逐个过滤。 */
+const TREE_ROWS = (() => {
+  let out = '';
+  try {
+    out = git(['ls-tree', '-r', '--full-tree', 'HEAD']);
+  } catch {
+    return [];
+  }
+  return out
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const tab = line.indexOf('\t');
+      return { meta: line.slice(0, tab), path: line.slice(tab + 1) };
+    });
+})();
+
+/**
+ * 覆盖路径的内容指纹。
+ *
+ * 取匹配文件的「mode + blob hash + path」三列再哈希 —— 只跟内容有关、与提交历史无关,
+ * 所以 squash / rebase / amend 之后完全一致。删掉一个被覆盖的文件同样会变(少一行),
+ * 不会因为「文件没了」而漏报。文档自身被排除,免得「改文档」被算成「覆盖路径变了」。
+ */
+function fingerprintOf(paths, rel) {
+  const matchers = paths.map(globToRegex);
+  const rows = TREE_ROWS.filter(
+    (row) => row.path !== rel && matchers.some((re) => re.test(row.path)),
+  ).map((row) => row.meta);
+  return createHash('sha1').update(rows.join('\n')).digest('hex').slice(0, 12);
 }
 
 const stale = [];
 const pending = [];
 const broken = [];
+const stamped = [];
 
 for (const file of findMarkdown(REPO_ROOT)) {
   const rel = relative(REPO_ROOT, file).split(sep).join('/');
-  const block = parseBlock(readFileSync(file, 'utf8'));
+  const text = readFileSync(file, 'utf8');
+  const block = parseBlock(text);
   if (!block) continue;
 
   if (!block.paths.length || !block.checkedAt) {
@@ -82,18 +161,50 @@ for (const file of findMarkdown(REPO_ROOT)) {
     continue;
   }
 
-  try {
-    git(['rev-parse', '--verify', `${block.checkedAt}^{commit}`]);
-  } catch {
-    broken.push(`${rel}: checked-at "${block.checkedAt}" 不是有效提交`);
+  // 文档自身在 fingerprintOf 里被排除,免得「改文档」被算成「覆盖路径变了」。
+  const current = fingerprintOf(block.paths, rel);
+
+  if (STAMP) {
+    const head = git(['rev-parse', '--short=8', 'HEAD']);
+    const next = text.replace(
+      BLOCK,
+      [
+        '<!-- doc-scope',
+        `paths: ${block.paths.join(', ')}`,
+        `checked-at: ${head}`,
+        `fingerprint: ${current}`,
+        '-->',
+      ].join('\n'),
+    );
+    if (next !== text) writeFileSync(file, next);
+    if (block.fingerprint !== current) stamped.push(rel);
     continue;
   }
 
-  // 文档描述的是别处的代码;把文档自身排除,免得改文档触发自己。
-  const pathspec = [...block.paths, `:(exclude)${rel}`];
+  if (block.fingerprint) {
+    if (block.fingerprint !== current) {
+      stale.push({ rel, kind: 'fingerprint', recorded: block.fingerprint, current, paths: block.paths });
+      continue;
+    }
+    // 指纹只看得见已提交的内容;工作区还有未提交改动时给一条提示(不算失败)。
+    const dirty = dirtyUnder(block.paths, rel);
+    // 注意空数组也是真值,必须判 length —— 否则每份文档都会挂一条没有内容的提示。
+    if (dirty.length) pending.push({ rel, dirty });
+    continue;
+  }
+
+  // 兼容路径:还没 stamp 过的文档仍按提交历史判。squash 之后 checked-at 解析不到,
+  // 这时给一条能直接执行的修复指令,而不是含糊的「不是有效提交」。
+  try {
+    git(['rev-parse', '--verify', `${block.checkedAt}^{commit}`]);
+  } catch {
+    broken.push(`${rel}: checked-at "${block.checkedAt}" 解析不到,且没有 fingerprint —— 跑 pnpm docs:stamp`);
+    continue;
+  }
 
   let commits = '';
   let dirty = '';
+  const pathspec = [...block.paths, `:(exclude)${rel}`];
   try {
     commits = git(['log', '--format=%h %s', `${block.checkedAt}..HEAD`, '--', ...pathspec]);
     dirty = git(['status', '--porcelain', '--', ...pathspec]);
@@ -102,12 +213,22 @@ for (const file of findMarkdown(REPO_ROOT)) {
   }
 
   // 硬失败只看已提交历史。工作区脏不算失败 —— 否则你在改代码的过程中永远跑不绿
-  // typecheck。未提交的改动只作提示,等它提交进来了自然会变成硬失败。
+  // 本地校验。未提交的改动只作提示,等它提交进来了自然会变成硬失败。
   if (commits) {
-    stale.push({ rel, checkedAt: block.checkedAt, commits: commits.split('\n') });
+    stale.push({ rel, kind: 'commits', checkedAt: block.checkedAt, commits: commits.split('\n') });
   } else if (dirty) {
     pending.push({ rel, dirty: dirty.split('\n') });
   }
+}
+
+if (STAMP) {
+  if (stamped.length) {
+    for (const rel of stamped) console.log(`  ✔ ${rel}`);
+    console.log(`\n已更新 ${stamped.length} 份文档的 fingerprint。前提是这些文档的内容你确实核对过。`);
+  } else {
+    console.log('所有文档的 fingerprint 都是最新的。');
+  }
+  process.exit(0);
 }
 
 if (broken.length) {
@@ -117,15 +238,27 @@ if (broken.length) {
 }
 
 if (stale.length) {
-  console.error('以下文档已过期 —— 覆盖范围内的代码变了,但 checked-at 没跟上:\n');
+  console.error('以下文档已过期 —— 覆盖路径的内容变了,但文档没有回头核对:\n');
   for (const s of stale) {
-    console.error(`  ✖ ${s.rel}  (checked-at: ${s.checkedAt})`);
-    for (const c of s.commits.slice(0, 5)) console.error(`      · ${c}`);
-    if (s.commits.length > 5) console.error(`      · …还有 ${s.commits.length - 5} 个提交`);
+    if (s.kind === 'fingerprint') {
+      console.error(`  ✖ ${s.rel}`);
+      console.error(`      记录: ${s.recorded}   现状: ${s.current}`);
+      // 逐个路径给落点:哪条覆盖路径下面现在有多少文件,方便定位改了什么。
+      // 计数走同一套 glob 匹配 —— 直接拿 `ls-tree -- <glob>` 会恒等于 0,看着像没文件。
+      for (const p of s.paths) {
+        const re = globToRegex(p);
+        const count = TREE_ROWS.filter((row) => row.path !== s.rel && re.test(row.path)).length;
+        console.error(`      · ${p}（当前 ${count} 个文件）`);
+      }
+    } else {
+      console.error(`  ✖ ${s.rel}  (checked-at: ${s.checkedAt})`);
+      for (const c of s.commits.slice(0, 5)) console.error(`      · ${c}`);
+      if (s.commits.length > 5) console.error(`      · …还有 ${s.commits.length - 5} 个提交`);
+    }
     console.error('');
   }
-  console.error('修复:核对文档内容是否仍属实(不属实就改),然后把 checked-at 更新到当前提交。');
-  console.error('内容确实无需改动时也要更新 —— checked-at 记录的是「已核对」,不是「已改写」。\n');
+  console.error('修复:回头核对该文档,确认描述仍属实(不属实就改),然后跑 pnpm docs:stamp。');
+  console.error('内容确实无需改动时也要 stamp —— 它记录的是「已核对」,不是「已改写」。\n');
 }
 
 if (broken.length || stale.length) process.exit(1);

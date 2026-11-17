@@ -229,5 +229,6 @@ print/RPC/interactive 三种模式。**通用 agent loop 在 `packages/agent`**,
 
 <!-- doc-scope
 paths: packages/design-agent/src/**, apps/web/src/lib/agent/design-agent-client.ts
-checked-at: a6ddab65
+checked-at: e541ab73
+fingerprint: 7b0e0c60eafb
 -->
