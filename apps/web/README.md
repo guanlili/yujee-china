@@ -4,6 +4,11 @@ Next.js app for the product UI, auth, billing, album state, V3 orchestration, an
 
 ## Responsibilities
 
+- **购买入口的可用性判定**:`isCheckoutConfigured()`(`lib/billing/checkout-availability.ts`)按当前
+  `ACTIVE_CHECKOUT_PROVIDER` 查对应凭据;首页在服务端直接算,`/[locale]/credits` 与相册购买弹窗
+  是客户端组件、拿不到 env,统一走 `GET /api/v1/billing/checkout-availability`(只返回一个布尔,
+  不暴露 provider 名与密钥)经 `useCheckoutAvailability()` 读取。不可用时按钮禁用、文案换
+  「暂不可购买」—— 点下去才 503 等于给用户一个坏按钮。
 - User-facing pages and editor shell.
 - Auth through `better-auth`.
 - Billing/credits through Waffo Pancake(`@waffo/pancake-ts` SDK,RSA 验签,主通道,
@@ -497,5 +502,5 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**
-checked-at: 49d960fa
+checked-at: 04ba2917
 -->

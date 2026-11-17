@@ -1,6 +1,7 @@
 'use client';
 
 import { checkoutErrorMessage } from '@/lib/billing/checkout-error';
+import { useCheckoutAvailability } from '@/lib/billing/use-checkout-availability';
 import { use, useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { getMessages } from '@/lib/i18n/messages';
@@ -53,6 +54,8 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
   const [entries, setEntries] = useState<Entry[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [buying, setBuying] = useState<string | null>(null);
+  // 通道没配好时不给可点的按钮 —— 点下去才 503,用户看到的是「坏了的按钮」。
+  const checkoutEnabled = useCheckoutAvailability();
 
   const loadCreditData = useCallback(async () => {
     try {
@@ -171,10 +174,15 @@ export default function CreditsPage({ params }: { params: Promise<{ locale: Loca
                 <button
                   type="button"
                   onClick={() => buy(pack.id)}
-                  disabled={buying !== null}
+                  disabled={buying !== null || !checkoutEnabled}
+                  title={checkoutEnabled ? undefined : getMessages(locale).pricing.checkoutClosed}
                   className="w-full py-2.5 text-sm font-semibold rounded-full border border-[var(--fg)] text-[var(--fg)] hover:bg-[var(--fg)] hover:text-white transition-colors disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-[var(--fg)]"
                 >
-                  {buying === pack.id ? t.redirecting : t.buy}
+                  {buying === pack.id
+                    ? t.redirecting
+                    : checkoutEnabled
+                      ? t.buy
+                      : getMessages(locale).pricing.checkoutClosed}
                 </button>
               </div>
             ))}

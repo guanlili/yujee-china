@@ -19,6 +19,7 @@
    ════════════════════════════════════════════════════════════════════════════ */
 
 import { checkoutErrorMessage } from '@/lib/billing/checkout-error';
+import { useCheckoutAvailability } from '@/lib/billing/use-checkout-availability';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ADDON_PACKS, PHOTOS_PER_CREDIT } from '@/config/pricing';
@@ -54,6 +55,8 @@ export function CreditsPurchaseModal({
   const [error, setError] = useState<string | null>(null);
   const [manualPayUrl, setManualPayUrl] = useState<string | null>(null);
   const [checkingOut, setCheckingOut] = useState(false);
+  // 通道没配好时不给可点的 CTA —— 弹窗在相册里,离 503 更远,更需要提前说清楚。
+  const checkoutEnabled = useCheckoutAvailability();
 
   // Baseline balance captured when the modal opens; a top-up is balance STRICTLY
   // above this (the webhook settles the purchase). Ref, not state — polling reads it.
@@ -265,11 +268,23 @@ export function CreditsPurchaseModal({
 
               {error && <p className="credits-modal-error">{error}</p>}
 
-              <button type="button" className="credits-modal-cta" onClick={startCheckout} disabled={checkingOut}>
+              <button
+                type="button"
+                className="credits-modal-cta"
+                onClick={startCheckout}
+                disabled={checkingOut || !checkoutEnabled}
+                title={checkoutEnabled ? undefined : aT('支付通道尚未开通', 'Checkout is not enabled yet')}
+              >
                 <span>
-                  {checkingOut ? (aT('正在跳转…', 'Starting…')) : aT('立即购买', 'Buy now')}
+                  {!checkoutEnabled
+                    ? aT('暂不可购买', 'Checkout coming soon')
+                    : checkingOut
+                      ? aT('正在跳转…', 'Starting…')
+                      : aT('立即购买', 'Buy now')}
                 </span>
-                <span className="credits-modal-cta-amt">${selected.priceUsd}</span>
+                {checkoutEnabled && (
+                  <span className="credits-modal-cta-amt">${selected.priceUsd}</span>
+                )}
               </button>
 
               <div className="credits-modal-foot">

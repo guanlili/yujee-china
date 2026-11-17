@@ -120,6 +120,9 @@ test('web keeps the v1 infrastructure route whitelist used by V3', () => {
     'apps/web/src/app/api/v1/albums/[uuid]/members/route.ts',
     'apps/web/src/app/api/v1/albums/[uuid]/members/[userId]/route.ts',
     'apps/web/src/app/api/v1/billing/checkout/route.ts',
+    // 购买入口可用性(2026-11-17):只回一个布尔,匿名可读 —— 首页/定价区在未登录时
+    // 也要能判定「现在能不能买」。不返回 provider 名、不返回缺哪把钥匙。
+    'apps/web/src/app/api/v1/billing/checkout-availability/route.ts',
     'apps/web/src/app/api/v1/credit/balance/route.ts',
     'apps/web/src/app/api/v1/feedback/route.ts',
     'apps/web/src/app/api/v1/credit/history/route.ts',
