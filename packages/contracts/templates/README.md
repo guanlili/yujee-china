@@ -93,6 +93,6 @@ under `packages/contracts/fixtures/skeleton/`.
 
 <!-- doc-scope
 paths: packages/contracts/templates/*.json, packages/contracts/src/templates.ts, packages/contracts/src/render/html-templates/**, apps/web/src/components/album/web-registry.ts
-checked-at: 449d6c8c
+checked-at: b5813366
 fingerprint: 4aa7107b5c23
 -->
