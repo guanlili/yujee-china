@@ -111,3 +111,23 @@ test('只改文档自身不算覆盖路径变更(不报红)', () => {
   const check = run(dir, []);
   assert.equal(check.code, 0, check.out);
 });
+
+test('尚未 stamp 的旧文档仍按提交历史判(兼容分支不炸)', () => {
+  const dir = makeRepo();
+  dirs.push(dir);
+  // 把 fingerprint 摘掉、checked-at 指向当前 HEAD —— 模拟改造前留下的旧块。
+  const doc = readFileSync(join(dir, 'README.md'), 'utf8');
+  const legacy = doc
+    .replace(/fingerprint: [0-9a-f]{12}\n/, '')
+    .replace(/checked-at: [0-9a-f]{8}/, `checked-at: ${git(dir, ['rev-parse', '--short=8', 'HEAD'])}`);
+  writeFileSync(join(dir, 'README.md'), legacy);
+  git(dir, ['commit', '-q', '-am', 'docs: legacy block']);
+  const okRun = run(dir, []);
+  assert.equal(okRun.code, 0, okRun.out);
+
+  writeFileSync(join(dir, 'src/lib/env.ts'), 'export const b = 2;\n');
+  git(dir, ['commit', '-q', '-am', 'change env']);
+  const staleRun = run(dir, []);
+  assert.equal(staleRun.code, 1, staleRun.out);
+  assert.match(staleRun.out, /README\.md/);
+});

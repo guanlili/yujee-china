@@ -204,6 +204,7 @@ for (const file of findMarkdown(REPO_ROOT)) {
 
   let commits = '';
   let dirty = '';
+  const pathspec = [...block.paths, `:(exclude)${rel}`];
   try {
     commits = git(['log', '--format=%h %s', `${block.checkedAt}..HEAD`, '--', ...pathspec]);
     dirty = git(['status', '--porcelain', '--', ...pathspec]);
