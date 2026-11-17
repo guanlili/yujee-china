@@ -80,34 +80,56 @@ function parseBlock(text) {
   };
 }
 
-const EMPTY_FP = createHash('sha1').update('').digest('hex').slice(0, 12);
+/**
+ * glob → 正则。git 的 pathspec glob 与 shell 不同:`**` 跨目录、`*` 不跨 `/`。
+ *
+ * 为什么不用 `git ls-tree -- <glob>`:那条命令的 pathspec 不支持 `**` 展开(`:(glob)`
+ * magic 在 ls-tree 上直接报错),传 `apps/web/src/app/api/**` 会匹配到 0 个文件 ——
+ * 指纹于是只覆盖了不含通配符的几条路径,**Glob 覆盖的代码改了也不报**。所以自己取全树
+ * 再匹配(2014 个文件,一次 ls-tree 足够)。
+ */
+function globToRegex(pattern) {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  const body = escaped
+    .replace(/\*\*\//g, '\u0000DSLASH\u0000')
+    .replace(/\*\*/g, '\u0000DSTAR\u0000')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\?/g, '[^/]')
+    .replace(/\u0000DSLASH\u0000/g, '(?:.*/)?')
+    .replace(/\u0000DSTAR\u0000/g, '.*');
+  return new RegExp(`^${body}$`);
+}
+
+/** 全树只读一次,后面按文档逐个过滤。 */
+const TREE_ROWS = (() => {
+  let out = '';
+  try {
+    out = git(['ls-tree', '-r', '--full-tree', 'HEAD']);
+  } catch {
+    return [];
+  }
+  return out
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => {
+      const tab = line.indexOf('\t');
+      return { meta: line.slice(0, tab), path: line.slice(tab + 1) };
+    });
+})();
 
 /**
  * 覆盖路径的内容指纹。
  *
- * 取 `git ls-tree` 的「mode + blob hash + path」三列再哈希 —— 只跟内容有关、与提交
- * 历史无关,所以 squash / rebase / amend 之后完全一致。删掉一个被覆盖的文件同样会变
- * (三元组少一行),不会因为「文件没了」而漏报。
+ * 取匹配文件的「mode + blob hash + path」三列再哈希 —— 只跟内容有关、与提交历史无关,
+ * 所以 squash / rebase / amend 之后完全一致。删掉一个被覆盖的文件同样会变(少一行),
+ * 不会因为「文件没了」而漏报。文档自身被排除,免得「改文档」被算成「覆盖路径变了」。
  */
 function fingerprintOf(paths, rel) {
-  // `ls-tree` 不支持 `:(exclude)` 这种 pathspec magic,所以先取全部、再把文档自己那行剔掉
-  // —— 否则「改文档」会被算成「覆盖路径变了」,文档永远 stamp 不完。
-  let tree;
-  try {
-    tree = git(['ls-tree', '-r', '--full-tree', 'HEAD', '--', ...paths]);
-  } catch {
-    // pathspec 一个已跟踪文件都匹配不到时 git 会报错,视为空集。
-    tree = '';
-  }
-  const rows = tree
-    .split('\n')
-    .filter((line) => {
-      if (!line) return false;
-      const tab = line.indexOf('\t');
-      return tab === -1 ? true : line.slice(tab + 1) !== rel;
-    })
-    .join('\n');
-  return createHash('sha1').update(rows).digest('hex').slice(0, 12);
+  const matchers = paths.map(globToRegex);
+  const rows = TREE_ROWS.filter(
+    (row) => row.path !== rel && matchers.some((re) => re.test(row.path)),
+  ).map((row) => row.meta);
+  return createHash('sha1').update(rows.join('\n')).digest('hex').slice(0, 12);
 }
 
 const stale = [];
