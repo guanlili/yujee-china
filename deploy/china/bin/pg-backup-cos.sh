@@ -18,9 +18,8 @@ ALERT="$OPS_DIR/bin/feishu-alert.sh"
 # 失败时发飞书告警(成功时静默)
 trap 'bash "$ALERT" "PG 备份失败" "每日数据库备份未完成。手动检查: bash $OPS_DIR/bin/pg-backup-cos.sh"' ERR
 
-COS_BUCKET=$(grep "^R2_BUCKET=" "$ENV_FILE" | cut -d= -f2)
-COS_KEY=$(grep "^R2_ACCESS_KEY_ID=" "$ENV_FILE" | cut -d= -f2)
-COS_SECRET=$(grep "^R2_SECRET_ACCESS_KEY=" "$ENV_FILE" | cut -d= -f2)
+# 凭证不再在宿主机解析:容器 yujee-web-1 里已有 R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY
+# 与 R2_BUCKET,上传直接读容器 env,密钥不用再过一遍 shell 变量(少一个泄漏面)。
 
 mkdir -p "$BACKUP_DIR"
 STAMP=$(date +%Y%m%d_%H%M%S)
@@ -35,9 +34,36 @@ mv "$TMP" "$BACKUP_DIR/$FILE"
 
 find "$BACKUP_DIR" -name "yujee_pg_*.sql.gz" -mtime +7 -delete
 
-AWS_ACCESS_KEY_ID="$COS_KEY" AWS_SECRET_ACCESS_KEY="$COS_SECRET" \
-  aws s3 cp "$BACKUP_DIR/$FILE" \
-  "s3://${COS_BUCKET}/pg-backups/${FILE}" \
-  --endpoint-url "https://${COS_BUCKET}.cos.ap-beijing.myqcloud.com"
+# 上传走容器里的 AWS SDK,不用 aws cli。原因(2026-11-17 实测):
+# ① aws cli 打自定义 endpoint 时强制 path-style → COS 直接拒
+#    (PathStyleDomainForbidden);
+# ② 换成桶级域名(https://<bucket>.cos...)会被 cli 再把桶名拼进 key,
+#    备份落到 <bucket>/pg-backups/...(已攒了 20 个错前缀对象,恢复时按
+#    pg-backups/ 找不到);
+# ③ SDK(virtual-hosted style)+ 区域级 endpoint 才是 COS 认的写法——
+#    和 apps/web/src/lib/r2/r2-client.ts 用的是同一套,key 落点一致。
+docker cp "$BACKUP_DIR/$FILE" yujee-web-1:/tmp/pg-upload.sql.gz >/dev/null
+docker exec -e BACKUP_FILE="$FILE" yujee-web-1 node -e '
+const fs = require("fs");
+import("@aws-sdk/client-s3").then(async ({ S3Client, PutObjectCommand }) => {
+  const client = new S3Client({
+    region: process.env.S3_REGION || "ap-beijing",
+    endpoint: "https://cos.ap-beijing.myqcloud.com",
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+    },
+    requestChecksumCalculation: "WHEN_REQUIRED",
+  });
+  const key = `pg-backups/${process.env.BACKUP_FILE}`;
+  await client.send(new PutObjectCommand({
+    Bucket: process.env.R2_BUCKET,
+    Key: key,
+    Body: fs.readFileSync("/tmp/pg-upload.sql.gz"),
+    ContentType: "application/gzip",
+  }));
+  console.log("uploaded", key);
+});'
+docker exec yujee-web-1 rm -f /tmp/pg-upload.sql.gz
 
 echo "backup OK: $FILE ($(du -h "$BACKUP_DIR/$FILE" | cut -f1))"

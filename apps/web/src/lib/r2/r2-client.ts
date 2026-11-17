@@ -1,4 +1,9 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '@/lib/env';
 import { assetProxyPath } from './asset-url';
@@ -127,6 +132,20 @@ export const r2 = {
     } catch (e) {
       if (isNotFound(e)) return null;
       logger.error({ err: String(e), key }, 'r2 getObject failed');
+      throw e;
+    }
+  },
+
+  // 删除单个对象。只给「同一相册被重新导出、旧稿必须让位」这一处用:PDF 每导出
+  // 一次就是一个新 UUID,不删旧的就是只增不减(实测单相册留了 4 份、其中一份 10MB)。
+  // 调用方必须保证 key 归属自己(见 album-service 的 pdfKeyBelongsTo)。
+  async deleteObject(key: string): Promise<void> {
+    try {
+      await client().send(
+        new DeleteObjectCommand({ Bucket: env.R2_BUCKET, Key: key }),
+      );
+    } catch (e) {
+      logger.error({ err: String(e), key }, 'r2 deleteObject failed');
       throw e;
     }
   },

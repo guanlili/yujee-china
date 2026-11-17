@@ -334,3 +334,47 @@ test('pdf export (collab rework §3.2): editor exports into album namespace; str
     await cleanupUser(stranger.id);
   }
 });
+
+test('re-export deletes the superseded PDF object, so one album keeps one file', async (t) => {
+  if (!(await isDbReachable())) return t.skip('DATABASE_URL unreachable');
+  const { r2 } = await import('../../lib/r2/r2-client');
+  const user = await makeUser('pdf-retention');
+  const deleted: string[] = [];
+  const realDelete = r2.deleteObject;
+  // 存储不可达时代替真删:测试只断言「删了哪个 key」,不发网络请求。
+  r2.deleteObject = async (key: string) => {
+    deleted.push(key);
+  };
+  try {
+    const album = await makeAlbum(user.id, { photoCount: 1 });
+    await albumRepo.update(db, album.id, {
+      status: 'EDITING',
+      stage: 'story',
+      draftJson: makeV3StoryDraft(1),
+    });
+    await albumService.markChapterDone(user.id, album.id, 'c1');
+    await albumRepo.update(db, album.id, { stage: 'ready' });
+
+    const first = await albumService.signPdfUpload(user.id, album.id, {
+      contentType: 'application/pdf',
+      size: 4,
+    });
+    await albumService.confirmPdf(user.id, album.id, first.r2Key);
+    assert.deepEqual(deleted, [], '首次导出没有旧稿可删');
+
+    const second = await albumService.signPdfUpload(user.id, album.id, {
+      contentType: 'application/pdf',
+      size: 4,
+    });
+    assert.notEqual(second.r2Key, first.r2Key);
+    await albumService.confirmPdf(user.id, album.id, second.r2Key);
+    assert.deepEqual(deleted, [first.r2Key], '重新导出后删掉的正是上一版 key');
+
+    // 再确认同一份 key(幂等重放)不该把当前这份删掉。
+    await albumService.confirmPdf(user.id, album.id, second.r2Key);
+    assert.deepEqual(deleted, [first.r2Key], '同一 key 重放不触发删除');
+  } finally {
+    r2.deleteObject = realDelete;
+    await cleanupUser(user.id);
+  }
+});
