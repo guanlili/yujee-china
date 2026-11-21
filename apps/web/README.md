@@ -487,6 +487,6 @@ preview/development 构建同样跑在 `NODE_ENV=production` 下,只看 NODE_ENV
 
 <!-- doc-scope
 paths: apps/web/src/app/api/**, apps/web/src/lib/agent/**, apps/web/src/lib/env.ts, apps/web/src/services/**
-checked-at: 9de1104b
-fingerprint: e711b2e56587
+checked-at: 7e36c446
+fingerprint: 32171b14dbe2
 -->
