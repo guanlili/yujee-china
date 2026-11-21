@@ -31,8 +31,8 @@
 	},
 	"dependencies": {
 		"@earendil-works/pi-ai": "workspace:*",
-		"ignore": "7.0.14",
-		"typebox": "1.4.5",
+		"ignore": "7.0.16",
+		"typebox": "1.4.7",
 		"yaml": "2.9.1"
 	},
 	"keywords": [
