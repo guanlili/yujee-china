@@ -155,6 +155,13 @@ cd apps/web && pnpm test        # 或 pnpm --filter @yujee/web test
 pnpm --filter @yujee/web test:admin   # admin 集成测试独占批(常规批整文件 skip)
 ```
 
+冒烟(功能级,不属于单测;细节见 `scripts/smoke/README.md`):
+
+```bash
+pnpm smoke:prod    # 生产只读 162 项:全站可达/SEO 契约/鉴权跳转/支付 fail-closed
+pnpm smoke:local   # 23 项登录主流程;只允许 localhost(会写测试账号)
+```
+
 ### 验证陷阱
 
 - 仓根 `pnpm test` 是 `pnpm -r --no-bail test`:失败**不再中断**、后续包照跑,但
@@ -167,7 +174,10 @@ pnpm --filter @yujee/web test:admin   # admin 集成测试独占批(常规批整
   `ERR_MODULE_NOT_FOUND`,而且**整个测试文件加载失败、里面的用例根本不计数** ——
   实测未构建时报「96 tests」,构建后是「115 tests」,19 个用例静默消失了。
   测试总数比预期少要当心,那是文件没加载,不是用例变少。
-- 没有 CI。所有验证都靠本地自觉执行 —— 别声称跑过没跑过的东西。
+- CI 已就位(`.github/workflows/ci.yml`,2026-11 起):push/PR/merge queue 跑
+  audit/typecheck/engine/web/packages/chapters 六门,main 合并后自动部署。
+  `smoke-prod.yml` 每天跑一次生产只读冒烟,不进 PR 闸门 —— 线上抖动不该决定 PR
+  能否合并。本地的 `pnpm verify` 仍是合并前最快的一道自检。
 
 全量跑一遍(2026-07-25 实测 1483 个用例):
 
@@ -209,6 +219,6 @@ PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
 
 <!-- doc-scope
 paths: engine/src/api/routes.py, apps/web/src/app/api/**, packages/design-agent/src/web/**, packages/contracts/templates/*.json, package.json
-checked-at: b5813366
-fingerprint: 1e8307904c5f
+checked-at: 7e36c446
+fingerprint: 707d4f8ed1d0
 -->
