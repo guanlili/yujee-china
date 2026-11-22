@@ -29,20 +29,20 @@
     "better-auth": "1.7.18",
     "dompurify": "^3.4.17",
     "dotenv": "^18.0.9",
+    "drizzle-kit": "^0.31.11",
     "drizzle-orm": "^0.45.4",
     "heic-to": "^1.6.7",
     "html2canvas-pro": "^2.6.3",
     "jspdf": "^4.2.1",
     "marked": "^18.1.3",
     "mp4-muxer": "^5.2.2",
-    "next": "15.5.28",
+    "next": "15.5.29",
     "next-intl": "4.14.9",
     "postgres": "^3.4.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "subset-font": "^2.9.0",
-    "zod": "^4.6.6",
-    "drizzle-kit": "^0.31.11"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.5",
