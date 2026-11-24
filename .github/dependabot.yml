@@ -15,7 +15,22 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
+      # AI SDK 单列:这几个包按 semver 只是 minor,但内部会加枚举成员 / 改类型,
+      # 直接破编译(2026-11-24 @google/genai 3.0→3.6 加了四个 FinishReason,
+      # mapStopReason 的 never 穷尽检查当场编不过)。混进 18 个包的大批里,
+      # 一挂全批停,人工也难定位 —— 单独一组,升级时单独看。
+      ai-sdk:
+        patterns:
+          - "@google/genai"
+          - "openai"
+          - "@anthropic-ai/sdk"
       npm-minor-and-patch:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "@google/genai"
+          - "openai"
+          - "@anthropic-ai/sdk"
         update-types:
           - "minor"
           - "patch"

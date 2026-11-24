@@ -216,7 +216,9 @@ jobs:
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
         with:
           enable-cache: true
-      - run: uv sync --extra dev
+      # --frozen:锁文件必须与 pyproject 一致,否则直接失败。不带它时 uv 会静默
+      # 重解析,改了 pyproject 忘了 `uv lock` 的漂移在 CI 里看不出来(#414 就靠手工同步才发现)。
+      - run: uv sync --frozen --extra dev
         working-directory: engine
       - run: PYTHONPATH=engine engine/.venv/bin/python -m pytest engine/tests -q
       # P1 质量闸门(2026-11):ruff 分档起步,select=E9/F821/F841/W 在 engine/src 上 0 违规。
