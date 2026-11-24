@@ -59,6 +59,8 @@ rollback() {
     exit 1
   }
   echo "now at $(git log -1 --format='%h %s') (rollback)"
+  # 上报的 release 跟着回退,否则 GlitchTip 里会把旧代码的报错记在新版本名下
+  export SENTRY_RELEASE="$(git rev-parse --short HEAD)"
   docker compose -f deploy/china/compose.single.yml \
     --env-file deploy/china/env/single.env \
     up -d --build --wait --wait-timeout 300 || {
@@ -71,6 +73,11 @@ rollback() {
 
 # --wait 等全部服务 healthy/running;--wait-timeout 防个别 healthcheck 卡死拖住整次部署。
 # build 走层缓存:无代码变更的服务秒级跳过重建。
+# SENTRY_RELEASE = 本次部署的 commit,错误上报按它归因(修完看同一条 issue 是否在新版本消失)。
+export SENTRY_RELEASE="$(git rev-parse --short HEAD)"
+# glitchtip-net 是 external 网络:实例没起来时 compose up 会直接报错。
+# 这里做一次自愈,保证「上报实例挂了」不会把主站部署一起拖死。
+docker network inspect glitchtip-net >/dev/null 2>&1 || (cd ~/glitchtip && docker compose up -d)
 docker compose -f deploy/china/compose.single.yml \
   --env-file deploy/china/env/single.env \
   up -d --build --wait --wait-timeout 300

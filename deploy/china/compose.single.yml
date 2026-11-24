@@ -136,6 +136,16 @@ services:
     ports:
       - "8080:3000"   # IP 阶段入口 http://49.232.156.221:8080（80/440 归 speakup）
     env_file: env/single.env
+    # 自建 GlitchTip(~/glitchtip,容器网络 glitchtip-net)只对本机容器开放,
+    # 不发布公网端口。DSN 走 ${SENTRY_DSN_WEB}(single.env);没配则 SDK 不初始化,
+    # 与原行为一致 —— 接入监控不该成为部署的硬依赖。
+    networks:
+      - default
+      - glitchtip
+    environment:
+      SENTRY_DSN: ${SENTRY_DSN_WEB:-}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+      SENTRY_ENV: production
     depends_on:
       postgres:
         condition: service_healthy
@@ -153,3 +163,10 @@ services:
 
 volumes:
   pgdata:
+
+# 错误上报实例的容器网络(~/glitchtip 的 compose 里定义,name: glitchtip-net)。
+# external: 由外部 compose 管理生命周期,本编排只加入,不创建/不销毁。
+networks:
+  glitchtip:
+    external: true
+    name: glitchtip-net
