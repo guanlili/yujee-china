@@ -10,6 +10,10 @@ import * as Sentry from '@sentry/nextjs';
 export function register() {
   const dsn = process.env.SENTRY_DSN;
   if (!dsn) return;
+  // register 会在 Node 和 Edge 两个 runtime 各跑一次。我们只关心 Node(API route、
+  // server action、RSC);Edge 只有 middleware,init 了也只是让每次部署多发一条
+  // 重复事件(2026-11-24 实测:同一次部署收到 node/edge 两条 boot)。
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
   Sentry.init({
     dsn,
@@ -21,13 +25,15 @@ export function register() {
     ignoreErrors: ['NEXT_REDIRECT', 'NEXT_NOT_FOUND'],
   });
 
-  // 每次进程启动发一条 boot 消息:一来当部署时间线(哪个 release 几点上的线),
-  // 二来它就是链路自检 —— 面板里看到它,说明 SDK -> 网络 -> 入库整条通。
-  // info 级不高频:每次部署/重启才一条。
-  void Sentry.captureMessage(
-    `[boot] web 上线 release=${process.env.SENTRY_RELEASE ?? 'unknown'}`,
-    'info',
-  );
+  // 链路自检:默认关闭。GlitchTip 会把 message 事件也建成 issue,常驻开着等于
+  // 每次部署往面板塞一条"错误"。需要排查上报链路时临时在 env 里设
+  // SENTRY_BOOT_PROBE=1 重启即可(2026-11-24 已用它验证过整条链路)。
+  if (process.env.SENTRY_BOOT_PROBE === '1') {
+    void Sentry.captureMessage(
+      `[boot] web 上线 release=${process.env.SENTRY_RELEASE ?? 'unknown'}`,
+      'info',
+    );
+  }
 }
 
 // App Router 的服务端异常统一入口(Next 15 约定)。
