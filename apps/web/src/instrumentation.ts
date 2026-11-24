@@ -20,6 +20,14 @@ export function register() {
     // Next 内部的 abort/redirect 控制流异常不算错误
     ignoreErrors: ['NEXT_REDIRECT', 'NEXT_NOT_FOUND'],
   });
+
+  // 每次进程启动发一条 boot 消息:一来当部署时间线(哪个 release 几点上的线),
+  // 二来它就是链路自检 —— 面板里看到它,说明 SDK -> 网络 -> 入库整条通。
+  // info 级不高频:每次部署/重启才一条。
+  void Sentry.captureMessage(
+    `[boot] web 上线 release=${process.env.SENTRY_RELEASE ?? 'unknown'}`,
+    'info',
+  );
 }
 
 // App Router 的服务端异常统一入口(Next 15 约定)。
