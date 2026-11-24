@@ -333,6 +333,13 @@ export function mapStopReason(reason: FinishReason): StopReason {
 		case FinishReason.MALFORMED_RESPONSE:
 		case FinishReason.UNEXPECTED_TOOL_CALL:
 		case FinishReason.NO_IMAGE:
+		// @google/genai 3.6 新增的四种终止:思考签名缺失、升级转人工、PUP 受限、
+		// 安全过滤。它们都不是「模型正常答完」,归到 error 与既有异常终止同类;
+		// 不加这四行,switch 的 exhaustive 检查(`never`)会直接编译失败。
+		case FinishReason.MISSING_THOUGHT_SIGNATURE:
+		case FinishReason.ESCALATION:
+		case FinishReason.PUP_LIMITED_DISABLED:
+		case FinishReason.MODEL_ARMOR:
 			return "error";
 		default: {
 			const _exhaustive: never = reason;
